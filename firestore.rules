@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(projectData) {
+      return isSignedIn() && projectData.ownerId == request.auth.uid;
+    }
+
+    function isCollaborator(projectData) {
+      return isSignedIn() && (projectData.ownerId == request.auth.uid || request.auth.uid in projectData.collaborators);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function validateProject(data) {
+      return data.title is string && data.title.size() <= 100 &&
+             data.genre is string && data.genre.size() <= 64 &&
+             data.ownerId == request.auth.uid &&
+             data.collaborators is list && data.collaborators.size() <= 20 &&
+             data.createdAt == request.time &&
+             (data.lastModified == request.time || data.updatedAt == request.time);
+    }
+
+    function validateCharacter(data) {
+      return data.name is string && data.name.size() <= 128 &&
+             data.role is string && data.traits is list &&
+             data.updatedAt == request.time;
+    }
+
+    function validateChapter(data) {
+      return data.title is string && data.title.size() <= 256 &&
+             data.order is int && data.updatedAt == request.time;
+    }
+
+    function validatePlotNode(data) {
+      return data.title is string && data.status in ['active', 'ended', 'resolved'] &&
+             data.order is int && data.updatedAt == request.time;
+    }
+
+    function getProject(projectId) {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data;
+    }
+
+    // Projects
+    match /projects/{projectId} {
+      allow get: if isCollaborator(resource.data);
+      allow list: if isCollaborator(resource.data);
+      allow create: if isSignedIn() && validateProject(incoming());
+      allow update: if isCollaborator(existing()) && (
+        (isOwner(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'genre', 'premise', 'tone', 'type', 'maturity', 'collaborators', 'lastModified', 'updatedAt', 'sourceMaterials']) && (incoming().lastModified == request.time || incoming().updatedAt == request.time)) ||
+        (!isOwner(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['lastModified', 'updatedAt']) && (incoming().lastModified == request.time || incoming().updatedAt == request.time))
+      );
+      allow delete: if isOwner(existing());
+
+      // Characters
+      match /characters/{characterId} {
+        allow read: if isCollaborator(getProject(projectId));
+        allow create: if isCollaborator(getProject(projectId)) && validateCharacter(incoming());
+        allow update: if isCollaborator(getProject(projectId)) && validateCharacter(incoming()) && 
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'backstory', 'traits', 'goals', 'fears', 'motivations', 'quirks', 'archetype', 'updatedAt']);
+        allow delete: if isCollaborator(getProject(projectId));
+      }
+
+      // Plot Nodes
+      match /plotNodes/{nodeId} {
+        allow read: if isCollaborator(getProject(projectId));
+        allow create: if isCollaborator(getProject(projectId)) && validatePlotNode(incoming());
+        allow update: if isCollaborator(getProject(projectId)) && validatePlotNode(incoming()) &&
+                         (existing().status != 'resolved' || isOwner(getProject(projectId)));
+        allow delete: if isCollaborator(getProject(projectId));
+      }
+
+      // Chapters
+      match /chapters/{chapterId} {
+        allow read: if isCollaborator(getProject(projectId));
+        allow create: if isCollaborator(getProject(projectId)) && validateChapter(incoming());
+        allow update: if isCollaborator(getProject(projectId)) && validateChapter(incoming());
+        allow delete: if isCollaborator(getProject(projectId));
+
+        // Comments
+        match /comments/{commentId} {
+          allow read: if isCollaborator(getProject(projectId));
+          allow create: if isCollaborator(getProject(projectId)) && incoming().authorId == request.auth.uid;
+          allow update: if isCollaborator(getProject(projectId)) && (incoming().authorId == request.auth.uid || isOwner(getProject(projectId)));
+          allow delete: if isCollaborator(getProject(projectId)) && (existing().authorId == request.auth.uid || isOwner(getProject(projectId)));
+        }
+      }
+
+      // Research
+      match /research/{noteId} {
+        allow read: if isCollaborator(getProject(projectId));
+        allow create, update: if isCollaborator(getProject(projectId));
+        allow delete: if isCollaborator(getProject(projectId));
+      }
+
+      // Presence
+      match /presence/{userId} {
+        allow read: if isCollaborator(getProject(projectId));
+        allow write: if isSignedIn() && request.auth.uid == userId && incoming().userId == request.auth.uid;
+      }
+    }
+  }
+}
