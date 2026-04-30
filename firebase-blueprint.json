@@ -91,6 +91,18 @@
       },
       "required": ["authorId", "text", "createdAt"]
     },
+    "sourceMaterials": {
+      "title": "Source Material",
+      "description": "Background documents or manuscripts",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "content", "updatedAt"]
+    },
     "Presence": {
       "title": "Presence",
       "description": "Real-time user state",
@@ -133,6 +145,10 @@
     "/projects/{projectId}/presence/{userId}": {
       "schema": "Presence",
       "description": "User presence in project"
+    },
+    "/projects/{projectId}/sourceMaterials/{sourceId}": {
+      "schema": "sourceMaterials",
+      "description": "Uploaded source documents"
     }
   }
 }

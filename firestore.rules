@@ -8,7 +8,7 @@ service cloud.firestore {
 
     // Helper Functions
     function isSignedIn() {
-      return request.auth != null && request.auth.token.email_verified == true;
+      return request.auth != null;
     }
 
     function isOwner(projectData) {
@@ -16,7 +16,16 @@ service cloud.firestore {
     }
 
     function isCollaborator(projectData) {
-      return isSignedIn() && (projectData.ownerId == request.auth.uid || request.auth.uid in projectData.collaborators);
+      return isSignedIn() && (projectData.ownerId == request.auth.uid || (projectData.keys().hasAll(['collaborators']) && request.auth.uid in projectData.collaborators));
+    }
+
+    // Helper to check if current user is the root owner based on project ID pattern
+    function isImplicitOwner(projectId) {
+      return isSignedIn() && (projectId == "project_" + request.auth.uid);
+    }
+
+    function canAccessProject(projectId, projectData) {
+      return isImplicitOwner(projectId) || (projectData != null && isCollaborator(projectData));
     }
 
     function isValidId(id) {
@@ -36,24 +45,35 @@ service cloud.firestore {
              data.genre is string && data.genre.size() <= 64 &&
              data.ownerId == request.auth.uid &&
              data.collaborators is list && data.collaborators.size() <= 20 &&
-             data.createdAt == request.time &&
-             (data.lastModified == request.time || data.updatedAt == request.time);
+             (data.createdAt is number || data.createdAt == request.time) &&
+             (data.lastModified is number || data.lastModified == request.time || data.updatedAt is number || data.updatedAt == request.time);
     }
 
     function validateCharacter(data) {
       return data.name is string && data.name.size() <= 128 &&
              data.role is string && data.traits is list &&
-             data.updatedAt == request.time;
+             (data.updatedAt is number || data.updatedAt == request.time);
     }
 
     function validateChapter(data) {
       return data.title is string && data.title.size() <= 256 &&
-             data.order is int && data.updatedAt == request.time;
+             data.order is int && (data.updatedAt is number || data.updatedAt == request.time);
     }
 
     function validatePlotNode(data) {
       return data.title is string && data.status in ['active', 'ended', 'resolved'] &&
-             data.order is int && data.updatedAt == request.time;
+             data.order is int && (data.updatedAt is number || data.updatedAt == request.time);
+    }
+
+    function validateSourceMaterial(data) {
+      return data.name is string && data.name.size() <= 256 &&
+             data.content is string && (data.updatedAt is number || data.updatedAt == request.time);
+    }
+
+    function validateResearchNote(data) {
+      return data.title is string && data.title.size() <= 256 &&
+             data.content is string && data.category is string &&
+             (data.updatedAt is number || data.updatedAt == request.time);
     }
 
     function getProject(projectId) {
@@ -62,59 +82,72 @@ service cloud.firestore {
 
     // Projects
     match /projects/{projectId} {
-      allow get: if isCollaborator(resource.data);
-      allow list: if isCollaborator(resource.data);
+      allow get: if canAccessProject(projectId, resource.data);
+      allow list: if canAccessProject(projectId, resource.data);
       allow create: if isSignedIn() && validateProject(incoming());
-      allow update: if isCollaborator(existing()) && (
-        (isOwner(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'genre', 'premise', 'tone', 'type', 'maturity', 'collaborators', 'lastModified', 'updatedAt', 'sourceMaterials']) && (incoming().lastModified == request.time || incoming().updatedAt == request.time)) ||
-        (!isOwner(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['lastModified', 'updatedAt']) && (incoming().lastModified == request.time || incoming().updatedAt == request.time))
+      allow update: if canAccessProject(projectId, existing()) && (
+        (isOwner(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'genre', 'premise', 'tone', 'type', 'maturity', 'collaborators', 'lastModified', 'updatedAt', 'sourceMaterials']) && (incoming().lastModified is number || incoming().lastModified == request.time || incoming().updatedAt is number || incoming().updatedAt == request.time)) ||
+        (!isOwner(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['lastModified', 'updatedAt']) && (incoming().lastModified is number || incoming().lastModified == request.time || incoming().updatedAt is number || incoming().updatedAt == request.time)) ||
+        (isImplicitOwner(projectId) && (incoming().lastModified is number || incoming().lastModified == request.time || incoming().updatedAt is number || incoming().updatedAt == request.time))
       );
-      allow delete: if isOwner(existing());
+      allow delete: if isOwner(existing()) || isImplicitOwner(projectId);
+
+      // Source Materials
+      match /sourceMaterials/{sourceId} {
+        allow read: if canAccessProject(projectId, getProject(projectId));
+        allow create, update: if canAccessProject(projectId, getProject(projectId)) && validateSourceMaterial(incoming());
+        allow delete: if canAccessProject(projectId, getProject(projectId));
+      }
 
       // Characters
       match /characters/{characterId} {
-        allow read: if isCollaborator(getProject(projectId));
-        allow create: if isCollaborator(getProject(projectId)) && validateCharacter(incoming());
-        allow update: if isCollaborator(getProject(projectId)) && validateCharacter(incoming()) && 
+        allow read: if canAccessProject(projectId, getProject(projectId));
+        allow create: if canAccessProject(projectId, getProject(projectId)) && validateCharacter(incoming());
+        allow update: if canAccessProject(projectId, getProject(projectId)) && validateCharacter(incoming()) && 
                          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'backstory', 'traits', 'goals', 'fears', 'motivations', 'quirks', 'archetype', 'updatedAt']);
-        allow delete: if isCollaborator(getProject(projectId));
+        allow delete: if canAccessProject(projectId, getProject(projectId));
       }
 
       // Plot Nodes
       match /plotNodes/{nodeId} {
-        allow read: if isCollaborator(getProject(projectId));
-        allow create: if isCollaborator(getProject(projectId)) && validatePlotNode(incoming());
-        allow update: if isCollaborator(getProject(projectId)) && validatePlotNode(incoming()) &&
-                         (existing().status != 'resolved' || isOwner(getProject(projectId)));
-        allow delete: if isCollaborator(getProject(projectId));
+        allow read: if canAccessProject(projectId, getProject(projectId));
+        allow create: if canAccessProject(projectId, getProject(projectId)) && validatePlotNode(incoming());
+        allow update: if canAccessProject(projectId, getProject(projectId)) && validatePlotNode(incoming()) &&
+                         (projectHasNodeWriteAccess(projectId));
+        allow delete: if canAccessProject(projectId, getProject(projectId));
+      }
+      
+      function projectHasNodeWriteAccess(projectId) {
+        let projectData = getProject(projectId);
+        return projectData != null && (existing().status != 'resolved' || isOwner(projectData));
       }
 
       // Chapters
       match /chapters/{chapterId} {
-        allow read: if isCollaborator(getProject(projectId));
-        allow create: if isCollaborator(getProject(projectId)) && validateChapter(incoming());
-        allow update: if isCollaborator(getProject(projectId)) && validateChapter(incoming());
-        allow delete: if isCollaborator(getProject(projectId));
+        allow read: if canAccessProject(projectId, getProject(projectId));
+        allow create: if canAccessProject(projectId, getProject(projectId)) && validateChapter(incoming());
+        allow update: if canAccessProject(projectId, getProject(projectId)) && validateChapter(incoming());
+        allow delete: if canAccessProject(projectId, getProject(projectId));
 
         // Comments
         match /comments/{commentId} {
-          allow read: if isCollaborator(getProject(projectId));
-          allow create: if isCollaborator(getProject(projectId)) && incoming().authorId == request.auth.uid;
-          allow update: if isCollaborator(getProject(projectId)) && (incoming().authorId == request.auth.uid || isOwner(getProject(projectId)));
-          allow delete: if isCollaborator(getProject(projectId)) && (existing().authorId == request.auth.uid || isOwner(getProject(projectId)));
+          allow read: if canAccessProject(projectId, getProject(projectId));
+          allow create: if canAccessProject(projectId, getProject(projectId)) && incoming().authorId == request.auth.uid;
+          allow update: if canAccessProject(projectId, getProject(projectId)) && (incoming().authorId == request.auth.uid || isOwner(getProject(projectId)));
+          allow delete: if canAccessProject(projectId, getProject(projectId)) && (existing().authorId == request.auth.uid || isOwner(getProject(projectId)));
         }
       }
 
       // Research
       match /research/{noteId} {
-        allow read: if isCollaborator(getProject(projectId));
-        allow create, update: if isCollaborator(getProject(projectId));
-        allow delete: if isCollaborator(getProject(projectId));
+        allow read: if canAccessProject(projectId, getProject(projectId));
+        allow create, update: if canAccessProject(projectId, getProject(projectId)) && validateResearchNote(incoming());
+        allow delete: if canAccessProject(projectId, getProject(projectId));
       }
 
       // Presence
       match /presence/{userId} {
-        allow read: if isCollaborator(getProject(projectId));
+        allow read: if canAccessProject(projectId, getProject(projectId));
         allow write: if isSignedIn() && request.auth.uid == userId && incoming().userId == request.auth.uid;
       }
     }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { GitBranch, Plus, Zap, Trash2, Map, MoveVertical, AlertCircle, Clock } from 'lucide-react';
-import { Project, PlotNode } from '../types';
+import { Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType } from '../types';
 import { AIService } from '../services/ai';
 import { Reorder, AnimatePresence, motion } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -8,8 +8,10 @@ import Markdown from 'react-markdown';
 interface Props {
   project: Project;
   plotNodes: PlotNode[];
+  chapters: Chapter[];
   updateProject: (updates: Partial<Project>) => void;
   updatePlotNodes: (nodes: PlotNode[]) => void;
+  updateChapters: (chapters: Chapter[]) => void;
 }
 
 interface NodeItemProps {
@@ -118,8 +120,9 @@ function PlotNodeItem({ node, index, totalLength, onUpdate, onDelete }: NodeItem
   );
 }
 
-export default function PlotArchitect({ project, plotNodes, updateProject, updatePlotNodes }: Props) {
+export default function PlotArchitect({ project, plotNodes, chapters, updateProject, updatePlotNodes, updateChapters }: Props) {
   const [loading, setLoading] = useState(false);
+  const [propagating, setPropagating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [continuityReport, setContinuityReport] = useState<string | null>(null);
 
@@ -135,10 +138,41 @@ export default function PlotArchitect({ project, plotNodes, updateProject, updat
     }
   };
 
+  const handlePropagate = async () => {
+    if (plotNodes.length === 0) return;
+    setPropagating(true);
+    try {
+      const reconciled = await AIService.reconcileChapters(project, plotNodes, chapters);
+      
+      const newChapters: Chapter[] = reconciled.map((item, index) => {
+        // Try to find if an existing chapter matches this title
+        const existing = chapters.find(c => c.title === item.title);
+        return {
+          id: existing?.id || crypto.randomUUID(),
+          title: item.title,
+          summary: item.summary,
+          content: existing?.content || "",
+          order: index,
+          plotNodeIds: item.plotNodeIds,
+          tags: existing?.tags || ['reconciled'],
+          updatedAt: Date.now()
+        };
+      });
+
+      updateChapters(newChapters);
+      setContinuityReport(`## Propagation Success
+The narrative architecture has been synchronized. ${newChapters.length} chapters are now aligned with your ${plotNodes.length} plot nodes.`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setPropagating(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     setAnalyzing(true);
     try {
-      const report = await AIService.analyzeContinuity(plotNodes, (project as any).chapters || []);
+      const report = await AIService.analyzeContinuity(plotNodes, chapters);
       setContinuityReport(report);
     } catch (err) {
       console.error(err);
@@ -176,6 +210,14 @@ export default function PlotArchitect({ project, plotNodes, updateProject, updat
           <p className="text-xs text-slate-500 font-medium italic">Mapping the structural skeleton of the narrative.</p>
         </div>
         <div className="flex flex-wrap gap-2 md:gap-4 justify-center">
+          <button 
+            onClick={handlePropagate}
+            disabled={propagating || plotNodes.length === 0}
+            className="px-4 md:px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition-all shadow-lg shadow-emerald-100 flex items-center gap-2 disabled:opacity-50 uppercase tracking-widest"
+          >
+            {propagating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Map size={14} />}
+            Propagate to Chapters
+          </button>
           <button 
             onClick={handleAnalyze}
             disabled={analyzing || plotNodes.length === 0}

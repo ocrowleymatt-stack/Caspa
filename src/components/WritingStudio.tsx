@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
-import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity } from 'lucide-react';
 import { SourceMaterial, Project, Chapter, PlotNode, Presence } from '../types';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
+import Fuse from 'fuse.js';
 
 interface Props {
   project: Project;
@@ -16,19 +17,24 @@ interface Props {
   presence: Presence[];
   updateProject: (updates: Partial<Project>) => void;
   updateChapters: (chapters: Chapter[]) => void;
+  upsertChapter?: (chapter: Chapter) => void;
+  onDeleteChapter?: (id: string) => void;
   onUpsertSource: (source: SourceMaterial) => void;
   onDeleteSource: (id: string) => void;
 }
 
-export default function WritingStudio({ project, plotNodes, presence, updateProject, updateChapters, onUpsertSource, onDeleteSource }: Props) {
+export default function WritingStudio({ project, plotNodes, presence, updateProject, updateChapters, upsertChapter, onDeleteChapter, onUpsertSource, onDeleteSource }: Props) {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [showCritique, setShowCritique] = useState(false);
   const [critiqueText, setCritiqueText] = useState('');
   const [isWriting, setIsWriting] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
   const [isCritiquing, setIsCritiquing] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [viewingSourceId, setViewingSourceId] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
+  const [archiveFilter, setArchiveFilter] = useState<'All' | 'Manuscript' | 'Research' | 'AI Compilation'>('All');
 
   const chapters = (project as any).chapters || [];
   
@@ -40,7 +46,39 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
   }, [chapters, selectedChapterId]);
 
   const selectedChapter = chapters.find((c: Chapter) => c.id === selectedChapterId);
-  const viewingSource = project.sourceMaterials?.find(s => s.id === viewingSourceId);
+  
+  // Support both sourceMaterials and researchNotes in the viewer
+  const allSources = useMemo(() => {
+    const raw = [
+      ...(project.sourceMaterials || []).map(s => ({
+        ...s,
+        displayType: s.name.startsWith('[MANUSCRIPT]') ? 'Manuscript' : (s.name.startsWith('[RESEARCH]') ? 'Research' : 'Research')
+      })),
+      ...(project.research || []).map((r: any) => ({
+        id: r.id,
+        name: `[RESEARCH] ${r.title}`,
+        content: r.content,
+        type: 'AI Compilation',
+        displayType: 'AI Compilation'
+      }))
+    ];
+
+    let filtered = raw;
+    if (archiveFilter !== 'All') {
+      filtered = filtered.filter(s => s.displayType === archiveFilter);
+    }
+
+    if (archiveSearchTerm.trim()) {
+      const fuse = new Fuse(filtered, {
+        keys: ['name', 'content'],
+        threshold: 0.4
+      });
+      return fuse.search(archiveSearchTerm).map(result => result.item);
+    }
+
+    return filtered;
+  }, [project.sourceMaterials, project.research, archiveSearchTerm, archiveFilter]);
+  const viewingSource = allSources.find(s => s.id === viewingSourceId);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
   useEffect(() => {
@@ -66,6 +104,7 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
       updatedAt: Date.now()
     };
     updateChapters([...chapters, newChapter]);
+    if (upsertChapter) upsertChapter(newChapter);
     setSelectedChapterId(newChapter.id);
   };
 
@@ -73,14 +112,21 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
   const [localSummary, setLocalSummary] = useState(selectedChapter?.summary || '');
   const [localContent, setLocalContent] = useState(selectedChapter?.content || '');
 
-  // Synchronize local state when chapter selection changes
+  // Synchronize local state when chapter content OR selection changes from external sources (like AI Spark)
   useEffect(() => {
     if (selectedChapter) {
       setLocalTitle(selectedChapter.title);
       setLocalSummary(selectedChapter.summary);
       setLocalContent(selectedChapter.content);
     }
-  }, [selectedChapterId]);
+  }, [selectedChapterId, selectedChapter?.content, selectedChapter?.title, selectedChapter?.summary]);
+
+  // Debug source materials loading
+  useEffect(() => {
+    if (project.sourceMaterials && project.sourceMaterials.length > 0) {
+      console.log(`Writing Studio loaded ${project.sourceMaterials.length} source materials.`);
+    }
+  }, [project.sourceMaterials]);
 
   // Debounce updates to parent
   useEffect(() => {
@@ -100,11 +146,16 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
   }, [localTitle, localSummary, localContent, selectedChapter]);
 
   const updateChapter = (id: string, updates: Partial<Chapter>) => {
-    updateChapters(chapters.map((c: Chapter) => c.id === id ? { ...c, ...updates } : c));
+    const existing = chapters.find((c: Chapter) => c.id === id);
+    if (!existing) return;
+    const newChapter = { ...existing, ...updates };
+    updateChapters(chapters.map((c: Chapter) => c.id === id ? newChapter : c));
+    if (upsertChapter) upsertChapter(newChapter);
   };
 
   const deleteChapter = (id: string) => {
     updateChapters(chapters.filter((c: Chapter) => c.id !== id));
+    if (onDeleteChapter) onDeleteChapter(id);
     if (selectedChapterId === id) setSelectedChapterId(chapters[0]?.id || null);
   };
 
@@ -125,6 +176,34 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
       ? currentNodes.filter(id => id !== nodeId)
       : [...currentNodes, nodeId];
     updateChapter(selectedChapter.id, { plotNodeIds: newNodes });
+  };
+
+  const handleRefine = async () => {
+    if (!selectedChapter || !selectedChapter.content.trim()) return;
+    setIsRefining(true);
+    try {
+      const earlierContent = (chapters || [])
+        .filter((c: Chapter) => c.order < selectedChapter.order)
+        .map((c: Chapter) => c.content)
+        .join('\n\n')
+        .slice(-3000);
+
+      const activeNodes = plotNodes.filter(n => selectedChapter.plotNodeIds?.includes(n.id));
+
+      const refined = await AIService.deepSimmer(
+        selectedChapter,
+        earlierContent,
+        project.type,
+        activeNodes,
+        project.maturity,
+        project.sourceMaterials || []
+      );
+      updateChapter(selectedChapter.id, { content: refined });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsRefining(false);
+    }
   };
 
   const handleSmartWrite = async () => {
@@ -247,6 +326,7 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
                         updatedAt: Date.now()
                       };
                       updateChapters([...chapters, newChapter]);
+                      if (upsertChapter) upsertChapter(newChapter);
                       setSelectedChapterId(newChapter.id);
                     };
                     reader.readAsText(file);
@@ -305,48 +385,98 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
           <div className="flex items-center justify-between">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
               <Upload size={14} className="text-blue-600" />
-              Source Ingestion
+              Archives
             </h3>
-            <label className="p-1.5 hover:bg-slate-50 text-blue-600 rounded-lg transition-all cursor-pointer">
+            <label className="p-1.5 hover:bg-slate-50 text-blue-600 rounded-lg transition-all cursor-pointer" title="Upload Source">
               <Plus size={18} />
               <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.json" multiple />
             </label>
           </div>
-          
-          <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
-            {project.sourceMaterials?.map(source => (
-              <div 
-                key={source.id} 
-                onClick={() => {
-                  setViewingSourceId(source.id);
-                  if (isMobile) setIsSidebarVisible(false);
-                }}
-                className="p-4 bg-slate-50 rounded-2xl border border-slate-100 group relative cursor-pointer hover:border-blue-200 transition-colors"
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <FileText className="text-blue-500" size={16} />
-                  <span className="text-[10px] font-black text-slate-900 uppercase truncate pr-4">{source.name}</span>
-                </div>
-                <p className="text-[9px] text-slate-400 font-medium line-clamp-2 italic font-serif">
-                  {source.content.slice(0, 100)}...
-                </p>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeSource(source.id);
-                  }}
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all"
+
+          {/* Search and Filter UI */}
+          <div className="space-y-3">
+            <div className="relative group">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Fuzzy search archives..." 
+                value={archiveSearchTerm}
+                onChange={(e) => setArchiveSearchTerm(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl py-2 pl-8 pr-4 text-[10px] font-medium text-slate-600 focus:ring-1 focus:ring-blue-100 outline-none placeholder:text-slate-200 transition-all shadow-sm"
+              />
+            </div>
+            
+            <div className="flex flex-wrap gap-1">
+              {(['All', 'Manuscript', 'Research', 'AI Compilation'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setArchiveFilter(type)}
+                  className={`px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all ${
+                    archiveFilter === type 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-200'
+                  }`}
                 >
-                  <X size={12} />
+                  {type}
                 </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-1">
+            {allSources.length > 0 ? (
+              <div className="space-y-2">
+                {allSources.map(source => (
+                  <div 
+                    key={source.id} 
+                    onClick={() => {
+                      setViewingSourceId(source.id);
+                      if (isMobile) setIsSidebarVisible(false);
+                    }}
+                    className="p-3 bg-white rounded-xl border border-slate-100 group relative cursor-pointer hover:border-blue-200 transition-colors shadow-sm"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        {(source as any).displayType === 'AI Compilation' ? (
+                          <Zap className="text-blue-600 fill-blue-600 shrink-0" size={14} />
+                        ) : (
+                          <FileText className="text-blue-500 shrink-0" size={14} />
+                        )}
+                        <span className="text-[10px] font-black text-slate-900 uppercase truncate pr-4">{source.name}</span>
+                      </div>
+                      <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter shrink-0 ${
+                        (source as any).displayType === 'Manuscript' ? 'bg-orange-50 text-orange-600' :
+                        (source as any).displayType === 'AI Compilation' ? 'bg-blue-50 text-blue-600' :
+                        'bg-slate-50 text-slate-500'
+                      }`}>
+                        {(source as any).displayType}
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-slate-400 font-medium line-clamp-1 italic font-serif">
+                      {source.content.slice(0, 60)}...
+                    </p>
+                    {(source as any).displayType !== 'AI Compilation' && (source as any).displayType !== 'Research' && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeSource(source.id);
+                        }}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all bg-white"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-            {(!project.sourceMaterials || project.sourceMaterials.length === 0) && (
+            ) : (
               <div className="py-12 text-center text-slate-200">
                 <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-dashed border-slate-200">
-                  <Upload size={20} className="text-slate-300" />
+                  {archiveSearchTerm ? <Search size={20} className="text-slate-200" /> : <Upload size={20} className="text-slate-300" />}
                 </div>
-                <p className="text-[9px] font-black uppercase tracking-widest leading-loose">Upload Research<br/>or Manuscripts</p>
+                <p className="text-[9px] font-black uppercase tracking-widest leading-loose">
+                  {archiveSearchTerm ? 'No matches found' : 'Upload Research\nor Manuscripts'}
+                </p>
               </div>
             )}
           </div>
@@ -415,7 +545,7 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
                   <div className="relative">
                     <button 
                       onClick={() => setShowNodePicker(!showNodePicker)}
-                      className="flex items-center gap-2 text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-widest"
+                      className="flex items-center gap-2 text-[10px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-[0.15em] px-2"
                     >
                       <Tag size={12} />
                       {selectedChapter.plotNodeIds?.length || 0} Nodes
@@ -428,7 +558,7 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
                           exit={{ opacity: 0, y: 10 }}
                           className="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 p-4"
                         >
-                          <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-4">Meta-Tag Scene</h4>
+                          <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.15em] mb-4">Meta-Tag Scene</h4>
                           <div className="space-y-1 max-h-60 overflow-y-auto custom-scrollbar">
                             {plotNodes.map(node => (
                               <button
@@ -436,7 +566,7 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
                                 onClick={() => toggleNode(node.id)}
                                 className={`w-full text-left px-3 py-2 rounded text-xs flex items-center justify-between group transition-colors ${
                                   selectedChapter.plotNodeIds?.includes(node.id) 
-                                    ? 'bg-blue-50 text-blue-700' 
+                                    ? 'bg-slate-900 text-white' 
                                     : 'text-slate-500 hover:bg-slate-50'
                                 }`}
                               >
@@ -455,17 +585,28 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
                   <button 
                     onClick={handleSmartWrite}
                     disabled={isWriting}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-bold transition-all shadow-md shadow-blue-50 uppercase tracking-widest"
+                    className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-900 rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em]"
                   >
-                    {isWriting ? <div className="w-3 h-3 border border-white border-t-transparent animate-spin rounded-full" /> : <Zap size={14} className="fill-white" />}
-                    SMART SPARK
+                    {isWriting ? <div className="w-3 h-3 border border-slate-900 border-t-transparent animate-spin rounded-full" /> : <Zap size={12} className="fill-slate-900" />}
+                    Compose
                   </button>
+
+                  <button 
+                    onClick={handleRefine}
+                    disabled={isRefining || !selectedChapter.content.trim()}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-full text-[10px] font-bold transition-all shadow-md uppercase tracking-[0.15em]"
+                    title="Deep Quality Refinement"
+                  >
+                    {isRefining ? <div className="w-3 h-3 border border-white border-t-transparent animate-spin rounded-full" /> : <Activity size={12} />}
+                    Refine
+                  </button>
+
                   <button 
                     onClick={handleCritique}
                     disabled={isCritiquing}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded text-[10px] font-bold transition-all shadow-md uppercase tracking-widest"
+                    className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-900 rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em]"
                   >
-                     {isCritiquing ? <div className="w-3 h-3 border border-white border-t-transparent animate-spin rounded-full" /> : <MessageSquare size={14} />}
+                     {isCritiquing ? <div className="w-3 h-3 border border-slate-900 border-t-transparent animate-spin rounded-full" /> : <MessageSquare size={12} />}
                     Critique
                   </button>
                 </div>
@@ -473,18 +614,19 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
 
               {/* Editor Split */}
               <div className="flex-1 flex overflow-hidden">
-                <div className="flex-1 flex flex-col p-12 overflow-y-auto custom-scrollbar relative bg-white m-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex-1 flex flex-col p-8 md:p-20 lg:p-32 overflow-y-auto w-full custom-scrollbar relative bg-surface-bg items-center">
                    {/* Summary Box */}
-                  <div className="max-w-[70ch] mx-auto w-full mb-12">
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-300 mb-2 uppercase tracking-[0.2em] pl-1">
-                      <FileText size={12} className="text-blue-600" />
+                  <div className="max-w-[75ch] w-full mb-16 opacity-50 focus-within:opacity-100 transition-opacity duration-500">
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 mb-4 uppercase tracking-[0.2em] pl-1 font-sans">
+                      <FileText size={12} className="text-slate-400" />
                       Scene Architecture
                     </div>
                     <textarea 
                       value={localSummary}
                       onChange={(e) => setLocalSummary(e.target.value)}
-                      placeholder="Sequence objectives..."
-                      className="w-full bg-slate-50 border border-slate-100 rounded-lg p-4 text-slate-700 text-sm resize-none focus:ring-2 focus:ring-blue-100 focus:bg-white outline-none placeholder:opacity-30 leading-relaxed font-serif italic"
+                      placeholder="Define the sequence objectives and emotional beats..."
+                      className="w-full bg-transparent border-t border-b border-slate-200/50 py-4 text-slate-600 text-sm md:text-base resize-none focus:ring-0 outline-none placeholder:text-slate-300 leading-relaxed font-serif italic"
+                      rows={2}
                     />
                   </div>
  
@@ -493,7 +635,7 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
                     value={localContent}
                     onChange={(e) => setLocalContent(e.target.value)}
                     placeholder="Begin the sequence..."
-                    className="max-w-[70ch] mx-auto w-full flex-1 bg-transparent border-none focus:ring-0 text-xl text-slate-800 leading-[1.8] resize-none outline-none font-serif placeholder:text-slate-300 min-h-[500px]"
+                    className="max-w-[75ch] w-full flex-1 bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-slate-800 leading-[1.8] resize-none outline-none font-serif placeholder:text-slate-300 min-h-[500px]"
                     spellCheck={false}
                   />
                 </div>

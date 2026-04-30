@@ -25,7 +25,8 @@ import {
   RotateCw,
   Save,
   Trash2,
-  Construction
+  Construction,
+  Settings
 } from 'lucide-react';
 import { 
   Project, 
@@ -60,6 +61,7 @@ import WritingStudio from './components/WritingStudio';
 import { ResearchLibrary } from './components/ResearchLibrary';
 import CriticSwarm from './components/CriticSwarm';
 import ManuscriptFixer from './components/ManuscriptFixer';
+import SettingsView from './components/SettingsView';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -76,9 +78,44 @@ const INITIAL_PROJECT: Project = {
   createdAt: Date.now()
 };
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 export default function App() {
   const [user, setUser] = useState(auth.currentUser);
-  const [project, setProject] = useState<Project>(INITIAL_PROJECT);
+  const [project, setProject] = useState<Project>({ ...INITIAL_PROJECT, id: user?.uid ? `project_${user.uid}` : 'default' });
   const [characters, setCharacters] = useState<Character[]>([]);
   const [plotNodes, setPlotNodes] = useState<PlotNode[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -186,11 +223,12 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    const projectId = 'default_project'; // In real app, this would be dynamic
+    const projectId = `project_${user.uid}`;
     const projectRef = doc(db, 'projects', projectId);
 
     // Initial check/create
     const initProject = async () => {
+      const path = `projects/${projectId}`;
       try {
         await setDoc(projectRef, { 
           title: INITIAL_PROJECT.title,
@@ -202,34 +240,39 @@ export default function App() {
           ownerId: user.uid,
           updatedAt: serverTimestamp() 
         }, { merge: true });
-      } catch (e) { console.error(e); }
+      } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
     };
     initProject();
 
     // Project Data
     const unsubProject = onSnapshot(projectRef, (snap) => {
       if (snap.exists()) setProject(snap.data() as Project);
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}`));
 
     // Subcollections Sync
     const unsubChars = onSnapshot(query(collection(db, 'projects', projectId, 'characters'), orderBy('updatedAt', 'desc')), (snap) => {
       setCharacters(snap.docs.map(d => d.data() as Character));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/characters`));
+    
     const unsubNodes = onSnapshot(query(collection(db, 'projects', projectId, 'plotNodes'), orderBy('order', 'asc')), (snap) => {
       setPlotNodes(snap.docs.map(d => d.data() as PlotNode));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/plotNodes`));
+    
     const unsubChapters = onSnapshot(query(collection(db, 'projects', projectId, 'chapters'), orderBy('order', 'asc')), (snap) => {
       setChapters(snap.docs.map(d => d.data() as Chapter));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/chapters`));
+    
     const unsubResearch = onSnapshot(query(collection(db, 'projects', projectId, 'research'), orderBy('updatedAt', 'desc')), (snap) => {
       setResearch(snap.docs.map(d => d.data() as ResearchNote));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/research`));
+    
     const unsubSources = onSnapshot(query(collection(db, 'projects', projectId, 'sourceMaterials'), orderBy('name', 'asc')), (snap) => {
       setSourceMaterials(snap.docs.map(d => d.data() as SourceMaterial));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/sourceMaterials`));
+    
     const unsubPresence = onSnapshot(collection(db, 'projects', projectId, 'presence'), (snap) => {
       setPresence(snap.docs.map(d => d.data() as Presence));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/presence`));
 
     // Presence Heartbeat
     const presenceRef = doc(db, 'projects', projectId, 'presence', user.uid);
@@ -237,7 +280,7 @@ export default function App() {
       userId: user.uid,
       userName: user.displayName || 'Author',
       lastActive: Date.now()
-    });
+    }).catch(e => handleFirestoreError(e, OperationType.WRITE, `projects/${projectId}/presence/${user.uid}`));
 
     return () => {
       unsubProject();
@@ -247,37 +290,44 @@ export default function App() {
       unsubResearch();
       unsubSources();
       unsubPresence();
-      deleteDoc(presenceRef);
+      deleteDoc(presenceRef).catch(() => {});
     };
   }, [user]);
 
   const updateProject = async (updates: Partial<Project>) => {
     if (!user) return;
     pushToHistory(project);
+    const path = `projects/${project.id}`;
     const projectRef = doc(db, 'projects', project.id);
-    await updateDoc(projectRef, { ...updates, updatedAt: serverTimestamp() });
+    try {
+      await updateDoc(projectRef, { ...updates, updatedAt: serverTimestamp() });
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
 
   const deleteProject = async () => {
     if (!user) return;
     if (!window.confirm("Are you sure you want to permanently delete this project? Data cannot be recovered.")) return;
     
+    const path = `projects/${project.id}`;
     const projectRef = doc(db, 'projects', project.id);
-    await setDoc(projectRef, { ...INITIAL_PROJECT, ownerId: user.uid, id: project.id });
-    setHistory([]);
-    setFuture([]);
-    setCurrentView('dashboard');
+    try {
+      await setDoc(projectRef, { ...INITIAL_PROJECT, ownerId: user.uid, id: project.id });
+      setHistory([]);
+      setFuture([]);
+      setCurrentView('dashboard');
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
   const saveToCloud = async () => {
     if (!user) return;
     setIsSaving(true);
+    const path = `projects/${project.id}`;
     try {
       const projectRef = doc(db, 'projects', project.id);
       await updateDoc(projectRef, { ...project, updatedAt: serverTimestamp() });
       setTimeout(() => setIsSaving(false), 1000);
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.WRITE, path);
       setIsSaving(false);
     }
   };
@@ -285,23 +335,62 @@ export default function App() {
   // Subcollection Handlers
   const upsertCharacter = async (char: Character) => {
     if (!user) return;
-    await setDoc(doc(db, 'projects', project.id, 'characters', char.id), { ...char, updatedAt: Date.now() });
+    const path = `projects/${project.id}/characters/${char.id}`;
+    try {
+      await setDoc(doc(db, 'projects', project.id, 'characters', char.id), { ...char, updatedAt: Date.now() });
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
   const upsertPlotNode = async (node: PlotNode) => {
     if (!user) return;
-    await setDoc(doc(db, 'projects', project.id, 'plotNodes', node.id), { ...node, updatedAt: Date.now() });
+    const path = `projects/${project.id}/plotNodes/${node.id}`;
+    try {
+      await setDoc(doc(db, 'projects', project.id, 'plotNodes', node.id), { ...node, updatedAt: Date.now() });
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
   const upsertChapter = async (chap: Chapter) => {
     if (!user) return;
-    await setDoc(doc(db, 'projects', project.id, 'chapters', chap.id), chap);
+    const path = `projects/${project.id}/chapters/${chap.id}`;
+    try {
+      await setDoc(doc(db, 'projects', project.id, 'chapters', chap.id), chap);
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
   const upsertSourceMaterial = async (source: SourceMaterial) => {
     if (!user) return;
-    await setDoc(doc(db, 'projects', project.id, 'sourceMaterials', source.id), { ...source, updatedAt: Date.now() });
+    const path = `projects/${project.id}/sourceMaterials/${source.id}`;
+    try {
+      await setDoc(doc(db, 'projects', project.id, 'sourceMaterials', source.id), { ...source, updatedAt: Date.now() });
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
   const deleteSubDoc = async (coll: string, id: string) => {
     if (!user) return;
-    await deleteDoc(doc(db, 'projects', project.id, coll, id));
+    const path = `projects/${project.id}/${coll}/${id}`;
+    try {
+      await deleteDoc(doc(db, 'projects', project.id, coll, id));
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
+  };
+
+  const upsertChapterBatch = async (chapList: Chapter[]) => {
+    if (!user) return;
+    const { writeBatch } = await import('firebase/firestore');
+    
+    // Split into chunks of 100 (well within Firebase 500 limit)
+    const chunkSize = 100;
+    for (let i = 0; i < chapList.length; i += chunkSize) {
+      const chunk = chapList.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      
+      chunk.forEach(chap => {
+        const chapRef = doc(db, 'projects', project.id, 'chapters', chap.id);
+        batch.set(chapRef, { ...chap, updatedAt: Date.now() });
+      });
+
+      try {
+        await batch.commit();
+        console.log(`Cloud Sync: Batch ${Math.floor(i / chunkSize) + 1} finalized.`);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/chapters/BATCH_${i}`);
+      }
+    }
   };
 
   const navItems = [
@@ -313,6 +402,7 @@ export default function App() {
     { id: 'writing', label: 'Writing Studio', icon: PenTool },
     { id: 'swarm', label: 'Critic Swarm', icon: Zap },
     { id: 'architect', label: 'Finish & Fix', icon: Construction },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   if (loading) return null;
@@ -329,7 +419,7 @@ export default function App() {
              <Globe size={40} className="text-white" />
           </div>
           <div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2 italic font-serif">NovelWrite <span className="text-blue-600">Pro</span></h1>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2 italic font-serif">NovelWrite <span className="text-blue-600 font-sans tracking-wide">PRO</span></h1>
             <p className="text-slate-500 font-medium italic">Architecting tomorrow's narratives, today.</p>
           </div>
           <button 
@@ -389,7 +479,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               className="font-black text-xl italic tracking-tight font-serif"
             >
-              NovelWrite <span className="text-blue-500 font-normal font-sans tracking-wide">PRO</span>
+              NovelWrite <span className="text-blue-500 font-normal font-sans tracking-widest text-[10px] uppercase ml-1 relative -top-1">PRO</span>
             </motion.h1>
           )}
         </div>
@@ -469,6 +559,7 @@ export default function App() {
         {/* Top Header */}
         <header className="h-16 border-b border-slate-200 flex items-center justify-between px-8 bg-white relative z-10">
           <div className="flex items-center gap-10">
+            <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono text-slate-400">v2.55</div>
             <h2 className="text-sm font-black text-slate-900 flex items-center gap-3">
               <span className="text-slate-300 uppercase tracking-widest text-[9px]">Active Project:</span>
               <span className="italic font-serif truncate max-w-[200px]">{project.title}</span>
@@ -545,15 +636,17 @@ export default function App() {
               )}
               {currentView === 'plot' && (
                 <PlotArchitect 
-                  project={{ ...project, chapters }} 
+                  project={{ ...project, chapters, sourceMaterials }}
+                  chapters={chapters} 
                   plotNodes={plotNodes} 
                   updateProject={updateProject}
                   updatePlotNodes={(nodes) => {
-                     // In real app, identify if new or delete. 
-                     // Simplified: find diff. Actually better pass upsert callback.
-                     setPlotNodes(nodes); // Immediate UI update
-                     // Persist changes (this is simplified, ideally individual upserts)
+                     setPlotNodes(nodes);
                      nodes.forEach(n => upsertPlotNode(n));
+                  }}
+                  updateChapters={async (chapList) => {
+                    setChapters(chapList);
+                    await upsertChapterBatch(chapList);
                   }}
                 />
               )}
@@ -561,20 +654,28 @@ export default function App() {
                 <ResearchLibrary 
                   project={project} 
                   research={research} 
-                  onAdd={(note) => setDoc(doc(db, 'projects', project.id, 'research', note.id), { ...note, updatedAt: Date.now() })}
+                  onAdd={async (note) => {
+                    const path = `projects/${project.id}/research/${note.id}`;
+                    try {
+                      await setDoc(doc(db, 'projects', project.id, 'research', note.id), { ...note, updatedAt: Date.now() });
+                    } catch (e) {
+                      handleFirestoreError(e, OperationType.WRITE, path);
+                    }
+                  }}
                   onDelete={(id) => deleteSubDoc('research', id)}
                 />
               )}
               {currentView === 'writing' && (
                 <WritingStudio 
-                  project={{ ...project, chapters, sourceMaterials }} 
+                  project={{ ...project, chapters, sourceMaterials, research }} 
                   plotNodes={plotNodes}
                   presence={presence}
                   updateProject={updateProject} 
                   updateChapters={(chapList) => {
                      setChapters(chapList);
-                     chapList.forEach(c => upsertChapter(c));
                   }}
+                  upsertChapter={upsertChapter}
+                  onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
                   onUpsertSource={upsertSourceMaterial}
                   onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
                 />
@@ -584,18 +685,25 @@ export default function App() {
                   projectType={project.type}
                   maturity={project.maturity}
                   chapters={chapters}
-                  sourceMaterials={sourceMaterials}
+                  sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
                 />
               )}
               {currentView === 'architect' && (
                 <ManuscriptFixer 
-                  project={{ ...project, sourceMaterials }}
+                  project={{ ...project, sourceMaterials, research }}
                   chapters={chapters}
-                  updateChapters={(chaps) => {
+                  updateChapters={async (chaps) => {
                     setChapters(chaps);
-                    chaps.forEach(c => upsertChapter(c));
+                    await upsertChapterBatch(chaps);
                   }}
                   setView={setCurrentView}
+                />
+              )}
+              {currentView === 'settings' && (
+                <SettingsView 
+                  project={project} 
+                  updateProject={updateProject}
+                  deleteProject={deleteProject}
                 />
               )}
             </motion.div>

@@ -13,26 +13,31 @@ interface ResearchLibraryProps {
 }
 
 export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, research, onAdd, onDelete }) => {
-  const [topic, setTopic] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [createTopic, setCreateTopic] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedNote, setSelectedNote] = useState<ResearchNote | null>(null);
 
-  const filteredResearch = research.filter(note => 
-    note.title?.toLowerCase().includes(topic.toLowerCase()) || 
-    note.content?.toLowerCase().includes(topic.toLowerCase()) ||
-    note.tags?.some(tag => tag.toLowerCase().includes(topic.toLowerCase())) ||
-    note.category?.toLowerCase().includes(topic.toLowerCase())
-  );
+  const filteredResearch = research.filter(note => {
+    const term = searchTerm.toLowerCase();
+    if (!term) return true;
+    return (
+      (note.title || '').toLowerCase().includes(term) || 
+      (note.content || '').toLowerCase().includes(term) ||
+      (note.tags || []).some(tag => (tag || '').toLowerCase().includes(term)) ||
+      (note.category || '').toLowerCase().includes(term)
+    );
+  });
 
   const handleResearch = async () => {
-    if (!topic) return;
+    if (!createTopic) return;
     setLoading(true);
     try {
       const context = `Genre: ${project.genre}, Premise: ${project.premise}, Tone: ${project.tone}`;
-      const note = await AIService.compileResearch(topic, context, project.type);
+      const note = await AIService.compileResearch(createTopic, context, project.type);
       onAdd(note);
       setSelectedNote(note);
-      setTopic('');
+      setCreateTopic('');
     } catch (error) {
       console.error(error);
     } finally {
@@ -41,78 +46,105 @@ export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, resea
   };
 
   return (
-    <div className="h-full flex gap-8">
+    <div className="h-full flex flex-col md:flex-row gap-8">
       {/* Left List */}
-      <div className="w-80 flex flex-col gap-6">
+      <div className="w-full md:w-80 flex flex-col gap-6">
         <header>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">Research Archive</h2>
-          <p className="text-xs text-slate-500 font-medium italic">Agentic knowledge compilation.</p>
+          <h2 className="text-3xl font-black tracking-tight text-slate-900 mb-1">Research Archive</h2>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Agentic knowledge compilation.</p>
         </header>
 
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
+          {/* Search Box */}
           <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="Topic: Victorian medicine..."
-              className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 pr-12 transition-all outline-none shadow-sm placeholder:italic"
-              onKeyDown={(e) => e.key === 'Enter' && handleResearch()}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search archive..."
+              className="w-full bg-slate-100/50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-700 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 focus:bg-white transition-all outline-none"
             />
-            <button 
-              onClick={handleResearch}
-              disabled={loading || !topic}
-              className="absolute right-2 top-2 p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 transition-all shadow-lg shadow-blue-100"
-            >
-              {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={16} />}
-            </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar max-h-[60vh]">
+          <div className="h-px bg-slate-100" />
+
+          {/* Create Input */}
+          <div className="space-y-2">
+            <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest px-1">New Specialist Search</label>
+            <div className="relative">
+              <input 
+                value={createTopic}
+                onChange={(e) => setCreateTopic(e.target.value)}
+                placeholder="Topic: 1920s architecture..."
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 pr-12 transition-all outline-none shadow-sm placeholder:italic"
+                onKeyDown={(e) => e.key === 'Enter' && handleResearch()}
+              />
+              <button 
+                onClick={handleResearch}
+                disabled={loading || !createTopic}
+                className="absolute right-2 top-1.5 p-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg disabled:opacity-50 transition-all shadow-md"
+              >
+                {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Zap size={14} className="fill-white" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar max-h-[50vh]">
             {filteredResearch.length > 0 ? (
               filteredResearch.map(note => (
                 <button
                   key={note.id}
                   onClick={() => setSelectedNote(note)}
-                  className={`w-full text-left p-4 rounded-lg border transition-all ${
+                  className={`w-full text-left p-4 rounded-xl border transition-all relative group ${
                     selectedNote?.id === note.id 
-                      ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                      ? 'bg-white border-blue-500 shadow-lg shadow-blue-500/5 ring-1 ring-blue-500' 
                       : 'bg-white border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                    <div className={`w-1.5 h-1.5 rounded-full ${selectedNote?.id === note.id ? 'bg-blue-600' : 'bg-slate-300'}`} />
                     <div className="font-bold text-sm truncate text-slate-900">{note.title}</div>
                   </div>
-                  <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{note.category}</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-[9px] uppercase font-bold text-slate-400 tracking-widest">{note.category}</div>
+                    <div className="text-[9px] text-slate-300 group-hover:text-slate-400 transition-colors">
+                      {new Date(note.updatedAt).toLocaleDateString()}
+                    </div>
+                  </div>
                 </button>
               ))
-            ) : topic ? (
-              <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            ) : searchTerm ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">
-                  No matching notes.<br/>
-                  <span className="text-blue-600 cursor-pointer hover:underline" onClick={handleResearch}>
-                    Generate research for "{topic}"?
-                  </span>
+                  No matches found for<br/>
+                  <span className="text-slate-900 italic">"{searchTerm}"</span>
+                </p>
+              </div>
+            ) : research.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-loose">
+                  Archive empty.<br/>
+                  <span className="text-blue-600">Start a search above.</span>
                 </p>
               </div>
             ) : (
-              research.map(note => (
-                <button
-                  key={note.id}
-                  onClick={() => setSelectedNote(note)}
-                  className={`w-full text-left p-4 rounded-lg border transition-all ${
-                    selectedNote?.id === note.id 
-                      ? 'bg-blue-50 border-blue-200 shadow-sm' 
-                      : 'bg-white border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                    <div className="font-bold text-sm truncate text-slate-900">{note.title}</div>
-                  </div>
-                  <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{note.category}</div>
-                </button>
-              ))
+                research.map(note => (
+                  <button
+                    key={note.id}
+                    onClick={() => setSelectedNote(note)}
+                    className={`w-full text-left p-4 rounded-xl border transition-all relative group ${
+                      selectedNote?.id === note.id 
+                        ? 'bg-white border-blue-500 shadow-lg shadow-blue-500/5 ring-1 ring-blue-500' 
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-1.5 h-1.5 rounded-full ${selectedNote?.id === note.id ? 'bg-blue-600' : 'bg-slate-300'}`} />
+                      <div className="font-bold text-sm truncate text-slate-900">{note.title}</div>
+                    </div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{note.category}</div>
+                  </button>
+                ))
             )}
           </div>
         </div>
