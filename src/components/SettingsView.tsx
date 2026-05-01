@@ -8,7 +8,8 @@ import {
   Trash2, 
   AlertCircle,
   FileText,
-  Volume2
+  Volume2,
+  Zap
 } from 'lucide-react';
 import { Project, ProjectType, MaturityLevel } from '../types';
 import { motion } from 'motion/react';
@@ -148,6 +149,26 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
           </div>
         </section>
       </div>
+
+      {/* AI Fallback Notice */}
+      <section className="p-6 bg-blue-50 border border-blue-100 rounded-3xl space-y-4">
+        <div className="flex items-center gap-2 text-blue-600">
+          <Zap size={18} className="fill-blue-600" />
+          <h3 className="text-sm font-black uppercase tracking-widest">Distributed Intelligence Fallback</h3>
+        </div>
+        <p className="text-xs text-blue-700 leading-relaxed font-medium italic">
+          To ensure uninterrupted narrative architecture when primary Gemini quotas are exceeded, this engine supports an automatic fallback to <b>xAI Grok</b>.
+        </p>
+        <div className="flex items-center gap-3 p-4 bg-white/50 rounded-xl border border-blue-200">
+          <div className="flex-1">
+            <code className="text-[10px] font-mono font-bold text-blue-900">VITE_GROK_API_KEY</code>
+            <p className="text-[9px] text-blue-500 mt-1 uppercase font-black tracking-tighter">Required for fallback stability</p>
+          </div>
+          <div className="text-[10px] font-bold text-blue-400 italic">
+            Configured in environment
+          </div>
+        </div>
+      </section>
 
       {/* Maturity Control */}
       <section className="space-y-6">

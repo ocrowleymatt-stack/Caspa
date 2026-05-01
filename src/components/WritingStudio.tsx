@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity } from 'lucide-react';
-import { SourceMaterial, Project, Chapter, PlotNode, Presence } from '../types';
+import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type } from 'lucide-react';
+import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique } from '../types';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -21,9 +21,21 @@ interface Props {
   onDeleteChapter?: (id: string) => void;
   onUpsertSource: (source: SourceMaterial) => void;
   onDeleteSource: (id: string) => void;
+  onError?: (message: string) => void;
 }
 
-export default function WritingStudio({ project, plotNodes, presence, updateProject, updateChapters, upsertChapter, onDeleteChapter, onUpsertSource, onDeleteSource }: Props) {
+export default function WritingStudio({ 
+  project, 
+  plotNodes, 
+  presence, 
+  updateProject, 
+  updateChapters, 
+  upsertChapter, 
+  onDeleteChapter, 
+  onUpsertSource, 
+  onDeleteSource,
+  onError
+}: Props) {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [showCritique, setShowCritique] = useState(false);
   const [critiqueText, setCritiqueText] = useState('');
@@ -33,6 +45,7 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [viewingSourceId, setViewingSourceId] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
   const [archiveFilter, setArchiveFilter] = useState<'All' | 'Manuscript' | 'Research' | 'AI Compilation'>('All');
 
@@ -199,8 +212,9 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
         project.sourceMaterials || []
       );
       updateChapter(selectedChapter.id, { content: refined });
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      onError?.(err.message || 'Deep Simmer failed.');
     } finally {
       setIsRefining(false);
     }
@@ -228,8 +242,9 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
         project.sourceMaterials || []
       );
       updateChapter(selectedChapter.id, { content: (selectedChapter.content + '\n\n' + content).trim() });
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      onError?.(err.message || 'Composition Core failed to initialize.');
     } finally {
       setIsWriting(false);
     }
@@ -242,8 +257,28 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
     try {
       const feedback = await AIService.critique(selectedChapter.content);
       setCritiqueText(feedback);
-    } catch (err) {
+
+      // Persist to project state
+      const newCritique: Critique = {
+        agentName: 'Narrative Sync',
+        role: 'structural',
+        content: feedback,
+        severity: 'medium',
+        suggestions: []
+      };
+      
+      const currentMap = project.critiques || {};
+      const chapterCritiques = currentMap[selectedChapter.id] || [];
+      
+      updateProject({
+        critiques: {
+          ...currentMap,
+          [selectedChapter.id]: [newCritique, ...chapterCritiques].slice(0, 10)
+        }
+      });
+    } catch (err: any) {
       console.error(err);
+      onError?.(err.message || 'Narrative Sync Analysis failed.');
     } finally {
       setIsCritiquing(false);
     }
@@ -284,14 +319,22 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
     onDeleteSource(id);
   };
 
+  const wordCount = useMemo(() => {
+    return localContent.trim() ? localContent.trim().split(/\s+/).length : 0;
+  }, [localContent]);
+
+  const readingTime = useMemo(() => {
+    return Math.ceil(wordCount / 200);
+  }, [wordCount]);
+
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-0 -m-4 md:-m-8 relative overflow-hidden">
+    <div className={`h-full flex flex-col lg:flex-row gap-0 -m-4 md:-m-8 relative overflow-hidden ${isFocusMode ? 'bg-white' : 'bg-slate-50'}`}>
       {/* Sidebar: Combined Rail */}
       <motion.aside 
         initial={false}
         animate={{ 
-          width: isSidebarVisible ? (isMobile ? '100%' : 320) : 0,
-          x: isSidebarVisible ? 0 : -320
+          width: isSidebarVisible && !isFocusMode ? (isMobile ? '100%' : 320) : 0,
+          x: isSidebarVisible && !isFocusMode ? 0 : -320
         }}
         className="border-r border-slate-200 bg-white flex flex-col shadow-sm relative z-20 h-full overflow-hidden"
       >
@@ -526,21 +569,43 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
               className="flex-1 flex flex-col overflow-hidden"
             >
               {/* Internal Editor Header */}
-              <div className="h-14 border-b border-slate-200 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-sm shadow-sm flex-none">
+              <div className={`h-14 border-b border-slate-200 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-sm shadow-sm flex-none transition-all ${isFocusMode ? 'opacity-20 hover:opacity-100' : ''}`}>
                 <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => setIsSidebarVisible(!isSidebarVisible)}
-                    className="p-1.5 hover:bg-slate-50 text-slate-400 rounded-lg hidden lg:block"
-                  >
-                    <ChevronRight size={18} className={isSidebarVisible ? 'rotate-180 transition-transform' : 'transition-transform'} />
-                  </button>
+                  {!isFocusMode && (
+                    <button 
+                      onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+                      className="p-1.5 hover:bg-slate-50 text-slate-400 rounded-lg hidden lg:block"
+                    >
+                      <ChevronRight size={18} className={isSidebarVisible ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                    </button>
+                  )}
                   <input 
                     value={localTitle}
                     onChange={(e) => setLocalTitle(e.target.value)}
                     className="bg-transparent border-none focus:ring-0 font-bold text-slate-900 text-sm italic font-serif"
                   />
+                  <div className="hidden sm:flex items-center gap-4 ml-2">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black text-slate-300 uppercase leading-none tracking-tighter">Words</span>
+                      <span className="text-[10px] font-black text-blue-600">{wordCount}</span>
+                    </div>
+                    <div className="flex flex-col border-l border-slate-100 pl-4">
+                      <span className="text-[10px] font-black text-slate-300 uppercase leading-none tracking-tighter">Read</span>
+                      <span className="text-[10px] font-black text-slate-500">{readingTime}m</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setIsFocusMode(!isFocusMode)}
+                    className={`p-2 rounded-lg transition-all ${isFocusMode ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-900'}`}
+                    title="Toggle Focus Mode"
+                  >
+                    {isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </button>
+
+                  <div className="h-4 w-px bg-slate-200 hidden md:block" />
+
                   {/* Plot Node Tags */}
                   <div className="relative">
                     <button 
@@ -585,29 +650,62 @@ export default function WritingStudio({ project, plotNodes, presence, updateProj
                   <button 
                     onClick={handleSmartWrite}
                     disabled={isWriting}
-                    className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-900 rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em]"
+                    className={`flex items-center gap-2 px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] ${
+                      isWriting ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
+                    }`}
                   >
-                    {isWriting ? <div className="w-3 h-3 border border-slate-900 border-t-transparent animate-spin rounded-full" /> : <Zap size={12} className="fill-slate-900" />}
-                    Compose
+                    {isWriting ? (
+                      <>
+                        <Activity size={12} className="animate-pulse" />
+                        Synthesizing...
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={12} className="fill-slate-900" />
+                        Compose
+                      </>
+                    )}
                   </button>
 
                   <button 
                     onClick={handleRefine}
                     disabled={isRefining || !selectedChapter.content.trim()}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-full text-[10px] font-bold transition-all shadow-md uppercase tracking-[0.15em]"
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold transition-all shadow-md uppercase tracking-[0.15em] ${
+                      isRefining ? 'bg-orange-600 text-white' : 'bg-slate-900 hover:bg-black text-white'
+                    }`}
                     title="Deep Quality Refinement"
                   >
-                    {isRefining ? <div className="w-3 h-3 border border-white border-t-transparent animate-spin rounded-full" /> : <Activity size={12} />}
-                    Refine
+                    {isRefining ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-white/30 border-t-white animate-spin rounded-full" />
+                        Simmering...
+                      </>
+                    ) : (
+                      <>
+                        <Activity size={12} />
+                        Refine
+                      </>
+                    )}
                   </button>
 
                   <button 
                     onClick={handleCritique}
                     disabled={isCritiquing}
-                    className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-900 rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em]"
+                    className={`flex items-center gap-2 px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] ${
+                      isCritiquing ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
+                    }`}
                   >
-                     {isCritiquing ? <div className="w-3 h-3 border border-slate-900 border-t-transparent animate-spin rounded-full" /> : <MessageSquare size={12} />}
-                    Critique
+                     {isCritiquing ? (
+                       <>
+                        <div className="w-3 h-3 border-2 border-indigo-600/30 border-t-indigo-600 animate-spin rounded-full" />
+                        Critiquing...
+                       </>
+                     ) : (
+                       <>
+                        <MessageSquare size={12} />
+                        Critique
+                       </>
+                     )}
                   </button>
                 </div>
               </div>

@@ -9,9 +9,10 @@ interface Props {
   maturity: MaturityLevel;
   chapters: Chapter[];
   sourceMaterials: SourceMaterial[];
+  onError?: (msg: string) => void;
 }
 
-export default function CriticSwarm({ projectType, maturity, chapters, sourceMaterials }: Props) {
+export default function CriticSwarm({ projectType, maturity, chapters, sourceMaterials, onError }: Props) {
   const [selectedChapId, setSelectedChapId] = useState<string | null>(chapters[0]?.id || null);
   const [loading, setLoading] = useState(false);
   const [critiques, setCritiques] = useState<Critique[]>([]);
@@ -24,8 +25,9 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
     try {
       const results = await AIService.getSwarmCritique(chap.content, projectType, maturity, sourceMaterials);
       setCritiques(results);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      onError?.(err.message || 'Critic Swarm failed to analyze.');
     } finally {
       setLoading(false);
     }

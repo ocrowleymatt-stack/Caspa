@@ -105,6 +105,12 @@ export interface Project {
   research?: ResearchNote[];
   sourceMaterials?: SourceMaterial[];
   critiques?: { [documentId: string]: Critique[] };
+  stats?: {
+    narrativeStreak: number;
+    totalWords: number;
+    aiContributions: number;
+    lastActiveDay: string; // ISO date string
+  };
 }
 
 export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'research' | 'swarm' | 'settings' | 'architect';

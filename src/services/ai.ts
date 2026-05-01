@@ -37,10 +37,86 @@ function safeParseJSON(text: string, fallback: any = {}) {
   }
 }
 
+/**
+ * Robust AI Caller with fallback from Gemini to xAI (Grok)
+ */
+async function callAI(options: { 
+  prompt: string; 
+  model?: string;
+  json?: boolean; 
+  schema?: any;
+  maxTokens?: number;
+}) {
+  const { prompt, model = "gemini-1.5-flash", json = false, schema, maxTokens } = options;
+
+  // Primary Attempt: Gemini
+  try {
+    const config: any = {};
+    if (json) {
+      config.responseMimeType = "application/json";
+      if (schema) config.responseSchema = schema;
+    }
+    if (maxTokens) config.maxOutputTokens = maxTokens;
+
+    // Use correct model for task type per skill
+    const targetModel = model === "gemini-1.5-flash" ? "gemini-3-flash-preview" : 
+                        model === "gemini-1.5-pro" ? "gemini-3.1-pro-preview" : 
+                        model;
+
+    console.log(`AI Calling: ${targetModel} | Prompt length: ${prompt.length}`);
+    const result = await ai.models.generateContent({
+      model: targetModel,
+      contents: prompt,
+      config: config
+    });
+
+    if (result.text) {
+      console.log(`AI Success: ${targetModel} | Response length: ${result.text.length}`);
+      return result.text;
+    }
+    
+    throw new Error("AI returned an empty response.");
+  } catch (error: any) {
+    console.error("AI Failure:", error);
+    const errorMsg = error.message || String(error);
+    
+    const isQuota = errorMsg.includes("429") || errorMsg.toLowerCase().includes("quota");
+    const isSafety = errorMsg.toLowerCase().includes("safety");
+
+    if (XAI_API_KEY && (isQuota || isSafety)) {
+      console.warn(`Gemini restricted. Falling back to xAI Grok...`);
+      const fallback = await callXAI(prompt, json);
+      if (fallback) return fallback;
+    }
+    
+    if (isQuota) {
+      throw new Error("QUOTA_EXCEEDED: Gemini quota has been reached.");
+    }
+    
+    if (isSafety) {
+       throw new Error("SAFETY_RESTRICTION: The AI declined this request due to safety filters.");
+    }
+
+    throw new Error(`AI_FAILURE: ${errorMsg}`);
+  }
+
+  // If Gemini didn't return text (but didn't throw) or we fell through
+  if (XAI_API_KEY) {
+    return await callXAI(prompt, json);
+  }
+
+  return "";
+}
+
 async function callXAI(prompt: string, json = false) {
   if (!XAI_API_KEY) return null;
   
   try {
+    // If JSON is requested, ensure the prompt explicitly asks for it
+    const enhancedPrompt = json 
+      ? `${prompt}\n\nGREAT IMPORTANCE: Your response must be valid JSON ONLY. No markdown wrappers. Just the JSON object/array.`
+      : prompt;
+
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -48,25 +124,35 @@ async function callXAI(prompt: string, json = false) {
         "Authorization": `Bearer ${XAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "grok-beta", // or grok-1
+        model: "grok-beta",
         messages: [
-          { role: "system", content: "You are a professional narrative architect and creative writer. You provide raw, high-fidelity output without corporate sanitization." },
-          { role: "user", content: prompt }
+          { 
+            role: "system", 
+            content: "You are a professional narrative architect and creative writer. You provide raw, high-fidelity output. You strictly follow formatting instructions, especially JSON requests." 
+          },
+          { role: "user", content: enhancedPrompt }
         ],
-        temperature: 0.7,
+        temperature: 0.8,
         stream: false,
         ...(json ? { response_format: { type: "json_object" } } : {})
       })
     });
 
     if (!response.ok) {
-      const err = await response.json();
+      const err = await response.json().catch(() => ({ error: "Unknown fetch error" }));
       console.error("xAI Error:", err);
       return null;
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    let content = data.choices[0].message.content;
+    
+    // Clean up markdown wrappers if Grok included them despite instructions
+    if (content.startsWith("```")) {
+      content = content.replace(/^```[a-z]*\n/i, "").replace(/\n```$/i, "");
+    }
+
+    return content;
   } catch (e) {
     console.error("xAI Fetch Failure:", e);
     return null;
@@ -87,7 +173,7 @@ const getMaturityDirectives = (level: string) => {
     return "\nMATURITY OVERRIDE: Focus on adult themes, complex emotional subtext, and visceral descriptions. Do not sanitize human experience.";
   }
   if (level === 'transgressive') {
-    return "\nTRANSGRESSIVE OVERRIDE: Zero-filter creative mode. Explicit descriptions, extreme emotional states, and transgressive themes are required. Avoid generic tropes in favor of raw, intense realism or heighted erotica and violence if contextually appropriate.";
+    return "\nTRANSGRESSIVE OVERRIDE: Zero-filter creative mode. Explicit descriptions, extreme emotional states, and transgressive themes are required. Avoid generic tropes in favor of raw, intense realism or heightened erotica and violence if contextually appropriate.";
   }
   return "";
 };
@@ -103,80 +189,61 @@ export const AIService = {
       
       Provide a multi-faceted expansion including structural milestones, character archetypes, and thematic escalation.`;
 
-    if (XAI_API_KEY && (maturity === 'mature' || maturity === 'transgressive')) {
-      const grokOutput = await callXAI(prompt);
-      if (grokOutput) return grokOutput;
-    }
-
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    return response.text || "Failed to brainstorm.";
+    return await callAI({ prompt, model: "gemini-3-flash-preview" });
   },
 
   async generateCharacter(concept: string, type: ProjectType, maturity = 'standard'): Promise<Character> {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Create a character for a ${type}. Concept: "${concept}". ${getMaturityDirectives(maturity)} Return as JSON.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            role: { type: Type.STRING },
-            backstory: { type: Type.STRING },
-            traits: { type: Type.ARRAY, items: { type: Type.STRING } },
-            goals: { type: Type.ARRAY, items: { type: Type.STRING } },
-            fears: { type: Type.ARRAY, items: { type: Type.STRING } },
-            motivations: { type: Type.ARRAY, items: { type: Type.STRING } },
-            quirks: { type: Type.ARRAY, items: { type: Type.STRING } },
-            archetype: { type: Type.STRING }
-          },
-          required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
-        }
-      }
-    });
-    const data = safeParseJSON(response.text || "{}");
+    const prompt = `Create a character for a ${type}. Concept: "${concept}". ${getMaturityDirectives(maturity)} Return as JSON.`;
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        name: { type: Type.STRING },
+        role: { type: Type.STRING },
+        backstory: { type: Type.STRING },
+        traits: { type: Type.ARRAY, items: { type: Type.STRING } },
+        goals: { type: Type.ARRAY, items: { type: Type.STRING } },
+        fears: { type: Type.ARRAY, items: { type: Type.STRING } },
+        motivations: { type: Type.ARRAY, items: { type: Type.STRING } },
+        quirks: { type: Type.ARRAY, items: { type: Type.STRING } },
+        archetype: { type: Type.STRING }
+      },
+      required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
+    };
+
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const data = safeParseJSON(text || "{}");
     return { ...data, id: crypto.randomUUID(), updatedAt: Date.now() };
   },
 
   async outlinePlotNodes(project: Project): Promise<PlotNode[]> {
-    const maxContentLength = 150000; // Allow much more context (approx 35,000+ words)
+    const maxContentLength = 150000;
     const chaptersContext = ((project as any).chapters || []).map((c: any) => `### Chapter: ${c.title}\n${c.content}`).join('\n\n').slice(0, maxContentLength);
     const sourceContext = (project.sourceMaterials || []).map((s: any) => `### Source [${s.name}]\n${s.content}`).join('\n\n').slice(0, maxContentLength);
     
-    let contents = `You are a Master Plot Architect outlining a ${project.type} structure for "${project.title}". Create between 8 and 18 major narrative beats. ${getMaturityDirectives(project.maturity)}\n\n`;
+    let prompt = `You are a Master Plot Architect outlining a ${project.type} structure for "${project.title}". Create between 8 and 18 major narrative beats. ${getMaturityDirectives(project.maturity)}\n\n`;
     
     if (chaptersContext || sourceContext) {
-      contents += `Analyze ALL of the following materials. YOU MUST draw characters, events, and thematic arcs directly from this text to construct the structural plot beats. DO NOT just invent a generic story; it must be mapped strictly to the text provided.\n\n=== EXISTING MANUSCRIPT/CHAPTERS ===\n${chaptersContext}\n\n=== SOURCE MATERIALS ===\n${sourceContext}\n\nBased ONLY on the provided text, outline the major narrative beats. Return a JSON array of objects.`;
+      prompt += `Analyze ALL of the following materials. YOU MUST draw characters, events, and thematic arcs directly from this text to construct the structural plot beats.\n\n=== EXISTING MANUSCRIPT/CHAPTERS ===\n${chaptersContext}\n\n=== SOURCE MATERIALS ===\n${sourceContext}\n\nBased ONLY on the provided text, outline the major narrative beats. Return a JSON array of objects.`;
     } else {
-      contents += `Return a JSON array of objects.`;
+      prompt += `Return a JSON array of objects.`;
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: contents,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              description: { type: Type.STRING },
-              type: { type: Type.STRING }
-            },
-            required: ["title", "description", "type"]
-          }
-        }
+    const schema = {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+          type: { type: Type.STRING }
+        },
+        required: ["title", "description", "type"]
       }
-    });
+    };
 
-    let data = safeParseJSON(response.text || "[]", []);
-    // Ensure we have an array to map over
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    let data = safeParseJSON(text || "[]", []);
+    
     if (!Array.isArray(data)) {
       data = Array.isArray(data.nodes) ? data.nodes 
            : Array.isArray(data.items) ? data.items 
@@ -192,10 +259,6 @@ export const AIService = {
       updatedAt: Date.now() 
     }));
 
-    if (nodes.length === 0) {
-      console.warn("Plot architect returned no nodes.", response.text);
-    }
-    
     return nodes;
   },
 
@@ -209,24 +272,20 @@ export const AIService = {
       ? `\nSOURCE MATERIALS FOR REFERENCE:\n${sourceMaterials.map(s => `[SOURCE: ${s.name}]\n${s.content.slice(0, 3000)}`).join('\n\n')}`
       : "";
 
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        content: { type: Type.STRING },
+        severity: { type: Type.STRING },
+        suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+      },
+      required: ["content", "severity", "suggestions"]
+    };
+
     const critiquePromises = roles.map(async (role) => {
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: `${AGENT_PERSONAS[role]} Analyze this ${type} draft. ${getMaturityDirectives(maturity)} ${sourceContext} Identify problems, rank severity, and suggest fixes. Return as JSON.`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              content: { type: Type.STRING },
-              severity: { type: Type.STRING },
-              suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["content", "severity", "suggestions"]
-          }
-        }
-      });
-      const data = safeParseJSON(response.text || "{}");
+      const prompt = `${AGENT_PERSONAS[role]} Analyze this ${type} draft. ${getMaturityDirectives(maturity)} ${sourceContext} Identify problems, rank severity, and suggest fixes. Return as JSON.`;
+      const responseText = await callAI({ prompt, json: true, schema });
+      const data = safeParseJSON(responseText || "{}");
       return {
         agentName: `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`,
         role: role as any,
@@ -248,145 +307,101 @@ export const AIService = {
       experimental: "Avant-garde Author"
     };
 
-    const nodeContext = activeNodes.length > 0 
-      ? `\nACTIVE PLOT BEATS TO INTEGRATE:\n${activeNodes.map(n => `- ${n.title}: ${n.description}`).join('\n')}`
-      : "";
+    const maturityDirective = this.getMaturityDirectives(maturity);
+    const sourceContext = sourceMaterials.map(s => `[SOURCE: ${s.name}]: ${s.content.slice(0, 5000)}`).join('\n\n');
 
-    const sourceContext = sourceMaterials.length > 0
-      ? `\nSOURCE MATERIALS FOR REFERENCE:\n${sourceMaterials.map(s => `[SOURCE: ${s.name}]\n${s.content.slice(0, 5000)}`).join('\n\n')}`
-      : "";
-
-    const prompt = `You are the ${personaMap[type || 'novel']} in a synthetic writer's room. 
-      TASK: Compose the scene "${title}".
+    const prompt = `You are an elite ${type} writer. 
+      ${maturityDirective}
       
-      ARCHITECTURAL BRIEF: ${summary}
-      PREVIOUS CONTEXT (STRICT CONTINUITY): ${context}
-      ${nodeContext}
+      TASK: Write a full, immersive, and high-fidelity draft for Chapter: "${title}".
+      SCENE OBJECTIVES: ${summary}
+      
+      STRICT CONTINUITY CONTEXT:
+      ${context}
+
+      PLOT BEATS TO INTEGRATE:
+      ${activeNodes.map(n => `- ${n.title}: ${n.description}`).join('\n')}
+
+      RESEARCH & SOURCE METERIALS:
       ${sourceContext}
-      ${getMaturityDirectives(maturity)}
-      
-      STYLE DIRECTIVES:
-      - Avoid generic AI flow. Use varied sentence structure.
-      - Lean into subtext; do not explain character emotions.
-      - Ensure the "beats" from the active plot nodes are resolved or escalated naturally.
-      - Maintain the specific technical requirements of a ${type}.`;
 
-    // 1. Prefer Grok for creative/mature writing if key present
-    if (XAI_API_KEY && (maturity === 'mature' || maturity === 'transgressive')) {
-      const grokText = await callXAI(prompt);
-      if (grokText) return grokText;
-    }
+      AUTHORIAL DIRECTIVE:
+      - Use standard Markdown formatting.
+      - Write only the prose. No notes, no meta-commentary.
+      - Aim for a length and density appropriate for a $50,000 word project.
+      - Show, do not tell. Focus on sensory details and internal monologue.
+    `;
 
-    // 2. Default to Gemini
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    return response.text || "";
+    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType): Promise<ResearchNote> {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Research Assistant for a ${type}. Topic: "${topic}". Context: ${context}. Return JSON with "sources" array.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            content: { type: Type.STRING },
-            category: { type: Type.STRING },
-            tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-            sources: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["title", "content", "category", "tags", "sources"]
-        }
-      }
-    });
-    const data = safeParseJSON(response.text || "{}");
+    const prompt = `Research Assistant for a ${type}. Topic: "${topic}". Context: ${context}. Return JSON with "sources" array.`;
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        content: { type: Type.STRING },
+        category: { type: Type.STRING },
+        tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+        sources: { type: Type.ARRAY, items: { type: Type.STRING } }
+      },
+      required: ["title", "content", "category", "tags", "sources"]
+    };
+
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const data = safeParseJSON(text || "{}");
     return { ...data, id: crypto.randomUUID(), updatedAt: Date.now() };
   },
 
   async analyzeContinuity(nodes: PlotNode[], chapters: Chapter[]): Promise<string> {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Analyze narrative continuity between the Plot Nodes and the current Chapter sequence.
+    const prompt = `Analyze narrative continuity between the Plot Nodes and the current Chapter sequence.
       
       Plot Nodes: ${JSON.stringify(nodes.map(n => ({ title: n.title, status: n.status })))}
       Chapters: ${JSON.stringify(chapters.map(c => ({ title: c.title, nodes: c.plotNodeIds })))}
       
-      Identify orphaned nodes and logic gaps. Format as Markdown.`,
-    });
-    return response.text || "";
+      Identify orphaned nodes and logic gaps. Format as Markdown.`;
+
+    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
   },
 
   async splitManuscript(fullText: string, type: ProjectType): Promise<{ title: string; summary: string; marker: string }[]> {
     const prompt = `STRUCTURAL ARCHITECT: Analyze this raw manuscript of a ${type}. 
   
   Your task is to identify logical chapter boundaries WITHOUT returning the full text.
-  1. Detect natural breakpoints (aim for 15-25 chapters if the text is long enough). Look for "Chapter X", "Part Y", or large scene breaks (***).
+  1. Detect natural breakpoints (aim for 15-25 chapters if the text is long enough).
   2. For each chapter:
      - Generate a concise, evocative Title.
      - Create a ONE-SENTENCE structural Summary.
      - Identify a "Marker": the PRECISE FIRST 25-30 WORDS that start this chapter. This must be an EXACT substring of the provided manuscript.
-  
-  CRITICAL: If the text is extremely dense or unstructured, still try to find at least 5 major logical shifts.
   
   RAW MANUSCRIPT:
   ${fullText.slice(0, 800000)}
   
   Return ONLY a JSON array of objects: { "chapters": [{ "title": string, "summary": string, "marker": string }] }`;
 
-    try {
-      if (XAI_API_KEY) {
-        console.log("Attempting split with xAI...");
-        const grokOutput = await callXAI(prompt, true);
-        if (grokOutput) {
-          const parsed = safeParseJSON(grokOutput, null);
-          if (parsed && (parsed.chapters || Array.isArray(parsed))) {
-            return (parsed.chapters || parsed) as { title: string; summary: string; marker: string }[];
-          }
-        }
-      }
-
-      console.log("Attempting split with Gemini 1.5 Flash...");
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 8192,
-          responseSchema: {
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        chapters: {
+          type: Type.ARRAY,
+          items: {
             type: Type.OBJECT,
             properties: {
-              chapters: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    summary: { type: Type.STRING },
-                    marker: { type: Type.STRING }
-                  },
-                  required: ["title", "summary", "marker"]
-                }
-              }
+              title: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              marker: { type: Type.STRING }
             },
-            required: ["chapters"]
+            required: ["title", "summary", "marker"]
           }
         }
-      });
+      },
+      required: ["chapters"]
+    };
 
-      const data = safeParseJSON(response.text || '{"chapters":[]}', { chapters: [] });
-      if (!data.chapters || data.chapters.length === 0) {
-        console.warn("AI returned empty chapters or invalid format:", response.text);
-      }
-      return data.chapters || [];
-    } catch (err) {
-      console.error("Split AI Error:", err);
-      throw new Error(`Structure analysis failed: ${err instanceof Error ? err.message : "Structure mismatch"}`);
-    }
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-3.1-pro-preview" });
+    const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
+    return data.chapters || [];
   },
 
   async finishAndFix(chapters: Chapter[], type: ProjectType, sourceMaterials: { name: string, content: string }[] = []): Promise<string> {
@@ -395,16 +410,14 @@ export const AIService = {
       ? `\nSOURCE MATERIALS FOR REFERENCE:\n${sourceMaterials.map(s => `[SOURCE: ${s.name}]\n${s.content.slice(0, 5000)}`).join('\n\n')}`
       : "";
 
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `You are the Master Editor. Analyze this full ${type} manuscript. 
+    const prompt = `You are the Master Editor. Analyze this full ${type} manuscript. 
       Identify every plot hole, character inconsistency, and pacing slump. 
       Then, provide a "Final Fix List" and a proposed "Climactic Resolution" to finish the book.
       
       MANUSCRIPT:\n${fullText.slice(0, 100000)}
-      ${sourceContext}`,
-    });
-    return response.text || "";
+      ${sourceContext}`;
+
+    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
   },
 
   async automateNextSteps(project: Project, chapters: Chapter[]): Promise<{ title: string; summary: string }[]> {
@@ -413,31 +426,28 @@ export const AIService = {
       ? `\nSOURCE CONTEXT:\n${project.sourceMaterials.map(s => `- ${s.name}: ${s.content.slice(0, 2000)}`).join('\n')}`
       : "";
 
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Narrative Architect: Generate the next 3 logical chapter beats to bring "${project.title}" (${project.type}) to a satisfying conclusion. 
+    const prompt = `Narrative Architect: Generate the next 3 logical chapter beats to bring "${project.title}" (${project.type}) to a satisfying conclusion. 
       
       EXISTING BEATS:
       ${context}
       ${sourceContext}
       
-      Return as a JSON array of objects with "title" and "summary".`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              summary: { type: Type.STRING }
-            },
-            required: ["title", "summary"]
-          }
-        }
+      Return as a JSON array of objects with "title" and "summary".`;
+
+    const schema = {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          summary: { type: Type.STRING }
+        },
+        required: ["title", "summary"]
       }
-    });
-    return safeParseJSON(response.text || "[]", []);
+    };
+
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    return safeParseJSON(text || "[]", []);
   },
 
   async reconcileChapters(project: Project, plotNodes: PlotNode[], chapters: Chapter[]): Promise<{ title: string; summary: string; plotNodeIds: string[] }[]> {
@@ -449,40 +459,29 @@ export const AIService = {
     CURRENT CHAPTERS:
     ${chapters.map(c => `- ${c.title}: ${c.summary} (Current Plot Node links: ${c.plotNodeIds.join(', ')})`).join('\n')}
     
-    Your task is to:
-    1. Mapping: Assign EACH Plot Node ID to the most logical existing Chapter(s).
-    2. Expansion: If Plot Nodes are missing from the current structure, suggest NEW Chapters to cover them.
-    3. Consistency: Ensure the chapter titles and summaries reflect the plot beats they now contain.
-    
     Return as a JSON object: { "chapters": [{ "title": string, "summary": string, "plotNodeIds": string[] }] }`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            chapters: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  summary: { type: Type.STRING },
-                  plotNodeIds: { type: Type.ARRAY, items: { type: Type.STRING } }
-                },
-                required: ["title", "summary", "plotNodeIds"]
-              }
-            }
-          },
-          required: ["chapters"]
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        chapters: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              plotNodeIds: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["title", "summary", "plotNodeIds"]
+          }
         }
-      }
-    });
+      },
+      required: ["chapters"]
+    };
 
-    const data = safeParseJSON(response.text || '{"chapters":[]}', { chapters: [] });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
 
@@ -510,38 +509,21 @@ export const AIService = {
       
       TITLE: "${chapter.title}"
       BRIEF: ${chapter.summary}
-      
-      EXISTING CONTENT (THE RAW CLAY):
-      ${chapter.content}
-      
-      NARRATIVE CONTINUITY (EARLIER IN THE WORK): 
-      ${context}
-      
+      EXISTING CONTENT: ${chapter.content}
+      NARRATIVE CONTINUITY: ${context}
       ${nodeContext}
       ${sourceContext}
       ${getMaturityDirectives(maturity)}
       
-      EXECUTION MANDATE:
-      1. PROSE DENSITY: Replace every lazy descriptor with a sharp, evocative sensory image.
-      2. VOICE: Ensure the character's internal state leaks through their external observations (Objective Correlative).
-      3. RHYTHM: Use sentence length as a tool for pacing—staccato for tension, fluid for reflection.
-      4. SUBTEXT: Every line of dialogue must have a secondary, unspoken meaning.
-      5. THEME: Subtly reinforce the core philosophical premise of the work.
-      6. OUTPUT: Return ONLY the enhanced text. Do not provide meta-commentary or "Before/After" notes. Just the finished art.`;
+      Return ONLY the enhanced text.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    return response.text || "";
+    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
   },
-
+  
   async critique(text: string): Promise<string> {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
-      Writing Sample: "${text}"`,
-    });
-    return response.text || "";
+    const prompt = `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
+      Writing Sample: "${text}"`;
+    return await callAI({ prompt, model: "gemini-3-flash-preview" });
   }
 };
+

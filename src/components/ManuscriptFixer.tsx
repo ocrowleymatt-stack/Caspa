@@ -10,9 +10,10 @@ interface Props {
   chapters: Chapter[];
   updateChapters: (chaps: Chapter[]) => void;
   setView: (view: any) => void;
+  onError?: (msg: string) => void;
 }
 
-export default function ManuscriptFixer({ project, chapters, updateChapters, setView }: Props) {
+export default function ManuscriptFixer({ project, chapters, updateChapters, setView, onError }: Props) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isFixing, setIsFixing] = useState(false);
   const [autoPilot, setAutoPilot] = useState(false);
@@ -68,9 +69,11 @@ export default function ManuscriptFixer({ project, chapters, updateChapters, set
       }
       
       addLog("System: Slow Cooker sequence complete. Structure filled.");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      addLog(`Error: Slow Cooker sequence interrupted. ${err instanceof Error ? err.message : ""}`);
+      const msg = `Slow Cooker sequence interrupted. ${err.message || ""}`;
+      addLog(`Error: ${msg}`);
+      onError?.(msg);
     } finally {
       setIsSlowCooking(false);
     }
@@ -118,9 +121,11 @@ export default function ManuscriptFixer({ project, chapters, updateChapters, set
               } else {
                 addLog("AI Core responded with empty structure payload.");
               }
-            } catch (err) {
+            } catch (err: any) {
               console.error("AI Split Error:", err);
-              addLog(`AI Core Blocked: ${err instanceof Error ? err.message : "Handshake failure"}.`);
+              const msg = err.message || "Handshake failure";
+              addLog(`AI Core Blocked: ${msg}.`);
+              onError?.(`Neural Analysis Error: ${msg}`);
             }
           }
             
@@ -299,9 +304,11 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
       const result = await AIService.finishAndFix(chapters, project.type, project.sourceMaterials || []);
       setAnalysis(result);
       addLog("Analysis complete. Found structural opportunities.");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      addLog("Error during analysis. Check AI quota.");
+      const msg = err.message || "Analysis failed";
+      addLog(`Error during analysis: ${msg}`);
+      onError?.(msg);
     } finally {
       setIsFixing(false);
     }
@@ -335,9 +342,11 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
       
       await updateChapters(newChapters);
       addLog("Automation complete. Ready for drafting.");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      addLog("Auto-Pilot sequence interrupted.");
+      const msg = err.message || "Auto-Pilot sequence interrupted";
+      addLog(msg);
+      onError?.(msg);
     } finally {
       setAutoPilot(false);
     }
@@ -380,9 +389,11 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
         addLog(`Successfully synthesized ${chap.title}.`);
       }
       addLog("Deep Draft series complete. The book is ready.");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      addLog("Deep Draft interrupted by AI exhaustion.");
+      const msg = err.message || "AI exhaustion";
+      addLog(`Deep Draft interrupted: ${msg}`);
+      onError?.(msg);
     } finally {
       setIsDeepDrafting(false);
     }

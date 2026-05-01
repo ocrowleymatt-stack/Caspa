@@ -57,10 +57,10 @@ export default function Dashboard({ project, updateProject, setView, deleteProje
   ];
 
   const stats = [
+    { label: 'Narrative Streak', value: `${project.stats?.narrativeStreak || 0} Days`, icon: Sparkles, color: 'text-amber-600', bgColor: 'bg-amber-50', view: 'writing' },
     { label: 'Characters', value: project.characters?.length || 0, icon: Users, color: 'text-blue-600', bgColor: 'bg-blue-50', view: 'characters' },
     { label: 'Plot Nodes', value: project.plotNodes?.length || 0, icon: GitBranch, color: 'text-indigo-600', bgColor: 'bg-indigo-50', view: 'plot' },
     { label: 'Chapters', value: project.chapters?.length || 0, icon: Book, color: 'text-emerald-600', bgColor: 'bg-emerald-50', view: 'writing' },
-    { label: 'Research', value: project.research?.length || 0, icon: BookOpen, color: 'text-amber-600', bgColor: 'bg-amber-50', view: 'research' },
   ];
 
   return (

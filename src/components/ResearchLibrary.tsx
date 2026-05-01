@@ -10,9 +10,10 @@ interface ResearchLibraryProps {
   research: ResearchNote[];
   onAdd: (note: ResearchNote) => void;
   onDelete: (id: string) => void;
+  onError?: (message: string) => void;
 }
 
-export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, research, onAdd, onDelete }) => {
+export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, research, onAdd, onDelete, onError }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [createTopic, setCreateTopic] = useState('');
   const [loading, setLoading] = useState(false);
@@ -38,8 +39,9 @@ export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, resea
       onAdd(note);
       setSelectedNote(note);
       setCreateTopic('');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      onError?.(error.message || 'Research Archive query failed.');
     } finally {
       setLoading(false);
     }

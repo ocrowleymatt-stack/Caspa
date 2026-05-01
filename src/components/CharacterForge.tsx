@@ -12,9 +12,10 @@ import { motion, AnimatePresence } from 'motion/react';
 interface Props {
   project: Project;
   updateProject: (updates: Partial<Project>) => void;
+  onError?: (msg: string) => void;
 }
 
-export default function CharacterForge({ project, updateProject }: Props) {
+export default function CharacterForge({ project, updateProject, onError }: Props) {
   const [loading, setLoading] = useState(false);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [newCharConcept, setNewCharConcept] = useState('');
@@ -31,8 +32,9 @@ export default function CharacterForge({ project, updateProject }: Props) {
       setNewCharConcept('');
       setArchetype('');
       setSelectedChar(char);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      onError?.(err.message || 'Character generation failed.');
     } finally {
       setLoading(false);
     }

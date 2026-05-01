@@ -13,9 +13,10 @@ import Markdown from 'react-markdown';
 interface Props {
   project: Project;
   updateProject: (updates: Partial<Project>) => void;
+  onError?: (msg: string) => void;
 }
 
-export default function Brainstorm({ project, updateProject }: Props) {
+export default function Brainstorm({ project, updateProject, onError }: Props) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<string | null>(null);
   const [localPremise, setLocalPremise] = useState(project.premise);
@@ -36,8 +37,9 @@ export default function Brainstorm({ project, updateProject }: Props) {
     try {
       const data = await AIService.brainstorm(localPremise, project.genre, project.tone, project.type, project.maturity);
       setResults(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      onError?.(err.message || 'Simulation request failed.');
     } finally {
       setLoading(false);
     }

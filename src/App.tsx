@@ -26,7 +26,8 @@ import {
   Save,
   Trash2,
   Construction,
-  Settings
+  Settings,
+  X
 } from 'lucide-react';
 import { 
   Project, 
@@ -75,7 +76,13 @@ const INITIAL_PROJECT: Project = {
   ownerId: '',
   sourceMaterials: [],
   lastModified: Date.now(),
-  createdAt: Date.now()
+  createdAt: Date.now(),
+  stats: {
+    narrativeStreak: 0,
+    totalWords: 0,
+    aiContributions: 0,
+    lastActiveDay: new Date().toISOString().split('T')[0]
+  }
 };
 
 enum OperationType {
@@ -128,6 +135,59 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
+  
+  // Notification State
+  const [notifications, setNotifications] = useState<{ id: string; message: string; type: 'error' | 'success' | 'info' }[]>([]);
+
+  const addNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
+    const id = crypto.randomUUID();
+    // Sanitize technical AI errors
+    let displayMsg = message;
+    if (message.startsWith('AI_FAILURE:')) {
+      displayMsg = `AI System Error: ${message.split(':').slice(1).join(':').trim()}`;
+    } else if (message.includes('QUOTA_EXCEEDED')) {
+      displayMsg = "Gemini Quota Exceeded. Fallback system engaged (if configured).";
+    }
+
+    setNotifications(prev => [...prev, { id, message: displayMsg, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 6000);
+  };
+
+  // Streak & Stats Tracker
+  useEffect(() => {
+    if (!project || !project.id || project.id === 'default' || !user) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const lastDay = project.stats?.lastActiveDay;
+
+    if (lastDay !== today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      let newStreak = 1;
+      if (lastDay === yesterdayStr) {
+        newStreak = (project.stats?.narrativeStreak || 0) + 1;
+        addNotification(`Daily Writing Streak: ${newStreak} Days! 🔥`, 'success');
+      } else {
+        addNotification(`Day 1: Narrative streak initialized.`, 'info');
+      }
+
+      const totalWordsCount = chapters.reduce((acc, c) => acc + (c.content?.trim().split(/\s+/).length || 0), 0);
+
+      updateProject({
+        stats: {
+          ...project.stats,
+          narrativeStreak: newStreak,
+          lastActiveDay: today,
+          totalWords: totalWordsCount,
+          aiContributions: project.stats?.aiContributions || 0
+        }
+      });
+    }
+  }, [project.lastModified, chapters.length]);
 
   // Mobile Detection
   useEffect(() => {
@@ -369,6 +429,20 @@ export default function App() {
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
+  const upsertPlotNodesBatch = async (nodes: PlotNode[]) => {
+    if (!user || nodes.length === 0) return;
+    const { writeBatch } = await import('firebase/firestore');
+    const batch = writeBatch(db);
+    
+    nodes.forEach((node, idx) => {
+      const ref = doc(db, 'projects', project.id, 'plotNodes', node.id);
+      batch.set(ref, { ...node, order: idx, updatedAt: Date.now() });
+    });
+    
+    try {
+      await batch.commit();
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/plotNodes (batch)`); }
+  };
   const upsertChapterBatch = async (chapList: Chapter[]) => {
     if (!user) return;
     const { writeBatch } = await import('firebase/firestore');
@@ -445,6 +519,36 @@ export default function App() {
 
   return (
     <div className="flex h-[100dvh] bg-surface-bg text-slate-900 font-sans selection:bg-blue-100 overflow-hidden">
+      {/* Notifications */}
+      <div className="fixed bottom-8 right-8 z-[200] flex flex-col gap-3 pointer-events-none">
+        <AnimatePresence>
+          {notifications.map(n => (
+            <motion.div
+              key={n.id}
+              initial={{ opacity: 0, x: 50, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+              className={`pointer-events-auto p-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] border backdrop-blur-md ${
+                n.type === 'error' ? 'bg-red-600/90 text-white border-red-400' : 
+                n.type === 'success' ? 'bg-emerald-600/90 text-white border-emerald-400' : 
+                'bg-slate-900/90 text-white border-slate-700'
+              }`}
+            >
+              <div className="p-2 bg-white/20 rounded-lg flex-shrink-0">
+                {n.type === 'error' ? <Zap size={16} className="fill-white" /> : <Sparkles size={16} className="fill-white" />}
+              </div>
+              <div className="flex-1 text-[11px] font-black tracking-tight">{n.message}</div>
+              <button 
+                onClick={() => setNotifications(prev => prev.filter(p => p.id !== n.id))}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
+              >
+                <X size={14} />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -622,7 +726,13 @@ export default function App() {
                        isSaving={isSaving}
                      />
                    )}
-                   {currentView === 'brainstorm' && <Brainstorm project={project} updateProject={updateProject} />}
+                   {currentView === 'brainstorm' && (
+                     <Brainstorm 
+                       project={project} 
+                       updateProject={updateProject} 
+                       onError={(msg) => addNotification(msg, 'error')}
+                     />
+                   )}
                  </>
               )}
               {currentView === 'characters' && (
@@ -632,6 +742,7 @@ export default function App() {
                     const char = updates.characters?.[updates.characters.length - 1];
                     if (char) await upsertCharacter(char);
                   }} 
+                  onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
               {currentView === 'plot' && (
@@ -640,14 +751,15 @@ export default function App() {
                   chapters={chapters} 
                   plotNodes={plotNodes} 
                   updateProject={updateProject}
-                  updatePlotNodes={(nodes) => {
+                  updatePlotNodes={async (nodes) => {
                      setPlotNodes(nodes);
-                     nodes.forEach(n => upsertPlotNode(n));
+                     await upsertPlotNodesBatch(nodes);
                   }}
                   updateChapters={async (chapList) => {
                     setChapters(chapList);
                     await upsertChapterBatch(chapList);
                   }}
+                  onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
               {currentView === 'research' && (
@@ -663,6 +775,7 @@ export default function App() {
                     }
                   }}
                   onDelete={(id) => deleteSubDoc('research', id)}
+                  onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
               {currentView === 'writing' && (
@@ -671,13 +784,15 @@ export default function App() {
                   plotNodes={plotNodes}
                   presence={presence}
                   updateProject={updateProject} 
-                  updateChapters={(chapList) => {
+                  updateChapters={async (chapList) => {
                      setChapters(chapList);
+                     await upsertChapterBatch(chapList);
                   }}
                   upsertChapter={upsertChapter}
                   onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
                   onUpsertSource={upsertSourceMaterial}
                   onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                  onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
               {currentView === 'swarm' && (
@@ -686,6 +801,7 @@ export default function App() {
                   maturity={project.maturity}
                   chapters={chapters}
                   sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
+                  onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
               {currentView === 'architect' && (
@@ -697,6 +813,7 @@ export default function App() {
                     await upsertChapterBatch(chaps);
                   }}
                   setView={setCurrentView}
+                  onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
               {currentView === 'settings' && (

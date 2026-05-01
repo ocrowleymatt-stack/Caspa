@@ -12,6 +12,7 @@ interface Props {
   updateProject: (updates: Partial<Project>) => void;
   updatePlotNodes: (nodes: PlotNode[]) => void;
   updateChapters: (chapters: Chapter[]) => void;
+  onError?: (message: string) => void;
 }
 
 interface NodeItemProps {
@@ -120,7 +121,7 @@ function PlotNodeItem({ node, index, totalLength, onUpdate, onDelete }: NodeItem
   );
 }
 
-export default function PlotArchitect({ project, plotNodes, chapters, updateProject, updatePlotNodes, updateChapters }: Props) {
+export default function PlotArchitect({ project, plotNodes, chapters, updateProject, updatePlotNodes, updateChapters, onError }: Props) {
   const [loading, setLoading] = useState(false);
   const [propagating, setPropagating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -129,10 +130,22 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
   const handleGenerateNodes = async () => {
     setLoading(true);
     try {
+      setLoading(true);
+      addLog("System: Initializing Plot Architect with Neural Engine 3.1...");
       const nodes = await AIService.outlinePlotNodes(project);
-      updatePlotNodes(nodes);
-    } catch (err) {
+      
+      if (!nodes || nodes.length === 0) {
+        throw new Error("Neural Engine returned an empty structure. Try refining your source materials.");
+      }
+
+      await updatePlotNodes(nodes);
+      addLog(`Success: Synthesized ${nodes.length} major narrative beats.`);
+      onError?.("Plot architecture successfully generated! 🔥");
+    } catch (err: any) {
       console.error(err);
+      const msg = err.message || "Plot Architect failed to respond.";
+      addLog(`Error: ${msg}`);
+      onError?.(msg);
     } finally {
       setLoading(false);
     }
