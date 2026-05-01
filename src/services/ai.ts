@@ -4,7 +4,7 @@
  */
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType } from "../types";
+import { Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 const XAI_API_KEY = (import.meta as any).env?.VITE_GROK_API_KEY;
@@ -59,20 +59,22 @@ async function callAI(options: {
     if (maxTokens) config.maxOutputTokens = maxTokens;
 
     // Use correct model for task type per skill
-    const targetModel = model === "gemini-1.5-flash" ? "gemini-3-flash-preview" : 
-                        model === "gemini-1.5-pro" ? "gemini-3.1-pro-preview" : 
+    const targetModel = model === "gemini-3-flash-preview" ? "gemini-1.5-flash" : 
+                        model === "gemini-3.1-pro-preview" ? "gemini-1.5-pro" : 
                         model;
 
     console.log(`AI Calling: ${targetModel} | Prompt length: ${prompt.length}`);
-    const result = await ai.models.generateContent({
+    const result = await (ai as any).models.generateContent({
       model: targetModel,
       contents: prompt,
       config: config
     });
 
-    if (result.text) {
-      console.log(`AI Success: ${targetModel} | Response length: ${result.text.length}`);
-      return result.text;
+    const responseText = result.text || result.response?.text?.() || result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    if (responseText) {
+      console.log(`AI Success: ${targetModel} | Response length: ${responseText.length}`);
+      return responseText;
     }
     
     throw new Error("AI returned an empty response.");
@@ -179,6 +181,7 @@ const getMaturityDirectives = (level: string) => {
 };
 
 export const AIService = {
+  callAI,
   async brainstorm(premise: string, genre: string, tone: string, type: ProjectType, maturity = 'standard'): Promise<string> {
     const prompt = `You are the Central Orchestrator of a synthetic writer's room. 
       Project Type: ${type}
@@ -189,7 +192,7 @@ export const AIService = {
       
       Provide a multi-faceted expansion including structural milestones, character archetypes, and thematic escalation.`;
 
-    return await callAI({ prompt, model: "gemini-3-flash-preview" });
+    return await callAI({ prompt, model: "gemini-1.5-flash" });
   },
 
   async generateCharacter(concept: string, type: ProjectType, maturity = 'standard'): Promise<Character> {
@@ -210,7 +213,7 @@ export const AIService = {
       required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
     const data = safeParseJSON(text || "{}");
     return { ...data, id: crypto.randomUUID(), updatedAt: Date.now() };
   },
@@ -241,7 +244,7 @@ export const AIService = {
       }
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
     let data = safeParseJSON(text || "[]", []);
     
     if (!Array.isArray(data)) {
@@ -251,11 +254,12 @@ export const AIService = {
     }
 
     const nodes = (data as any[]).map((d: any, index: number) => ({ 
-      ...d, 
-      id: crypto.randomUUID(), 
+      id: crypto.randomUUID(),
+      title: d.title || 'Untitled Beat',
+      description: d.description || '',
+      status: 'active' as const,
+      type: (['main', 'sub', 'theme'].includes(d.type?.toLowerCase()) ? d.type.toLowerCase() : 'main') as any,
       order: index, 
-      status: 'active', 
-      type: ['main', 'sub', 'theme'].includes(d.type?.toLowerCase()) ? d.type.toLowerCase() : 'main',
       updatedAt: Date.now() 
     }));
 
@@ -286,17 +290,25 @@ export const AIService = {
       const prompt = `${AGENT_PERSONAS[role]} Analyze this ${type} draft. ${getMaturityDirectives(maturity)} ${sourceContext} Identify problems, rank severity, and suggest fixes. Return as JSON.`;
       const responseText = await callAI({ prompt, json: true, schema });
       const data = safeParseJSON(responseText || "{}");
+      
+      const suggestions = Array.isArray(data.suggestions) 
+        ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s)
+        : [];
+
       return {
+        id: crypto.randomUUID(),
         agentName: `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`,
         role: role as any,
-        ...data
+        content: data.content || "No major issues identified.",
+        severity: data.severity || "low",
+        suggestions
       } as Critique;
     });
 
     return Promise.all(critiquePromises);
   },
 
-  async writeDraft(title: string, summary: string, context: string, type: ProjectType, activeNodes: PlotNode[], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = []): Promise<string> {
+  async writeDraft(title: string, summary: string, context: string, type: ProjectType, activeNodes: PlotNode[], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], directives: string[] = []): Promise<string> {
     const personaMap = {
       novel: "Literary Novelist",
       screenplay: "Hollywood Screenwriter (use Fountain industry format)",
@@ -307,14 +319,16 @@ export const AIService = {
       experimental: "Avant-garde Author"
     };
 
-    const maturityDirective = this.getMaturityDirectives(maturity);
+    const maturityDirective = getMaturityDirectives(maturity);
     const sourceContext = sourceMaterials.map(s => `[SOURCE: ${s.name}]: ${s.content.slice(0, 5000)}`).join('\n\n');
+    const authorDirectives = directives.length > 0 ? `\nCRITICAL AUTHOR DIRECTIVES (IMPLEMENT THESE FIXES):\n${directives.map(d => `- ${d}`).join('\n')}` : "";
 
     const prompt = `You are an elite ${type} writer. 
       ${maturityDirective}
       
       TASK: Write a full, immersive, and high-fidelity draft for Chapter: "${title}".
       SCENE OBJECTIVES: ${summary}
+      ${authorDirectives}
       
       STRICT CONTINUITY CONTEXT:
       ${context}
@@ -332,7 +346,7 @@ export const AIService = {
       - Show, do not tell. Focus on sensory details and internal monologue.
     `;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType): Promise<ResearchNote> {
@@ -349,7 +363,7 @@ export const AIService = {
       required: ["title", "content", "category", "tags", "sources"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
     const data = safeParseJSON(text || "{}");
     return { ...data, id: crypto.randomUUID(), updatedAt: Date.now() };
   },
@@ -362,7 +376,7 @@ export const AIService = {
       
       Identify orphaned nodes and logic gaps. Format as Markdown.`;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
   },
 
   async splitManuscript(fullText: string, type: ProjectType): Promise<{ title: string; summary: string; marker: string }[]> {
@@ -399,7 +413,7 @@ export const AIService = {
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-3.1-pro-preview" });
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-1.5-pro" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -417,7 +431,7 @@ export const AIService = {
       MANUSCRIPT:\n${fullText.slice(0, 100000)}
       ${sourceContext}`;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
   },
 
   async automateNextSteps(project: Project, chapters: Chapter[]): Promise<{ title: string; summary: string }[]> {
@@ -446,8 +460,9 @@ export const AIService = {
       }
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
-    return safeParseJSON(text || "[]", []);
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const data = safeParseJSON(text || "[]", []);
+    return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
 
   async reconcileChapters(project: Project, plotNodes: PlotNode[], chapters: Chapter[]): Promise<{ title: string; summary: string; plotNodeIds: string[] }[]> {
@@ -480,7 +495,7 @@ export const AIService = {
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -517,13 +532,68 @@ export const AIService = {
       
       Return ONLY the enhanced text.`;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
+  },
+
+  async assessPrizeWorthiness(project: Project, chapters: Chapter[]): Promise<PrizeAssessment[]> {
+    const prizesByProject: Record<string, string[]> = {
+      novel: ["The Booker Prize", "The Pulitzer Prize for Fiction", "National Book Award", "Hugo Award", "Women's Prize for Fiction"],
+      screenplay: ["Academy Award (Best Original Screenplay)", "Golden Globe for Best Screenplay", "BAFTA Award for Best Original Screenplay", "Sundance Grand Jury Prize"],
+      stageplay: ["Tony Award for Best Play", "Pulitzer Prize for Drama", "Laurence Olivier Award"],
+      academic: ["Nobel Prize in Literature", "MacArthur Fellowship Concept", "National Book Award for Nonfiction"],
+      experimental: ["The Turner Prize (Conceptual)", "Goncourt Prize", "James Tait Black Memorial Prize"],
+      legal: ["Grawemeyer Award", "Stockholm Prize in Criminology"],
+      radioplay: ["Sony Radio Academy Award", "BBC Audio Drama Award"]
+    };
+
+    const relevantPrizes = prizesByProject[project.type] || prizesByProject.novel;
+    const contentSample = chapters.map(c => `[${c.title}]\n${c.content.slice(0, 800)}`).join('\n\n').slice(0, 6000);
+
+    const prompt = `You are a prestigious literary and cinematic judge. Analyze the following work and assess its potential for the following awards: ${relevantPrizes.join(', ')}.
+
+    PROJECT TITLE: ${project.title}
+    TYPE: ${project.type}
+    PREMISE: ${project.premise}
+    TONE/GENRE: ${project.tone} / ${project.genre}
+
+    CONTENT STRATA:
+    ${contentSample}
+
+    TASK: For EACH prize, evaluate the project's current trajectory.
+    
+    Format as JSON: { "assessments": [{ "prizeName": string, "eligibilityScore": number, "pros": string[], "cons": string[], "recommendation": string }] }
+    `;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        assessments: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              prizeName: { type: Type.STRING },
+              eligibilityScore: { type: Type.NUMBER },
+              pros: { type: Type.ARRAY, items: { type: Type.STRING } },
+              cons: { type: Type.ARRAY, items: { type: Type.STRING } },
+              recommendation: { type: Type.STRING }
+            },
+            required: ["prizeName", "eligibilityScore", "pros", "cons", "recommendation"]
+          }
+        }
+      },
+      required: ["assessments"]
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-1.5-pro" });
+    const data = safeParseJSON(response || "{}");
+    return data.assessments || [];
   },
   
   async critique(text: string): Promise<string> {
     const prompt = `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
       Writing Sample: "${text}"`;
-    return await callAI({ prompt, model: "gemini-3-flash-preview" });
+    return await callAI({ prompt, model: "gemini-1.5-flash" });
   }
 };
 

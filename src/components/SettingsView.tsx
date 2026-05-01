@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Settings, 
   Target, 
@@ -9,7 +9,8 @@ import {
   AlertCircle,
   FileText,
   Volume2,
-  Zap
+  Zap,
+  Flame
 } from 'lucide-react';
 import { Project, ProjectType, MaturityLevel } from '../types';
 import { motion } from 'motion/react';
@@ -67,6 +68,21 @@ const MATURITY_LEVELS: { value: MaturityLevel; label: string; description: strin
 ];
 
 export default function SettingsView({ project, updateProject, deleteProject }: Props) {
+  const [localTitle, setLocalTitle] = useState(project.title);
+
+  useEffect(() => {
+    setLocalTitle(project.title);
+  }, [project.id]); // Just reset when project changes, don't override on every DB update
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (localTitle !== project.title) {
+        updateProject({ title: localTitle });
+      }
+    }, 1000);
+    return () => clearTimeout(handler);
+  }, [localTitle, project.title, updateProject]);
+
   return (
     <div className="max-w-4xl mx-auto space-y-12 pb-20">
       <header>
@@ -92,8 +108,8 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Project Title</label>
               <input 
                 type="text"
-                value={project.title}
-                onChange={(e) => updateProject({ title: e.target.value })}
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all font-serif italic text-lg"
               />
             </div>
@@ -149,6 +165,47 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
           </div>
         </section>
       </div>
+
+      {/* Billing & Subscription */}
+      <section className="space-y-6">
+        <div className="flex items-center gap-2 text-slate-400 mb-4">
+          <Zap size={16} />
+          <span className="text-[10px] font-black uppercase tracking-widest">Billing & Subscription</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-6 bg-white border border-emerald-200 rounded-3xl group shadow-sm flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4">
+               <div className="px-3 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-full">Active</div>
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900 mb-2 italic">Pro Subscription</h3>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                You are currently subscribed to the Unlimited Plan. You have full access to Neural Processing and large context windows.
+              </p>
+            </div>
+            <div className="mt-8">
+              <button disabled className="px-6 py-2 bg-slate-100 text-slate-400 font-bold text-xs uppercase tracking-widest rounded-xl cursor-not-allowed">
+                Subscribed
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6 bg-white border border-slate-200 rounded-3xl group shadow-sm flex flex-col justify-between relative overflow-hidden opacity-50 pointer-events-none">
+            <div>
+              <h3 className="text-lg font-black text-slate-900 mb-2 italic">Pay-Per-Request Mode</h3>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Connect a billing account to only pay for the exact compute time used by the Swarm and Architect engines.
+              </p>
+            </div>
+            <div className="mt-8">
+              <button disabled className="px-6 py-2 border-2 border-slate-200 text-slate-400 font-bold text-xs uppercase tracking-widest rounded-xl">
+                Switch to Pay-Per-Request
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* AI Fallback Notice */}
       <section className="p-6 bg-blue-50 border border-blue-100 rounded-3xl space-y-4">
@@ -229,24 +286,5 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
         </div>
       </section>
     </div>
-  );
-}
-
-function Flame(props: any) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" 
-      height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      {...props}
-    >
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-    </svg>
   );
 }

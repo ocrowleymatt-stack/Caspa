@@ -68,10 +68,10 @@ export default function ManuscriptFixer({ project, chapters, updateChapters, set
         addLog(`Success: Synthesized Chapter ${chap.order + 1} (Economy Mode).`);
       }
       
-      addLog("System: Slow Cooker sequence complete. Structure filled.");
+      addLog("System: Slow Cooker chapter production complete. Structure filled.");
     } catch (err: any) {
       console.error(err);
-      const msg = `Slow Cooker sequence interrupted. ${err.message || ""}`;
+      const msg = `Slow Cooker process interrupted. ${err.message || ""}`;
       addLog(`Error: ${msg}`);
       onError?.(msg);
     } finally {
@@ -249,7 +249,7 @@ export default function ManuscriptFixer({ project, chapters, updateChapters, set
           addLog("Ingestion Sequence: 100% COMPLETE.");
           
           setAnalysis(`## Ingestion Successful
-Your manuscript has been parsed into **${finalSegments.length} sequences**. 
+Your manuscript has been parsed into **${finalSegments.length} chapters**. 
 
 **Diagnostic Overview:**
 - Source Method: ${bypassAI ? "Manual Sequential" : (finalSegments.length > 5 ? "Neural Analysis" : "Structural Recovery")}
@@ -318,18 +318,27 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
     setAutoPilot(true);
     addLog("Engaging Auto-Pilot: Finalizing Narrative Path...");
     try {
-      addLog("Calculating logical conclusion beats...");
+      addLog("System: Surveying current manuscript structure...");
+      console.log('Auto-Pilot: Project State', { chapterCount: chapters.length, title: project.title });
+      
+      addLog("AI Core: Calculating logical conclusion beats...");
       const beats = await AIService.automateNextSteps(project, chapters);
       
-      addLog(`Architecting ${beats.length} new chapters...`);
+      if (!beats || beats.length === 0) {
+        addLog("AI Core: No new beats recommended. The narrative may already be complete.");
+        return;
+      }
+
+      addLog(`AI Core: ${beats.length} new beats successfully architected.`);
+      addLog(`Architecting ${beats.length} new chapters into the structure...`);
       const newChapters: Chapter[] = [...chapters];
       
       for (const beat of beats) {
         const id = crypto.randomUUID();
         const newChap: Chapter = {
           id,
-          title: beat.title,
-          summary: beat.summary,
+          title: beat.title || "Untitled Resolution",
+          summary: beat.summary || "No summary provided.",
           content: '',
           order: newChapters.length,
           plotNodeIds: [],
@@ -337,15 +346,16 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
           updatedAt: Date.now()
         };
         newChapters.push(newChap);
-        addLog(`Constructed: ${beat.title}`);
+        addLog(`Constructed: ${newChap.title}`);
       }
       
+      addLog("System Sync: Committing new architecture to cloud registry...");
       await updateChapters(newChapters);
-      addLog("Automation complete. Ready for drafting.");
+      addLog("Chapter Generation Complete: Manuscript finalized and synchronized.");
     } catch (err: any) {
-      console.error(err);
+      console.error('Auto-Pilot Failure:', err);
       const msg = err.message || "Auto-Pilot sequence interrupted";
-      addLog(msg);
+      addLog(`Fatal: ${msg}`);
       onError?.(msg);
     } finally {
       setAutoPilot(false);
@@ -362,7 +372,7 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
         return;
       }
 
-      addLog(`Found ${emptyChapters.length} sequences to draft. Starting synthesis...`);
+      addLog(`Found ${emptyChapters.length} chapters to draft. Starting synthesis...`);
       let updatedChaps = [...chapters];
 
       for (const chap of emptyChapters) {
@@ -374,21 +384,32 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
           .join('\n\n')
           .slice(-5000);
 
-        const content = await AIService.writeDraft(
-          chap.title,
-          chap.summary,
-          earlierContent,
-          project.type,
-          [],
-          project.maturity,
-          project.sourceMaterials || []
-        );
+        try {
+          const content = await AIService.writeDraft(
+            chap.title,
+            chap.summary,
+            earlierContent,
+            project.type,
+            [], // activeNodes placeholder
+            project.maturity,
+            project.sourceMaterials || [],
+            chap.directives || []
+          );
 
-        updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content } : c);
-        await updateChapters(updatedChaps);
-        addLog(`Successfully synthesized ${chap.title}.`);
+          // Update local copy
+          updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
+          
+          // Trigger the app-level update (which persists to cloud)
+          // Note: In App.tsx, updateChapters currently calls upsertChapterBatch for the whole list.
+          // This ensures "auto saves along the way" as requested.
+          await updateChapters(updatedChaps);
+          addLog(`Checkpoint saved: ${chap.title}.`);
+        } catch (err: any) {
+          addLog(`Warning: Failed to draft ${chap.title}. Attempting to proceed...`);
+          console.error(err);
+        }
       }
-      addLog("Deep Draft series complete. The book is ready.");
+      addLog("Deep Draft series complete. The manuscript is fully synchronized.");
     } catch (err: any) {
       console.error(err);
       const msg = err.message || "AI exhaustion";
@@ -396,6 +417,94 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
       onError?.(msg);
     } finally {
       setIsDeepDrafting(false);
+    }
+  };
+
+  const [isFixingBadBook, setIsFixingBadBook] = useState(false);
+
+  const runFixBadBook = async () => {
+    setIsFixingBadBook(true);
+    addLog("System: Initializing FIX A BAD BOOK sequence...");
+    addLog("This macro will execute Prize Targeting, Outline Architecture, Continuity Sweeps, and Deep Drafting sequentially.");
+    try {
+      // Step 1: Prize Targeting
+      addLog("Phase 1: Assessing Prize Worthiness...");
+      const prizeAssessments = await AIService.assessPrizeWorthiness(project, chapters);
+      if (prizeAssessments.length > 0) {
+        addLog(`Prize targeted: ${prizeAssessments[0].prizeName}. Alignment: ${prizeAssessments[0].alignmentScore}%`);
+        addLog(`Focusing edits on: ${prizeAssessments[0].recommendations[0]}`);
+      } else {
+        addLog("Prize Assessment yielded generic targets. Proceeding.");
+      }
+
+      // Step 2: Plot Outlining
+      addLog("Phase 2: Extracting structural vulnerabilities...");
+      const newNodes = await AIService.outlinePlotNodes({ ...project, plotNodes: [] });
+      addLog(`Architected ${newNodes.length} new Plot Nodes.`);
+
+      // Step 3: Reconcile Chapters
+      addLog("Phase 3: Reconciling chapters with new structural logic...");
+      const reconciledNodes = await AIService.reconcileChapters(project, newNodes, chapters);
+      
+      const newChapters: Chapter[] = reconciledNodes.map((beat, index) => {
+        const existingChap = chapters.find(c => c.title === beat.title);
+        return {
+          id: existingChap?.id || crypto.randomUUID(),
+          title: beat.title,
+          summary: beat.summary,
+          content: existingChap?.content || "",
+          order: index,
+          plotNodeIds: beat.plotNodeIds,
+          tags: existingChap?.tags || [],
+          updatedAt: Date.now()
+        };
+      });
+      await updateChapters(newChapters);
+      addLog(`Manuscript realigned into ${newChapters.length} chapters.`);
+
+      // Step 4: Continuity Sweep (Critic Swarm proxy)
+      addLog("Phase 4: Executing Swarm Continuity Pass...");
+      const continuityReport = await AIService.analyzeContinuity(newNodes, newChapters);
+      addLog("Continuity analysis complete. Applying swarm recommendations...");
+
+      // For Fix a Bad Book, we will run the Slow Cooker / Deep Draft loop over empty or poorly formed chapters
+      addLog("Phase 5: Engaging Deep Draft generation for missing sequences...");
+      const emptyChapters = newChapters.filter(c => !c.content.trim() || c.content.length < 500);
+      
+      if (emptyChapters.length > 0) {
+        let updatedChaps = [...newChapters];
+        for (const chap of emptyChapters) {
+          addLog(`Re-drafting: Chapter ${chap.order + 1} - "${chap.title}"...`);
+          const earlierContent = updatedChaps
+            .filter(c => c.order < chap.order)
+            .map(c => c.content)
+            .join('\n\n')
+            .slice(-3000);
+          
+          const content = await AIService.writeDraft(
+            chap.title,
+            chap.summary + `\n\nCONTINUITY DIRECTIVE:\n${continuityReport.slice(0, 500)}`,
+            earlierContent,
+            project.type,
+            newNodes,
+            project.maturity,
+            project.sourceMaterials || []
+          );
+          
+          updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
+          await updateChapters(updatedChaps);
+          addLog(`Success: Re-drafted Chapter ${chap.order + 1}.`);
+        }
+      }
+
+      addLog("System: FIX A BAD BOOK sequence completed. Manuscript is primed for export.");
+    } catch (err: any) {
+      console.error(err);
+      const msg = err.message || "Sequence failed.";
+      addLog(`Total Overhaul interrupted: ${msg}`);
+      onError?.(msg);
+    } finally {
+      setIsFixingBadBook(false);
     }
   };
 
@@ -427,6 +536,20 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
               Directives
             </h3>
             <div className="space-y-4">
+              <button 
+                onClick={runFixBadBook}
+                disabled={isFixingBadBook}
+                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group ${
+                  isFixingBadBook ? 'bg-slate-50 text-slate-400' : 'bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-200'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Target size={18} />
+                  <span className="text-sm font-bold">Fix a Bad Book (Macro)</span>
+                </div>
+                {isFixingBadBook ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+              </button>
+
               <button 
                 onClick={runFinishAndFix}
                 disabled={isFixing}

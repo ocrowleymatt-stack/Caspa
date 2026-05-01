@@ -17,10 +17,7 @@ service cloud.firestore {
     // Note: We use isSignedIn() instead of isVerified() right now because standard Google SignIn 
     // usually yields verified email, but we don't strictly mandate verified emails if not fully required
     // Actually wait, specification says: "You MUST strictly mandate that the user is verified using request.auth.token.email_verified == true."
-    function isVerified() { 
-      // Mandating verified email for standard Google accounts, but relaxing for debugging blank page
-      return isSignedIn(); 
-    }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
     
     // Check Project ownership
     function isOwner() {
@@ -33,7 +30,7 @@ service cloud.firestore {
     // Validation definitions
     function isValidProject(data) {
       return data.keys().hasAll(['title', 'ownerId', 'lastModified', 'createdAt']) &&
-             data.title is string && data.title.size() <= 500 &&
+             data.title is string && data.title.size() <= 200 &&
              data.ownerId is string && data.ownerId == request.auth.uid &&
              data.lastModified is number &&
              data.createdAt is number &&
@@ -42,52 +39,43 @@ service cloud.firestore {
              data.get('genre', '') is string &&
              data.get('premise', '') is string &&
              data.get('tone', '') is string &&
-             data.get('id', '') is string &&
-             (data.get('updatedAt', null) == null || data.get('updatedAt', null) is timestamp) &&
-             (data.get('collaborators', []) is list && data.get('collaborators', []).size() <= 100) &&
+             (data.get('collaborators', []) is list && data.get('collaborators', []).size() <= 50) &&
              (data.get('stats', {}) is map) &&
-             (data.get('critiques', {}) is map) &&
-             (data.get('targetPrize', '') is string) &&
-             (data.get('prizeAssessments', []) is list) &&
-             (data.get('sourceMaterials', []) is list);
+             (data.get('critiques', {}) is map);
     }
 
     function isValidCharacter(data) {
       return data.keys().hasAll(['name', 'role', 'updatedAt']) &&
-             data.name is string && data.name.size() <= 200 &&
-             data.role is string && data.role.size() <= 200 &&
-             data.get('backstory', '') is string && data.get('backstory', '').size() <= 20000 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.role is string && data.role.size() <= 100 &&
+             data.get('backstory', '') is string && data.get('backstory', '').size() <= 10000 &&
              (data.get('traits', []) is list) &&
              (data.get('goals', []) is list) &&
              (data.get('fears', []) is list) &&
              (data.get('motivations', []) is list) &&
              (data.get('quirks', []) is list) &&
-             (data.get('archetype', '') is string) &&
-             (data.get('id', '') is string) &&
+             data.get('archetype', '') is string &&
              data.updatedAt is number;
     }
 
     function isValidPlotNode(data) {
       return data.keys().hasAll(['title', 'status', 'order']) &&
-             data.title is string && data.title.size() <= 500 &&
-             data.get('description', '') is string && data.get('description', '').size() <= 10000 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.get('description', '') is string && data.get('description', '').size() <= 5000 &&
              data.status in ['active', 'ended', 'resolved'] &&
              data.get('type', 'main') in ['main', 'sub', 'theme'] &&
              data.order is number &&
-             (data.get('id', '') is string) &&
-             (data.get('updatedAt', 0) is number);
+             data.get('updatedAt', 0) is number;
     }
 
     function isValidChapter(data) {
       return data.keys().hasAll(['title', 'order', 'updatedAt']) &&
-             data.title is string && data.title.size() <= 500 &&
-             data.get('summary', '') is string && data.get('summary', '').size() <= 10000 &&
-             data.get('content', '') is string && data.get('content', '').size() <= 2000000 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.get('summary', '') is string && data.get('summary', '').size() <= 5000 &&
+             data.get('content', '') is string && data.get('content', '').size() <= 1000000 &&
              data.order is number &&
-             (data.get('plotNodeIds', []) is list && data.get('plotNodeIds', []).size() <= 100) &&
-             (data.get('tags', []) is list && data.get('tags', []).size() <= 100) &&
-             (data.get('directives', []) is list && data.get('directives', []).size() <= 200) &&
-             (data.get('id', '') is string) &&
+             (data.get('plotNodeIds', []) is list && data.get('plotNodeIds', []).size() <= 50) &&
+             (data.get('tags', []) is list && data.get('tags', []).size() <= 50) &&
              data.updatedAt is number;
     }
 
@@ -119,37 +107,6 @@ service cloud.firestore {
              data.lastSeen is number;
     }
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['email', 'createdAt', 'lastLoginAt']) &&
-             data.email is string && data.email.size() <= 200 &&
-             data.get('displayName', '') is string && data.get('displayName', '').size() <= 100 &&
-             data.get('photoURL', '') is string && data.get('photoURL', '').size() <= 2000 &&
-             data.createdAt is number &&
-             data.lastLoginAt is number;
-    }
-
-    match /users/{userId} {
-      allow get: if isVerified() && isValidId(userId) && userId == request.auth.uid;
-      allow list: if isVerified() && userId == request.auth.uid;
-      
-      allow create: if isVerified() && 
-                    isValidId(userId) &&
-                    userId == request.auth.uid &&
-                    isValidUser(incoming()) &&
-                    incoming().keys().size() <= 5;
-                    
-      allow update: if isVerified() && 
-                    isValidId(userId) &&
-                    userId == request.auth.uid &&
-                    isValidUser(incoming()) &&
-                    incoming().createdAt == existing().createdAt &&
-                    incoming().diff(existing()).affectedKeys().hasOnly([
-                      'email', 'displayName', 'photoURL', 'lastLoginAt'
-                    ]);
-                    
-      allow delete: if isVerified() && isValidId(userId) && userId == request.auth.uid;
-    }
-
     match /projects/{projectId} {
       allow get: if isVerified() && isValidId(projectId) && isOwner();
       allow list: if isVerified() && existing().ownerId == request.auth.uid;
@@ -157,7 +114,7 @@ service cloud.firestore {
       allow create: if isVerified() && 
                     isValidId(projectId) && 
                     isValidProject(incoming()) && 
-                    incoming().keys().size() <= 30;
+                    incoming().keys().size() <= 12;
 
       allow update: if isVerified() &&
                     isValidId(projectId) &&
@@ -166,7 +123,7 @@ service cloud.firestore {
                     incoming().ownerId == existing().ownerId &&
                     incoming().createdAt == existing().createdAt &&
                     incoming().diff(existing()).affectedKeys().hasOnly([
-                      'title', 'type', 'maturity', 'genre', 'premise', 'tone', 'collaborators', 'lastModified', 'stats', 'critiques', 'id', 'updatedAt', 'targetPrize', 'prizeAssessments', 'sourceMaterials'
+                      'title', 'type', 'maturity', 'genre', 'premise', 'tone', 'collaborators', 'lastModified', 'stats', 'critiques'
                     ]);
 
       allow delete: if isVerified() && isValidId(projectId) && isOwner();
@@ -179,14 +136,14 @@ service cloud.firestore {
                       isValidId(characterId) && 
                       ownsProjectPath(projectId) &&
                       isValidCharacter(incoming()) &&
-                      incoming().keys().size() <= 25;
+                      incoming().keys().size() <= 10;
                       
         allow update: if isVerified() && 
                       isValidId(characterId) && 
                       ownsProjectPath(projectId) &&
                       isValidCharacter(incoming()) &&
                       incoming().diff(existing()).affectedKeys().hasOnly([
-                        'id', 'name', 'role', 'backstory', 'traits', 'goals', 'fears', 'motivations', 'quirks', 'archetype', 'updatedAt'
+                        'name', 'role', 'backstory', 'traits', 'goals', 'fears', 'motivations', 'quirks', 'archetype', 'updatedAt'
                       ]);
                       
         allow delete: if isVerified() && isValidId(characterId) && ownsProjectPath(projectId);
@@ -200,14 +157,14 @@ service cloud.firestore {
                       isValidId(nodeId) && 
                       ownsProjectPath(projectId) &&
                       isValidPlotNode(incoming()) &&
-                      incoming().keys().size() <= 20;
+                      incoming().keys().size() <= 6;
                       
         allow update: if isVerified() && 
                       isValidId(nodeId) && 
                       ownsProjectPath(projectId) &&
                       isValidPlotNode(incoming()) &&
                       incoming().diff(existing()).affectedKeys().hasOnly([
-                        'id', 'title', 'description', 'status', 'type', 'order', 'updatedAt'
+                        'title', 'description', 'status', 'type', 'order', 'updatedAt'
                       ]);
                       
         allow delete: if isVerified() && isValidId(nodeId) && ownsProjectPath(projectId);
@@ -221,14 +178,14 @@ service cloud.firestore {
                       isValidId(chapterId) && 
                       ownsProjectPath(projectId) &&
                       isValidChapter(incoming()) &&
-                      incoming().keys().size() <= 12;
+                      incoming().keys().size() <= 7;
                       
         allow update: if isVerified() && 
                       isValidId(chapterId) && 
                       ownsProjectPath(projectId) &&
                       isValidChapter(incoming()) &&
                       incoming().diff(existing()).affectedKeys().hasOnly([
-                        'id', 'title', 'summary', 'content', 'order', 'plotNodeIds', 'tags', 'updatedAt', 'directives'
+                        'title', 'summary', 'content', 'order', 'plotNodeIds', 'tags', 'updatedAt'
                       ]);
                       
         allow delete: if isVerified() && isValidId(chapterId) && ownsProjectPath(projectId);
@@ -242,14 +199,14 @@ service cloud.firestore {
                       isValidId(noteId) && 
                       ownsProjectPath(projectId) &&
                       isValidResearchNote(incoming()) &&
-                      incoming().keys().size() <= 9;
+                      incoming().keys().size() <= 7;
                       
         allow update: if isVerified() && 
                       isValidId(noteId) && 
                       ownsProjectPath(projectId) &&
                       isValidResearchNote(incoming()) &&
                       incoming().diff(existing()).affectedKeys().hasOnly([
-                        'id', 'title', 'content', 'source', 'sources', 'category', 'tags', 'updatedAt'
+                        'title', 'content', 'source', 'sources', 'category', 'tags', 'updatedAt'
                       ]);
                       
         allow delete: if isVerified() && isValidId(noteId) && ownsProjectPath(projectId);
@@ -263,14 +220,14 @@ service cloud.firestore {
                       isValidId(sourceId) && 
                       ownsProjectPath(projectId) &&
                       isValidSourceMaterial(incoming()) &&
-                      incoming().keys().size() <= 6;
+                      incoming().keys().size() <= 4;
                       
         allow update: if isVerified() && 
                       isValidId(sourceId) && 
                       ownsProjectPath(projectId) &&
                       isValidSourceMaterial(incoming()) &&
                       incoming().diff(existing()).affectedKeys().hasOnly([
-                        'id', 'name', 'content', 'type', 'updatedAt'
+                        'name', 'content', 'type', 'updatedAt'
                       ]);
                       
         allow delete: if isVerified() && isValidId(sourceId) && ownsProjectPath(projectId);

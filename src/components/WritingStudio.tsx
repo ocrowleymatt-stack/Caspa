@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type } from 'lucide-react';
-import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique } from '../types';
+import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type, Flame } from 'lucide-react';
+import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique, ViewType } from '../types';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -17,6 +17,7 @@ interface Props {
   presence: Presence[];
   updateProject: (updates: Partial<Project>) => void;
   updateChapters: (chapters: Chapter[]) => void;
+  setView: (view: ViewType) => void;
   upsertChapter?: (chapter: Chapter) => void;
   onDeleteChapter?: (id: string) => void;
   onUpsertSource: (source: SourceMaterial) => void;
@@ -30,6 +31,7 @@ export default function WritingStudio({
   presence, 
   updateProject, 
   updateChapters, 
+  setView,
   upsertChapter, 
   onDeleteChapter, 
   onUpsertSource, 
@@ -255,16 +257,38 @@ export default function WritingStudio({
     setIsCritiquing(true);
     setShowCritique(true);
     try {
-      const feedback = await AIService.critique(selectedChapter.content);
-      setCritiqueText(feedback);
+      const earlierChapters = chapters.filter((c: Chapter) => c.order < selectedChapter.order);
+      const earlierContent = earlierChapters.map((c: Chapter) => `[CHAPTER ${c.order + 1}: ${c.title}]\n${c.content.slice(0, 500)}`).join('\n\n');
+      
+      const prompt = `You are an elite narrative consultant. Analyze the following chapter draft. Determine if it aligns with the character and plot structure. Provide a concise critique and then a clear list of actionable suggestions for improvement.
+      
+      [CHAPTER: ${selectedChapter.title}]
+      [SUMMARY: ${selectedChapter.summary}]
+      
+      [EARLIER CONTEXT]: 
+      ${earlierContent}
+      
+      [CURRENT DRAFT]:
+      ${selectedChapter.content}
+      
+      Return your analysis as a JSON object with:
+      "content": "A paragraph of deep analysis",
+      "suggestions": ["suggestion 1", "suggestion 2", ...]
+      `;
+      
+      const responseText = await AIService.callAI({ prompt, json: true });
+      const data = JSON.parse(responseText || "{}");
+      
+      setCritiqueText(data.content || "No major issues identified.");
 
       // Persist to project state
       const newCritique: Critique = {
+        id: crypto.randomUUID(),
         agentName: 'Narrative Sync',
         role: 'structural',
-        content: feedback,
+        content: data.content || "Analysis complete.",
         severity: 'medium',
-        suggestions: []
+        suggestions: (data.suggestions || []).map((s: string) => ({ text: s }))
       };
       
       const currentMap = project.critiques || {};
@@ -284,11 +308,43 @@ export default function WritingStudio({
     }
   };
 
+  const applySuggestionsToChapter = () => {
+    if (!selectedChapter) return;
+    const currentCritiques = (project.critiques || {})[selectedChapter.id] || [];
+    const latestCritique = currentCritiques[0];
+    if (!latestCritique) return;
+
+    const acceptedSuggestions = latestCritique.suggestions
+      .filter(s => s.accepted !== false) // Default to accepted if not explicitly rejected for this simple "apply all"
+      .map(s => s.text);
+    
+    if (acceptedSuggestions.length === 0) return;
+
+    const updatedChapters = chapters.map(chap => {
+      if (chap.id === selectedChapter.id) {
+        const currentDirectives = chap.directives || [];
+        const newDirectives = [...currentDirectives];
+        acceptedSuggestions.forEach(s => {
+          if (!newDirectives.includes(s)) newDirectives.push(s);
+        });
+        return { ...chap, directives: newDirectives };
+      }
+      return chap;
+    });
+    
+    updateChapters(updatedChapters);
+    setView('architect'); // Redirect to auto-draft
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
     files.forEach(file => {
+      if (file.size > 1024 * 1024) {
+        onError?.(`File ${file.name} is too large (max 1MB). Firestore limit reached.`);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         try {
@@ -328,7 +384,7 @@ export default function WritingStudio({
   }, [wordCount]);
 
   return (
-    <div className={`h-full flex flex-col lg:flex-row gap-0 -m-4 md:-m-8 relative overflow-hidden ${isFocusMode ? 'bg-white' : 'bg-slate-50'}`}>
+    <div className={`h-full flex flex-col lg:flex-row gap-0 relative overflow-hidden ${isFocusMode ? 'bg-white' : 'bg-slate-50'}`}>
       {/* Sidebar: Combined Rail */}
       <motion.aside 
         initial={false}
@@ -351,10 +407,14 @@ export default function WritingStudio({
                 <input 
                   type="file" 
                   className="hidden" 
-                  accept=".txt,.md" 
+                  accept=".txt,.md,.json,.yaml,.yml" 
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    if (file.size > 1024 * 1024) {
+                      onError?.(`File ${file.name} is too large (max 1MB).`);
+                      return;
+                    }
                     const reader = new FileReader();
                     reader.onload = (event) => {
                       const content = event.target?.result as string;
@@ -385,7 +445,7 @@ export default function WritingStudio({
               </button>
             </div>
           </div>
-          <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+          <div className="space-y-1 max-h-[30%] overflow-y-auto custom-scrollbar pr-1">
             {chapters.map((chapter: Chapter) => (
               <div key={chapter.id} className="group relative">
                 <button
@@ -432,7 +492,7 @@ export default function WritingStudio({
             </h3>
             <label className="p-1.5 hover:bg-slate-50 text-blue-600 rounded-lg transition-all cursor-pointer" title="Upload Source">
               <Plus size={18} />
-              <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.json" multiple />
+              <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.json,.yaml,.yml" multiple />
             </label>
           </div>
 
@@ -595,19 +655,19 @@ export default function WritingStudio({
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 md:gap-3 overflow-x-auto no-scrollbar md:overflow-visible pb-1 md:pb-0">
                   <button 
                     onClick={() => setIsFocusMode(!isFocusMode)}
-                    className={`p-2 rounded-lg transition-all ${isFocusMode ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-900'}`}
+                    className={`p-2 rounded-lg transition-all shrink-0 ${isFocusMode ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-900'}`}
                     title="Toggle Focus Mode"
                   >
                     {isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                   </button>
 
-                  <div className="h-4 w-px bg-slate-200 hidden md:block" />
+                  <div className="h-4 w-px bg-slate-200 shrink-0 hidden md:block" />
 
                   {/* Plot Node Tags */}
-                  <div className="relative">
+                  <div className="relative shrink-0">
                     <button 
                       onClick={() => setShowNodePicker(!showNodePicker)}
                       className="flex items-center gap-2 text-[10px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-[0.15em] px-2"
@@ -645,12 +705,12 @@ export default function WritingStudio({
                     </AnimatePresence>
                   </div>
 
-                  <div className="h-4 w-px bg-slate-200" />
+                  <div className="h-4 w-px bg-slate-200 shrink-0" />
 
                   <button 
                     onClick={handleSmartWrite}
                     disabled={isWriting}
-                    className={`flex items-center gap-2 px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] ${
+                    className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
                       isWriting ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
                     }`}
                   >
@@ -670,7 +730,7 @@ export default function WritingStudio({
                   <button 
                     onClick={handleRefine}
                     disabled={isRefining || !selectedChapter.content.trim()}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold transition-all shadow-md uppercase tracking-[0.15em] ${
+                    className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-full text-[10px] font-bold transition-all shadow-md uppercase tracking-[0.15em] shrink-0 ${
                       isRefining ? 'bg-orange-600 text-white' : 'bg-slate-900 hover:bg-black text-white'
                     }`}
                     title="Deep Quality Refinement"
@@ -691,7 +751,7 @@ export default function WritingStudio({
                   <button 
                     onClick={handleCritique}
                     disabled={isCritiquing}
-                    className={`flex items-center gap-2 px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] ${
+                    className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
                       isCritiquing ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
                     }`}
                   >
@@ -717,12 +777,12 @@ export default function WritingStudio({
                   <div className="max-w-[75ch] w-full mb-16 opacity-50 focus-within:opacity-100 transition-opacity duration-500">
                     <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 mb-4 uppercase tracking-[0.2em] pl-1 font-sans">
                       <FileText size={12} className="text-slate-400" />
-                      Scene Architecture
+                      Chapter Architecture
                     </div>
                     <textarea 
                       value={localSummary}
                       onChange={(e) => setLocalSummary(e.target.value)}
-                      placeholder="Define the sequence objectives and emotional beats..."
+                      placeholder="Define the chapter objectives and emotional beats..."
                       className="w-full bg-transparent border-t border-b border-slate-200/50 py-4 text-slate-600 text-sm md:text-base resize-none focus:ring-0 outline-none placeholder:text-slate-300 leading-relaxed font-serif italic"
                       rows={2}
                     />
@@ -732,7 +792,7 @@ export default function WritingStudio({
                   <textarea 
                     value={localContent}
                     onChange={(e) => setLocalContent(e.target.value)}
-                    placeholder="Begin the sequence..."
+                    placeholder="Begin the chapter..."
                     className="max-w-[75ch] w-full flex-1 bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-slate-800 leading-[1.8] resize-none outline-none font-serif placeholder:text-slate-300 min-h-[500px]"
                     spellCheck={false}
                   />
@@ -746,7 +806,7 @@ export default function WritingStudio({
                       initial={{ width: 0, opacity: 0 }}
                       animate={{ width: 400, opacity: 1 }}
                       exit={{ width: 0, opacity: 0 }}
-                      className="border-l border-slate-200 bg-white flex flex-col overflow-hidden shadow-2xl"
+                      className="border-l border-slate-200 bg-white flex flex-col overflow-hidden shadow-2xl h-full"
                     >
                       <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
                         <h3 className="text-[10px] font-black text-slate-900 flex items-center gap-2 uppercase tracking-[0.2em]">
@@ -768,8 +828,32 @@ export default function WritingStudio({
                             <p className="text-[10px] font-black uppercase tracking-widest italic">Analyzing Manuscript...</p>
                           </div>
                         ) : (
-                          <div className="prose prose-slate prose-sm max-w-none text-slate-600 prose-strong:text-slate-900 prose-headings:text-slate-900 prose-headings:font-bold prose-p:leading-relaxed">
-                            <Markdown>{critiqueText}</Markdown>
+                          <div className="space-y-8">
+                            <div className="prose prose-slate prose-sm max-w-none text-slate-600 prose-strong:text-slate-900 prose-headings:text-slate-900 prose-headings:font-bold prose-p:leading-relaxed border-b border-slate-100 pb-8">
+                              <Markdown>{critiqueText}</Markdown>
+                            </div>
+
+                            {/* Suggestions directly in the view */}
+                            {(project.critiques || {})[selectedChapter.id]?.[0]?.suggestions.length > 0 && (
+                              <div className="space-y-4">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Actionable Improvements</h4>
+                                <div className="space-y-3">
+                                  {(project.critiques || {})[selectedChapter.id][0].suggestions.map((s: any, idx: number) => (
+                                    <div key={idx} className="flex gap-3 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                      <span className="font-black text-blue-600">{idx + 1}</span>
+                                      <p>{s.text}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                                <button 
+                                  onClick={applySuggestionsToChapter}
+                                  className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 mt-6 flex items-center justify-center gap-2"
+                                >
+                                  <Flame size={14} className="text-orange-500" />
+                                  Apply & Auto-Redraft
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

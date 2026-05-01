@@ -36,6 +36,7 @@ export interface Chapter {
   plotNodeIds: string[]; // IDs of PlotNodes active in this chapter
   tags: string[];
   updatedAt: number;
+  directives?: string[]; // Directives for next redrafting session
 }
 
 export interface ResearchNote {
@@ -50,11 +51,12 @@ export interface ResearchNote {
 }
 
 export interface Critique {
+  id: string; // Added ID for tracking
   agentName: string;
   role: 'structural' | 'vocal' | 'factual' | 'legal' | 'comedy' | 'academic';
   content: string;
   severity: 'low' | 'medium' | 'high';
-  suggestions: string[];
+  suggestions: { text: string; accepted?: boolean; rejected?: boolean }[]; 
 }
 
 export interface Comment {
@@ -86,6 +88,14 @@ export interface SourceMaterial {
   updatedAt?: number;
 }
 
+export interface PrizeAssessment {
+  prizeName: string;
+  eligibilityScore: number; // 0-100
+  pros: string[];
+  cons: string[];
+  recommendation: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -98,6 +108,7 @@ export interface Project {
   collaborators: string[];
   lastModified: number;
   createdAt: number;
+  updatedAt?: any;
   // Optional merged data for UI views
   characters?: Character[];
   plotNodes?: PlotNode[];
@@ -111,6 +122,8 @@ export interface Project {
     aiContributions: number;
     lastActiveDay: string; // ISO date string
   };
+  targetPrize?: string;
+  prizeAssessments?: PrizeAssessment[];
 }
 
-export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'research' | 'swarm' | 'settings' | 'architect';
+export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'research' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes';

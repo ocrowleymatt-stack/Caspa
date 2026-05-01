@@ -1,29 +1,15 @@
-# Use Node.js image to build the application
-FROM node:14 as builder
-
-# Set the working directory
+# Build stage
+FROM node:18-alpine AS build
 WORKDIR /app
-
-# Copy package.json and package-lock.json
 COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy the whole application into the working directory
+RUN npm ci
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# Use Nginx to serve the application
-FROM nginx:alpine
-
-# Copy built files from the builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Serve stage
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g serve
+COPY --from=build /app/dist ./dist
+EXPOSE 8080
+CMD ["serve", "-s", "dist", "-l", "8080"]

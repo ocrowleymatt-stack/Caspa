@@ -130,8 +130,7 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
   const handleGenerateNodes = async () => {
     setLoading(true);
     try {
-      setLoading(true);
-      addLog("System: Initializing Plot Architect with Neural Engine 3.1...");
+      console.log("System: Initializing Plot Architect with Neural Engine 3.1...");
       const nodes = await AIService.outlinePlotNodes(project);
       
       if (!nodes || nodes.length === 0) {
@@ -139,12 +138,12 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
       }
 
       await updatePlotNodes(nodes);
-      addLog(`Success: Synthesized ${nodes.length} major narrative beats.`);
+      console.log(`Success: Synthesized ${nodes.length} major narrative beats.`);
       onError?.("Plot architecture successfully generated! 🔥");
     } catch (err: any) {
       console.error(err);
       const msg = err.message || "Plot Architect failed to respond.";
-      addLog(`Error: ${msg}`);
+      console.log(`Error: ${msg}`);
       onError?.(msg);
     } finally {
       setLoading(false);
@@ -173,10 +172,18 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
       });
 
       updateChapters(newChapters);
-      setContinuityReport(`## Propagation Success
-The narrative architecture has been synchronized. ${newChapters.length} chapters are now aligned with your ${plotNodes.length} plot nodes.`);
+      setContinuityReport(`## Synchronization Success
+The narrative architecture has been successfully applied to your manuscript. 
+
+**Changes Made:**
+- Aligned **${newChapters.length} chapters** with the current plot nodes.
+- Re-ordered chapters to match the logical flow of the architecture.
+- Preserved existing draft content while updating structural summaries.
+
+You can now review these changes in the **Writing Studio**.`);
     } catch (err) {
       console.error(err);
+      onError?.("Failed to apply the architectural changes.");
     } finally {
       setPropagating(false);
     }
@@ -186,9 +193,10 @@ The narrative architecture has been synchronized. ${newChapters.length} chapters
     setAnalyzing(true);
     try {
       const report = await AIService.analyzeContinuity(plotNodes, chapters);
-      setContinuityReport(report);
+      setContinuityReport(report + "\n\n---\n**Action Required:** If you wish to apply these structural recommendations to your manuscript, click the **Apply to Manuscript** button above.");
     } catch (err) {
       console.error(err);
+      onError?.("Continuity analysis failed.");
     } finally {
       setAnalyzing(false);
     }
@@ -229,7 +237,7 @@ The narrative architecture has been synchronized. ${newChapters.length} chapters
             className="px-4 md:px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition-all shadow-lg shadow-emerald-100 flex items-center gap-2 disabled:opacity-50 uppercase tracking-widest"
           >
             {propagating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Map size={14} />}
-            Propagate to Chapters
+            Apply to Manuscript
           </button>
           <button 
             onClick={handleAnalyze}
@@ -308,9 +316,22 @@ The narrative architecture has been synchronized. ${newChapters.length} chapters
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="prose prose-slate prose-sm max-w-none prose-p:leading-relaxed prose-headings:font-bold prose-headings:text-slate-900 italic text-slate-600"
+                  className="space-y-6"
                 >
-                  <Markdown>{continuityReport}</Markdown>
+                  <div className="prose prose-slate prose-sm max-w-none prose-p:leading-relaxed prose-headings:font-bold prose-headings:text-slate-900 italic text-slate-600">
+                    <Markdown>{continuityReport}</Markdown>
+                  </div>
+                  
+                  {!continuityReport.includes('Synchronization Success') && (
+                    <button 
+                      onClick={handlePropagate}
+                      disabled={propagating}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 uppercase tracking-widest"
+                    >
+                      {propagating ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Map size={14} />}
+                      Apply Recommendations
+                    </button>
+                  )}
                 </motion.div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center gap-4 text-slate-300">

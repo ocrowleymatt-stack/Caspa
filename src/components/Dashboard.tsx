@@ -4,12 +4,15 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Book, Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, ShieldAlert, AlertCircle, Save, Trash2 } from 'lucide-react';
+import { Book, Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, ShieldAlert, AlertCircle, Save, Trash2, Trophy, Target, Plus, ChevronDown } from 'lucide-react';
 import { Project, ViewType, ProjectType, MaturityLevel } from '../types';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
   project: Project;
+  projects: Project[];
+  selectProject: (project: Project) => void;
+  createNewProject: (title?: string) => void;
   updateProject: (updates: Partial<Project>) => void;
   setView: (view: ViewType) => void;
   deleteProject: () => void;
@@ -17,9 +20,20 @@ interface Props {
   isSaving: boolean;
 }
 
-export default function Dashboard({ project, updateProject, setView, deleteProject, saveToCloud, isSaving }: Props) {
+export default function Dashboard({ 
+  project, 
+  projects, 
+  selectProject, 
+  createNewProject, 
+  updateProject, 
+  setView, 
+  deleteProject, 
+  saveToCloud, 
+  isSaving 
+}: Props) {
   const [localPremise, setLocalPremise] = useState(project.premise);
   const [localTitle, setLocalTitle] = useState(project.title);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
 
   // Debounced update for premise
   useEffect(() => {
@@ -65,10 +79,89 @@ export default function Dashboard({ project, updateProject, setView, deleteProje
 
   return (
     <div className="space-y-12">
-      <header className="flex items-end justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-             <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest rounded-full">Project Control</span>
+      {/* Target Prize Banner */}
+      {project.targetPrize && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          onClick={() => setView('prizes')}
+          className="bg-amber-600 text-white px-6 py-3 rounded-full flex items-center justify-between cursor-pointer hover:bg-amber-500 transition-colors shadow-lg shadow-amber-100"
+        >
+          <div className="flex items-center gap-3">
+            <Trophy size={16} className="text-amber-200" />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Aiming For: {project.targetPrize}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-1 w-24 bg-white/20 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-white transition-all duration-1000" 
+                style={{ width: `${project.prizeAssessments?.find(a => a.prizeName === project.targetPrize)?.eligibilityScore || 0}%` }}
+              />
+            </div>
+            <Target size={14} className="text-amber-200" />
+          </div>
+        </motion.div>
+      )}
+
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-4 relative">
+             <div className="relative">
+              <button 
+                onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
+                className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest rounded-full hover:bg-blue-200 transition-colors"
+              >
+                Project: {project.title || 'Untitled'}
+                <ChevronDown size={12} className={`transition-transform ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {isProjectMenuOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute top-full left-0 mt-2 w-[85vw] md:w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden"
+                  >
+                    <div className="p-4 max-h-[300px] overflow-y-auto custom-scrollbar">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 px-2">Your Manuscripts</p>
+                      <div className="space-y-1">
+                        {projects.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => {
+                              selectProject(p);
+                              setIsProjectMenuOpen(false);
+                            }}
+                            className={`w-full text-left p-3 rounded-xl transition-all ${
+                              p.id === project.id 
+                                ? 'bg-blue-50 text-blue-700 border border-blue-100' 
+                                : 'hover:bg-slate-50 text-slate-600'
+                            }`}
+                          >
+                            <div className="text-xs font-bold leading-tight">{p.title || 'Untitled'}</div>
+                            <div className="text-[9px] text-slate-400 uppercase mt-1">{p.type} • {new Date(p.lastModified).toLocaleDateString()}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-slate-50 border-t border-slate-100">
+                      <button 
+                        onClick={() => {
+                          const title = window.prompt('Enter manuscript title:', 'New Manuscript');
+                          if (title) createNewProject(title);
+                          setIsProjectMenuOpen(false);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-white hover:bg-white text-slate-900 border border-slate-200 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-sm"
+                      >
+                        <Plus size={12} />
+                        New Manuscript
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+             </div>
           </div>
           <input 
             value={localTitle}

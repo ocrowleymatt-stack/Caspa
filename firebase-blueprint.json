@@ -1,18 +1,35 @@
 {
   "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "lastLoginAt": { "type": "number" }
+      },
+      "required": ["email", "createdAt", "lastLoginAt"]
+    },
     "Project": {
       "title": "Project",
       "description": "The main novel project container",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
+        "type": { "type": "string" },
+        "maturity": { "type": "string" },
         "genre": { "type": "string" },
         "premise": { "type": "string" },
         "tone": { "type": "string" },
         "ownerId": { "type": "string" },
         "collaborators": { "type": "array", "items": { "type": "string" } },
         "lastModified": { "type": "number" },
-        "createdAt": { "type": "number" }
+        "createdAt": { "type": "number" },
+        "stats": { "type": "object" },
+        "critiques": { "type": "object" }
       },
       "required": ["title", "ownerId", "lastModified", "createdAt"]
     },
@@ -57,7 +74,7 @@
         "summary": { "type": "string" },
         "content": { "type": "string" },
         "order": { "type": "number" },
-        "plotNodes": { "type": "array", "items": { "type": "string" } },
+        "plotNodeIds": { "type": "array", "items": { "type": "string" } },
         "tags": { "type": "array", "items": { "type": "string" } },
         "updatedAt": { "type": "number" }
       },
@@ -71,6 +88,7 @@
         "title": { "type": "string" },
         "content": { "type": "string" },
         "source": { "type": "string" },
+        "sources": { "type": "array", "items": { "type": "string" } },
         "category": { "type": "string" },
         "tags": { "type": "array", "items": { "type": "string" } },
         "updatedAt": { "type": "number" }
@@ -118,6 +136,10 @@
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
     "/projects/{projectId}": {
       "schema": "Project",
       "description": "Novel projects"

@@ -1,4 +1,4 @@
-import { auth } from './firebase';
+import { getAuth } from 'firebase/auth';
 
 export enum OperationType {
   CREATE = 'create',
@@ -27,6 +27,7 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const auth = getAuth();
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {

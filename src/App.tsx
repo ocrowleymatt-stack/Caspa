@@ -27,6 +27,7 @@ import {
   Trash2,
   Construction,
   Settings,
+  Trophy,
   X
 } from 'lucide-react';
 import { 
@@ -40,6 +41,7 @@ import {
   Presence 
 } from './types';
 import { auth, db, loginWithGoogle, logout } from './lib/firebase';
+import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { 
   onSnapshot, 
   doc, 
@@ -47,7 +49,9 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
+  writeBatch,
   query, 
+  where,
   orderBy,
   serverTimestamp
 } from 'firebase/firestore';
@@ -63,6 +67,8 @@ import { ResearchLibrary } from './components/ResearchLibrary';
 import CriticSwarm from './components/CriticSwarm';
 import ManuscriptFixer from './components/ManuscriptFixer';
 import SettingsView from './components/SettingsView';
+import PublishView from './components/PublishView';
+import PrizeView from './components/PrizeView';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -85,44 +91,11 @@ const INITIAL_PROJECT: Project = {
   }
 };
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
 export default function App() {
   const [user, setUser] = useState(auth.currentUser);
-  const [project, setProject] = useState<Project>({ ...INITIAL_PROJECT, id: user?.uid ? `project_${user.uid}` : 'default' });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isProjectsLoading, setIsProjectsLoading] = useState(true);
+  const [project, setProject] = useState<Project>(INITIAL_PROJECT);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [plotNodes, setPlotNodes] = useState<PlotNode[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -250,6 +223,7 @@ export default function App() {
   // Auth Listener
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
+      console.log('Auth state changed:', u?.uid || 'no user');
       setUser(u);
       if (u) {
         setLoginError(null);
@@ -279,30 +253,105 @@ export default function App() {
     }
   };
 
-  // Project Sync
+  // Project List Sync
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setProjects([]);
+      return;
+    }
 
-    const projectId = `project_${user.uid}`;
-    const projectRef = doc(db, 'projects', projectId);
+    const q = query(
+      collection(db, 'projects'), 
+      where('ownerId', '==', user.uid)
+    );
+    
+    const unsubProjects = onSnapshot(q, (snap) => {
+      const projectsList = snap.docs
+        .map(d => d.data() as Project)
+        .filter(p => p.ownerId === user.uid)
+        .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
 
-    // Initial check/create
-    const initProject = async () => {
-      const path = `projects/${projectId}`;
+      setProjects(projectsList);
+      setIsProjectsLoading(false);
+      console.log('Project List Synced:', projectsList.length, 'projects found');
+
+      if (projectsList.length === 0 && !loading) {
+        return;
+      }
+
+      // Select project only on initial load or if current is missing
+      setProject(current => {
+        const savedId = localStorage.getItem(`lastProject_${user.uid}`);
+        
+        // If we have a real project, keep it unless it was deleted
+        if (current.id && current.id !== 'default') {
+          const stillExists = projectsList.find(p => p.id === current.id);
+          if (stillExists) return current;
+        }
+
+        // Try saved ID from localStorage
+        if (savedId) {
+          const found = projectsList.find(p => p.id === savedId);
+          if (found) return found;
+        }
+
+        // Fallback to first in list
+        return projectsList.length > 0 ? projectsList[0] : current;
+      });
+    }, (err) => {
+      setIsProjectsLoading(false);
       try {
-        await setDoc(projectRef, { 
-          title: INITIAL_PROJECT.title,
-          type: INITIAL_PROJECT.type,
-          genre: INITIAL_PROJECT.genre,
-          premise: INITIAL_PROJECT.premise,
-          tone: INITIAL_PROJECT.tone,
-          id: projectId,
-          ownerId: user.uid,
-          updatedAt: serverTimestamp() 
-        }, { merge: true });
-      } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
-    };
-    initProject();
+        handleFirestoreError(err, OperationType.GET, 'projects');
+      } catch (e) {
+        console.error("Projects sync failure:", e);
+        addNotification("Failed to load projects. Please refresh.", "error");
+      }
+    });
+
+    return unsubProjects;
+  }, [user]);
+
+  const createNewProject = async (title: string = 'Untitled Narrative') => {
+    if (!user) return;
+    const newId = `project_${crypto.randomUUID()}`;
+    const projectRef = doc(db, 'projects', newId);
+    const path = `projects/${newId}`;
+    try {
+      const newProjectData: Project = { 
+        ...INITIAL_PROJECT,
+        title,
+        id: newId,
+        ownerId: user.uid,
+        createdAt: Date.now(),
+        lastModified: Date.now(),
+        updatedAt: serverTimestamp() as any
+      };
+      
+      // Update localStorage immediately to prevent sync races
+      localStorage.setItem(`lastProject_${user.uid}`, newId);
+      
+      await setDoc(projectRef, newProjectData);
+      setProject(newProjectData);
+      setCurrentView('dashboard');
+      addNotification('New project created successfully.', 'success');
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
+  };
+
+  // Auto-create initial project if none exist
+  useEffect(() => {
+    if (user && !loading && !isProjectsLoading && projects.length === 0 && project.id === 'default') {
+      console.log('No projects found, triggering auto-creation...');
+      createNewProject('My First Manuscript');
+    }
+  }, [user, loading, isProjectsLoading, projects.length, project.id]);
+
+  // Project Data & Subcollections Sync
+  useEffect(() => {
+    if (!user || !project.id || project.id === 'default') return;
+
+    localStorage.setItem(`lastProject_${user.uid}`, project.id);
+    const projectId = project.id;
+    const projectRef = doc(db, 'projects', projectId);
 
     // Project Data
     const unsubProject = onSnapshot(projectRef, (snap) => {
@@ -310,24 +359,24 @@ export default function App() {
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}`));
 
     // Subcollections Sync
-    const unsubChars = onSnapshot(query(collection(db, 'projects', projectId, 'characters'), orderBy('updatedAt', 'desc')), (snap) => {
-      setCharacters(snap.docs.map(d => d.data() as Character));
+    const unsubChars = onSnapshot(collection(db, 'projects', projectId, 'characters'), (snap) => {
+      setCharacters(snap.docs.map(d => d.data() as Character).sort((a, b) => b.updatedAt - a.updatedAt));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/characters`));
     
-    const unsubNodes = onSnapshot(query(collection(db, 'projects', projectId, 'plotNodes'), orderBy('order', 'asc')), (snap) => {
-      setPlotNodes(snap.docs.map(d => d.data() as PlotNode));
+    const unsubNodes = onSnapshot(collection(db, 'projects', projectId, 'plotNodes'), (snap) => {
+      setPlotNodes(snap.docs.map(d => d.data() as PlotNode).sort((a, b) => a.order - b.order));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/plotNodes`));
     
-    const unsubChapters = onSnapshot(query(collection(db, 'projects', projectId, 'chapters'), orderBy('order', 'asc')), (snap) => {
-      setChapters(snap.docs.map(d => d.data() as Chapter));
+    const unsubChapters = onSnapshot(collection(db, 'projects', projectId, 'chapters'), (snap) => {
+      setChapters(snap.docs.map(d => d.data() as Chapter).sort((a, b) => a.order - b.order));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/chapters`));
     
-    const unsubResearch = onSnapshot(query(collection(db, 'projects', projectId, 'research'), orderBy('updatedAt', 'desc')), (snap) => {
-      setResearch(snap.docs.map(d => d.data() as ResearchNote));
+    const unsubResearch = onSnapshot(collection(db, 'projects', projectId, 'research'), (snap) => {
+      setResearch(snap.docs.map(d => d.data() as ResearchNote).sort((a, b) => b.updatedAt - a.updatedAt));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/research`));
     
-    const unsubSources = onSnapshot(query(collection(db, 'projects', projectId, 'sourceMaterials'), orderBy('name', 'asc')), (snap) => {
-      setSourceMaterials(snap.docs.map(d => d.data() as SourceMaterial));
+    const unsubSources = onSnapshot(collection(db, 'projects', projectId, 'sourceMaterials'), (snap) => {
+      setSourceMaterials(snap.docs.map(d => d.data() as SourceMaterial).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/sourceMaterials`));
     
     const unsubPresence = onSnapshot(collection(db, 'projects', projectId, 'presence'), (snap) => {
@@ -339,7 +388,7 @@ export default function App() {
     setDoc(presenceRef, {
       userId: user.uid,
       userName: user.displayName || 'Author',
-      lastActive: Date.now()
+      lastSeen: Date.now()
     }).catch(e => handleFirestoreError(e, OperationType.WRITE, `projects/${projectId}/presence/${user.uid}`));
 
     return () => {
@@ -352,39 +401,65 @@ export default function App() {
       unsubPresence();
       deleteDoc(presenceRef).catch(() => {});
     };
-  }, [user]);
+  }, [user, project.id]);
+
 
   const updateProject = async (updates: Partial<Project>) => {
-    if (!user) return;
+    if (!user || !project.id || project.id === 'default') return;
     pushToHistory(project);
     const path = `projects/${project.id}`;
     const projectRef = doc(db, 'projects', project.id);
     try {
-      await updateDoc(projectRef, { ...updates, updatedAt: serverTimestamp() });
+      await updateDoc(projectRef, { 
+        ...updates, 
+        lastModified: Date.now(),
+        updatedAt: serverTimestamp() 
+      });
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
 
   const deleteProject = async () => {
-    if (!user) return;
+    if (!user || !project.id || project.id === 'default') return;
     if (!window.confirm("Are you sure you want to permanently delete this project? Data cannot be recovered.")) return;
     
     const path = `projects/${project.id}`;
     const projectRef = doc(db, 'projects', project.id);
     try {
-      await setDoc(projectRef, { ...INITIAL_PROJECT, ownerId: user.uid, id: project.id });
+      await deleteDoc(projectRef);
       setHistory([]);
       setFuture([]);
       setCurrentView('dashboard');
+      addNotification('Project permanently deleted.', 'info');
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
   const saveToCloud = async () => {
-    if (!user) return;
+    if (!user || !project.id || project.id === 'default') return;
     setIsSaving(true);
     const path = `projects/${project.id}`;
     try {
       const projectRef = doc(db, 'projects', project.id);
-      await updateDoc(projectRef, { ...project, updatedAt: serverTimestamp() });
+      
+      // Explicitly pick only fields allowed by firestore.rules to avoid Permission Denied
+      const allowedFields = {
+        title: project.title,
+        type: project.type,
+        maturity: project.maturity,
+        genre: project.genre,
+        premise: project.premise,
+        tone: project.tone,
+        collaborators: project.collaborators || [],
+        lastModified: Date.now(),
+        stats: project.stats || {},
+        critiques: project.critiques || {},
+        id: project.id,
+        targetPrize: project.targetPrize || '',
+        prizeAssessments: project.prizeAssessments || [],
+        sourceMaterials: project.sourceMaterials || [],
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(projectRef, allowedFields);
       setTimeout(() => setIsSaving(false), 1000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, path);
@@ -476,10 +551,23 @@ export default function App() {
     { id: 'writing', label: 'Writing Studio', icon: PenTool },
     { id: 'swarm', label: 'Critic Swarm', icon: Zap },
     { id: 'architect', label: 'Finish & Fix', icon: Construction },
+    { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
+    { id: 'export', label: 'Export & Publish', icon: Globe },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full"
+        />
+        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] animate-pulse">Initializing Narrative Systems...</p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -691,8 +779,11 @@ export default function App() {
                  <Library size={20} />
                </button>
              )}
-             <button className="px-5 py-2 bg-slate-900 text-white rounded font-black text-[10px] hover:bg-slate-800 transition-all uppercase tracking-[0.2em] shadow-lg shadow-slate-200">
-              Export Archive
+             <button 
+              onClick={() => setCurrentView('export')}
+              className="px-5 py-2 bg-slate-900 text-white rounded font-black text-[10px] hover:bg-slate-800 transition-all uppercase tracking-[0.2em] shadow-lg shadow-slate-200"
+            >
+              Export & Publish
             </button>
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -704,7 +795,11 @@ export default function App() {
         </header>
 
         {/* View Transition Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-12 relative bg-slate-50/50">
+        <div className={`flex-1 relative bg-slate-50/50 ${
+          ['writing', 'plot', 'swarm', 'architect', 'brainstorm'].includes(currentView) 
+            ? 'overflow-hidden' 
+            : 'overflow-y-auto p-4 md:p-12'
+        }`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView}
@@ -712,13 +807,20 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.3 }}
-              className="max-w-7xl mx-auto h-full"
+              className={`h-full ${
+                ['writing', 'plot', 'swarm', 'architect', 'brainstorm'].includes(currentView) 
+                  ? 'w-full' 
+                  : 'max-w-7xl mx-auto'
+              }`}
             >
               {(currentView === 'dashboard' || currentView === 'brainstorm') && (
                  <>
                    {currentView === 'dashboard' && (
                      <Dashboard 
                        project={{ ...project, characters, chapters }} 
+                       projects={projects}
+                       selectProject={(p) => setProject(p)}
+                       createNewProject={createNewProject}
                        updateProject={updateProject} 
                        setView={setCurrentView} 
                        deleteProject={deleteProject}
@@ -788,6 +890,7 @@ export default function App() {
                      setChapters(chapList);
                      await upsertChapterBatch(chapList);
                   }}
+                  setView={setCurrentView}
                   upsertChapter={upsertChapter}
                   onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
                   onUpsertSource={upsertSourceMaterial}
@@ -801,7 +904,25 @@ export default function App() {
                   maturity={project.maturity}
                   chapters={chapters}
                   sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
+                  updateChapters={async (chaps) => {
+                    setChapters(chaps);
+                    await upsertChapterBatch(chaps);
+                  }}
+                  setView={setCurrentView}
                   onError={(msg) => addNotification(msg, 'error')}
+                />
+              )}
+              {currentView === 'prizes' && (
+                <PrizeView 
+                  project={project}
+                  chapters={chapters}
+                  updateProject={updateProject}
+                />
+              )}
+              {currentView === 'export' && (
+                <PublishView 
+                  project={project}
+                  chapters={chapters}
                 />
               )}
               {currentView === 'architect' && (

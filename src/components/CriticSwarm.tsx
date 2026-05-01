@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Bug, AlertTriangle, CheckCircle, Zap, ShieldAlert, BookOpen, MessageSquare, Flame } from 'lucide-react';
-import { Chapter, Critique, ProjectType, MaturityLevel, SourceMaterial } from '../types';
+import { Chapter, Critique, ProjectType, MaturityLevel, SourceMaterial, ViewType } from '../types';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -9,21 +9,74 @@ interface Props {
   maturity: MaturityLevel;
   chapters: Chapter[];
   sourceMaterials: SourceMaterial[];
+  updateChapters: (chaps: Chapter[]) => void; // New prop to persist suggestions
+  setView: (view: ViewType) => void;
   onError?: (msg: string) => void;
 }
 
-export default function CriticSwarm({ projectType, maturity, chapters, sourceMaterials, onError }: Props) {
-  const [selectedChapId, setSelectedChapId] = useState<string | null>(chapters[0]?.id || null);
+export default function CriticSwarm({ projectType, maturity, chapters, sourceMaterials, updateChapters, setView, onError }: Props) {
+  const [selectedChapId, setSelectedChapId] = useState<string | null>(chapters[0]?.id || 'all');
   const [loading, setLoading] = useState(false);
   const [critiques, setCritiques] = useState<Critique[]>([]);
 
+  const toggleSuggestion = (critiqueId: string, suggestionIndex: number, type: 'accepted' | 'rejected') => {
+    const updatedCritiques = critiques.map(c => {
+      if (c.id === critiqueId) {
+        const updatedSuggestions = [...c.suggestions];
+        const s = updatedSuggestions[suggestionIndex];
+        if (type === 'accepted') {
+          s.accepted = !s.accepted;
+          if (s.accepted) s.rejected = false;
+        } else {
+          s.rejected = !s.rejected;
+          if (s.rejected) s.accepted = false;
+        }
+        return { ...c, suggestions: updatedSuggestions };
+      }
+      return c;
+    });
+    setCritiques(updatedCritiques);
+
+    // If accepted, add to chapter directives
+    if (selectedChapId && selectedChapId !== 'all') {
+      const suggestionText = critiques.find(c => c.id === critiqueId)?.suggestions[suggestionIndex].text;
+      if (suggestionText) {
+        const updatedChapters = chapters.map(chap => {
+          if (chap.id === selectedChapId) {
+            const currentDirectives = chap.directives || [];
+            const isAccepted = updatedCritiques.find(c => c.id === critiqueId)?.suggestions[suggestionIndex].accepted;
+            
+            let newDirectives = [...currentDirectives];
+            if (isAccepted) {
+              if (!newDirectives.includes(suggestionText)) newDirectives.push(suggestionText);
+            } else {
+              newDirectives = newDirectives.filter(d => d !== suggestionText);
+            }
+            return { ...chap, directives: newDirectives };
+          }
+          return chap;
+        });
+        updateChapters(updatedChapters);
+      }
+    }
+  };
+
   const runSwarm = async () => {
-    const chap = chapters.find(c => c.id === selectedChapId);
-    if (!chap || !chap.content) return;
-    
     setLoading(true);
     try {
-      const results = await AIService.getSwarmCritique(chap.content, projectType, maturity, sourceMaterials);
+      let textToAnalyze = "";
+      if (selectedChapId === 'all') {
+        textToAnalyze = chapters.map(c => `[${c.title}]\n${c.content.slice(0, 2000)}`).join('\n\n');
+      } else {
+        const chap = chapters.find(c => c.id === selectedChapId);
+        if (!chap || !chap.content) {
+          setLoading(false);
+          return;
+        }
+        textToAnalyze = chap.content;
+      }
+      
+      const results = await AIService.getSwarmCritique(textToAnalyze, projectType, maturity, sourceMaterials);
       setCritiques(results);
     } catch (err: any) {
       console.error(err);
@@ -46,11 +99,12 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
             onChange={(e) => setSelectedChapId(e.target.value)}
             className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-blue-100"
           >
+            <option value="all">WHOLE MANUSCRIPT (Overview)</option>
             {chapters.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
           </select>
           <button 
             onClick={runSwarm}
-            disabled={loading || !selectedChapId}
+            disabled={loading}
             className="px-8 py-2 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded transition-all shadow-xl flex items-center gap-2 uppercase tracking-widest disabled:opacity-50"
           >
             {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Zap size={14} className="fill-white" />}
@@ -65,7 +119,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
           <AnimatePresence mode="popLayout">
             {critiques.length > 0 ? critiques.map((c, i) => (
               <motion.div 
-                key={c.agentName}
+                key={c.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.1 }}
@@ -107,14 +161,44 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                   "{c.content}"
                 </p>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Reconstruction Path</p>
                   {c.suggestions.map((s, idx) => (
-                    <div key={idx} className="flex gap-3 items-start group">
-                      <div className="w-5 h-5 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                    <div key={idx} className="flex gap-3 items-start p-3 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50/50 transition-all">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold transition-colors ${
+                        s.accepted ? 'bg-emerald-600 text-white' : 
+                        s.rejected ? 'bg-red-600 text-white' :
+                        'bg-slate-100 text-slate-400'
+                      }`}>
                         {idx + 1}
                       </div>
-                      <p className="text-xs text-slate-500 font-medium group-hover:text-slate-900 transition-colors pt-0.5">{s}</p>
+                      <div className="flex-1">
+                        <p className={`text-xs font-medium transition-colors ${
+                          s.accepted ? 'text-slate-900' : 
+                          s.rejected ? 'text-slate-400 line-through' :
+                          'text-slate-600'
+                        }`}>
+                          {s.text}
+                        </p>
+                        <div className="flex gap-2 mt-2">
+                          <button 
+                            onClick={() => toggleSuggestion(c.id, idx, 'accepted')}
+                            className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded transition-colors ${
+                              s.accepted ? 'bg-emerald-600 text-white' : 'text-emerald-600 hover:bg-emerald-50'
+                            }`}
+                          >
+                            {s.accepted ? 'Accepted' : 'Accept'}
+                          </button>
+                          <button 
+                            onClick={() => toggleSuggestion(c.id, idx, 'rejected')}
+                            className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded transition-colors ${
+                              s.rejected ? 'bg-red-600 text-white' : 'text-red-500 hover:bg-red-50'
+                            }`}
+                          >
+                            {s.rejected ? 'Rejected' : 'Reject'}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -146,6 +230,22 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
            </header>
 
            <div className="space-y-6 relative flex-1">
+              {chapters.some(c => (c.directives || []).length > 0) && (
+                <div className="p-4 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                  <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-2">Accepted Changes Ready</p>
+                  <p className="text-xs font-medium text-emerald-100 leading-relaxed mb-4">
+                    You have accepted agent suggestions. Feed them into the production engine now.
+                  </p>
+                  <button 
+                    onClick={() => setView('architect')}
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black text-[9px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                  >
+                    <Flame size={12} />
+                    Run Auto-Redraft
+                  </button>
+                </div>
+              )}
+
               <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">Swarm Consensus</p>
                 <p className="text-sm font-medium text-slate-300 leading-relaxed italic">

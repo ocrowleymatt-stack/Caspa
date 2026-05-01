@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from './firestoreUtils';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -28,7 +29,41 @@ testConnection();
 export async function loginWithGoogle() {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
+    const user = result.user;
+    
+    // Store user data
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      let userSnap;
+      try {
+        userSnap = await getDoc(userRef);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+        throw error;
+      }
+      
+      const userData = {
+        email: user.email || '',
+        displayName: user.displayName || '',
+        photoURL: user.photoURL || '',
+        lastLoginAt: Date.now()
+      };
+      
+      try {
+        if (!userSnap || !userSnap.exists()) {
+          await setDoc(userRef, {
+            ...userData,
+            createdAt: Date.now()
+          });
+        } else {
+          await setDoc(userRef, userData, { merge: true });
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      }
+    }
+    
+    return user;
   } catch (error) {
     console.error('Sign in error:', error);
     throw error;
