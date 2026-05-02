@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GitBranch, Plus, Zap, Trash2, Map, MoveVertical, AlertCircle, Clock } from 'lucide-react';
 import { Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType } from '../types';
 import { AIService } from '../services/ai';
@@ -32,15 +32,20 @@ function PlotNodeItem({ node, index, totalLength, onUpdate, onDelete }: NodeItem
     setLocalDesc(node.description);
   }, [node.id]); // Reset only if ID changes (to handle reordering)
 
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
   // Debounced update
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localTitle !== node.title || localDesc !== node.description) {
-        onUpdate(node.id, { title: localTitle, description: localDesc });
+        onUpdateRef.current(node.id, { title: localTitle, description: localDesc });
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [localTitle, localDesc, node.id, onUpdate]);
+  }, [localTitle, localDesc, node.title, node.description, node.id]);
 
   return (
     <Reorder.Item 
@@ -131,7 +136,7 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
     setLoading(true);
     try {
       console.log("System: Initializing Plot Architect with Neural Engine 3.1...");
-      const nodes = await AIService.outlinePlotNodes(project);
+      const nodes = await AIService.outlinePlotNodes(project, chapters);
       
       if (!nodes || nodes.length === 0) {
         throw new Error("Neural Engine returned an empty structure. Try refining your source materials.");
@@ -265,7 +270,7 @@ You can now review these changes in the **Writing Studio**.`);
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-0 overflow-y-auto lg:overflow-hidden">
         <div className="lg:col-span-2 overflow-y-auto px-4 -mx-4 custom-scrollbar">
           <Reorder.Group 
             axis="y" 

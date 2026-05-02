@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Zap, BrainCircuit, Lightbulb, Save } from 'lucide-react';
 import { Project } from '../types';
 import { AIService } from '../services/ai';
@@ -21,15 +21,20 @@ export default function Brainstorm({ project, updateProject, onError }: Props) {
   const [results, setResults] = useState<string | null>(null);
   const [localPremise, setLocalPremise] = useState(project.premise);
 
+  const updateProjectRef = useRef(updateProject);
+  useEffect(() => {
+    updateProjectRef.current = updateProject;
+  }, [updateProject]);
+
   // Debounced update to parent
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localPremise !== project.premise) {
-        updateProject({ premise: localPremise });
+        updateProjectRef.current({ premise: localPremise });
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [localPremise, project.premise, updateProject]);
+  }, [localPremise, project.premise]);
 
   const handleBrainstorm = async () => {
     if (!localPremise) return;
@@ -56,7 +61,7 @@ export default function Brainstorm({ project, updateProject, onError }: Props) {
         <p className="text-slate-500 font-medium italic text-sm">Expand narrative branches with distributed intelligence.</p>
       </header>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-0 overflow-y-auto lg:overflow-hidden">
         {/* Left: Input */}
         <div className="space-y-6 flex flex-col min-h-[400px]">
           <div className="p-8 bg-white border border-slate-200 rounded-xl space-y-4 flex-1 flex flex-col shadow-sm">

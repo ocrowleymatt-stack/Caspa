@@ -22,10 +22,16 @@ export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, resea
   const filteredResearch = research.filter(note => {
     const term = searchTerm.toLowerCase();
     if (!term) return true;
+    const tagsArray = Array.isArray(note.tags) ? note.tags : [];
     return (
       (note.title || '').toLowerCase().includes(term) || 
       (note.content || '').toLowerCase().includes(term) ||
-      (note.tags || []).some(tag => (tag || '').toLowerCase().includes(term)) ||
+      tagsArray.some(tag => {
+        if (typeof tag === 'string') {
+          return tag.toLowerCase().includes(term);
+        }
+        return false;
+      }) ||
       (note.category || '').toLowerCase().includes(term)
     );
   });
@@ -48,9 +54,9 @@ export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, resea
   };
 
   return (
-    <div className="h-full flex flex-col md:flex-row gap-8">
+    <div className="h-full flex flex-col md:flex-row gap-8 min-h-0 overflow-y-auto md:overflow-hidden">
       {/* Left List */}
-      <div className="w-full md:w-80 flex flex-col gap-6">
+      <div className="w-full md:w-80 flex flex-col gap-6 shrink-0">
         <header>
           <h2 className="text-3xl font-black tracking-tight text-slate-900 mb-1">Research Archive</h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Agentic knowledge compilation.</p>
@@ -174,7 +180,7 @@ export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, resea
                     <div className="flex items-center gap-1.5">
                       <Tags size={14} className="text-slate-300" />
                       <div className="flex gap-2">
-                        {selectedNote.tags.map(tag => (
+                        {(Array.isArray(selectedNote.tags) ? selectedNote.tags : []).map(tag => (
                           <span key={tag} className="text-[9px] font-bold text-slate-400">#{tag}</span>
                         ))}
                       </div>
@@ -197,8 +203,8 @@ export const ResearchLibrary: React.FC<ResearchLibraryProps> = ({ project, resea
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4 text-slate-200">
               <Library size={64} strokeWidth={1} className="opacity-10 text-slate-900" />
               <div className="max-w-xs">
-                <p className="text-lg font-bold text-slate-400">Library Offline</p>
-                <p className="text-xs text-slate-300 font-medium italic">Initialize a specialist search to expand your narrative foundation.</p>
+                <p className="text-lg font-bold text-slate-400">Archive Ready</p>
+                <p className="text-xs text-slate-300 font-medium italic">Select a research note or initialize a new search to expand your foundation.</p>
               </div>
             </div>
           )}

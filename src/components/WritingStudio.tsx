@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type, Flame } from 'lucide-react';
 import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique, ViewType } from '../types';
 import { AIService } from '../services/ai';
@@ -143,23 +143,6 @@ export default function WritingStudio({
     }
   }, [project.sourceMaterials]);
 
-  // Debounce updates to parent
-  useEffect(() => {
-    if (!selectedChapter) return;
-    const timer = setTimeout(() => {
-      if (localTitle !== selectedChapter.title || 
-          localSummary !== selectedChapter.summary || 
-          localContent !== selectedChapter.content) {
-        updateChapter(selectedChapter.id, { 
-          title: localTitle, 
-          summary: localSummary, 
-          content: localContent 
-        });
-      }
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [localTitle, localSummary, localContent, selectedChapter]);
-
   const updateChapter = (id: string, updates: Partial<Chapter>) => {
     const existing = chapters.find((c: Chapter) => c.id === id);
     if (!existing) return;
@@ -167,6 +150,25 @@ export default function WritingStudio({
     updateChapters(chapters.map((c: Chapter) => c.id === id ? newChapter : c));
     if (upsertChapter) upsertChapter(newChapter);
   };
+
+  const updateChapterRef = useRef(updateChapter);
+  useEffect(() => {
+    updateChapterRef.current = updateChapter;
+  }, [updateChapter]);
+
+  // Debounce updates to parent
+  useEffect(() => {
+    if (!selectedChapterId) return;
+    const timer = setTimeout(() => {
+       // We only update if something actually changed from what is currently saved
+       updateChapterRef.current(selectedChapterId, { 
+         title: localTitle, 
+         summary: localSummary, 
+         content: localContent 
+       });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [localTitle, localSummary, localContent, selectedChapterId]);
 
   const deleteChapter = (id: string) => {
     updateChapters(chapters.filter((c: Chapter) => c.id !== id));
@@ -390,13 +392,21 @@ export default function WritingStudio({
         initial={false}
         animate={{ 
           width: isSidebarVisible && !isFocusMode ? (isMobile ? '100%' : 320) : 0,
-          x: isSidebarVisible && !isFocusMode ? 0 : -320
+          x: isSidebarVisible && !isFocusMode ? 0 : (isMobile ? '-100%' : -320)
         }}
-        className="border-r border-slate-200 bg-white flex flex-col shadow-sm relative z-20 h-full overflow-hidden"
+        className={`border-r border-slate-200 bg-white flex flex-col shadow-sm z-20 h-full overflow-hidden ${isMobile ? 'absolute inset-y-0 left-0 shadow-2xl' : 'relative'}`}
       >
         {/* Manuscript Section */}
-        <div className="flex-none p-6 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-4">
+        <div className="flex-none p-6 border-b border-slate-100 relative">
+          {isMobile && (
+            <button 
+              onClick={() => setIsSidebarVisible(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-full transition-all md:hidden"
+            >
+              <X size={16} />
+            </button>
+          )}
+          <div className="flex items-center justify-between mb-4 pr-10">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
               <BookOpen size={14} className="text-blue-600" />
               Manuscript

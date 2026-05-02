@@ -113,7 +113,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto lg:overflow-hidden">
         {/* Critique Cards */}
         <div className="lg:col-span-2 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
           <AnimatePresence mode="popLayout">

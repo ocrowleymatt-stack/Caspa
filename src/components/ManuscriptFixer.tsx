@@ -9,11 +9,12 @@ interface Props {
   project: Project;
   chapters: Chapter[];
   updateChapters: (chaps: Chapter[]) => void;
+  updatePlotNodes: (nodes: any[]) => void;
   setView: (view: any) => void;
   onError?: (msg: string) => void;
 }
 
-export default function ManuscriptFixer({ project, chapters, updateChapters, setView, onError }: Props) {
+export default function ManuscriptFixer({ project, chapters, updateChapters, updatePlotNodes, setView, onError }: Props) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isFixing, setIsFixing] = useState(false);
   const [autoPilot, setAutoPilot] = useState(false);
@@ -422,28 +423,35 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
 
   const [isFixingBadBook, setIsFixingBadBook] = useState(false);
 
+  const [fixProgress, setFixProgress] = useState(0);
+
   const runFixBadBook = async () => {
     setIsFixingBadBook(true);
+    setFixProgress(0);
     addLog("System: Initializing FIX A BAD BOOK sequence...");
     addLog("This macro will execute Prize Targeting, Outline Architecture, Continuity Sweeps, and Deep Drafting sequentially.");
     try {
       // Step 1: Prize Targeting
-      addLog("Phase 1: Assessing Prize Worthiness...");
+      setFixProgress(5);
+      addLog("Phase 1/5: Assessing Prize Worthiness...");
       const prizeAssessments = await AIService.assessPrizeWorthiness(project, chapters);
       if (prizeAssessments.length > 0) {
-        addLog(`Prize targeted: ${prizeAssessments[0].prizeName}. Alignment: ${prizeAssessments[0].alignmentScore}%`);
-        addLog(`Focusing edits on: ${prizeAssessments[0].recommendations[0]}`);
+        addLog(`Prize targeted: ${prizeAssessments[0].prizeName}. Alignment: ${prizeAssessments[0].eligibilityScore}%`);
+        addLog(`Focusing edits on: ${prizeAssessments[0].recommendation}`);
       } else {
         addLog("Prize Assessment yielded generic targets. Proceeding.");
       }
 
       // Step 2: Plot Outlining
-      addLog("Phase 2: Extracting structural vulnerabilities...");
-      const newNodes = await AIService.outlinePlotNodes({ ...project, plotNodes: [] });
+      setFixProgress(20);
+      addLog("Phase 2/5: Extracting structural vulnerabilities...");
+      const newNodes = await AIService.outlinePlotNodes({ ...project, plotNodes: [] }, chapters);
+      await updatePlotNodes(newNodes);
       addLog(`Architected ${newNodes.length} new Plot Nodes.`);
 
       // Step 3: Reconcile Chapters
-      addLog("Phase 3: Reconciling chapters with new structural logic...");
+      setFixProgress(40);
+      addLog("Phase 3/5: Reconciling chapters with new structural logic...");
       const reconciledNodes = await AIService.reconcileChapters(project, newNodes, chapters);
       
       const newChapters: Chapter[] = reconciledNodes.map((beat, index) => {
@@ -462,41 +470,52 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
       await updateChapters(newChapters);
       addLog(`Manuscript realigned into ${newChapters.length} chapters.`);
 
-      // Step 4: Continuity Sweep (Critic Swarm proxy)
-      addLog("Phase 4: Executing Swarm Continuity Pass...");
+      // Step 4: Continuity Sweep
+      setFixProgress(60);
+      addLog("Phase 4/5: Executing Swarm Continuity Pass...");
       const continuityReport = await AIService.analyzeContinuity(newNodes, newChapters);
-      addLog("Continuity analysis complete. Applying swarm recommendations...");
+      addLog("Continuity analysis complete. Swarm logic integrated.");
 
-      // For Fix a Bad Book, we will run the Slow Cooker / Deep Draft loop over empty or poorly formed chapters
-      addLog("Phase 5: Engaging Deep Draft generation for missing sequences...");
+      // Step 5: Deep Draft
+      setFixProgress(75);
+      addLog("Phase 5/5: Engaging Deep Draft generation for missing sequences...");
       const emptyChapters = newChapters.filter(c => !c.content.trim() || c.content.length < 500);
       
       if (emptyChapters.length > 0) {
         let updatedChaps = [...newChapters];
+        let i = 0;
         for (const chap of emptyChapters) {
-          addLog(`Re-drafting: Chapter ${chap.order + 1} - "${chap.title}"...`);
+          const subProgress = 75 + ((i / emptyChapters.length) * 20);
+          setFixProgress(subProgress);
+          addLog(`[${i+1}/${emptyChapters.length}] Re-drafting: Chapter ${chap.order + 1} - "${chap.title}"... (AI processing)`);
+          
           const earlierContent = updatedChaps
             .filter(c => c.order < chap.order)
             .map(c => c.content)
             .join('\n\n')
             .slice(-3000);
           
+          const activeChapterNodes = newNodes.filter(n => (chap.plotNodeIds || []).includes(n.id));
+
           const content = await AIService.writeDraft(
             chap.title,
             chap.summary + `\n\nCONTINUITY DIRECTIVE:\n${continuityReport.slice(0, 500)}`,
             earlierContent,
             project.type,
-            newNodes,
+            activeChapterNodes,
             project.maturity,
-            project.sourceMaterials || []
+            project.sourceMaterials || [],
+            chap.directives || []
           );
           
           updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
           await updateChapters(updatedChaps);
-          addLog(`Success: Re-drafted Chapter ${chap.order + 1}.`);
+          addLog(`Success: Drafted Chapter ${chap.order + 1}. Moving to next...`);
+          i++;
         }
       }
 
+      setFixProgress(100);
       addLog("System: FIX A BAD BOOK sequence completed. Manuscript is primed for export.");
     } catch (err: any) {
       console.error(err);
@@ -516,6 +535,24 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
           <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Deep Architecture Engine</span>
         </div>
         <h1 className="text-4xl font-black text-slate-900 mb-4 tracking-tight italic font-serif">Finish & Fix <span className="text-[10px] not-italic text-slate-300 font-sans tracking-normal opacity-50">v2.55-stable</span></h1>
+        
+        {isFixingBadBook && (
+          <div className="max-w-md mx-auto mt-8 mb-4 space-y-2">
+            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+              <motion.div 
+                className="h-full bg-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.5)]"
+                initial={{ width: 0 }}
+                animate={{ width: `${fixProgress}%` }}
+                transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+              />
+            </div>
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-indigo-400">
+              <span>Macro Overhaul: {fixProgress < 20 ? 'Targeting' : fixProgress < 40 ? 'Architecting' : fixProgress < 60 ? 'Reconciling' : fixProgress < 75 ? 'Continuity' : 'Deep Drafting'}</span>
+              <span>{Math.round(fixProgress)}%</span>
+            </div>
+          </div>
+        )}
+
         <p className="text-slate-500 max-w-2xl mx-auto font-medium">
           The Global Manuscript Engine analyzes your entire work for structural integrity, logical consistency, and thematic resolution.
         </p>
@@ -545,7 +582,9 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
               >
                 <div className="flex items-center gap-3">
                   <Target size={18} />
-                  <span className="text-sm font-bold">Fix a Bad Book (Macro)</span>
+                  <span className="text-sm font-bold">
+                    {isFixingBadBook ? `Overhauling: ${Math.round(fixProgress)}%` : 'Fix a Bad Book (Macro)'}
+                  </span>
                 </div>
                 {isFixingBadBook ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
               </button>

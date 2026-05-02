@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Book, Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, ShieldAlert, AlertCircle, Save, Trash2, Trophy, Target, Plus, ChevronDown } from 'lucide-react';
 import { Project, ViewType, ProjectType, MaturityLevel } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -35,25 +35,30 @@ export default function Dashboard({
   const [localTitle, setLocalTitle] = useState(project.title);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
 
+  const updateProjectRef = useRef(updateProject);
+  useEffect(() => {
+    updateProjectRef.current = updateProject;
+  }, [updateProject]);
+
   // Debounced update for premise
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localPremise !== project.premise) {
-        updateProject({ premise: localPremise });
+        updateProjectRef.current({ premise: localPremise });
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [localPremise, project.premise, updateProject]);
+  }, [localPremise, project.premise]);
 
   // Debounced update for title
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localTitle !== project.title) {
-        updateProject({ title: localTitle });
+        updateProjectRef.current({ title: localTitle });
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [localTitle, project.title, updateProject]);
+  }, [localTitle, project.title]);
 
   const projectTypes: { value: ProjectType; label: string }[] = [
     { value: 'novel', label: 'Novel' },

@@ -542,18 +542,43 @@ export default function App() {
     }
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'brainstorm', label: 'AI Brainstorm', icon: Sparkles },
-    { id: 'characters', label: 'Character Forge', icon: Users },
-    { id: 'plot', label: 'Plot Architect', icon: GitBranch },
-    { id: 'research', label: 'Research Library', icon: Library },
-    { id: 'writing', label: 'Writing Studio', icon: PenTool },
-    { id: 'swarm', label: 'Critic Swarm', icon: Zap },
-    { id: 'architect', label: 'Finish & Fix', icon: Construction },
-    { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
-    { id: 'export', label: 'Export & Publish', icon: Globe },
-    { id: 'settings', label: 'Settings', icon: Settings },
+  const navGroups = [
+    {
+      title: "1. Conception",
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+        { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
+        { id: 'brainstorm', label: 'AI Brainstorm', icon: Sparkles },
+      ]
+    },
+    {
+      title: "2. World Building",
+      items: [
+        { id: 'characters', label: 'Character Forge', icon: Users },
+        { id: 'research', label: 'Research Library', icon: Library },
+      ]
+    },
+    {
+      title: "3. Structure",
+      items: [
+        { id: 'plot', label: 'Plot Architect', icon: GitBranch },
+        { id: 'architect', label: 'Finish & Fix', icon: Construction },
+      ]
+    },
+    {
+      title: "4. Execution",
+      items: [
+        { id: 'writing', label: 'Writing Studio', icon: PenTool },
+        { id: 'swarm', label: 'Critic Swarm', icon: Zap },
+      ]
+    },
+    {
+      title: "5. Delivery",
+      items: [
+        { id: 'export', label: 'Export & Publish', icon: Globe },
+        { id: 'settings', label: 'Settings', icon: Settings },
+      ]
+    }
   ];
 
   if (loading) {
@@ -657,7 +682,7 @@ export default function App() {
           width: isSidebarOpen ? (isMobile ? '85%' : 260) : (isMobile ? 0 : 80),
           x: isMobile && !isSidebarOpen ? '-100%' : 0
         }}
-        className={`flex flex-col bg-slate-950 text-white relative shadow-2xl border-r border-slate-900 ${
+        className={`flex flex-col bg-slate-950 text-white relative shadow-2xl border-r border-slate-900 overflow-hidden ${
           isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-20'
         }`}
       >
@@ -676,32 +701,40 @@ export default function App() {
           )}
         </div>
 
-        <nav className="flex-1 px-4 space-y-1 mt-4">
-          <div className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em] px-3 mb-4">Project Space</div>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setCurrentView(item.id as ViewType);
-                  if (isMobile) setIsSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
-                  isActive 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
-                    : 'text-slate-500 hover:text-white hover:bg-white/5'
-                }`}
-                title={item.label}
-              >
-                <Icon size={18} className={isActive ? 'text-white' : 'group-hover:text-blue-400 transition-colors'} />
-                {isSidebarOpen && (
-                  <span className="flex-1 text-left">{item.label}</span>
-                )}
-              </button>
-            );
-          })}
+        <nav className="flex-1 px-4 space-y-4 mt-4 overflow-y-auto custom-scrollbar">
+          {navGroups.map((group, groupIndex) => (
+            <div key={groupIndex} className="space-y-1">
+              {isSidebarOpen ? (
+                <div className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] px-3 mb-2">{group.title}</div>
+              ) : (
+                <div className="w-full h-px bg-slate-800 my-2" />
+              )}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setCurrentView(item.id as ViewType);
+                      if (isMobile) setIsSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
+                      isActive 
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                        : 'text-slate-500 hover:text-white hover:bg-white/5'
+                    }`}
+                    title={item.label}
+                  >
+                    <Icon size={18} className={isActive ? 'text-white' : 'group-hover:text-blue-400 transition-colors'} />
+                    {isSidebarOpen && (
+                      <span className="flex-1 text-left truncate">{item.label}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="px-4 py-4 space-y-2 border-t border-slate-900 mx-3">
@@ -796,7 +829,7 @@ export default function App() {
 
         {/* View Transition Area */}
         <div className={`flex-1 relative bg-slate-50/50 ${
-          ['writing', 'plot', 'swarm', 'architect', 'brainstorm'].includes(currentView) 
+          ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research'].includes(currentView) 
             ? 'overflow-hidden' 
             : 'overflow-y-auto p-4 md:p-12'
         }`}>
@@ -807,10 +840,10 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.3 }}
-              className={`h-full ${
-                ['writing', 'plot', 'swarm', 'architect', 'brainstorm'].includes(currentView) 
-                  ? 'w-full' 
-                  : 'max-w-7xl mx-auto'
+              className={`${
+                ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research'].includes(currentView) 
+                  ? `h-full w-full ${currentView === 'writing' ? '' : 'p-4 md:p-8'}`
+                  : 'min-h-full max-w-7xl mx-auto'
               }`}
             >
               {(currentView === 'dashboard' || currentView === 'brainstorm') && (
@@ -932,6 +965,10 @@ export default function App() {
                   updateChapters={async (chaps) => {
                     setChapters(chaps);
                     await upsertChapterBatch(chaps);
+                  }}
+                  updatePlotNodes={async (nodes) => {
+                    setPlotNodes(nodes);
+                    await upsertPlotNodesBatch(nodes);
                   }}
                   setView={setCurrentView}
                   onError={(msg) => addNotification(msg, 'error')}

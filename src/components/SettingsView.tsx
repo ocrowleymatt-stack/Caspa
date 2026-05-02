@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Settings, 
   Target, 
@@ -74,14 +74,19 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
     setLocalTitle(project.title);
   }, [project.id]); // Just reset when project changes, don't override on every DB update
 
+  const updateProjectRef = useRef(updateProject);
+  useEffect(() => {
+    updateProjectRef.current = updateProject;
+  }, [updateProject]);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       if (localTitle !== project.title) {
-        updateProject({ title: localTitle });
+        updateProjectRef.current({ title: localTitle });
       }
     }, 1000);
     return () => clearTimeout(handler);
-  }, [localTitle, project.title, updateProject]);
+  }, [localTitle, project.title]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-12 pb-20">

@@ -47,7 +47,7 @@ async function callAI(options: {
   schema?: any;
   maxTokens?: number;
 }) {
-  const { prompt, model = "gemini-1.5-flash", json = false, schema, maxTokens } = options;
+  const { prompt, model = "gemini-3-flash-preview", json = false, schema, maxTokens } = options;
 
   // Primary Attempt: Gemini
   try {
@@ -58,9 +58,11 @@ async function callAI(options: {
     }
     if (maxTokens) config.maxOutputTokens = maxTokens;
 
-    // Use correct model for task type per skill
-    const targetModel = model === "gemini-3-flash-preview" ? "gemini-1.5-flash" : 
-                        model === "gemini-3.1-pro-preview" ? "gemini-1.5-pro" : 
+  // Use correct model for task type per skill
+    const targetModel = model === "gemini-3-flash-preview" ? "gemini-3-flash-preview" : 
+                        model === "gemini-3.1-pro-preview" ? "gemini-3.1-pro-preview" : 
+                        model === "gemini-1.5-flash" ? "gemini-3-flash-preview" :
+                        model === "gemini-1.5-pro" ? "gemini-3.1-pro-preview" :
                         model;
 
     console.log(`AI Calling: ${targetModel} | Prompt length: ${prompt.length}`);
@@ -70,7 +72,7 @@ async function callAI(options: {
       config: config
     });
 
-    const responseText = result.text || result.response?.text?.() || result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const responseText = result.text;
 
     if (responseText) {
       console.log(`AI Success: ${targetModel} | Response length: ${responseText.length}`);
@@ -213,14 +215,26 @@ export const AIService = {
       required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
     const data = safeParseJSON(text || "{}");
-    return { ...data, id: crypto.randomUUID(), updatedAt: Date.now() };
+    return {
+      name: data.name || 'Unknown Character',
+      role: data.role || 'Supporting',
+      backstory: data.backstory || '',
+      traits: Array.isArray(data.traits) ? data.traits : [],
+      goals: Array.isArray(data.goals) ? data.goals : [],
+      fears: Array.isArray(data.fears) ? data.fears : [],
+      motivations: Array.isArray(data.motivations) ? data.motivations : [],
+      quirks: Array.isArray(data.quirks) ? data.quirks : [],
+      archetype: data.archetype || 'Unknown',
+      id: crypto.randomUUID(),
+      updatedAt: Date.now()
+    };
   },
 
-  async outlinePlotNodes(project: Project): Promise<PlotNode[]> {
+  async outlinePlotNodes(project: Project, chapters: Chapter[] = []): Promise<PlotNode[]> {
     const maxContentLength = 150000;
-    const chaptersContext = ((project as any).chapters || []).map((c: any) => `### Chapter: ${c.title}\n${c.content}`).join('\n\n').slice(0, maxContentLength);
+    const chaptersContext = chapters.map((c: any) => `### Chapter: ${c.title}\n${c.content}`).join('\n\n').slice(0, maxContentLength);
     const sourceContext = (project.sourceMaterials || []).map((s: any) => `### Source [${s.name}]\n${s.content}`).join('\n\n').slice(0, maxContentLength);
     
     let prompt = `You are a Master Plot Architect outlining a ${project.type} structure for "${project.title}". Create between 8 and 18 major narrative beats. ${getMaturityDirectives(project.maturity)}\n\n`;
@@ -232,19 +246,25 @@ export const AIService = {
     }
 
     const schema = {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          description: { type: Type.STRING },
-          type: { type: Type.STRING }
-        },
-        required: ["title", "description", "type"]
-      }
+      type: Type.OBJECT,
+      properties: {
+        nodes: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              type: { type: Type.STRING }
+            },
+            required: ["title", "description", "type"]
+          }
+        }
+      },
+      required: ["nodes"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
     let data = safeParseJSON(text || "[]", []);
     
     if (!Array.isArray(data)) {
@@ -363,16 +383,24 @@ export const AIService = {
       required: ["title", "content", "category", "tags", "sources"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
     const data = safeParseJSON(text || "{}");
-    return { ...data, id: crypto.randomUUID(), updatedAt: Date.now() };
+    return { 
+      title: data.title || 'Untitled Research',
+      content: data.content || 'No content generated.',
+      category: data.category || 'general',
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      sources: Array.isArray(data.sources) ? data.sources : [],
+      id: crypto.randomUUID(), 
+      updatedAt: Date.now() 
+    };
   },
 
   async analyzeContinuity(nodes: PlotNode[], chapters: Chapter[]): Promise<string> {
     const prompt = `Analyze narrative continuity between the Plot Nodes and the current Chapter sequence.
       
       Plot Nodes: ${JSON.stringify(nodes.map(n => ({ title: n.title, status: n.status })))}
-      Chapters: ${JSON.stringify(chapters.map(c => ({ title: c.title, nodes: c.plotNodeIds })))}
+      Chapters: ${JSON.stringify(chapters.map(c => ({ title: c.title, nodes: c.plotNodeIds || [] })))}
       
       Identify orphaned nodes and logic gaps. Format as Markdown.`;
 
@@ -413,7 +441,7 @@ export const AIService = {
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-1.5-pro" });
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-3.1-pro-preview" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -449,18 +477,24 @@ export const AIService = {
       Return as a JSON array of objects with "title" and "summary".`;
 
     const schema = {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          summary: { type: Type.STRING }
-        },
-        required: ["title", "summary"]
-      }
+      type: Type.OBJECT,
+      properties: {
+        beats: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              summary: { type: Type.STRING }
+            },
+            required: ["title", "summary"]
+          }
+        }
+      },
+      required: ["beats"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
     const data = safeParseJSON(text || "[]", []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
@@ -472,7 +506,7 @@ export const AIService = {
     ${plotNodes.map(n => `- [${n.id}] ${n.title}: ${n.description}`).join('\n')}
     
     CURRENT CHAPTERS:
-    ${chapters.map(c => `- ${c.title}: ${c.summary} (Current Plot Node links: ${c.plotNodeIds.join(', ')})`).join('\n')}
+    ${chapters.map(c => `- ${c.title}: ${c.summary} (Current Plot Node links: ${(c.plotNodeIds || []).join(', ')})`).join('\n')}
     
     Return as a JSON object: { "chapters": [{ "title": string, "summary": string, "plotNodeIds": string[] }] }`;
 
@@ -495,9 +529,12 @@ export const AIService = {
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
-    return data.chapters || [];
+    return (data.chapters || []).map((c: any) => ({
+      ...c,
+      plotNodeIds: Array.isArray(c.plotNodeIds) ? c.plotNodeIds : []
+    }));
   },
 
   async deepSimmer(chapter: Chapter, context: string, type: ProjectType, plotNodes: PlotNode[], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = []): Promise<string> {
@@ -585,7 +622,7 @@ export const AIService = {
       required: ["assessments"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-1.5-pro" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
     const data = safeParseJSON(response || "{}");
     return data.assessments || [];
   },
@@ -593,7 +630,7 @@ export const AIService = {
   async critique(text: string): Promise<string> {
     const prompt = `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
       Writing Sample: "${text}"`;
-    return await callAI({ prompt, model: "gemini-1.5-flash" });
+    return await callAI({ prompt, model: "gemini-3-flash-preview" });
   }
 };
 

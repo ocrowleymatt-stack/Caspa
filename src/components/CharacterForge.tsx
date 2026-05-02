@@ -49,9 +49,9 @@ export default function CharacterForge({ project, updateProject, onError }: Prop
   };
 
   return (
-    <div className="h-full flex gap-8">
+    <div className="h-full flex flex-col md:flex-row gap-8 min-h-0 overflow-y-auto md:overflow-hidden">
       {/* Left List */}
-      <div className="w-80 flex flex-col gap-6">
+      <div className="w-full md:w-80 flex flex-col gap-6 shrink-0">
         <header>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">Character Forge</h2>
           <p className="text-xs text-slate-500 font-medium italic">Architecting the human element.</p>
