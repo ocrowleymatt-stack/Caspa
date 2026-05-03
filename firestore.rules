@@ -47,10 +47,33 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function immutableProjectIdentityPreserved() {
+      return incoming().id == existing().id &&
+             incoming().ownerId == existing().ownerId &&
+             incoming().createdAt == existing().createdAt;
+    }
+
+    function ownerCanUpdateProject() {
+      return isSignedIn() &&
+             isOwner(existing()) &&
+             immutableProjectIdentityPreserved() &&
+             incoming().diff(existing()).affectedKeys().hasOnly([
+               'title', 'type', 'maturity', 'genre', 'premise', 'tone',
+               'collaborators', 'lastModified', 'stats', 'critiques',
+               'targetPrize', 'prizeAssessments', 'sourceMaterials',
+               'externalReviews', 'isPublic', 'publicId', 'targetWordCount',
+               'publishing', 'updatedAt', 'primaryProvider',
+               'characters', 'plotNodes', 'chapters', 'research',
+               'outline', 'architecture', 'analysis', 'manuscriptAnalysis',
+               'continuityReport', 'overhaul', 'overhaulLog', 'fixProgress',
+               'settings', 'metadata', 'notes', 'lastOverhaulAt'
+             ]);
+    }
+
     // --- Entity Validations ---
-    function isValidProject(data) {
+    function isValidProjectOnCreate(data) {
       return data.id is string && data.id.size() <= 128 &&
-             data.title is string && data.title.size() <= 200 &&
+             data.title is string && data.title.size() <= 500 &&
              data.ownerId is string && data.ownerId.size() <= 128 &&
              (data.collaborators == null || data.collaborators is list) &&
              (data.isPublic == null || data.isPublic is bool);
@@ -58,8 +81,8 @@ service cloud.firestore {
 
     function isValidChapter(data) {
       return data.id is string && data.id.size() <= 128 &&
-             data.title is string && data.title.size() <= 200 &&
-             data.content is string && data.content.size() <= 1048576 && // 1MB limit check
+             data.title is string && data.title.size() <= 500 &&
+             data.content is string && data.content.size() <= 1048576 &&
              data.order is number;
     }
 
@@ -70,24 +93,13 @@ service cloud.firestore {
       allow get: if (isSignedIn() && canAccessProject(existing())) || existing().isPublic == true;
       allow list: if isSignedIn() && canAccessProject(existing());
       
-      allow create: if isSignedIn() && 
+      allow create: if isSignedIn() &&
                       isValidId(projectId) &&
-                      isValidProject(incoming()) &&
+                      isValidProjectOnCreate(incoming()) &&
                       incoming().ownerId == request.auth.uid &&
                       incoming().createdAt is number;
 
-      allow update: if isSignedIn() &&
-                      isValidProject(incoming()) &&
-                      isOwner(existing()) &&
-                      incoming().ownerId == existing().ownerId &&
-                      incoming().createdAt == existing().createdAt &&
-                      incoming().diff(existing()).affectedKeys().hasOnly([
-                        'title', 'type', 'maturity', 'genre', 'premise', 'tone', 
-                        'collaborators', 'lastModified', 'stats', 'critiques', 
-                        'targetPrize', 'prizeAssessments', 'sourceMaterials', 
-                        'externalReviews', 'isPublic', 'publicId', 'targetWordCount',
-                        'publishing', 'updatedAt'
-                      ]);
+      allow update: if ownerCanUpdateProject();
 
       allow delete: if isSignedIn() && isOwner(existing());
 
