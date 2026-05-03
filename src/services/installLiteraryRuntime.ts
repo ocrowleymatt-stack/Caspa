@@ -4,6 +4,19 @@ import { buildCharacterPsychologyInjection, buildCharacterEvolutionInjection } f
 import { Project, ProjectType, ResearchNote, ExternalReview, PlotNode, Chapter } from '../types';
 
 let installed = false;
+let runtimeChapters: Chapter[] = [];
+let runtimeProject: Partial<Project> | undefined;
+let runtimeCharacters: any[] = [];
+
+export function updateNarrativeRuntimeMemory(args: {
+  project?: Partial<Project>;
+  chapters?: Chapter[];
+  characters?: any[];
+} = {}) {
+  if (args.project) runtimeProject = args.project;
+  if (Array.isArray(args.chapters)) runtimeChapters = args.chapters.slice(0, 80);
+  if (Array.isArray(args.characters)) runtimeCharacters = args.characters.slice(0, 40);
+}
 
 function isProbablyCreativePrompt(prompt: string): boolean {
   const lower = prompt.toLowerCase();
@@ -20,13 +33,22 @@ function buildRuntimeLayer(args: {
   targetWordDelta?: number;
   chapters?: Chapter[];
 }) {
-  const literary = buildAlwaysOnLiteraryInjection(args);
+  const chapters = args.chapters?.length ? args.chapters : runtimeChapters;
+  const project = args.project || runtimeProject;
+
+  const literary = buildAlwaysOnLiteraryInjection({
+    ...args,
+    project,
+    chapters
+  });
   const character = buildCharacterPsychologyInjection({
-    chapters: args.chapters,
+    chapters,
+    characters: runtimeCharacters as any,
     sceneText: args.sceneText
   });
   const evolution = buildCharacterEvolutionInjection({
-    chapters: args.chapters
+    chapters,
+    characters: runtimeCharacters as any
   });
 
   return `\n\n=== FULL NARRATIVE RUNTIME — NON-NEGOTIABLE ===\n${literary}\n${character}\n${evolution}\n=== END RUNTIME ===\n\n`;
@@ -43,9 +65,11 @@ export function installLiteraryRuntime() {
     service.callAI = async (options: any) => {
       if (options?.prompt && !options?.json && isProbablyCreativePrompt(options.prompt)) {
         const runtime = buildRuntimeLayer({
-          projectType: 'novel',
+          project: runtimeProject,
+          projectType: (runtimeProject?.type as ProjectType) || 'novel',
           sceneText: options.prompt.slice(0, 8000),
-          chapterTitle: 'Direct Creative Call'
+          chapterTitle: 'Direct Creative Call',
+          chapters: runtimeChapters
         });
         return originalCallAI({ ...options, prompt: `${runtime}${options.prompt}` });
       }
@@ -73,13 +97,13 @@ export function installLiteraryRuntime() {
       const targetDelta = Math.max(3000, Math.min(4000, Math.round(targetWords / 15) - currentWords));
 
       const runtime = buildRuntimeLayer({
-        project: { title, type, maturity: maturity as any, genre: type, tone: 'restrained literary' },
+        project: runtimeProject || { title, type, maturity: maturity as any, genre: type, tone: 'restrained literary' },
         projectType: type,
         research,
         sceneText: `${summary}\n\n${context}`.slice(0, 12000),
         chapterTitle: title,
         targetWordDelta: targetDelta,
-        chapters: []
+        chapters: runtimeChapters
       });
 
       const runtimeDirectives = [
@@ -104,5 +128,5 @@ export function installLiteraryRuntime() {
     };
   }
 
-  console.info('Full narrative runtime (literary + character + evolution) installed.');
+  console.info('Full narrative runtime (literary + character + evolution + real memory) installed.');
 }
