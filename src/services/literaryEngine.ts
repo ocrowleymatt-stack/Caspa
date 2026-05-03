@@ -37,7 +37,9 @@ function seedToCadence(seed: number) {
     sensoryChannel: sensoryChannels[Math.floor(seed / 3) % sensoryChannels.length],
     paragraphShape: paragraphShapes[Math.floor(seed / 7) % paragraphShapes.length],
     motifLimit: 1 + (seed % 3),
-    dialogueRatioHint: ['low', 'medium', 'high'][Math.floor(seed / 11) % 3]
+    dialogueRatioHint: ['low', 'medium', 'high'][Math.floor(seed / 11) % 3],
+    silenceIntensity: ['low', 'medium', 'high'][Math.floor(seed / 13) % 3],
+    disruptionIntensity: ['subtle', 'moderate', 'rare'][Math.floor(seed / 17) % 3]
   };
 }
 
@@ -97,6 +99,8 @@ Cadence controls:
 - sensory emphasis: ${cadence.sensoryChannel}
 - motif recurrence limit before transformation: ${cadence.motifLimit}
 - dialogue density hint: ${cadence.dialogueRatioHint}
+- silence intensity: ${cadence.silenceIntensity}
+- micro-disruption intensity: ${cadence.disruptionIntensity}
 Contextual nuance: ${contextualRules[mode]}
 Standing rules:
 - Vary sentence length, paragraph shape, scene openings, syntax, sensory emphasis, interiority, and dialogue density.
@@ -132,6 +136,31 @@ Do not merely decorate sentences. Make dead sections do narrative work.
 `;
 }
 
+export function buildWildcardModules(): string {
+  return `
+WILDCARD LITERARY MODULES — CONTEXTUAL, NOT CHAOTIC:
+1. Silence Engine:
+   - Omit obvious emotional conclusions.
+   - Let some dialogue go unanswered.
+   - End some scenes half a beat early where pressure improves.
+2. Micro-Disruption Layer:
+   - Use rare fragments, interruptions, or off-beat observations only when they reveal pressure.
+   - Do not become quirky for its own sake.
+3. Character Drift Engine:
+   - POV and dialogue cadence should shift subtly by character: controlled, clipped, associative, evasive, camp, formal, or fractured as appropriate.
+4. Motif Mutation Engine:
+   - Motifs may recur only if they mutate: object -> pressure -> memory -> threat -> evidence -> joke -> wound.
+5. Time Distortion Engine:
+   - Expand small emotionally loaded moments; compress logistics and connective tissue.
+6. Contradiction Injector:
+   - Every major scene should contain one mismatch: said vs meant, wanted vs done, believed vs feared.
+7. Memory Leak Engine:
+   - Allow brief sensory-triggered memories. No full flashbacks unless explicitly requested.
+8. Anti-Symmetry Rule:
+   - No two consecutive paragraphs should use the same opening pattern, length profile, or rhetorical structure.
+`;
+}
+
 export function buildAlwaysOnLiteraryInjection(args: {
   project?: Partial<Project>;
   projectType?: ProjectType;
@@ -144,6 +173,7 @@ export function buildAlwaysOnLiteraryInjection(args: {
 ${buildAuthorVoiceProfile(args.project || { type: args.projectType }, args.research || [])}
 ${buildLiteraryHostageEngine()}
 ${buildBackFromTheDeadPass()}
+${buildWildcardModules()}
 ${buildAlwaysOnVarianceEngine(args)}
 FINAL QUALITY GATE:
 - Apply literary filters: remove cliché, reduce adrenaline, enforce subtext, increase specificity, strip explanation, sharpen rhythm.
