@@ -1,4 +1,4 @@
-import { Project, ProjectType, ResearchNote } from '../types';
+import { Project, ProjectType, ResearchNote, Chapter } from '../types';
 
 export type SceneMode = 'quiet' | 'conflict' | 'comic' | 'trauma' | 'reflection' | 'default';
 
@@ -41,6 +41,72 @@ function seedToCadence(seed: number) {
     silenceIntensity: ['low', 'medium', 'high'][Math.floor(seed / 13) % 3],
     disruptionIntensity: ['subtle', 'moderate', 'rare'][Math.floor(seed / 17) % 3]
   };
+}
+
+function firstNonEmptyLine(text = ''): string {
+  return text.split('\n').map(line => line.trim()).find(Boolean)?.slice(0, 180) || '';
+}
+
+function extractCandidateMotifs(text = ''): string[] {
+  const stop = new Set(['the','and','that','with','this','from','were','there','their','have','what','when','where','because','into','onto','about','would','could','should','said','then','than','been','being','they','them','your','you','his','her','she','him','for','not','but','had','was','are','all','one','out','our','who','why','how']);
+  const words = text.toLowerCase().match(/\b[a-z][a-z'-]{4,}\b/g) || [];
+  const counts = new Map<string, number>();
+  words.forEach(word => {
+    const clean = word.replace(/'s$/, '');
+    if (!stop.has(clean)) counts.set(clean, (counts.get(clean) || 0) + 1);
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map(([word]) => word);
+}
+
+function averageSentenceLength(text = ''): number {
+  const sentences = text.split(/[.!?]+/).map(s => s.trim()).filter(Boolean).slice(0, 120);
+  if (!sentences.length) return 0;
+  const words = sentences.reduce((acc, sentence) => acc + sentence.split(/\s+/).filter(Boolean).length, 0);
+  return Math.round(words / sentences.length);
+}
+
+export function buildCrossChapterMemory(chapters: Chapter[] = []): string {
+  const recent = chapters
+    .slice()
+    .sort((a, b) => (b.order || 0) - (a.order || 0))
+    .slice(0, 8);
+
+  const openings = recent.map(ch => firstNonEmptyLine(ch.content || ch.summary || '')).filter(Boolean);
+  const modes = recent.map(ch => inferSceneMode(`${ch.title}\n${ch.summary}\n${(ch.content || '').slice(0, 2500)}`));
+  const motifBank = extractCandidateMotifs(recent.map(ch => `${ch.title}\n${ch.summary}\n${(ch.content || '').slice(0, 5000)}`).join('\n\n'));
+  const avgSentence = averageSentenceLength(recent.map(ch => ch.content || '').join('\n\n'));
+
+  return `
+CROSS-CHAPTER MEMORY ENGINE:
+Recent scene modes: ${modes.length ? modes.join(', ') : 'none yet'}
+Recent opening lines to avoid echoing:
+${openings.length ? openings.map(o => `- ${o}`).join('\n') : '- none yet'}
+Recent dominant motifs / lexical pressure points:
+${motifBank.length ? motifBank.map(m => `- ${m}`).join('\n') : '- none yet'}
+Average recent sentence length: ${avgSentence || 'unknown'} words.
+Memory rules:
+- Do not repeat the same opening move as the recent chapters.
+- Do not reuse the same motif unless it mutates meaning.
+- If recent chapters used similar scene modes, deliberately shift rhythm, pace, or sensory channel.
+- Preserve authorial continuity while avoiding copy-paste cadence.
+- If average sentence length is very even, introduce controlled asymmetry.
+`;
+}
+
+export function buildVoiceDriftCorrector(chapters: Chapter[] = []): string {
+  const sample = chapters.slice(-5).map(ch => ch.content || ch.summary || '').join('\n\n').slice(0, 20000);
+  const motifs = extractCandidateMotifs(sample).slice(0, 10);
+  return `
+VOICE DRIFT CORRECTOR:
+Keep the project voice continuous but not repetitive.
+Known recent voice/motif anchors: ${motifs.length ? motifs.join(', ') : 'none yet'}.
+Correction rules:
+- If prose becomes too slick, roughen it with concrete friction.
+- If prose becomes too frantic, restore restraint.
+- If prose becomes too expository, convert explanation into behaviour.
+- If humour appears, make it situational and character-revealing.
+- If lyricism appears, tether it to object, gesture, place, or pressure.
+`;
 }
 
 export function buildAuthorVoiceProfile(project?: Partial<Project>, sourceNotes: ResearchNote[] = []): string {
@@ -168,9 +234,12 @@ export function buildAlwaysOnLiteraryInjection(args: {
   sceneText?: string;
   chapterTitle?: string;
   targetWordDelta?: number;
+  chapters?: Chapter[];
 } = {}): string {
   return `
 ${buildAuthorVoiceProfile(args.project || { type: args.projectType }, args.research || [])}
+${buildCrossChapterMemory(args.chapters || [])}
+${buildVoiceDriftCorrector(args.chapters || [])}
 ${buildLiteraryHostageEngine()}
 ${buildBackFromTheDeadPass()}
 ${buildWildcardModules()}
