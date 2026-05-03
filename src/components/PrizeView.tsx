@@ -52,7 +52,14 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
           disabled={loading}
           className="px-8 py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl flex items-center gap-3 disabled:opacity-50"
         >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} className="text-amber-400" />}
+          {loading ? (
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            >
+              <Loader2 size={16} />
+            </motion.div>
+          ) : <Sparkles size={16} className="text-amber-400" />}
           Run Real-time Audit
         </button>
       </header>

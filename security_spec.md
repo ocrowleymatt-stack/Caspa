@@ -1,26 +1,30 @@
-# Security Specification
+# Security Specification - NovelWrite Pro
 
 ## Data Invariants
-1. Access controls: A Project's `ownerId` must strictly equal `request.auth.uid`. Collaborators must be checked natively if implemented. For now, strict ownership implies `ownerId == request.auth.uid`.
-2. User profile records (`/users/{userId}`) are strictly isolated. A user can only access and modify their own PII.
-3. All subcollections (`chapters`, `characters`, `plotNodes`, etc.) inherit access from `projects`.
-4. Every `updatedAt` update must match `request.time`.
-5. Schema fields are strictly validated based on `firebase-blueprint.json`.
-6. Only verified emails are allowed write/read access.
+1. A project must have a valid `ownerId` matching the creator's UID.
+2. Sub-resources (Characters, chapters, etc.) must belong to a project that the user has access to (owner or collaborator).
+3. Public projects allow read-only access to their chapters via `get` and `list` operations even for unauthenticated users, if the project has `isPublic: true`.
+4. Users can only update their own presence status.
+5. Critical project fields like `ownerId` and `createdAt` are immutable after creation.
+6. `updatedAt` field must be validated against `request.time` where applicable.
 
 ## The "Dirty Dozen" Payloads
-1. **Schema Poisoning:** Injecting unknown keys during creation.
-2. **Type Forgery:** Passing a number instead of a string array.
-3. **Ghost Field:** Updating with an invalid `isAdmin` field.
-4. **Owner ID Change:** A user updates `ownerId` to another UID.
-5. **Timestamp Tampering:** Updating `updatedAt` to a client-controlled timestamp instead of `request.time`.
-6. **ID Injection:** Providing a project ID with massive junk characters.
-7. **Nested Object Exploitation:** Bypassing map checks by pushing unvalidated map schemas.
-8. **Subcollection Orphan Attack:** Creating a subcollection document without ensuring the parent `Project` exists and belongs to them.
-9. **Blanket Querying:** Reading a project list without filtering for `ownerId`.
-10. **Array Explosion:** Adding over 50 collaborators to the array.
-11. **Spoofed Admin:** Sending `admin` claims directly.
-12. **PII Blanket Attack:** Trying to pull auth info via presence queries.
+1. **Identity Spoofing**: Attempt to create a project with `ownerId` set to a different user's UID.
+2. **Privilege Escalation**: Attempt to add oneself to a project's `collaborators` list without being the owner.
+3. **Orphaned Writes**: Attempt to add a chapter to a non-existent `projectId` or a project the user doesn't own.
+4. **Shadow Updates**: Attempt to update a project with extra fields (e.g., `isAdmin: true`).
+5. **PII Leak**: Attempt to read private project data of another user.
+6. **Presence Hijacking**: Attempt to update another user's presence document.
+7. **Bypass Public Lock**: Attempt to write to a project's chapters when only public read is allowed.
+8. **Resource Exhaustion**: Attempt to create a document ID with 1MB of garbage data.
+9. **Timestamp Manipulation**: Attempt to set a past or future `updatedAt` date.
+10. **Terminal State Bypass**: (If any terminal states exist, e.g., project archived) - Attempt to update an archived project.
+11. **Collaborator Hijacking**: Collaborator trying to delete the project they don't own.
+12. **Type Confusion**: Sending a string for a boolean field (e.g., `isPublic: "true"`).
 
-## Test Runner Definition
-Defined in `firestore.rules.test.ts` (coming soon).
+## Test Runner (Simplified for rule drafting)
+The tests will verify that:
+- `projects/{projectId}` create/update/delete strictly check `ownerId`.
+- Sub-collections check parent project membership.
+- Public read works for `isPublic` projects.
+- Immutable fields are enforced.

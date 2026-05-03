@@ -5,18 +5,21 @@
 
 import React, { useState } from 'react';
 import { Users, Plus, Trash2, Shield, Target, ScrollText, Flame, Zap, UserCircle } from 'lucide-react';
-import { Project, Character } from '../types';
+import { Project, Character, ResearchNote, Chapter } from '../types';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
   project: Project;
+  research: ResearchNote[];
+  chapters?: Chapter[];
   updateProject: (updates: Partial<Project>) => void;
   onError?: (msg: string) => void;
 }
 
-export default function CharacterForge({ project, updateProject, onError }: Props) {
+export default function CharacterForge({ project, research, chapters = [], updateProject, onError }: Props) {
   const [loading, setLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [newCharConcept, setNewCharConcept] = useState('');
   const [archetype, setArchetype] = useState('');
@@ -25,7 +28,7 @@ export default function CharacterForge({ project, updateProject, onError }: Prop
     if (!newCharConcept) return;
     setLoading(true);
     try {
-      const char = await AIService.generateCharacter(newCharConcept, project.type, project.maturity);
+      const char = await AIService.generateCharacter(newCharConcept, project.type, research, project.maturity);
       updateProject({
         characters: [...(project.characters || []), char]
       });
@@ -40,6 +43,29 @@ export default function CharacterForge({ project, updateProject, onError }: Prop
     }
   };
 
+  const handleExtract = async () => {
+    if (!chapters.length) return;
+    setExtracting(true);
+    try {
+      const extracted = await AIService.extractCharacters(chapters, project);
+      if (extracted.length === 0) {
+        onError?.("No new characters detected in current manuscript.");
+        return;
+      }
+      updateProject({
+        characters: [...(project.characters || []), ...extracted]
+      });
+      if (!selectedChar && extracted.length > 0) {
+        setSelectedChar(extracted[0]);
+      }
+    } catch (err: any) {
+      console.error(err);
+      onError?.(err.message || 'Character extraction failed.');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const deleteCharacter = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     updateProject({
@@ -51,13 +77,28 @@ export default function CharacterForge({ project, updateProject, onError }: Prop
   return (
     <div className="h-full flex flex-col md:flex-row gap-8 min-h-0 overflow-y-auto md:overflow-hidden">
       {/* Left List */}
-      <div className="w-full md:w-80 flex flex-col gap-6 shrink-0">
-        <header>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">Character Forge</h2>
+      <div className="w-full md:w-80 flex flex-col gap-6 shrink-0 md:border-r border-slate-100 md:pr-6">
+        <header className="text-center md:text-left">
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-1">Character Forge</h2>
           <p className="text-xs text-slate-500 font-medium italic">Architecting the human element.</p>
         </header>
 
         <div className="space-y-4">
+          <button 
+            onClick={handleExtract}
+            disabled={extracting || !chapters.some(c => c.content)}
+            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest"
+          >
+            {extracting ? (
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full" 
+              />
+            ) : <Plus size={14} />}
+            Absorb from Manuscript
+          </button>
+
           <div className="space-y-2">
             <input 
               value={newCharConcept}
@@ -76,7 +117,13 @@ export default function CharacterForge({ project, updateProject, onError }: Prop
               disabled={loading || !newCharConcept}
               className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-50 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 text-sm font-bold"
             >
-              {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Zap size={16} />}
+              {loading ? (
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" 
+                />
+              ) : <Zap size={16} />}
               Initialize Profile
             </button>
           </div>
@@ -125,12 +172,12 @@ export default function CharacterForge({ project, updateProject, onError }: Prop
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
-              className="p-10 space-y-10 overflow-y-auto flex-1 custom-scrollbar"
+              className="p-4 md:p-10 space-y-10 overflow-y-auto flex-1 custom-scrollbar"
             >
-              <header className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-4xl font-black tracking-tight text-slate-900 mb-2 italic font-serif">{selectedChar.name}</h3>
-                  <div className="flex items-center gap-4">
+              <header className="flex flex-col md:flex-row items-center md:items-start justify-between gap-4">
+                <div className="text-center md:text-left">
+                  <h3 className="text-2xl md:text-4xl font-black tracking-tight text-slate-900 mb-2 italic font-serif">{selectedChar.name}</h3>
+                  <div className="flex flex-col md:flex-row items-center gap-4">
                     <div className="flex items-center gap-2">
                        <Shield size={16} className="text-blue-600" />
                        <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 ">{selectedChar.role}</span>

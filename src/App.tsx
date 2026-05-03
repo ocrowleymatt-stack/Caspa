@@ -8,7 +8,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -28,8 +28,17 @@ import {
   Construction,
   Settings,
   Trophy,
-  X
+  X,
+  BrainCircuit,
+  Menu,
+  MessageSquare,
+  Upload,
+  Activity
 } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Initialize PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 import { 
   Project, 
   ViewType, 
@@ -38,7 +47,8 @@ import {
   Chapter, 
   ResearchNote, 
   SourceMaterial,
-  Presence 
+  Presence,
+  ExternalReview
 } from './types';
 import { auth, db, loginWithGoogle, logout } from './lib/firebase';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
@@ -57,6 +67,9 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
+// Services
+import { AIService } from './services/ai';
+
 // Components
 import Dashboard from './components/Dashboard';
 import Brainstorm from './components/Brainstorm';
@@ -69,6 +82,9 @@ import ManuscriptFixer from './components/ManuscriptFixer';
 import SettingsView from './components/SettingsView';
 import PublishView from './components/PublishView';
 import PrizeView from './components/PrizeView';
+import ReaderView from './components/ReaderView';
+import ResearchAssistant from './components/ResearchAssistant';
+import ReviewVault from './components/ReviewVault';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -101,66 +117,65 @@ export default function App() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [research, setResearch] = useState<ResearchNote[]>([]);
   const [sourceMaterials, setSourceMaterials] = useState<SourceMaterial[]>([]);
+  const [externalReviews, setExternalReviews] = useState<ExternalReview[]>([]);
   const [presence, setPresence] = useState<Presence[]>([]);
   
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    const saved = localStorage.getItem('ls_current_view');
+    return (saved as ViewType) || 'dashboard';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ls_current_view', currentView);
+  }, [currentView]);
+
+  const [lastProjectId, setLastProjectId] = useState(() => localStorage.getItem('ls_project_id'));
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
   
-  // Notification State
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: 'error' | 'success' | 'info' }[]>([]);
+  const [readerProject, setReaderProject] = useState<Project | null>(null);
+  const [readerChapters, setReaderChapters] = useState<Chapter[]>([]);
+  const [isReading, setIsReading] = useState(false);
 
-  const addNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
-    const id = crypto.randomUUID();
-    // Sanitize technical AI errors
-    let displayMsg = message;
-    if (message.startsWith('AI_FAILURE:')) {
-      displayMsg = `AI System Error: ${message.split(':').slice(1).join(':').trim()}`;
-    } else if (message.includes('QUOTA_EXCEEDED')) {
-      displayMsg = "Gemini Quota Exceeded. Fallback system engaged (if configured).";
-    }
-
-    setNotifications(prev => [...prev, { id, message: displayMsg, type }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 6000);
-  };
-
-  // Streak & Stats Tracker
   useEffect(() => {
-    if (!project || !project.id || project.id === 'default' || !user) return;
-
-    const today = new Date().toISOString().split('T')[0];
-    const lastDay = project.stats?.lastActiveDay;
-
-    if (lastDay !== today) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-      let newStreak = 1;
-      if (lastDay === yesterdayStr) {
-        newStreak = (project.stats?.narrativeStreak || 0) + 1;
-        addNotification(`Daily Writing Streak: ${newStreak} Days! 🔥`, 'success');
-      } else {
-        addNotification(`Day 1: Narrative streak initialized.`, 'info');
-      }
-
-      const totalWordsCount = chapters.reduce((acc, c) => acc + (c.content?.trim().split(/\s+/).length || 0), 0);
-
-      updateProject({
-        stats: {
-          ...project.stats,
-          narrativeStreak: newStreak,
-          lastActiveDay: today,
-          totalWords: totalWordsCount,
-          aiContributions: project.stats?.aiContributions || 0
-        }
-      });
+    if (project.id !== 'default') {
+      localStorage.setItem('ls_project_id', project.id);
     }
-  }, [project.lastModified, chapters.length]);
+  }, [project.id]);
+
+  // Handle Reading Link
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const readId = params.get('read');
+    if (readId) {
+      const fetchPublicProject = async () => {
+        try {
+          const { getDoc, doc, collection, getDocs, query, orderBy } = await import('firebase/firestore');
+          const pSnap = await getDoc(doc(db, 'projects', readId));
+          if (pSnap.exists()) {
+            const data = pSnap.data() as Project;
+            if (data.isPublic) {
+              setReaderProject(data);
+              setIsReading(true);
+              const cSnap = await getDocs(query(collection(db, 'projects', readId, 'chapters'), orderBy('order')));
+              setReaderChapters(cSnap.docs.map(d => d.data() as Chapter));
+            }
+          }
+        } catch (e) {
+          console.error("Public fetch error:", e);
+        }
+      };
+      fetchPublicProject();
+    }
+  }, []);
+
+  const addNotification = (_message: string, _type: 'error' | 'success' | 'info' = 'info') => {
+    return; // Silenced per user request to "stop them totally"
+  };
 
   // Mobile Detection
   useEffect(() => {
@@ -179,6 +194,12 @@ export default function App() {
   const [history, setHistory] = useState<Project[]>([]);
   const [future, setFuture] = useState<Project[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Derived Stats
+  const totalWords = chapters.reduce((acc, c) => {
+    const words = c.content?.trim().split(/\s+/).filter(w => w.length > 0).length || 0;
+    return acc + words;
+  }, 0);
 
   const pushToHistory = (state: Project) => {
     setHistory(prev => [state, ...prev].slice(0, 50));
@@ -220,6 +241,8 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [project, history, future]);
 
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+
   // Auth Listener
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
@@ -234,6 +257,7 @@ export default function App() {
         setChapters([]);
         setResearch([]);
         setSourceMaterials([]);
+        setExternalReviews([]);
       }
       setLoading(false);
     });
@@ -252,6 +276,13 @@ export default function App() {
       }
     }
   };
+
+  // Sync AI Provider
+  useEffect(() => {
+    if (project.primaryProvider) {
+      AIService.setPrimaryProvider(project.primaryProvider);
+    }
+  }, [project.primaryProvider]);
 
   // Project List Sync
   useEffect(() => {
@@ -333,7 +364,7 @@ export default function App() {
       await setDoc(projectRef, newProjectData);
       setProject(newProjectData);
       setCurrentView('dashboard');
-      addNotification('New project created successfully.', 'success');
+      // Suppressed per user request: addNotification('New project created successfully.', 'success');
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
 
@@ -355,7 +386,13 @@ export default function App() {
 
     // Project Data
     const unsubProject = onSnapshot(projectRef, (snap) => {
-      if (snap.exists()) setProject(snap.data() as Project);
+      if (!snap.exists()) return;
+      
+      // If we have local pending writes for this document, the optimistic state is already more up-to-date
+      // than the server state being returned here.
+      if (snap.metadata.hasPendingWrites) return;
+
+      setProject(snap.data() as Project);
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}`));
 
     // Subcollections Sync
@@ -378,6 +415,10 @@ export default function App() {
     const unsubSources = onSnapshot(collection(db, 'projects', projectId, 'sourceMaterials'), (snap) => {
       setSourceMaterials(snap.docs.map(d => d.data() as SourceMaterial).sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/sourceMaterials`));
+
+    const unsubReviews = onSnapshot(collection(db, 'projects', projectId, 'externalReviews'), (snap) => {
+      setExternalReviews(snap.docs.map(d => d.data() as ExternalReview).sort((a, b) => b.date - a.date));
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/externalReviews`));
     
     const unsubPresence = onSnapshot(collection(db, 'projects', projectId, 'presence'), (snap) => {
       setPresence(snap.docs.map(d => d.data() as Presence));
@@ -398,6 +439,7 @@ export default function App() {
       unsubChapters();
       unsubResearch();
       unsubSources();
+      unsubReviews();
       unsubPresence();
       deleteDoc(presenceRef).catch(() => {});
     };
@@ -406,16 +448,32 @@ export default function App() {
 
   const updateProject = async (updates: Partial<Project>) => {
     if (!user || !project.id || project.id === 'default') return;
+    
+    // Ensure publishing config exists if being updated or requested
+    const finalUpdates = { ...updates };
+    if (!project.publishing && !updates.publishing) {
+      // Lazy init publishing config if needed, or just let it be Partial
+    }
+
+    // Optimistic Update
+    setProject(prev => ({ ...prev, ...finalUpdates }));
     pushToHistory(project);
+
     const path = `projects/${project.id}`;
     const projectRef = doc(db, 'projects', project.id);
+    setIsSaving(true);
+    
     try {
       await updateDoc(projectRef, { 
         ...updates, 
         lastModified: Date.now(),
         updatedAt: serverTimestamp() 
       });
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
+      setTimeout(() => setIsSaving(false), 500);
+    } catch (e) { 
+      handleFirestoreError(e, OperationType.WRITE, path); 
+      setIsSaving(false);
+    }
   };
 
   const deleteProject = async () => {
@@ -429,7 +487,7 @@ export default function App() {
       setHistory([]);
       setFuture([]);
       setCurrentView('dashboard');
-      addNotification('Project permanently deleted.', 'info');
+      // Suppressed per user request: addNotification('Project permanently deleted.', 'info');
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
@@ -456,6 +514,11 @@ export default function App() {
         targetPrize: project.targetPrize || '',
         prizeAssessments: project.prizeAssessments || [],
         sourceMaterials: project.sourceMaterials || [],
+        externalReviews: project.externalReviews || [],
+        isPublic: project.isPublic || false,
+        publicId: project.publicId || '',
+        targetWordCount: project.targetWordCount || 0,
+        publishing: project.publishing || null,
         updatedAt: serverTimestamp()
       };
 
@@ -474,6 +537,18 @@ export default function App() {
     try {
       await setDoc(doc(db, 'projects', project.id, 'characters', char.id), { ...char, updatedAt: Date.now() });
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
+  };
+  const upsertCharacterBatch = async (charList: Character[]) => {
+    if (!user || charList.length === 0) return;
+    const { writeBatch } = await import('firebase/firestore');
+    const batch = writeBatch(db);
+    charList.forEach(char => {
+      const ref = doc(db, 'projects', project.id, 'characters', char.id);
+      batch.set(ref, { ...char, updatedAt: Date.now() });
+    });
+    try {
+      await batch.commit();
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/characters (batch)`); }
   };
   const upsertPlotNode = async (node: PlotNode) => {
     if (!user) return;
@@ -496,6 +571,23 @@ export default function App() {
       await setDoc(doc(db, 'projects', project.id, 'sourceMaterials', source.id), { ...source, updatedAt: Date.now() });
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
+  const upsertExternalReview = async (review: ExternalReview) => {
+    if (!user) return;
+    const path = `projects/${project.id}/externalReviews/${review.id}`;
+    try {
+      await setDoc(doc(db, 'projects', project.id, 'externalReviews', review.id), review);
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
+  };
+  const upsertResearch = async (note: ResearchNote) => {
+    if (!user) return;
+    const path = `projects/${project.id}/research/${note.id}`;
+    try {
+      await setDoc(doc(db, 'projects', project.id, 'research', note.id), { ...note, updatedAt: Date.now() });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, path);
+    }
+  };
+
   const deleteSubDoc = async (coll: string, id: string) => {
     if (!user) return;
     const path = `projects/${project.id}/${coll}/${id}`;
@@ -548,6 +640,7 @@ export default function App() {
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
         { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
+        { id: 'reviews', label: 'Review Vault', icon: MessageSquare },
         { id: 'brainstorm', label: 'AI Brainstorm', icon: Sparkles },
       ]
     },
@@ -556,6 +649,7 @@ export default function App() {
       items: [
         { id: 'characters', label: 'Character Forge', icon: Users },
         { id: 'research', label: 'Research Library', icon: Library },
+        { id: 'research_assistant', label: 'Research Agent', icon: BrainCircuit },
       ]
     },
     {
@@ -586,11 +680,25 @@ export default function App() {
       <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
         <motion.div 
           animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full"
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full shadow-[0_0_15px_rgba(37,99,235,0.3)]"
         />
-        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] animate-pulse">Initializing Narrative Systems...</p>
+        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Initializing Narrative Systems...</p>
       </div>
+    );
+  }
+
+  if (isReading && readerProject) {
+    return (
+      <ReaderView 
+        project={readerProject} 
+        chapters={readerChapters} 
+        isLoggedIn={!!user}
+        onBack={() => {
+          setIsReading(false);
+          window.history.replaceState({}, '', window.location.pathname);
+        }}
+      />
     );
   }
 
@@ -631,37 +739,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-[100dvh] bg-surface-bg text-slate-900 font-sans selection:bg-blue-100 overflow-hidden">
-      {/* Notifications */}
-      <div className="fixed bottom-8 right-8 z-[200] flex flex-col gap-3 pointer-events-none">
-        <AnimatePresence>
-          {notifications.map(n => (
-            <motion.div
-              key={n.id}
-              initial={{ opacity: 0, x: 50, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-              className={`pointer-events-auto p-4 rounded-2xl shadow-2xl flex items-center gap-3 min-w-[300px] border backdrop-blur-md ${
-                n.type === 'error' ? 'bg-red-600/90 text-white border-red-400' : 
-                n.type === 'success' ? 'bg-emerald-600/90 text-white border-emerald-400' : 
-                'bg-slate-900/90 text-white border-slate-700'
-              }`}
-            >
-              <div className="p-2 bg-white/20 rounded-lg flex-shrink-0">
-                {n.type === 'error' ? <Zap size={16} className="fill-white" /> : <Sparkles size={16} className="fill-white" />}
-              </div>
-              <div className="flex-1 text-[11px] font-black tracking-tight">{n.message}</div>
-              <button 
-                onClick={() => setNotifications(prev => prev.filter(p => p.id !== n.id))}
-                className="p-1 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
-              >
-                <X size={14} />
-              </button>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-
+    <div className="flex h-[100dvh] bg-surface-bg text-slate-900 font-sans selection:bg-blue-100 overflow-hidden print:h-auto print:overflow-visible">
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -682,7 +760,7 @@ export default function App() {
           width: isSidebarOpen ? (isMobile ? '85%' : 260) : (isMobile ? 0 : 80),
           x: isMobile && !isSidebarOpen ? '-100%' : 0
         }}
-        className={`flex flex-col bg-slate-950 text-white relative shadow-2xl border-r border-slate-900 overflow-hidden ${
+        className={`flex flex-col bg-slate-950 text-white relative shadow-2xl border-r border-slate-900 overflow-hidden no-print ${
           isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-20'
         }`}
       >
@@ -757,7 +835,7 @@ export default function App() {
             </button>
             <button 
               onClick={saveToCloud}
-              className={`p-2 text-slate-400 hover:text-blue-500 hover:bg-white/5 rounded-lg transition-all ${isSaving ? 'animate-pulse text-blue-500' : ''}`}
+              className={`p-2 text-slate-400 hover:text-blue-500 hover:bg-white/5 rounded-lg transition-all ${isSaving ? 'text-blue-500' : ''}`}
               title="Manual Sync"
             >
               <Save size={16} />
@@ -780,47 +858,221 @@ export default function App() {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative overflow-hidden">
+      <main className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static">
         {/* Top Header */}
-        <header className="h-16 border-b border-slate-200 flex items-center justify-between px-8 bg-white relative z-10">
-          <div className="flex items-center gap-10">
-            <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono text-slate-400">v2.55</div>
-            <h2 className="text-sm font-black text-slate-900 flex items-center gap-3">
-              <span className="text-slate-300 uppercase tracking-widest text-[9px]">Active Project:</span>
-              <span className="italic font-serif truncate max-w-[200px]">{project.title}</span>
-            </h2>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[9px] font-black uppercase tracking-widest border border-blue-100">
-                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
-                Relational Sync Active
-              </div>
-              <div className="flex -space-x-1">
-                {presence.map(p => (
-                   <div key={p.userId} className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 text-slate-400 text-[8px] font-bold flex items-center justify-center uppercase" title={p.userName}>
-                     {p.userName.charAt(0)}
-                   </div>
-                ))}
-              </div>
+        <header className="h-16 border-b border-slate-200 flex items-center justify-between px-4 md:px-8 bg-white relative z-10 shrink-0 no-print">
+          <div className="flex items-center gap-4 md:gap-10 overflow-hidden h-full">
+            {!isMobile && <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono text-slate-400">v2.55</div>}
+            
+            <div className="relative">
+              <button 
+                onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
+                className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 transition-all rounded-xl group overflow-hidden"
+              >
+                <div className="flex flex-col items-start min-w-0">
+                  <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Active Manuscript</div>
+                  <div className="flex items-center gap-2 text-slate-900">
+                    <span className="italic font-serif truncate max-w-[150px] md:max-w-[250px] font-bold md:text-lg">{project.title}</span>
+                    <GitBranch size={14} className={`text-slate-300 group-hover:text-blue-500 transition-all ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </div>
+              </button>
+
+              <AnimatePresence>
+                {isProjectMenuOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="fixed top-16 left-4 md:left-72 w-[85vw] md:w-80 bg-white rounded-2xl shadow-[0_30px_100px_-20px_rgba(0,0,0,0.3)] border border-slate-100 z-[110] overflow-hidden"
+                  >
+                    <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
+                      <div className="flex items-center justify-between mb-4 px-2">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Inventory</p>
+                        <span className="text-[9px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 font-bold">{projects.length} Total</span>
+                      </div>
+                      <div className="space-y-1">
+                        {isProjectsLoading ? (
+                          <div className="py-8 text-center text-[10px] font-bold text-slate-400 animate-pulse uppercase tracking-widest">Hydrating Archives...</div>
+                        ) : projects.length === 0 ? (
+                          <div className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Manuscripts Found</div>
+                        ) : (
+                          projects.map(p => (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                setProject(p);
+                                setIsProjectMenuOpen(false);
+                              }}
+                              className={`w-full text-left p-4 rounded-xl transition-all group/item ${
+                                p.id === project.id 
+                                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
+                                  : 'hover:bg-slate-50 text-slate-600'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${p.id === project.id ? 'bg-white/20' : 'bg-slate-100 group-hover/item:rotate-3 transition-transform'}`}>
+                                  <PenTool size={14} className={p.id === project.id ? 'text-white' : 'text-slate-400'} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-black leading-tight truncate">{p.title || 'Untitled'}</div>
+                                  <div className={`text-[9px] uppercase mt-1 tracking-tighter ${p.id === project.id ? 'text-blue-100' : 'text-slate-400'}`}>
+                                    {p.type} • Last Edited {new Date(p.lastModified).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-2">
+                       <button 
+                        onClick={() => {
+                          const title = window.prompt('Enter manuscript title:', 'New Narrative');
+                          if (title) createNewProject(title);
+                          setIsProjectMenuOpen(false);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-4 bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                      >
+                        <PenTool size={14} />
+                        New Archive Entry
+                      </button>
+
+                      <label className="w-full flex items-center justify-center gap-2 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-blue-200 cursor-pointer active:scale-95">
+                        <Upload size={14} />
+                        Bulk Ingest (.pdf, .txt, .json)
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".pdf,.txt,.md,.json" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file || !user) return;
+                            
+                            if (file.size > 10 * 1024 * 1024) {
+                              window.alert("File too large. Max 10MB allowed.");
+                              return;
+                            }
+
+                            setIsProjectMenuOpen(false);
+                            
+                            try {
+                              let content = '';
+                              if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                                // Dynamic import for worker if possible or use a reliable CDN
+                                const workerUrl = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+                                pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+                                const arrayBuffer = await file.arrayBuffer();
+                                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                                const pdf = await loadingTask.promise;
+                                let fullText = '';
+                                for (let i = 1; i <= pdf.numPages; i++) {
+                                  const page = await pdf.getPage(i);
+                                  const textContent = await page.getTextContent();
+                                  const pageText = textContent.items.map((item: any) => (item as any).str).join(' ');
+                                  fullText += pageText + '\n\n';
+                                }
+                                content = fullText;
+                              } else {
+                                content = await new Promise<string>((resolve, reject) => {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => resolve(event.target?.result as string);
+                                  reader.onerror = reject;
+                                  reader.readAsText(file);
+                                });
+                              }
+
+                              const title = file.name.replace(/\.[^/.]+$/, "");
+                              const newId = `project_${crypto.randomUUID()}`;
+                              const projectRef = doc(db, 'projects', newId);
+                              
+                              const newProjectData: Project = { 
+                                ...INITIAL_PROJECT,
+                                title,
+                                id: newId,
+                                ownerId: user.uid,
+                                createdAt: Date.now(),
+                                lastModified: Date.now(),
+                                updatedAt: serverTimestamp() as any,
+                                premise: content.slice(0, 500)
+                              };
+
+                              await setDoc(projectRef, newProjectData);
+
+                              // Split into chapters if > 800kb
+                              const CHUNK_SIZE = 800000;
+                              let chaptersCreated = 0;
+                              for (let i = 0; i < content.length; i += CHUNK_SIZE) {
+                                const chunk = content.substring(i, i + CHUNK_SIZE);
+                                const chapterId = crypto.randomUUID();
+                                const chapterRef = doc(db, 'projects', newId, 'chapters', chapterId);
+                                const newChapter: Chapter = {
+                                  id: chapterId,
+                                  title: content.length > CHUNK_SIZE ? `Ingested Manuscript (Part ${chaptersCreated + 1})` : 'Ingested Manuscript',
+                                  content: chunk,
+                                  summary: 'Full manuscript ingest.',
+                                  order: chaptersCreated,
+                                  plotNodeIds: [],
+                                  tags: [],
+                                  updatedAt: Date.now()
+                                };
+                                await setDoc(chapterRef, newChapter);
+                                chaptersCreated++;
+                              }
+                              
+                              localStorage.setItem(`lastProject_${user.uid}`, newId);
+                              setProject(newProjectData);
+                              setCurrentView('dashboard');
+                              
+                              // Clear the input
+                              e.target.value = '';
+                            } catch (err) {
+                              console.error("Bulk Ingest failed:", err);
+                              window.alert(`Ingest failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                              handleFirestoreError(err, OperationType.WRITE, 'projects (bulk ingest)');
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
+
+            {isSaving && (
+              <motion.span 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1 animate-pulse hidden md:flex"
+              >
+                <Save size={10} />
+                Manuscript Intelligence Indexed
+              </motion.span>
+            )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3 shrink-0">
              {isMobile && (
                <button 
                  onClick={() => setIsSidebarOpen(true)}
-                 className="p-2 text-slate-400 hover:text-slate-900"
+                 className="p-2 text-slate-800 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
                >
-                 <Library size={20} />
+                 <Menu size={20} />
                </button>
              )}
-             <button 
-              onClick={() => setCurrentView('export')}
-              className="px-5 py-2 bg-slate-900 text-white rounded font-black text-[10px] hover:bg-slate-800 transition-all uppercase tracking-[0.2em] shadow-lg shadow-slate-200"
-            >
-              Export & Publish
-            </button>
+             {!isMobile && (
+               <button 
+                onClick={() => setCurrentView('export')}
+                className="px-5 py-2 bg-slate-900 text-white rounded font-black text-[10px] hover:bg-slate-800 transition-all uppercase tracking-[0.2em] shadow-lg shadow-slate-200"
+              >
+                Export & Publish
+              </button>
+             )}
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 text-slate-300 hover:text-slate-900 transition-colors"
+              className="p-2 text-slate-300 hover:text-slate-900 transition-colors hidden lg:block"
             >
               <GitBranch size={20} className={isSidebarOpen ? 'rotate-90 transition-transform' : 'transition-transform'} />
             </button>
@@ -828,29 +1080,23 @@ export default function App() {
         </header>
 
         {/* View Transition Area */}
-        <div className={`flex-1 relative bg-slate-50/50 ${
+        <div className={`flex-1 relative bg-slate-50/50 print:bg-white print:p-0 ${
           ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research'].includes(currentView) 
-            ? 'overflow-hidden' 
-            : 'overflow-y-auto p-4 md:p-12'
+            ? 'overflow-hidden print:overflow-visible' 
+            : 'overflow-y-auto p-4 md:p-12 print:overflow-visible print:p-0'
         }`}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentView}
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.3 }}
-              className={`${
-                ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research'].includes(currentView) 
-                  ? `h-full w-full ${currentView === 'writing' ? '' : 'p-4 md:p-8'}`
-                  : 'min-h-full max-w-7xl mx-auto'
-              }`}
-            >
-              {(currentView === 'dashboard' || currentView === 'brainstorm') && (
+          <div
+            className={`w-full h-full print:h-auto ${
+              ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research'].includes(currentView) 
+                ? `h-full w-full ${currentView === 'writing' ? '' : 'p-4 md:p-8'}`
+                : 'min-h-full max-w-7xl mx-auto'
+            }`}
+          >
+            {(currentView === 'dashboard' || currentView === 'brainstorm') && (
                  <>
                    {currentView === 'dashboard' && (
                      <Dashboard 
-                       project={{ ...project, characters, chapters }} 
+                       project={{ ...project, stats: { ...project.stats, totalWords } }} 
                        projects={projects}
                        selectProject={(p) => setProject(p)}
                        createNewProject={createNewProject}
@@ -864,7 +1110,9 @@ export default function App() {
                    {currentView === 'brainstorm' && (
                      <Brainstorm 
                        project={project} 
+                       research={research}
                        updateProject={updateProject} 
+                       onAddResearch={upsertResearch}
                        onError={(msg) => addNotification(msg, 'error')}
                      />
                    )}
@@ -873,9 +1121,12 @@ export default function App() {
               {currentView === 'characters' && (
                 <CharacterForge 
                   project={{ ...project, characters }} 
+                  research={research}
+                  chapters={chapters}
                   updateProject={async (updates) => {
-                    const char = updates.characters?.[updates.characters.length - 1];
-                    if (char) await upsertCharacter(char);
+                    if (updates.characters) {
+                      await upsertCharacterBatch(updates.characters);
+                    }
                   }} 
                   onError={(msg) => addNotification(msg, 'error')}
                 />
@@ -885,6 +1136,7 @@ export default function App() {
                   project={{ ...project, chapters, sourceMaterials }}
                   chapters={chapters} 
                   plotNodes={plotNodes} 
+                  research={research}
                   updateProject={updateProject}
                   updatePlotNodes={async (nodes) => {
                      setPlotNodes(nodes);
@@ -894,6 +1146,7 @@ export default function App() {
                     setChapters(chapList);
                     await upsertChapterBatch(chapList);
                   }}
+                  onNotify={(msg, type) => addNotification(msg, type)}
                   onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
@@ -901,6 +1154,7 @@ export default function App() {
                 <ResearchLibrary 
                   project={project} 
                   research={research} 
+                  chapters={chapters}
                   onAdd={async (note) => {
                     const path = `projects/${project.id}/research/${note.id}`;
                     try {
@@ -913,9 +1167,19 @@ export default function App() {
                   onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
+              {currentView === 'research_assistant' && (
+                <ResearchAssistant 
+                  project={project} 
+                  research={research} 
+                  chapters={chapters}
+                  onAddResearch={upsertResearch}
+                  onAddChapter={upsertChapter}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                />
+              )}
               {currentView === 'writing' && (
                 <WritingStudio 
-                  project={{ ...project, chapters, sourceMaterials, research }} 
+                  project={{ ...project, chapters, sourceMaterials, research, externalReviews }} 
                   plotNodes={plotNodes}
                   presence={presence}
                   updateProject={updateProject} 
@@ -928,6 +1192,7 @@ export default function App() {
                   onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
                   onUpsertSource={upsertSourceMaterial}
                   onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                  onUpsertCharacters={upsertCharacterBatch}
                   onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
@@ -937,6 +1202,8 @@ export default function App() {
                   maturity={project.maturity}
                   chapters={chapters}
                   sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
+                  existingCritiques={project.critiques}
+                  updateProject={updateProject}
                   updateChapters={async (chaps) => {
                     setChapters(chaps);
                     await upsertChapterBatch(chaps);
@@ -952,16 +1219,28 @@ export default function App() {
                   updateProject={updateProject}
                 />
               )}
+              {currentView === 'reviews' && (
+                <ReviewVault 
+                  project={project}
+                  reviews={externalReviews}
+                  onUpsert={upsertExternalReview}
+                  onDelete={(id) => deleteSubDoc('externalReviews', id)}
+                />
+              )}
               {currentView === 'export' && (
                 <PublishView 
                   project={project}
                   chapters={chapters}
+                  updateProject={updateProject}
+                  onNotify={(msg, type) => addNotification(msg, type)}
                 />
               )}
               {currentView === 'architect' && (
                 <ManuscriptFixer 
                   project={{ ...project, sourceMaterials, research }}
                   chapters={chapters}
+                  research={research}
+                  updateProject={updateProject}
                   updateChapters={async (chaps) => {
                     setChapters(chaps);
                     await upsertChapterBatch(chaps);
@@ -981,11 +1260,10 @@ export default function App() {
                   deleteProject={deleteProject}
                 />
               )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </main>
-    </div>
-  );
+            </div>
+          </div>
+        </main>
+      </div>
+    );
 }
 

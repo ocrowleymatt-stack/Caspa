@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400;1,600&family=Inter:wght@300;400;600;900&family=JetBrains+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -59,4 +60,75 @@
 
 .animate-pulse-soft {
   animation: pulse-soft 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@layer base {
+  @media print {
+    /* Hide non-printable elements */
+    nav, button, .no-print, header, footer:not(.print-footer), aside, [role="navigation"], [role="banner"] {
+      display: none !important;
+    }
+
+    /* Force all flex parents to expand and overflow to show */
+    html, body, #root, [class*="flex-"], main, [class*="overflow-"] {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+      display: block !important;
+      position: static !important;
+    }
+
+    /* Reset background and layout for print */
+    body {
+      background: white !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      color: black !important;
+    }
+
+    main {
+       margin: 0 !important;
+       padding: 0 !important;
+       width: 100% !important;
+    }
+
+    /* Format pages for a book feel - standard trade size */
+    @page {
+      size: 8.5in 11in;
+      margin: 1.25in;
+    }
+
+    /* Print-specific overrides for the manuscript preview */
+    .lg\:col-span-12 {
+      display: block !important;
+      width: 100% !important;
+    }
+
+    .prose {
+      max-width: none !important;
+      font-size: 12pt !important;
+      line-height: 1.6 !important;
+      color: black !important;
+      font-family: var(--font-serif) !important;
+      widows: 3;
+      orphans: 3;
+      text-align: justify;
+    }
+
+    h1, h2, h3 {
+      page-break-after: avoid;
+    }
+
+    .manuscript-page {
+      page-break-after: always;
+      display: block !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+  }
 }

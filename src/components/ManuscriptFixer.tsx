@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Zap, AlertCircle, CheckCircle2, ChevronRight, Play, Wand2, Hammer, Activity, FileUp, Target } from 'lucide-react';
-import { Project, Chapter, ProjectType } from '../types';
+import { Project, Chapter, ProjectType, ResearchNote } from '../types';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -8,13 +8,15 @@ import Markdown from 'react-markdown';
 interface Props {
   project: Project;
   chapters: Chapter[];
+  research: ResearchNote[];
+  updateProject: (updates: Partial<Project>) => void;
   updateChapters: (chaps: Chapter[]) => void;
   updatePlotNodes: (nodes: any[]) => void;
   setView: (view: any) => void;
   onError?: (msg: string) => void;
 }
 
-export default function ManuscriptFixer({ project, chapters, updateChapters, updatePlotNodes, setView, onError }: Props) {
+export default function ManuscriptFixer({ project, chapters, research, updateProject, updateChapters, updatePlotNodes, setView, onError }: Props) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isFixing, setIsFixing] = useState(false);
   const [autoPilot, setAutoPilot] = useState(false);
@@ -60,6 +62,7 @@ export default function ManuscriptFixer({ project, chapters, updateChapters, upd
           earlierContent,
           project.type,
           [],
+          research,
           project.maturity,
           [] 
         );
@@ -392,6 +395,7 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
             earlierContent,
             project.type,
             [], // activeNodes placeholder
+            research,
             project.maturity,
             project.sourceMaterials || [],
             chap.directives || []
@@ -433,11 +437,20 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
     try {
       // Step 1: Prize Targeting
       setFixProgress(5);
-      addLog("Phase 1/5: Assessing Prize Worthiness...");
+      addLog("Phase 1/5: Assessing Prize Worthiness & Word Count Targets...");
       const prizeAssessments = await AIService.assessPrizeWorthiness(project, chapters);
       if (prizeAssessments.length > 0) {
         addLog(`Prize targeted: ${prizeAssessments[0].prizeName}. Alignment: ${prizeAssessments[0].eligibilityScore}%`);
         addLog(`Focusing edits on: ${prizeAssessments[0].recommendation}`);
+        
+        // AUTO-SET TARGETS: If a prize expects a specific word count, we align the project architecture.
+        const suggestedTarget = prizeAssessments[0].targetWordCount || project.targetWordCount || 50000;
+        await updateProject({ 
+          prizeAssessments, 
+          targetPrize: prizeAssessments[0].prizeName,
+          targetWordCount: suggestedTarget
+        });
+        addLog(`Intelligence Update: Word Target synchronized to ${suggestedTarget.toLocaleString()} words.`);
       } else {
         addLog("Prize Assessment yielded generic targets. Proceeding.");
       }
@@ -445,14 +458,14 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
       // Step 2: Plot Outlining
       setFixProgress(20);
       addLog("Phase 2/5: Extracting structural vulnerabilities...");
-      const newNodes = await AIService.outlinePlotNodes({ ...project, plotNodes: [] }, chapters);
+      const newNodes = await AIService.outlinePlotNodes({ ...project, plotNodes: [] }, chapters, research);
       await updatePlotNodes(newNodes);
       addLog(`Architected ${newNodes.length} new Plot Nodes.`);
 
       // Step 3: Reconcile Chapters
       setFixProgress(40);
       addLog("Phase 3/5: Reconciling chapters with new structural logic...");
-      const reconciledNodes = await AIService.reconcileChapters(project, newNodes, chapters);
+      const reconciledNodes = await AIService.reconcileChapters(project, newNodes, chapters, research);
       
       const newChapters: Chapter[] = reconciledNodes.map((beat, index) => {
         const existingChap = chapters.find(c => c.title === beat.title);
@@ -473,7 +486,7 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
       // Step 4: Continuity Sweep
       setFixProgress(60);
       addLog("Phase 4/5: Executing Swarm Continuity Pass...");
-      const continuityReport = await AIService.analyzeContinuity(newNodes, newChapters);
+      const continuityReport = await AIService.analyzeContinuity(newNodes, newChapters, research);
       addLog("Continuity analysis complete. Swarm logic integrated.");
 
       // Step 5: Deep Draft
@@ -503,6 +516,7 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
             earlierContent,
             project.type,
             activeChapterNodes,
+            research,
             project.maturity,
             project.sourceMaterials || [],
             chap.directives || []
@@ -586,7 +600,14 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
                     {isFixingBadBook ? `Overhauling: ${Math.round(fixProgress)}%` : 'Fix a Bad Book (Macro)'}
                   </span>
                 </div>
-                {isFixingBadBook ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                {isFixingBadBook ? (
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Activity size={16} />
+                  </motion.div>
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
               </button>
 
               <button 
@@ -600,7 +621,14 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
                   < Hammer size={18} />
                   <span className="text-sm font-bold">Manuscript Scan</span>
                 </div>
-                {isFixing ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                {isFixing ? (
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Activity size={16} />
+                  </motion.div>
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
               </button>
 
               <button 
@@ -614,7 +642,14 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
                   <Play size={18} />
                   <span className="text-sm font-bold">Auto-Pilot Finish</span>
                 </div>
-                {autoPilot ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                {autoPilot ? (
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Activity size={16} />
+                  </motion.div>
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
               </button>
 
               <button 
@@ -628,7 +663,14 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
                   <Activity size={18} />
                   <span className="text-sm font-bold">Deep Draft (Auto)</span>
                 </div>
-                {isDeepDrafting ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                {isDeepDrafting ? (
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Activity size={16} />
+                  </motion.div>
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
               </button>
 
               <button 
@@ -640,15 +682,22 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
               >
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <Activity size={18} className={isSlowCooking ? "animate-pulse" : ""} />
-                    <div className="absolute inset-0 bg-white/20 blur-sm rounded-full animate-pulse" />
+                    <Activity size={18} />
+                    <div className="absolute inset-0 bg-white/20 blur-sm rounded-full" />
                   </div>
                   <div className="text-left">
                     <span className="text-sm font-bold block">AI Slow Cooker</span>
                     <span className="text-[8px] font-medium opacity-70 block uppercase tracking-tighter">Economy Autopilot Drafting</span>
                   </div>
                 </div>
-                {isSlowCooking ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                {isSlowCooking ? (
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Activity size={16} />
+                  </motion.div>
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
               </button>
 
               <div className="pt-4 border-t border-slate-50">
@@ -662,7 +711,14 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
                     <FileUp size={18} />
                     <span className="text-sm font-bold">Bulk Import Manuscript</span>
                   </div>
-                  {isImporting ? <Activity size={16} className="animate-spin" /> : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                  {isImporting ? (
+                    <motion.div 
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    >
+                      <Activity size={16} />
+                    </motion.div>
+                  ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
                   <input id="bulk-import-input" type="file" className="hidden" onChange={handleBulkImport} accept=".txt,.md" disabled={isImporting} />
                 </label>
                 <p className="mt-2 text-[9px] text-slate-400 font-medium px-2 italic">
@@ -731,10 +787,14 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
             ) : isImporting ? (
               <div className="h-full min-h-[600px] flex flex-col items-center justify-center p-20 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
                 <div className="relative mb-8">
-                  <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center animate-pulse">
+                  <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center">
                     <Activity size={32} className="text-blue-600" />
                   </div>
-                  <div className="absolute inset-0 w-24 h-24 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-0 w-24 h-24 border-4 border-blue-100 border-t-blue-600 rounded-full" 
+                  />
                 </div>
                 <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">Reformatting Manuscript...</h3>
                 <p className="text-slate-500 max-w-sm font-medium leading-relaxed mb-6">

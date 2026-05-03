@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Project, ProjectType, MaturityLevel } from '../types';
 import { motion } from 'motion/react';
+import { GENRES, TONES, MATURITY_LEVELS, PROJECT_TYPES } from '../constants';
 
 interface Props {
   project: Project;
@@ -21,57 +22,13 @@ interface Props {
   deleteProject: () => void;
 }
 
-const GENRES = [
-  'Science Fiction',
-  'Fantasy',
-  'Mystery',
-  'Thriller',
-  'Romance',
-  'Historical Fiction',
-  'Horror',
-  'Literary Fiction',
-  'Non-Fiction',
-  'Legal Thriller',
-  'Academic Journal',
-  'Experimental'
-];
-
-const TONES = [
-  'Cinematic',
-  'Noir',
-  'Gritty',
-  'Whimsical',
-  'Formal',
-  'Academic',
-  'Poetic',
-  'Minimalist',
-  'Humorous',
-  'Suspenseful'
-];
-
-const MATURITY_LEVELS: { value: MaturityLevel; label: string; description: string }[] = [
-  { 
-    value: 'standard', 
-    label: 'Standard', 
-    description: 'Safe for general audiences. Focuses on narrative structure without explicit content.' 
-  },
-  { 
-    value: 'mature', 
-    label: 'Mature', 
-    description: 'Contains complex themes, strong language, or non-graphic violence appropriate for adult readers.' 
-  },
-  { 
-    value: 'transgressive', 
-    label: 'Transgressive', 
-    description: 'Highly experimental or boundary-pushing content. Exploring darker psychological depths.' 
-  }
-];
-
 export default function SettingsView({ project, updateProject, deleteProject }: Props) {
   const [localTitle, setLocalTitle] = useState(project.title);
+  const [localPremise, setLocalPremise] = useState(project.premise);
 
   useEffect(() => {
     setLocalTitle(project.title);
+    setLocalPremise(project.premise);
   }, [project.id]); // Just reset when project changes, don't override on every DB update
 
   const updateProjectRef = useRef(updateProject);
@@ -84,9 +41,18 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
       if (localTitle !== project.title) {
         updateProjectRef.current({ title: localTitle });
       }
-    }, 1000);
+    }, 500);
     return () => clearTimeout(handler);
   }, [localTitle, project.title]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (localPremise !== project.premise) {
+        updateProjectRef.current({ premise: localPremise });
+      }
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [localPremise, project.premise]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-12 pb-20">
@@ -126,14 +92,21 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
                 onChange={(e) => updateProject({ type: e.target.value as ProjectType })}
                 className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all"
               >
-                <option value="novel">Novel</option>
-                <option value="screenplay">Screenplay</option>
-                <option value="stageplay">Stageplay</option>
-                <option value="radioplay">Radioplay</option>
-                <option value="legal">Legal Document</option>
-                <option value="academic">Academic Paper</option>
-                <option value="experimental">Experimental Archive</option>
+                {PROJECT_TYPES.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Narrative Premise</label>
+              <textarea 
+                value={localPremise}
+                onChange={(e) => setLocalPremise(e.target.value)}
+                rows={4}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all font-serif italic"
+                placeholder="A signal from a dead star..."
+              />
             </div>
           </div>
         </section>
@@ -153,6 +126,7 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
                 onChange={(e) => updateProject({ genre: e.target.value })}
                 className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all"
               >
+                <option value="">Select Genre...</option>
                 {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
@@ -164,8 +138,25 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
                 onChange={(e) => updateProject({ tone: e.target.value })}
                 className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all font-medium"
               >
+                <option value="">Select Tone...</option>
                 {TONES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Target Word Count</label>
+              <div className="flex gap-2">
+                <input 
+                  type="number"
+                  value={project.targetWordCount || ''}
+                  onChange={(e) => updateProject({ targetWordCount: parseInt(e.target.value) || 0 })}
+                  className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all font-bold"
+                  placeholder="e.g. 50000"
+                />
+                <div className="flex items-center px-4 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Words
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -212,22 +203,56 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
         </div>
       </section>
 
-      {/* AI Fallback Notice */}
-      <section className="p-6 bg-blue-50 border border-blue-100 rounded-3xl space-y-4">
-        <div className="flex items-center gap-2 text-blue-600">
-          <Zap size={18} className="fill-blue-600" />
-          <h3 className="text-sm font-black uppercase tracking-widest">Distributed Intelligence Fallback</h3>
+      {/* Intelligence Ecosystem */}
+      <section className="space-y-6">
+        <div className="flex items-center gap-2 text-slate-400 mb-4">
+          <Zap size={16} />
+          <span className="text-[10px] font-black uppercase tracking-widest">Intelligence Ecosystem</span>
         </div>
-        <p className="text-xs text-blue-700 leading-relaxed font-medium italic">
-          To ensure uninterrupted narrative architecture when primary Gemini quotas are exceeded, this engine supports an automatic fallback to <b>xAI Grok</b>.
-        </p>
-        <div className="flex items-center gap-3 p-4 bg-white/50 rounded-xl border border-blue-200">
-          <div className="flex-1">
-            <code className="text-[10px] font-mono font-bold text-blue-900">VITE_GROK_API_KEY</code>
-            <p className="text-[9px] text-blue-500 mt-1 uppercase font-black tracking-tighter">Required for fallback stability</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-4">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Primary Intelligence Provider</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['gemini', 'claude', 'openai', 'grok'] as const).map((provider) => (
+                <button
+                  key={provider}
+                  onClick={() => updateProject({ primaryProvider: provider })}
+                  className={`px-4 py-3 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all ${
+                    (project.primaryProvider || 'gemini') === provider
+                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+                  }`}
+                >
+                  {provider}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium italic">
+              Prioritize speed, latency, or narrative quality by selecting your lead AI lab. Fallbacks remain active.
+            </p>
           </div>
-          <div className="text-[10px] font-bold text-blue-400 italic">
-            Configured in environment
+
+          <div className="p-6 bg-blue-50 border border-blue-100 rounded-3xl space-y-4">
+            <div className="flex items-center gap-2 text-blue-600">
+              <Zap size={18} className="fill-blue-600" />
+              <h3 className="text-sm font-black uppercase tracking-widest">Distributed Fallback</h3>
+            </div>
+            <p className="text-xs text-blue-700 leading-relaxed font-medium italic">
+              When primary quotas are reached or safety filters trigger, the engine rotates through your configured keys.
+            </p>
+            <div className="space-y-1.5">
+              {[
+                { key: 'VITE_GROK_API_KEY', label: 'Grok Beta' },
+                { key: 'VITE_ANTHROPIC_API_KEY', label: 'Claude 3.5' },
+                { key: 'VITE_OPENAI_API_KEY', label: 'GPT-4o' }
+              ].map(item => (
+                <div key={item.key} className="flex items-center justify-between px-3 py-2 bg-white/50 rounded-lg border border-blue-200">
+                  <code className="text-[9px] font-mono font-bold text-blue-900">{item.key}</code>
+                  <span className="text-[9px] font-black uppercase text-blue-400">active</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>

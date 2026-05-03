@@ -9,9 +9,11 @@ interface Props {
   project: Project;
   plotNodes: PlotNode[];
   chapters: Chapter[];
+  research: ResearchNote[];
   updateProject: (updates: Partial<Project>) => void;
   updatePlotNodes: (nodes: PlotNode[]) => void;
   updateChapters: (chapters: Chapter[]) => void;
+  onNotify?: (message: string, type?: 'success' | 'info' | 'error') => void;
   onError?: (message: string) => void;
 }
 
@@ -43,7 +45,7 @@ function PlotNodeItem({ node, index, totalLength, onUpdate, onDelete }: NodeItem
       if (localTitle !== node.title || localDesc !== node.description) {
         onUpdateRef.current(node.id, { title: localTitle, description: localDesc });
       }
-    }, 800);
+    }, 500);
     return () => clearTimeout(timer);
   }, [localTitle, localDesc, node.title, node.description, node.id]);
 
@@ -126,7 +128,7 @@ function PlotNodeItem({ node, index, totalLength, onUpdate, onDelete }: NodeItem
   );
 }
 
-export default function PlotArchitect({ project, plotNodes, chapters, updateProject, updatePlotNodes, updateChapters, onError }: Props) {
+export default function PlotArchitect({ project, plotNodes, chapters, research, updateProject, updatePlotNodes, updateChapters, onNotify, onError }: Props) {
   const [loading, setLoading] = useState(false);
   const [propagating, setPropagating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -136,7 +138,7 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
     setLoading(true);
     try {
       console.log("System: Initializing Plot Architect with Neural Engine 3.1...");
-      const nodes = await AIService.outlinePlotNodes(project, chapters);
+      const nodes = await AIService.outlinePlotNodes(project, chapters, research);
       
       if (!nodes || nodes.length === 0) {
         throw new Error("Neural Engine returned an empty structure. Try refining your source materials.");
@@ -144,11 +146,10 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
 
       await updatePlotNodes(nodes);
       console.log(`Success: Synthesized ${nodes.length} major narrative beats.`);
-      onError?.("Plot architecture successfully generated! 🔥");
+      onNotify?.("Plot architecture successfully generated!", "success");
     } catch (err: any) {
       console.error(err);
       const msg = err.message || "Plot Architect failed to respond.";
-      console.log(`Error: ${msg}`);
       onError?.(msg);
     } finally {
       setLoading(false);
@@ -161,14 +162,15 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
     try {
       const reconciled = await AIService.reconcileChapters(project, plotNodes, chapters);
       
-      const newChapters: Chapter[] = reconciled.map((item, index) => {
+      // Determine existing chapters to preserve vs new ones from AI
+      const mergedChapters: Chapter[] = reconciled.map((item, index) => {
         // Try to find if an existing chapter matches this title
         const existing = chapters.find(c => c.title === item.title);
         return {
           id: existing?.id || crypto.randomUUID(),
           title: item.title,
           summary: item.summary,
-          content: existing?.content || "",
+          content: existing?.content || "", // Preserve content!
           order: index,
           plotNodeIds: item.plotNodeIds,
           tags: existing?.tags || ['reconciled'],
@@ -176,14 +178,30 @@ export default function PlotArchitect({ project, plotNodes, chapters, updateProj
         };
       });
 
-      updateChapters(newChapters);
+      // Find any chapters that exist but were NOT in the AIDesign (Orphans)
+      // We'll append them at the end to ensure NO DATA LOSS
+      const orphans = chapters.filter(old => !mergedChapters.find(m => m.id === old.id));
+      
+      const finalChapters = [...mergedChapters];
+      if (orphans.length > 0) {
+        orphans.forEach((orp, idx) => {
+           finalChapters.push({
+             ...orp,
+             order: mergedChapters.length + idx,
+             tags: [...(orp.tags || []), 'orphaned-architecture']
+           });
+        });
+      }
+
+      updateChapters(finalChapters);
       setContinuityReport(`## Synchronization Success
-The narrative architecture has been successfully applied to your manuscript. 
+The narrative architecture has been merged with your manuscript. 
 
 **Changes Made:**
-- Aligned **${newChapters.length} chapters** with the current plot nodes.
+- Aligned **${mergedChapters.length} chapters** with the current plot nodes.
+- Preserved **${orphans.length} unexpected segments** at the end of the manuscript to prevent data loss.
 - Re-ordered chapters to match the logical flow of the architecture.
-- Preserved existing draft content while updating structural summaries.
+- Preserved all existing draft content.
 
 You can now review these changes in the **Writing Studio**.`);
     } catch (err) {
@@ -197,7 +215,7 @@ You can now review these changes in the **Writing Studio**.`);
   const handleAnalyze = async () => {
     setAnalyzing(true);
     try {
-      const report = await AIService.analyzeContinuity(plotNodes, chapters);
+      const report = await AIService.analyzeContinuity(plotNodes, chapters, research, project.externalReviews || []);
       setContinuityReport(report + "\n\n---\n**Action Required:** If you wish to apply these structural recommendations to your manuscript, click the **Apply to Manuscript** button above.");
     } catch (err) {
       console.error(err);
@@ -230,18 +248,24 @@ You can now review these changes in the **Writing Studio**.`);
 
   return (
     <div className="h-full flex flex-col gap-8">
-      <header className="flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">Plot Architect</h2>
-          <p className="text-xs text-slate-500 font-medium italic">Mapping the structural skeleton of the narrative.</p>
+      <header className="flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="text-center md:text-left">
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-1">Plot Architect</h2>
+          <p className="text-[10px] md:text-xs text-slate-500 font-medium italic">Mapping the structural skeleton of the narrative.</p>
         </div>
-        <div className="flex flex-wrap gap-2 md:gap-4 justify-center">
+        <div className="flex flex-wrap gap-2 md:gap-4 justify-center w-full md:w-auto">
           <button 
             onClick={handlePropagate}
             disabled={propagating || plotNodes.length === 0}
             className="px-4 md:px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition-all shadow-lg shadow-emerald-100 flex items-center gap-2 disabled:opacity-50 uppercase tracking-widest"
           >
-            {propagating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Map size={14} />}
+            {propagating ? (
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" 
+              />
+            ) : <Map size={14} />}
             Apply to Manuscript
           </button>
           <button 
@@ -249,7 +273,13 @@ You can now review these changes in the **Writing Studio**.`);
             disabled={analyzing || plotNodes.length === 0}
             className="px-4 md:px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded text-xs transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 uppercase tracking-widest"
           >
-            {analyzing ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <GitBranch size={14} />}
+            {analyzing ? (
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" 
+              />
+            ) : <GitBranch size={14} />}
             Continuity Sync
           </button>
           <button 
@@ -257,7 +287,13 @@ You can now review these changes in the **Writing Studio**.`);
             disabled={loading}
             className="px-4 md:px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs transition-all shadow-lg shadow-blue-100 flex items-center gap-2 disabled:opacity-50 uppercase tracking-widest"
           >
-            {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Zap size={14} className="fill-white" />}
+            {loading ? (
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" 
+              />
+            ) : <Zap size={14} className="fill-white" />}
             Auto-Architect
           </button>
           <button 
@@ -333,7 +369,13 @@ You can now review these changes in the **Writing Studio**.`);
                       disabled={propagating}
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 uppercase tracking-widest"
                     >
-                      {propagating ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Map size={14} />}
+                      {propagating ? (
+                        <motion.div 
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full" 
+                        />
+                      ) : <Map size={14} />}
                       Apply Recommendations
                     </button>
                   )}
@@ -342,7 +384,11 @@ You can now review these changes in the **Writing Studio**.`);
                 <div className="h-full flex flex-col items-center justify-center text-center gap-4 text-slate-300">
                   {analyzing ? (
                      <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 border-2 border-blue-100 border-t-blue-600 animate-spin rounded-lg" />
+                        <motion.div 
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-10 h-10 border-2 border-blue-100 border-t-blue-600 rounded-lg bg-blue-50 focus-within:shadow-[0_0_15px_rgba(37,99,235,0.2)]" 
+                        />
                         <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 font-sans">Syncing Beats...</p>
                      </div>
                   ) : (

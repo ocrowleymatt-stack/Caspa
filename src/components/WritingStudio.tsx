@@ -4,12 +4,16 @@
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type, Flame } from 'lucide-react';
-import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique, ViewType } from '../types';
+import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type, Flame, Save } from 'lucide-react';
+import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique, ViewType, ExternalReview, Character } from '../types';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
+import * as pdfjsLib from 'pdfjs-dist';
 import Markdown from 'react-markdown';
 import Fuse from 'fuse.js';
+
+// Initialize PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 interface Props {
   project: Project;
@@ -22,6 +26,7 @@ interface Props {
   onDeleteChapter?: (id: string) => void;
   onUpsertSource: (source: SourceMaterial) => void;
   onDeleteSource: (id: string) => void;
+  onUpsertCharacters?: (chars: Character[]) => Promise<void>;
   onError?: (message: string) => void;
 }
 
@@ -36,9 +41,12 @@ export default function WritingStudio({
   onDeleteChapter, 
   onUpsertSource, 
   onDeleteSource,
+  onUpsertCharacters,
   onError
 }: Props) {
-  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(() => {
+    return localStorage.getItem(`ls_selected_chapter_${project.id}`) || null;
+  });
   const [showCritique, setShowCritique] = useState(false);
   const [critiqueText, setCritiqueText] = useState('');
   const [isWriting, setIsWriting] = useState(false);
@@ -50,15 +58,47 @@ export default function WritingStudio({
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
   const [archiveFilter, setArchiveFilter] = useState<'All' | 'Manuscript' | 'Research' | 'AI Compilation'>('All');
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<number>(Date.now());
+  const [isScanningChars, setIsScanningChars] = useState(false);
+  const dirtyRef = useRef<boolean>(false);
 
   const chapters = (project as any).chapters || [];
-  
-  // Auto-select first chapter if none selected and chapters load
+
+  // Background Character Extraction (Auto-Absorb)
   useEffect(() => {
-    if (!selectedChapterId && chapters.length > 0) {
+    const lastScanWordCount = parseInt(localStorage.getItem(`ls_last_char_scan_${project.id}`) || '0');
+    const currentWordCount = chapters.reduce((acc: number, c: Chapter) => acc + (c.content?.split(/\s+/).length || 0), 0);
+
+    if (currentWordCount > lastScanWordCount + 1000 && !isScanningChars) {
+      const scan = async () => {
+        setIsScanningChars(true);
+        try {
+          const extracted = await AIService.extractCharacters(chapters, project);
+          if (extracted.length > 0 && onUpsertCharacters) {
+            await onUpsertCharacters(extracted);
+            localStorage.setItem(`ls_last_char_scan_${project.id}`, currentWordCount.toString());
+          }
+        } catch (e) {
+          console.warn("Background character absorption failed silently.");
+        } finally {
+          setIsScanningChars(false);
+        }
+      };
+      // Delay to avoid interference with editing
+      const timer = setTimeout(scan, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [chapters, project, isScanningChars]);
+  
+  // Auto-select logic
+  useEffect(() => {
+    if (selectedChapterId) {
+      localStorage.setItem(`ls_selected_chapter_${project.id}`, selectedChapterId);
+    } else if (chapters.length > 0) {
       setSelectedChapterId(chapters[0].id);
     }
-  }, [chapters, selectedChapterId]);
+  }, [chapters, selectedChapterId, project.id]);
 
   const selectedChapter = chapters.find((c: Chapter) => c.id === selectedChapterId);
   
@@ -148,7 +188,6 @@ export default function WritingStudio({
     if (!existing) return;
     const newChapter = { ...existing, ...updates };
     updateChapters(chapters.map((c: Chapter) => c.id === id ? newChapter : c));
-    if (upsertChapter) upsertChapter(newChapter);
   };
 
   const updateChapterRef = useRef(updateChapter);
@@ -156,19 +195,92 @@ export default function WritingStudio({
     updateChapterRef.current = updateChapter;
   }, [updateChapter]);
 
-  // Debounce updates to parent
+  const flushSave = async () => {
+    if (!dirtyRef.current || !selectedChapterId) return;
+    
+    setIsSaving(true);
+    try {
+      await updateChapterRef.current(selectedChapterId, { 
+        title: localTitle, 
+        summary: localSummary, 
+        content: localContent 
+      });
+      setLastSaved(Date.now());
+      localStorage.removeItem(`ls_draft_${selectedChapterId}`);
+      dirtyRef.current = false;
+    } catch (err) {
+      console.warn("Manual flush save failed:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Track dirty state
+  useEffect(() => {
+    if (selectedChapter) {
+      const isDirty = (
+        localTitle !== selectedChapter.title ||
+        localSummary !== selectedChapter.summary ||
+        localContent !== selectedChapter.content
+      );
+      dirtyRef.current = isDirty;
+    }
+  }, [localTitle, localSummary, localContent, selectedChapter]);
+
+  // Debounce updates to parent + Local Draft fallback
   useEffect(() => {
     if (!selectedChapterId) return;
-    const timer = setTimeout(() => {
-       // We only update if something actually changed from what is currently saved
-       updateChapterRef.current(selectedChapterId, { 
-         title: localTitle, 
-         summary: localSummary, 
-         content: localContent 
-       });
-    }, 800);
-    return () => clearTimeout(timer);
+    
+    // Recovery: Save to localStorage as draft in case of catastrophic failure
+    localStorage.setItem(`ls_draft_${selectedChapterId}`, localContent);
+
+    const timer = setTimeout(async () => {
+       if (dirtyRef.current) {
+         await flushSave();
+       }
+    }, 1500); // 1.5s debounce for heavier DB writes
+
+    return () => {
+      clearTimeout(timer);
+    };
   }, [localTitle, localSummary, localContent, selectedChapterId]);
+
+  // Final flush on unmount
+  useEffect(() => {
+    return () => {
+      if (dirtyRef.current) {
+        flushSave();
+      }
+    };
+  }, []);
+
+  const handleManualSave = async () => {
+    await flushSave();
+    // Force a project-level save to cloud as well
+    await saveToCloud(); 
+  };
+
+  const saveToCloud = async () => {
+    setIsSaving(true);
+    try {
+      // Small delay to simulate heavy sync
+      await new Promise(resolve => setTimeout(resolve, 800));
+      updateProject({ lastModified: Date.now() });
+      setLastSaved(Date.now());
+    } catch (e) {
+      onError?.("Cloud synchronization interrupted.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle chapter selection change - Flush current before switching
+  const handleChapterSelect = async (id: string) => {
+    if (id === selectedChapterId) return;
+    await flushSave();
+    setSelectedChapterId(id);
+    if (isMobile) setIsSidebarVisible(false);
+  };
 
   const deleteChapter = (id: string) => {
     updateChapters(chapters.filter((c: Chapter) => c.id !== id));
@@ -212,8 +324,11 @@ export default function WritingStudio({
         earlierContent,
         project.type,
         activeNodes,
+        project.research || [],
         project.maturity,
-        project.sourceMaterials || []
+        project.sourceMaterials || [],
+        project.targetWordCount,
+        project.externalReviews || []
       );
       updateChapter(selectedChapter.id, { content: refined });
     } catch (err: any) {
@@ -242,8 +357,12 @@ export default function WritingStudio({
         earlierContent, 
         project.type,
         activeNodes,
+        project.research || [],
         project.maturity,
-        project.sourceMaterials || []
+        project.sourceMaterials || [],
+        [], // directives placeholder
+        project.targetWordCount,
+        project.externalReviews || []
       );
       updateChapter(selectedChapter.id, { content: (selectedChapter.content + '\n\n' + content).trim() });
     } catch (err: any) {
@@ -259,47 +378,24 @@ export default function WritingStudio({
     setIsCritiquing(true);
     setShowCritique(true);
     try {
-      const earlierChapters = chapters.filter((c: Chapter) => c.order < selectedChapter.order);
-      const earlierContent = earlierChapters.map((c: Chapter) => `[CHAPTER ${c.order + 1}: ${c.title}]\n${c.content.slice(0, 500)}`).join('\n\n');
+      const results = await AIService.getSwarmCritique(
+        selectedChapter.content, 
+        project.type, 
+        project.maturity, 
+        project.sourceMaterials || [],
+        ['vocal', 'structural', 'factual', 'agent', 'sentence', 'thematic']
+      );
       
-      const prompt = `You are an elite narrative consultant. Analyze the following chapter draft. Determine if it aligns with the character and plot structure. Provide a concise critique and then a clear list of actionable suggestions for improvement.
-      
-      [CHAPTER: ${selectedChapter.title}]
-      [SUMMARY: ${selectedChapter.summary}]
-      
-      [EARLIER CONTEXT]: 
-      ${earlierContent}
-      
-      [CURRENT DRAFT]:
-      ${selectedChapter.content}
-      
-      Return your analysis as a JSON object with:
-      "content": "A paragraph of deep analysis",
-      "suggestions": ["suggestion 1", "suggestion 2", ...]
-      `;
-      
-      const responseText = await AIService.callAI({ prompt, json: true });
-      const data = JSON.parse(responseText || "{}");
-      
-      setCritiqueText(data.content || "No major issues identified.");
+      setCritiqueText(results[0]?.content || "Analysis complete.");
 
-      // Persist to project state
-      const newCritique: Critique = {
-        id: crypto.randomUUID(),
-        agentName: 'Narrative Sync',
-        role: 'structural',
-        content: data.content || "Analysis complete.",
-        severity: 'medium',
-        suggestions: (data.suggestions || []).map((s: string) => ({ text: s }))
-      };
-      
+      // Persist to project state - Accumulate and ensure we don't duplicate by ID if possible
       const currentMap = project.critiques || {};
       const chapterCritiques = currentMap[selectedChapter.id] || [];
       
       updateProject({
         critiques: {
           ...currentMap,
-          [selectedChapter.id]: [newCritique, ...chapterCritiques].slice(0, 10)
+          [selectedChapter.id]: [...results, ...chapterCritiques].slice(0, 30)
         }
       });
     } catch (err: any) {
@@ -338,19 +434,58 @@ export default function WritingStudio({
     setView('architect'); // Redirect to auto-draft
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    files.forEach(file => {
-      if (file.size > 1024 * 1024) {
-        onError?.(`File ${file.name} is too large (max 1MB). Firestore limit reached.`);
-        return;
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) { 
+        onError?.(`File ${file.name} is too large (max 10MB).`);
+        continue;
       }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const content = event.target?.result as string;
+
+      try {
+        let content = '';
+        if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+          const workerUrl = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+          pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+          const arrayBuffer = await file.arrayBuffer();
+          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+          const pdf = await loadingTask.promise;
+          let fullText = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => (item as any).str).join(' ');
+            fullText += pageText + '\n\n';
+          }
+          content = fullText;
+        } else {
+          content = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => resolve(event.target?.result as string);
+            reader.onerror = reject;
+            reader.readAsText(file);
+          });
+        }
+
+        const CHUNK_SIZE = 800000;
+        if (content.length > CHUNK_SIZE) {
+          for (let i = 0; i < content.length; i += CHUNK_SIZE) {
+            const chunk = content.substring(i, i + CHUNK_SIZE);
+            const partNum = Math.floor(i / CHUNK_SIZE) + 1;
+            const totalParts = Math.ceil(content.length / CHUNK_SIZE);
+            const newSource: SourceMaterial = {
+              id: crypto.randomUUID(),
+              name: `${file.name} (Part ${partNum}/${totalParts})`,
+              content: chunk,
+              type: file.type || 'text/plain',
+              updatedAt: Date.now()
+            };
+            onUpsertSource(newSource);
+          }
+        } else {
           const newSource: SourceMaterial = {
             id: crypto.randomUUID(),
             name: file.name,
@@ -359,15 +494,12 @@ export default function WritingStudio({
             updatedAt: Date.now()
           };
           onUpsertSource(newSource);
-        } catch (err) {
-          console.error("Error processing file:", file.name, err);
         }
-      };
-      reader.onerror = () => {
-        console.error("Error reading file:", file.name);
-      };
-      reader.readAsText(file);
-    });
+      } catch (err) {
+        console.error("Error processing file:", file.name, err);
+        onError?.(`Failed to process ${file.name}.`);
+      }
+    }
     
     // Reset input so same file can be uploaded again
     e.target.value = '';
@@ -394,7 +526,7 @@ export default function WritingStudio({
           width: isSidebarVisible && !isFocusMode ? (isMobile ? '100%' : 320) : 0,
           x: isSidebarVisible && !isFocusMode ? 0 : (isMobile ? '-100%' : -320)
         }}
-        className={`border-r border-slate-200 bg-white flex flex-col shadow-sm z-20 h-full overflow-hidden ${isMobile ? 'absolute inset-y-0 left-0 shadow-2xl' : 'relative'}`}
+        className={`border-r border-slate-200 bg-white flex flex-col shadow-sm z-20 h-full overflow-hidden ${isMobile ? 'absolute inset-y-0 left-0 shadow-2xl' : 'relative'} no-print`}
       >
         {/* Manuscript Section */}
         <div className="flex-none p-6 border-b border-slate-100 relative">
@@ -417,32 +549,77 @@ export default function WritingStudio({
                 <input 
                   type="file" 
                   className="hidden" 
-                  accept=".txt,.md,.json,.yaml,.yml" 
-                  onChange={(e) => {
+                  accept=".txt,.md,.json,.yaml,.yml,.pdf" 
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    if (file.size > 1024 * 1024) {
-                      onError?.(`File ${file.name} is too large (max 1MB).`);
+                    if (file.size > 10 * 1024 * 1024) {
+                      onError?.(`File ${file.name} is too large (max 10MB).`);
                       return;
                     }
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      const content = event.target?.result as string;
-                      const newChapter: Chapter = {
+                    
+                    try {
+                      let content = '';
+                      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                        const workerUrl = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+                        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+                        const arrayBuffer = await file.arrayBuffer();
+                        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                        const pdf = await loadingTask.promise;
+                        let fullText = '';
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                          const page = await pdf.getPage(i);
+                          const textContent = await page.getTextContent();
+                          const pageText = textContent.items.map((item: any) => (item as any).str).join(' ');
+                          fullText += pageText + '\n\n';
+                        }
+                        content = fullText;
+                      } else {
+                        content = await new Promise<string>((resolve, reject) => {
+                          const reader = new FileReader();
+                          reader.onload = (event) => resolve(event.target?.result as string);
+                          reader.onerror = reject;
+                          reader.readAsText(file);
+                        });
+                      }
+
+                      // Firestore 1MB limit check (~1 million characters for UTF8). 
+                      // 10MB ingest needs to be split if it's one big block.
+                      const CHUNK_SIZE = 800000; // ~800kb to be safe
+                      const contentChunks: string[] = [];
+                      if (content.length > CHUNK_SIZE) {
+                        for (let i = 0; i < content.length; i += CHUNK_SIZE) {
+                          contentChunks.push(content.substring(i, i + CHUNK_SIZE));
+                        }
+                      } else {
+                        contentChunks.push(content);
+                      }
+
+                      const newChapters: Chapter[] = contentChunks.map((chunk, index) => ({
                         id: crypto.randomUUID(),
-                        title: file.name.replace(/\.[^/.]+$/, ""),
+                        title: contentChunks.length > 1 ? `${file.name.replace(/\.[^/.]+$/, "")} (Part ${index + 1})` : file.name.replace(/\.[^/.]+$/, ""),
                         summary: 'Imported manuscript segment.',
-                        content: content,
-                        order: chapters.length,
+                        content: chunk,
+                        order: chapters.length + index,
                         plotNodeIds: [],
                         tags: [],
                         updatedAt: Date.now()
-                      };
-                      updateChapters([...chapters, newChapter]);
-                      if (upsertChapter) upsertChapter(newChapter);
-                      setSelectedChapterId(newChapter.id);
-                    };
-                    reader.readAsText(file);
+                      }));
+
+                      const updatedChapters = [...chapters, ...newChapters];
+                      updateChapters(updatedChapters);
+                      
+                      // Save each chapter to Firestore
+                      for (const ch of newChapters) {
+                        if (upsertChapter) upsertChapter(ch);
+                      }
+
+                      setSelectedChapterId(newChapters[0].id);
+                    } catch (err) {
+                      console.error("Import failed:", err);
+                      onError?.(`Failed to import ${file.name}.`);
+                    }
                   }} 
                 />
               </label>
@@ -459,10 +636,7 @@ export default function WritingStudio({
             {chapters.map((chapter: Chapter) => (
               <div key={chapter.id} className="group relative">
                 <button
-                  onClick={() => {
-                    setSelectedChapterId(chapter.id);
-                    if (isMobile) setIsSidebarVisible(false);
-                  }}
+                  onClick={() => handleChapterSelect(chapter.id)}
                   className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center gap-3 ${
                     selectedChapterId === chapter.id 
                       ? 'bg-blue-50 text-blue-900 border border-blue-100 shadow-sm' 
@@ -502,7 +676,7 @@ export default function WritingStudio({
             </h3>
             <label className="p-1.5 hover:bg-slate-50 text-blue-600 rounded-lg transition-all cursor-pointer" title="Upload Source">
               <Plus size={18} />
-              <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.json,.yaml,.yml" multiple />
+              <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.json,.yaml,.yml,.pdf" multiple />
             </label>
           </div>
 
@@ -639,8 +813,8 @@ export default function WritingStudio({
               className="flex-1 flex flex-col overflow-hidden"
             >
               {/* Internal Editor Header */}
-              <div className={`h-14 border-b border-slate-200 flex items-center justify-between px-4 md:px-8 bg-white/80 backdrop-blur-sm shadow-sm flex-none transition-all ${isFocusMode ? 'opacity-20 hover:opacity-100' : ''}`}>
-                <div className="flex items-center gap-4">
+              <div className={`h-14 border-b border-slate-200 flex items-center justify-between px-3 md:px-8 bg-white/80 backdrop-blur-sm shadow-sm flex-none transition-all ${isFocusMode ? 'opacity-20 hover:opacity-100' : ''} overflow-x-auto no-scrollbar no-print`}>
+                <div className="flex items-center gap-2 md:gap-4 shrink-0 mr-4">
                   {!isFocusMode && (
                     <button 
                       onClick={() => setIsSidebarVisible(!isSidebarVisible)}
@@ -649,11 +823,19 @@ export default function WritingStudio({
                       <ChevronRight size={18} className={isSidebarVisible ? 'rotate-180 transition-transform' : 'transition-transform'} />
                     </button>
                   )}
-                  <input 
-                    value={localTitle}
-                    onChange={(e) => setLocalTitle(e.target.value)}
-                    className="bg-transparent border-none focus:ring-0 font-bold text-slate-900 text-sm italic font-serif"
-                  />
+                  <div className="flex flex-col">
+                    <input 
+                      value={localTitle}
+                      onChange={(e) => setLocalTitle(e.target.value)}
+                      className="bg-transparent border-none focus:ring-0 font-bold text-slate-900 text-xs md:text-sm italic font-serif w-24 md:w-auto p-0"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-1 h-1 rounded-full ${isSaving ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`}></div>
+                      <span className="text-[7px] font-black text-slate-300 uppercase tracking-widest leading-none">
+                        {isSaving ? 'Syncing' : 'Shield Active'}
+                      </span>
+                    </div>
+                  </div>
                   <div className="hidden sm:flex items-center gap-4 ml-2">
                     <div className="flex flex-col">
                       <span className="text-[10px] font-black text-slate-300 uppercase leading-none tracking-tighter">Words</span>
@@ -665,7 +847,20 @@ export default function WritingStudio({
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 md:gap-3 overflow-x-auto no-scrollbar md:overflow-visible pb-1 md:pb-0">
+                <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                  <button 
+                    onClick={handleManualSave}
+                    disabled={isSaving}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      dirtyRef.current 
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 animate-pulse scale-105' 
+                        : (isSaving ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900')
+                    }`}
+                  >
+                    {isSaving ? <Activity size={12} className="animate-spin" /> : <Save size={12} />}
+                    {isSaving ? 'Synching...' : (dirtyRef.current ? 'Commit to Cloud' : 'Manuscript Synced')}
+                  </button>
+
                   <button 
                     onClick={() => setIsFocusMode(!isFocusMode)}
                     className={`p-2 rounded-lg transition-all shrink-0 ${isFocusMode ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-900'}`}
@@ -717,11 +912,13 @@ export default function WritingStudio({
 
                   <div className="h-4 w-px bg-slate-200 shrink-0" />
 
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={handleSmartWrite}
                     disabled={isWriting}
                     className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
-                      isWriting ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
+                      isWriting ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-200' : 'border-slate-200 hover:bg-slate-50 text-slate-900 shadow-sm'
                     }`}
                   >
                     {isWriting ? (
@@ -735,19 +932,25 @@ export default function WritingStudio({
                         Compose
                       </>
                     )}
-                  </button>
+                  </motion.button>
 
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={handleRefine}
                     disabled={isRefining || !selectedChapter.content.trim()}
                     className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-full text-[10px] font-bold transition-all shadow-md uppercase tracking-[0.15em] shrink-0 ${
-                      isRefining ? 'bg-orange-600 text-white' : 'bg-slate-900 hover:bg-black text-white'
+                      isRefining ? 'bg-orange-600 text-white' : 'bg-slate-900 hover:bg-black text-white hover:shadow-lg'
                     }`}
                     title="Deep Quality Refinement"
                   >
                     {isRefining ? (
                       <>
-                        <div className="w-3 h-3 border-2 border-white/30 border-t-white animate-spin rounded-full" />
+                        <motion.div 
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full" 
+                        />
                         Simmering...
                       </>
                     ) : (
@@ -756,9 +959,11 @@ export default function WritingStudio({
                         Refine
                       </>
                     )}
-                  </button>
+                  </motion.button>
 
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={handleCritique}
                     disabled={isCritiquing}
                     className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
@@ -767,7 +972,11 @@ export default function WritingStudio({
                   >
                      {isCritiquing ? (
                        <>
-                        <div className="w-3 h-3 border-2 border-indigo-600/30 border-t-indigo-600 animate-spin rounded-full" />
+                        <motion.div 
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-3 h-3 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full" 
+                        />
                         Critiquing...
                        </>
                      ) : (
@@ -776,13 +985,13 @@ export default function WritingStudio({
                         Critique
                        </>
                      )}
-                  </button>
+                  </motion.button>
                 </div>
               </div>
 
               {/* Editor Split */}
               <div className="flex-1 flex overflow-hidden">
-                <div className="flex-1 flex flex-col p-8 md:p-20 lg:p-32 overflow-y-auto w-full custom-scrollbar relative bg-surface-bg items-center">
+                <div className="flex-1 flex flex-col p-4 md:p-12 lg:p-24 xl:p-32 overflow-y-auto w-full custom-scrollbar relative bg-surface-bg items-center">
                    {/* Summary Box */}
                   <div className="max-w-[75ch] w-full mb-16 opacity-50 focus-within:opacity-100 transition-opacity duration-500">
                     <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 mb-4 uppercase tracking-[0.2em] pl-1 font-sans">

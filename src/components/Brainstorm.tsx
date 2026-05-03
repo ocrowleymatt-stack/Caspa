@@ -5,18 +5,20 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles, Zap, BrainCircuit, Lightbulb, Save } from 'lucide-react';
-import { Project } from '../types';
+import { Project, ResearchNote } from '../types';
 import { AIService } from '../services/ai';
 import { motion } from 'motion/react';
 import Markdown from 'react-markdown';
 
 interface Props {
   project: Project;
+  research: ResearchNote[];
   updateProject: (updates: Partial<Project>) => void;
+  onAddResearch: (note: ResearchNote) => Promise<void>;
   onError?: (msg: string) => void;
 }
 
-export default function Brainstorm({ project, updateProject, onError }: Props) {
+export default function Brainstorm({ project, research, updateProject, onAddResearch, onError }: Props) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<string | null>(null);
   const [localPremise, setLocalPremise] = useState(project.premise);
@@ -40,7 +42,7 @@ export default function Brainstorm({ project, updateProject, onError }: Props) {
     if (!localPremise) return;
     setLoading(true);
     try {
-      const data = await AIService.brainstorm(localPremise, project.genre, project.tone, project.type, project.maturity);
+      const data = await AIService.brainstorm(localPremise, project.genre, project.tone, project.type, research, project.maturity, project.externalReviews);
       setResults(data);
     } catch (err: any) {
       console.error(err);
@@ -51,7 +53,21 @@ export default function Brainstorm({ project, updateProject, onError }: Props) {
   };
 
   const addToResearch = (text: string) => {
-    // In progress: will link to ResearchLibrary
+    if (!text) return;
+    const newNote: ResearchNote = {
+      id: crypto.randomUUID(),
+      title: `Analysis: ${localPremise.slice(0, 30)}...`,
+      content: text,
+      category: 'AI Brainstorm',
+      tags: ['brainstorm', 'automated-expansion'],
+      updatedAt: Date.now(),
+      isDeepResearch: false
+    };
+
+    // Persist to project state
+    onAddResearch(newNote);
+    
+    setResults(null); // Clear after persisting
   };
 
   return (
@@ -86,7 +102,11 @@ export default function Brainstorm({ project, updateProject, onError }: Props) {
               className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" 
+                />
               ) : (
                 <>
                   <Zap size={18} className="fill-white" />
@@ -105,13 +125,15 @@ export default function Brainstorm({ project, updateProject, onError }: Props) {
               Analytical Output
             </h3>
             {results && (
-              <button 
+              <motion.button 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => addToResearch(results)}
-                className="flex items-center gap-2 text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-widest"
+                className="flex items-center gap-2 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50/50 px-3 py-1.5 rounded-full transition-colors uppercase tracking-widest active:bg-blue-100"
               >
                 <Save size={14} />
                 Persist Expansion
-              </button>
+              </motion.button>
             )}
           </div>
           
@@ -134,7 +156,11 @@ export default function Brainstorm({ project, updateProject, onError }: Props) {
                     transition={{ repeat: Infinity, duration: 1.5 }}
                     className="flex flex-col items-center gap-4"
                    >
-                     <div className="w-10 h-10 rounded-lg border-2 border-blue-100 border-t-blue-600 animate-spin" />
+                     <motion.div 
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        className="w-10 h-10 rounded-lg border-2 border-blue-100 border-t-blue-600 bg-blue-50 shadow-lg shadow-blue-500/10" 
+                     />
                      <p className="text-blue-600 font-bold text-[10px] uppercase tracking-widest">Processing Intelligence...</p>
                    </motion.div>
                 )}

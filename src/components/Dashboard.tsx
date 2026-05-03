@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Book, Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, ShieldAlert, AlertCircle, Save, Trash2, Trophy, Target, Plus, ChevronDown } from 'lucide-react';
 import { Project, ViewType, ProjectType, MaturityLevel } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { PROJECT_TYPES, MATURITY_LEVELS, GENRES, TONES } from '../constants';
 
 interface Props {
   project: Project;
@@ -40,13 +41,18 @@ export default function Dashboard({
     updateProjectRef.current = updateProject;
   }, [updateProject]);
 
+  useEffect(() => {
+    setLocalTitle(project.title);
+    setLocalPremise(project.premise);
+  }, [project.id]);
+
   // Debounced update for premise
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localPremise !== project.premise) {
         updateProjectRef.current({ premise: localPremise });
       }
-    }, 800);
+    }, 500);
     return () => clearTimeout(timer);
   }, [localPremise, project.premise]);
 
@@ -56,30 +62,22 @@ export default function Dashboard({
       if (localTitle !== project.title) {
         updateProjectRef.current({ title: localTitle });
       }
-    }, 800);
+    }, 500);
     return () => clearTimeout(timer);
   }, [localTitle, project.title]);
 
-  const projectTypes: { value: ProjectType; label: string }[] = [
-    { value: 'novel', label: 'Novel' },
-    { value: 'screenplay', label: 'Screenplay' },
-    { value: 'legal', label: 'Legal Brief' },
-    { value: 'academic', label: 'Academic Paper' },
-    { value: 'stageplay', label: 'Stage Play' },
-    { value: 'radioplay', label: 'Radio Drama' },
-  ];
-
-  const maturityLevels: { value: MaturityLevel; label: string; icon: any; color: string; bgColor: string }[] = [
-    { value: 'standard', label: 'Standard', icon: Book, color: 'text-slate-600', bgColor: 'bg-slate-100' },
-    { value: 'mature', label: 'Mature', icon: AlertCircle, color: 'text-amber-600', bgColor: 'bg-amber-100' },
-    { value: 'transgressive', label: 'Transgressive', icon: ShieldAlert, color: 'text-red-600', bgColor: 'bg-red-100' },
-  ];
-
   const stats = [
-    { label: 'Narrative Streak', value: `${project.stats?.narrativeStreak || 0} Days`, icon: Sparkles, color: 'text-amber-600', bgColor: 'bg-amber-50', view: 'writing' },
     { label: 'Characters', value: project.characters?.length || 0, icon: Users, color: 'text-blue-600', bgColor: 'bg-blue-50', view: 'characters' },
     { label: 'Plot Nodes', value: project.plotNodes?.length || 0, icon: GitBranch, color: 'text-indigo-600', bgColor: 'bg-indigo-50', view: 'plot' },
     { label: 'Chapters', value: project.chapters?.length || 0, icon: Book, color: 'text-emerald-600', bgColor: 'bg-emerald-50', view: 'writing' },
+    { 
+      label: project.targetWordCount ? `${Math.round(((project.stats?.totalWords || 0) / project.targetWordCount) * 100)}% Goal` : 'Set Target', 
+      value: project.stats?.totalWords || 0, 
+      icon: Target, 
+      color: 'text-rose-600', 
+      bgColor: 'bg-rose-50', 
+      view: 'writing' 
+    },
   ];
 
   return (
@@ -110,68 +108,14 @@ export default function Dashboard({
 
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-4 relative">
-             <div className="relative">
-              <button 
-                onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest rounded-full hover:bg-blue-200 transition-colors"
-              >
-                Project: {project.title || 'Untitled'}
-                <ChevronDown size={12} className={`transition-transform ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              <AnimatePresence>
-                {isProjectMenuOpen && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute top-full left-0 mt-2 w-[85vw] md:w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden"
-                  >
-                    <div className="p-4 max-h-[300px] overflow-y-auto custom-scrollbar">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 px-2">Your Manuscripts</p>
-                      <div className="space-y-1">
-                        {projects.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => {
-                              selectProject(p);
-                              setIsProjectMenuOpen(false);
-                            }}
-                            className={`w-full text-left p-3 rounded-xl transition-all ${
-                              p.id === project.id 
-                                ? 'bg-blue-50 text-blue-700 border border-blue-100' 
-                                : 'hover:bg-slate-50 text-slate-600'
-                            }`}
-                          >
-                            <div className="text-xs font-bold leading-tight">{p.title || 'Untitled'}</div>
-                            <div className="text-[9px] text-slate-400 uppercase mt-1">{p.type} • {new Date(p.lastModified).toLocaleDateString()}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="p-3 bg-slate-50 border-t border-slate-100">
-                      <button 
-                        onClick={() => {
-                          const title = window.prompt('Enter manuscript title:', 'New Manuscript');
-                          if (title) createNewProject(title);
-                          setIsProjectMenuOpen(false);
-                        }}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-white hover:bg-white text-slate-900 border border-slate-200 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-sm"
-                      >
-                        <Plus size={12} />
-                        New Manuscript
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-             </div>
+          <div className="mb-4">
+            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full">Archive Focus</span>
           </div>
           <input 
             value={localTitle}
             onChange={(e) => setLocalTitle(e.target.value)}
-            className="text-5xl font-black text-slate-900 tracking-tighter italic font-serif bg-transparent border-none focus:ring-0 p-0 w-full"
+            className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter italic font-serif bg-transparent border-none focus:ring-0 p-0 w-full"
+            placeholder="Manuscript Title"
           />
         </div>
         
@@ -183,12 +127,36 @@ export default function Dashboard({
                 onChange={(e) => updateProject({ type: e.target.value as ProjectType })}
                 className="bg-transparent text-sm font-bold text-slate-700 outline-none pr-8 py-2"
               >
-                {projectTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {PROJECT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+           </div>
+
+           <div className="flex items-center gap-1 border-r border-slate-100 pr-4 mr-2">
+              <BookOpen className="text-slate-400 ml-2" size={18} />
+              <select 
+                value={project.genre}
+                onChange={(e) => updateProject({ genre: e.target.value })}
+                className="bg-transparent text-sm font-bold text-slate-700 outline-none pr-8 py-2 max-w-[120px]"
+              >
+                <option value="">Select Genre...</option>
+                {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+           </div>
+
+           <div className="flex items-center gap-1 border-r border-slate-100 pr-4 mr-2">
+              <Sparkles className="text-slate-400 ml-2" size={18} />
+              <select 
+                value={project.tone}
+                onChange={(e) => updateProject({ tone: e.target.value })}
+                className="bg-transparent text-sm font-bold text-slate-700 outline-none pr-8 py-2 max-w-[120px]"
+              >
+                <option value="">Select Tone...</option>
+                {TONES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
            </div>
 
            <div className="flex items-center gap-2 border-r border-slate-100 pr-4 mr-2">
-              {maturityLevels.map((lvl) => (
+              {MATURITY_LEVELS.map((lvl) => (
                 <button
                   key={lvl.value}
                   onClick={() => updateProject({ maturity: lvl.value })}
@@ -224,7 +192,7 @@ export default function Dashboard({
       </header>
 
       {/* Hero Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         {stats.map((stat, i) => (
           <motion.button
             key={stat.label}
@@ -232,14 +200,14 @@ export default function Dashboard({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: i * 0.05 }}
             onClick={() => setView(stat.view as ViewType)}
-            className="p-6 bg-white border border-slate-200 rounded-xl flex flex-col items-start gap-4 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-50/50 transition-all group text-left shadow-sm"
+            className="p-4 md:p-6 bg-white border border-slate-200 rounded-xl flex flex-col items-start gap-3 md:gap-4 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-50/50 transition-all group text-left shadow-sm truncate"
           >
-            <div className={`p-3 rounded-lg ${stat.bgColor} ${stat.color} group-hover:scale-105 transition-transform`}>
-              <stat.icon size={20} />
+            <div className={`p-2.5 md:p-3 rounded-lg ${stat.bgColor} ${stat.color} group-hover:scale-105 transition-transform shrink-0`}>
+              <stat.icon size={18} />
             </div>
-            <div>
-              <div className="text-2xl font-bold text-slate-900">{stat.value}</div>
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">{stat.label}</div>
+            <div className="min-w-0">
+              <div className="text-xl md:text-2xl font-bold text-slate-900 truncate">{stat.value}</div>
+              <div className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none truncate">{stat.label}</div>
             </div>
           </motion.button>
         ))}
@@ -261,6 +229,72 @@ export default function Dashboard({
             placeholder="A young astronomer discovers a signal from a dead star..."
             className="w-full h-32 bg-slate-50 border border-slate-200 rounded-lg p-4 text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 focus:bg-white resize-none transition-all outline-none leading-relaxed text-lg font-serif italic"
           />
+        </section>
+
+        {/* Word Count Strategy */}
+        <section className="md:col-span-12 p-8 bg-slate-900 rounded-[2.5rem] text-white space-y-6 shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none group-hover:rotate-12 transition-transform duration-1000">
+             <Target size={180} />
+          </div>
+          
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <h3 className="text-xl font-black italic font-serif tracking-tight mb-1">Scale of Intent</h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Architectural word count target</p>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-black italic font-serif text-blue-400">
+                {project.stats?.totalWords?.toLocaleString() || 0} / {project.targetWordCount?.toLocaleString() || '∞'}
+              </div>
+              <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Current Transmissions</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative z-10">
+            {[1000, 5000, 20000, 50000, 80000, 100000].map(count => (
+              <button 
+                key={count}
+                onClick={() => updateProject({ targetWordCount: count })}
+                className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                  project.targetWordCount === count 
+                    ? 'bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-900/50 scale-105' 
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:border-white/20'
+                }`}
+              >
+                {count >= 1000 ? `${count/1000}k` : count} Words
+              </button>
+            ))}
+            <div className="md:col-span-1">
+              <input 
+                type="number"
+                placeholder="Custom..."
+                className="w-full py-3 px-4 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-blue-400 placeholder:text-slate-600"
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (val > 0) updateProject({ targetWordCount: val });
+                }}
+              />
+            </div>
+          </div>
+
+          {project.targetWordCount && (
+            <div className="relative pt-4 z-10">
+              <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden border border-white/10">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, ((project.stats?.totalWords || 0) / project.targetWordCount) * 100)}%` }}
+                  className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 relative"
+                >
+                  <div className="absolute inset-x-0 bottom-0 top-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+                </motion.div>
+              </div>
+              <div className="mt-2 flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-slate-500">
+                <span>Origin: 0</span>
+                <span className="text-blue-400">{Math.round(((project.stats?.totalWords || 0) / project.targetWordCount) * 100)}% Realised</span>
+                <span>Destination: {project.targetWordCount.toLocaleString()}</span>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>

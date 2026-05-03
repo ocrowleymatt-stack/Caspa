@@ -48,15 +48,23 @@ export interface ResearchNote {
   category: string;
   tags: string[];
   updatedAt: number;
+  sensoryDetails?: {
+    sounds?: string[];
+    smells?: string[];
+    textures?: string[];
+    visuals?: string[];
+  };
+  isDeepResearch?: boolean;
 }
 
 export interface Critique {
   id: string; // Added ID for tracking
   agentName: string;
-  role: 'structural' | 'vocal' | 'factual' | 'legal' | 'comedy' | 'academic';
+  role: 'structural' | 'vocal' | 'factual' | 'legal' | 'comedy' | 'academic' | 'agent' | 'publisher' | 'market' | 'buyer' | 'reader' | 'sentence' | 'thematic' | 'medical' | 'historical' | 'sensitivity' | 'writer';
   content: string;
-  severity: 'low' | 'medium' | 'high';
-  suggestions: { text: string; accepted?: boolean; rejected?: boolean }[]; 
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  suggestions: { text: string; accepted?: boolean; rejected?: boolean }[];
+  timestamp?: number;
 }
 
 export interface Comment {
@@ -77,7 +85,7 @@ export interface Presence {
   lastSeen: number;
 }
 
-export type ProjectType = 'novel' | 'screenplay' | 'stageplay' | 'radioplay' | 'legal' | 'academic' | 'experimental';
+export type ProjectType = 'novel' | 'screenplay' | 'stageplay' | 'radioplay' | 'legal' | 'academic' | 'experimental' | 'coursebook' | 'subject_bible' | 'cookbook' | 'illustrated';
 export type MaturityLevel = 'standard' | 'mature' | 'transgressive';
 
 export interface SourceMaterial {
@@ -94,6 +102,34 @@ export interface PrizeAssessment {
   pros: string[];
   cons: string[];
   recommendation: string;
+  targetWordCount?: number;
+}
+
+export type IntelligenceProvider = 'gemini' | 'claude' | 'openai' | 'grok';
+
+export interface PublishingConfig {
+  trimSize: '5x8' | '5.5x8.5' | '6x9' | '8.27x11.69'; // Common KDP sizes
+  paperType: 'white' | 'cream' | 'color';
+  coverTheme: {
+    backgroundColor: string;
+    textColor: string;
+    fontFamily: string;
+    imageUrl?: string;
+    accentColor: string;
+    isOverlayHidden?: boolean;
+    aiPrompt?: string;
+  };
+  authorName?: string;
+  subtitle?: string;
+}
+
+export interface ExternalReview {
+  id: string;
+  source: string;
+  content: string;
+  score?: number;
+  date: number;
+  isImplemented: boolean;
 }
 
 export interface Project {
@@ -109,12 +145,15 @@ export interface Project {
   lastModified: number;
   createdAt: number;
   updatedAt?: any;
+  primaryProvider?: IntelligenceProvider; 
+  publishing?: PublishingConfig;
   // Optional merged data for UI views
   characters?: Character[];
   plotNodes?: PlotNode[];
   chapters?: Chapter[];
   research?: ResearchNote[];
   sourceMaterials?: SourceMaterial[];
+  externalReviews?: ExternalReview[];
   critiques?: { [documentId: string]: Critique[] };
   stats?: {
     narrativeStreak: number;
@@ -124,6 +163,9 @@ export interface Project {
   };
   targetPrize?: string;
   prizeAssessments?: PrizeAssessment[];
+  targetWordCount?: number;
+  isPublic?: boolean;
+  publicId?: string;
 }
 
-export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'research' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes';
+export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'research' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'research_assistant' | 'reviews';
