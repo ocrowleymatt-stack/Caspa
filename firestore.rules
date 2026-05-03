@@ -15,12 +15,24 @@ service cloud.firestore {
       return isSignedIn() && projectData.ownerId == request.auth.uid;
     }
 
+    function hasCollaborators(projectData) {
+      return projectData.collaborators != null && projectData.collaborators is list;
+    }
+
     function isCollaborator(projectData) {
-      return isSignedIn() && (request.auth.uid in projectData.collaborators);
+      return isSignedIn() && hasCollaborators(projectData) && request.auth.uid in projectData.collaborators;
     }
 
     function canAccessProject(projectData) {
-      return isOwner(projectData) || isCollaborator(projectData);
+      return projectData != null && (isOwner(projectData) || isCollaborator(projectData));
+    }
+
+    function projectData(projectId) {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data;
+    }
+
+    function canAccessProjectById(projectId) {
+      return canAccessProject(projectData(projectId));
     }
 
     function isValidId(id) {
@@ -55,8 +67,8 @@ service cloud.firestore {
 
     // Projects
     match /projects/{projectId} {
-      allow get: if isSignedIn() && (isOwner(existing()) || isCollaborator(existing())) || existing().isPublic == true;
-      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || request.auth.uid in existing().collaborators);
+      allow get: if (isSignedIn() && canAccessProject(existing())) || existing().isPublic == true;
+      allow list: if isSignedIn() && canAccessProject(existing());
       
       allow create: if isSignedIn() && 
                       isValidId(projectId) &&
@@ -81,42 +93,35 @@ service cloud.firestore {
 
       // Sub-collections
       match /characters/{charId} {
-        allow read: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
-        allow write: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if canAccessProjectById(projectId);
       }
 
       match /plotNodes/{nodeId} {
-        allow read: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
-        allow write: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if canAccessProjectById(projectId);
       }
 
       match /chapters/{chapterId} {
-        allow get, list: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data) || 
-                            get(/databases/$(database)/documents/projects/$(projectId)).data.isPublic == true;
-        allow write: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow get, list: if canAccessProjectById(projectId) || projectData(projectId).isPublic == true;
+        allow write: if canAccessProjectById(projectId);
       }
 
       match /research/{noteId} {
-        allow read: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
-        allow write: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if canAccessProjectById(projectId);
       }
 
       match /sourceMaterials/{sourceId} {
-        allow read: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
-        allow write: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if canAccessProjectById(projectId);
       }
 
       match /presence/{userId} {
-        allow read: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
-        allow write: if isSignedIn() && userId == request.auth.uid && 
-                        canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read: if canAccessProjectById(projectId);
+        allow write: if isSignedIn() && userId == request.auth.uid && canAccessProjectById(projectId);
       }
     }
 
     // Users
     match /users/{userId} {
-      allow read: if isSignedIn() && (userId == request.auth.uid || 
-                     exists(/databases/$(database)/documents/projects/$(request.auth.uid))); // Simplified check for collaborators
+      allow read: if isSignedIn() && userId == request.auth.uid;
       allow write: if isSignedIn() && userId == request.auth.uid;
     }
   }
