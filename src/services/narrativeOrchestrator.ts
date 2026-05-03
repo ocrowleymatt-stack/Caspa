@@ -1,6 +1,7 @@
 import { AIService } from './ai';
 import { updateNarrativeRuntimeMemory } from './installLiteraryRuntime';
 import { Chapter, Character, PlotNode, Project, ResearchNote, SourceMaterial, ExternalReview } from '../types';
+import { buildCleanContinuityContext, repetitionPenaltyReport, applyScorePenalties } from './contextHygiene';
 
 export type NarrativeScore = {
   overall: number;
@@ -77,10 +78,7 @@ export async function scoreNarrativeChapter(args: {
   characters?: Character[];
   targetPrize?: string;
 }): Promise<{ score: NarrativeScore; critique: string }> {
-  const context = (args.previousChapters || [])
-    .slice(-8)
-    .map(ch => `# ${ch.title}\n${ch.summary}\n${(ch.content || '').slice(0, 2500)}`)
-    .join('\n\n');
+  const context = buildCleanContinuityContext(args.previousChapters || []);
 
   const prompt = `
 You are the Narrative Quality Controller for a serious literary manuscript.
@@ -127,7 +125,11 @@ JSON shape:
 
   const raw = await AIService.callAI({ prompt, json: true, model: 'gemini-flash-latest' } as any);
   const parsed = safeParseJSON(raw || '{}', {});
-  const score = normaliseScore(parsed);
+  let score = normaliseScore(parsed);
+
+  const penalties = repetitionPenaltyReport(args.draft, args.previousChapters || []);
+  score = applyScorePenalties(score as any, penalties) as NarrativeScore;
+
   const critique = [...score.reasons, ...score.requiredFixes].join('\n');
   return { score, critique };
 }
@@ -141,10 +143,7 @@ export async function rewriteWithCritique(args: {
   previousChapters?: Chapter[];
   research?: ResearchNote[];
 }): Promise<string> {
-  const previous = (args.previousChapters || [])
-    .slice(-8)
-    .map(ch => `# ${ch.title}\n${ch.summary}\n${(ch.content || '').slice(0, 2200)}`)
-    .join('\n\n');
+  const previous = buildCleanContinuityContext(args.previousChapters || []);
 
   const prompt = `
 Rewrite the chapter below using the critique and score report.
@@ -156,6 +155,7 @@ Rules:
 - If the score is low, rebuild weak scenes rather than polishing bad paragraphs.
 - Expand only through earned scene action, dialogue pressure, contradiction, setting pressure and interiority.
 - No padding. No meta-commentary.
+- Remove repeated openings, duplicated blocks and recycled phrasing.
 
 Project: ${args.project.title}
 Target standard: ${args.project.targetPrize || 'serious literary fiction'}
@@ -197,10 +197,12 @@ export async function runNarrativeQualityCycle(args: {
 
   updateNarrativeRuntimeMemory({ project: args.project, chapters, characters });
 
+  const cleanContext = buildCleanContinuityContext(chapters);
+
   let draft = await AIService.writeDraft(
     args.title,
     args.summary,
-    args.context,
+    cleanContext,
     args.project.type,
     args.activeNodes,
     args.research || [],
@@ -242,6 +244,10 @@ export async function runNarrativeQualityCycle(args: {
       characters,
       targetPrize: args.project.targetPrize
     });
+  }
+
+  if (scored.score.overall < 82) {
+    throw new Error(`QUALITY_GATE_BLOCK: Chapter did not reach required quality. Final score: ${scored.score.overall}`);
   }
 
   return {
