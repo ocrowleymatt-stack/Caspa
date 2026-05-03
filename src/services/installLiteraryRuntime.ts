@@ -1,5 +1,6 @@
 import { AIService } from './ai';
 import { buildAlwaysOnLiteraryInjection } from './literaryEngine';
+import { buildCharacterPsychologyInjection, buildCharacterEvolutionInjection } from './characterEngine';
 import { Project, ProjectType, ResearchNote, ExternalReview, PlotNode, Chapter } from '../types';
 
 let installed = false;
@@ -17,8 +18,18 @@ function buildRuntimeLayer(args: {
   sceneText?: string;
   chapterTitle?: string;
   targetWordDelta?: number;
+  chapters?: Chapter[];
 }) {
-  return `\n\n=== ALWAYS-ON LITERARY RUNTIME — NON-NEGOTIABLE ===\n${buildAlwaysOnLiteraryInjection(args)}\n=== END ALWAYS-ON LITERARY RUNTIME ===\n\n`;
+  const literary = buildAlwaysOnLiteraryInjection(args);
+  const character = buildCharacterPsychologyInjection({
+    chapters: args.chapters,
+    sceneText: args.sceneText
+  });
+  const evolution = buildCharacterEvolutionInjection({
+    chapters: args.chapters
+  });
+
+  return `\n\n=== FULL NARRATIVE RUNTIME — NON-NEGOTIABLE ===\n${literary}\n${character}\n${evolution}\n=== END RUNTIME ===\n\n`;
 }
 
 export function installLiteraryRuntime() {
@@ -60,13 +71,15 @@ export function installLiteraryRuntime() {
       const targetWords = projectTargetWords || 50000;
       const currentWords = (context || '').trim().split(/\s+/).filter(Boolean).length;
       const targetDelta = Math.max(3000, Math.min(4000, Math.round(targetWords / 15) - currentWords));
+
       const runtime = buildRuntimeLayer({
         project: { title, type, maturity: maturity as any, genre: type, tone: 'restrained literary' },
         projectType: type,
         research,
         sceneText: `${summary}\n\n${context}`.slice(0, 12000),
         chapterTitle: title,
-        targetWordDelta: targetDelta
+        targetWordDelta: targetDelta,
+        chapters: []
       });
 
       const runtimeDirectives = [
@@ -91,55 +104,5 @@ export function installLiteraryRuntime() {
     };
   }
 
-  const originalBrainstorm = service.brainstorm?.bind(service);
-  if (originalBrainstorm) {
-    service.brainstorm = async (
-      premise: string,
-      genre: string,
-      tone: string,
-      type: ProjectType,
-      research: ResearchNote[] = [],
-      maturity = 'standard',
-      externalReviews: ExternalReview[] = []
-    ) => {
-      const runtime = buildRuntimeLayer({
-        project: { title: 'Brainstorm', type, maturity: maturity as any, genre, tone },
-        projectType: type,
-        research,
-        sceneText: premise,
-        chapterTitle: 'Brainstorm'
-      });
-      return originalBrainstorm(`${runtime}\n\n${premise}`, genre, tone, type, research, maturity, externalReviews);
-    };
-  }
-
-  const originalOutlinePlotNodes = service.outlinePlotNodes?.bind(service);
-  if (originalOutlinePlotNodes) {
-    service.outlinePlotNodes = async (project: Project, chapters: Chapter[] = [], research: ResearchNote[] = []) => {
-      const runtime = buildRuntimeLayer({
-        project,
-        projectType: project.type,
-        research,
-        sceneText: chapters.map(c => `${c.title}\n${c.summary}`).join('\n\n').slice(0, 12000),
-        chapterTitle: 'Structure'
-      });
-      return originalOutlinePlotNodes({ ...project, premise: `${runtime}\n\n${project.premise || ''}` }, chapters, research);
-    };
-  }
-
-  const originalReconcileChapters = service.reconcileChapters?.bind(service);
-  if (originalReconcileChapters) {
-    service.reconcileChapters = async (project: Project, nodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] = []) => {
-      const runtime = buildRuntimeLayer({
-        project,
-        projectType: project.type,
-        research,
-        sceneText: chapters.map(c => `${c.title}\n${c.summary}`).join('\n\n').slice(0, 12000),
-        chapterTitle: 'Chapter Reconciliation'
-      });
-      return originalReconcileChapters({ ...project, premise: `${runtime}\n\n${project.premise || ''}` }, nodes, chapters, research);
-    };
-  }
-
-  console.info('Always-on literary runtime installed.');
+  console.info('Full narrative runtime (literary + character + evolution) installed.');
 }
