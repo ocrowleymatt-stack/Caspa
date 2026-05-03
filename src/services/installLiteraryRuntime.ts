@@ -1,12 +1,15 @@
 import { AIService } from './ai';
 import { buildAlwaysOnLiteraryInjection } from './literaryEngine';
 import { buildCharacterPsychologyInjection, buildCharacterEvolutionInjection } from './characterEngine';
+import { buildNarrativeSelfCritiqueInjection } from './selfCritiqueEngine';
 import { Project, ProjectType, ResearchNote, ExternalReview, PlotNode, Chapter } from '../types';
 
 let installed = false;
 let runtimeChapters: Chapter[] = [];
 let runtimeProject: Partial<Project> | undefined;
 let runtimeCharacters: any[] = [];
+
+type RuntimeRole = 'writer' | 'planner' | 'critic' | 'editor' | 'research' | 'general';
 
 export function updateNarrativeRuntimeMemory(args: {
   project?: Partial<Project>;
@@ -18,13 +21,27 @@ export function updateNarrativeRuntimeMemory(args: {
   if (Array.isArray(args.characters)) runtimeCharacters = args.characters.slice(0, 40);
 }
 
-function isProbablyCreativePrompt(prompt: string): boolean {
+function isJSONPrompt(prompt: string): boolean {
   const lower = prompt.toLowerCase();
-  return /write|rewrite|draft|chapter|scene|prose|synthesi[sz]e|manuscript|narrative|dialogue|story|fiction|literary|brainstorm|outline/.test(lower)
-    && !/return only valid json|response must be valid json|return json|json schema/.test(lower);
+  return /return only valid json|response must be valid json|return json|json schema|valid json only/.test(lower);
+}
+
+function detectRole(prompt: string): RuntimeRole {
+  const lower = prompt.toLowerCase();
+  if (/research|sources|citation|verify|factual|find real-world|google search|knowledge vector/.test(lower)) return 'research';
+  if (/critique|assess|review|score|evaluate|eligibility|rank severity|suggestions/.test(lower)) return 'critic';
+  if (/fix|edit|refine|rewrite|improve|polish|overhaul|reconcile/.test(lower)) return 'editor';
+  if (/outline|structure|plot|beat|architecture|roadmap|milestone/.test(lower)) return 'planner';
+  if (/write|draft|chapter|scene|prose|dialogue|story|fiction|literary/.test(lower)) return 'writer';
+  return 'general';
+}
+
+function isProbablyRuntimePrompt(prompt: string): boolean {
+  return detectRole(prompt) !== 'research' && !isJSONPrompt(prompt);
 }
 
 function buildRuntimeLayer(args: {
+  role?: RuntimeRole;
   project?: Partial<Project>;
   projectType?: ProjectType;
   research?: ResearchNote[];
@@ -33,14 +50,10 @@ function buildRuntimeLayer(args: {
   targetWordDelta?: number;
   chapters?: Chapter[];
 }) {
+  const role = args.role || 'general';
   const chapters = args.chapters?.length ? args.chapters : runtimeChapters;
   const project = args.project || runtimeProject;
 
-  const literary = buildAlwaysOnLiteraryInjection({
-    ...args,
-    project,
-    chapters
-  });
   const character = buildCharacterPsychologyInjection({
     chapters,
     characters: runtimeCharacters as any,
@@ -50,8 +63,34 @@ function buildRuntimeLayer(args: {
     chapters,
     characters: runtimeCharacters as any
   });
+  const critique = buildNarrativeSelfCritiqueInjection({
+    project,
+    chapters,
+    characters: runtimeCharacters as any,
+    currentTask: role
+  });
 
-  return `\n\n=== FULL NARRATIVE RUNTIME — NON-NEGOTIABLE ===\n${literary}\n${character}\n${evolution}\n=== END RUNTIME ===\n\n`;
+  if (role === 'research') return '';
+
+  if (role === 'planner') {
+    return `\n\n=== PLANNER RUNTIME — STRUCTURE ONLY ===\n${character}\n${evolution}\n${critique}\nRules: design structure, pressure, escalation and consequences. Do not produce ornate prose.\n=== END RUNTIME ===\n\n`;
+  }
+
+  if (role === 'critic') {
+    return `\n\n=== CRITIC RUNTIME — JUDGEMENT ONLY ===\n${critique}\n${character}\nRules: judge quality, continuity, character behaviour, scene function and prose weakness. Do not rewrite unless explicitly asked.\n=== END RUNTIME ===\n\n`;
+  }
+
+  if (role === 'editor') {
+    return `\n\n=== EDITOR RUNTIME — PRECISION REVISION ===\n${critique}\n${character}\n${evolution}\nRules: revise deterministically. Preserve meaning. Improve prose, continuity and pressure. Avoid unnecessary variance.\n=== END RUNTIME ===\n\n`;
+  }
+
+  const literary = buildAlwaysOnLiteraryInjection({
+    ...args,
+    project,
+    chapters
+  });
+
+  return `\n\n=== FULL NARRATIVE RUNTIME — NON-NEGOTIABLE ===\n${literary}\n${character}\n${evolution}\n${critique}\n=== END RUNTIME ===\n\n`;
 }
 
 export function installLiteraryRuntime() {
@@ -63,8 +102,10 @@ export function installLiteraryRuntime() {
   const originalCallAI = service.callAI?.bind(service);
   if (originalCallAI) {
     service.callAI = async (options: any) => {
-      if (options?.prompt && !options?.json && isProbablyCreativePrompt(options.prompt)) {
+      if (options?.prompt && !options?.json && isProbablyRuntimePrompt(options.prompt)) {
+        const role = detectRole(options.prompt);
         const runtime = buildRuntimeLayer({
+          role,
           project: runtimeProject,
           projectType: (runtimeProject?.type as ProjectType) || 'novel',
           sceneText: options.prompt.slice(0, 8000),
@@ -97,6 +138,7 @@ export function installLiteraryRuntime() {
       const targetDelta = Math.max(3000, Math.min(4000, Math.round(targetWords / 15) - currentWords));
 
       const runtime = buildRuntimeLayer({
+        role: 'writer',
         project: runtimeProject || { title, type, maturity: maturity as any, genre: type, tone: 'restrained literary' },
         projectType: type,
         research,
@@ -128,5 +170,5 @@ export function installLiteraryRuntime() {
     };
   }
 
-  console.info('Full narrative runtime (literary + character + evolution + real memory) installed.');
+  console.info('Full role-aware narrative runtime installed.');
 }
