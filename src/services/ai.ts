@@ -46,8 +46,9 @@ async function callAI(options: {
   json?: boolean; 
   schema?: any;
   maxTokens?: number;
+  useWebSearch?: boolean;
 }) {
-  const { prompt, model = "gemini-3-flash-preview", json = false, schema, maxTokens } = options;
+  const { prompt, model = "gemini-3-flash-preview", json = false, schema, maxTokens, useWebSearch = false } = options;
 
   // Primary Attempt: Gemini
   try {
@@ -57,6 +58,7 @@ async function callAI(options: {
       if (schema) config.responseSchema = schema;
     }
     if (maxTokens) config.maxOutputTokens = maxTokens;
+    if (useWebSearch) config.tools = [{ googleSearch: {} }];
 
   // Use correct model for task type per skill
     const targetModel = model === "gemini-3-flash-preview" ? "gemini-3-flash-preview" : 
@@ -215,7 +217,7 @@ export const AIService = {
       required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview", useWebSearch: true });
     const data = safeParseJSON(text || "{}");
     return {
       name: data.name || 'Unknown Character',
@@ -264,7 +266,7 @@ export const AIService = {
       required: ["nodes"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview", useWebSearch: true });
     let data = safeParseJSON(text || "[]", []);
     
     if (!Array.isArray(data)) {
@@ -370,7 +372,7 @@ export const AIService = {
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType): Promise<ResearchNote> {
-    const prompt = `Research Assistant for a ${type}. Topic: "${topic}". Context: ${context}. Return JSON with "sources" array.`;
+    const prompt = `You are a research assistant for a ${type}.\nTopic: "${topic}"\nContext: ${context}\n\nUse live web search to gather current, verifiable sources and synthesize findings.\nReturn JSON with keys: title, content, category, tags, sources.\nFor sources, include concrete citations (publication or site names with URLs when available).`;
     const schema = {
       type: Type.OBJECT,
       properties: {
@@ -383,7 +385,7 @@ export const AIService = {
       required: ["title", "content", "category", "tags", "sources"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview", useWebSearch: true });
     const data = safeParseJSON(text || "{}");
     return { 
       title: data.title || 'Untitled Research',
@@ -494,7 +496,7 @@ export const AIService = {
       required: ["beats"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview", useWebSearch: true });
     const data = safeParseJSON(text || "[]", []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
@@ -529,7 +531,7 @@ export const AIService = {
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview", useWebSearch: true });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return (data.chapters || []).map((c: any) => ({
       ...c,

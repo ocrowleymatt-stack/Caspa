@@ -61,7 +61,6 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Dashboard from './components/Dashboard';
 import Brainstorm from './components/Brainstorm';
 import CharacterForge from './components/CharacterForge';
-import PlotArchitect from './components/PlotArchitect';
 import WritingStudio from './components/WritingStudio';
 import { ResearchLibrary } from './components/ResearchLibrary';
 import CriticSwarm from './components/CriticSwarm';
@@ -881,19 +880,24 @@ export default function App() {
                 />
               )}
               {currentView === 'plot' && (
-                <PlotArchitect 
-                  project={{ ...project, chapters, sourceMaterials }}
-                  chapters={chapters} 
-                  plotNodes={plotNodes} 
+                <WritingStudio 
+                  project={{ ...project, chapters, sourceMaterials, research }} 
+                  plotNodes={plotNodes}
+                  presence={presence}
                   updateProject={updateProject}
                   updatePlotNodes={async (nodes) => {
-                     setPlotNodes(nodes);
-                     await upsertPlotNodesBatch(nodes);
+                    setPlotNodes(nodes);
+                    await upsertPlotNodesBatch(nodes);
                   }}
                   updateChapters={async (chapList) => {
                     setChapters(chapList);
                     await upsertChapterBatch(chapList);
                   }}
+                  setView={setCurrentView}
+                  upsertChapter={upsertChapter}
+                  onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
+                  onUpsertSource={upsertSourceMaterial}
+                  onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
                   onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
@@ -919,6 +923,10 @@ export default function App() {
                   plotNodes={plotNodes}
                   presence={presence}
                   updateProject={updateProject} 
+                  updatePlotNodes={async (nodes) => {
+                    setPlotNodes(nodes);
+                    await upsertPlotNodesBatch(nodes);
+                  }}
                   updateChapters={async (chapList) => {
                      setChapters(chapList);
                      await upsertChapterBatch(chapList);
@@ -988,4 +996,3 @@ export default function App() {
     </div>
   );
 }
-
