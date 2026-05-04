@@ -22,6 +22,8 @@ export type NarrativeCycleResult = {
   critique: string;
   rewriteApplied: boolean;
   attempts: number;
+  blocked?: boolean;
+  blockReason?: string;
 };
 
 function safeParseJSON(text: string, fallback: any) {
@@ -247,7 +249,15 @@ export async function runNarrativeQualityCycle(args: {
   }
 
   if (scored.score.overall < 82) {
-    throw new Error(`QUALITY_GATE_BLOCK: Chapter did not reach required quality. Final score: ${scored.score.overall}`);
+    return {
+      draft,
+      score: scored.score,
+      critique: scored.critique,
+      rewriteApplied,
+      attempts,
+      blocked: true,
+      blockReason: `QUALITY_GATE_BLOCK: Chapter did not reach required quality. Final score: ${scored.score.overall}`
+    };
   }
 
   return {
@@ -255,6 +265,7 @@ export async function runNarrativeQualityCycle(args: {
     score: scored.score,
     critique: scored.critique,
     rewriteApplied,
-    attempts
+    attempts,
+    blocked: false
   };
 }
