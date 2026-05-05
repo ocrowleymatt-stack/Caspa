@@ -103,6 +103,9 @@ export default function App() {
   const [presence, setPresence] = useState<Presence[]>([]);
   
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  useEffect(() => {
+    if (currentView === 'plot') setCurrentView('writing');
+  }, [currentView]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -560,7 +563,6 @@ export default function App() {
     {
       title: "3. Structure",
       items: [
-        { id: 'plot', label: 'Plot Architect', icon: GitBranch },
         { id: 'architect', label: 'Finish & Fix', icon: Construction },
       ]
     },
