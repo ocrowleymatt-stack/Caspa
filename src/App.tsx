@@ -134,6 +134,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authInitError, setAuthInitError] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: 'error' | 'success' | 'info' }[]>([]);
@@ -245,9 +246,22 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
+    let authResolved = false;
+    const authTimeout = window.setTimeout(() => {
+      if (!authResolved) {
+        console.error('Auth initialization timed out. Falling back to signed-out state.');
+        setAuthInitError('Authentication service took too long to initialize. Please refresh and try again.');
+        setUser(null);
+        setLoading(false);
+      }
+    }, 10000);
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      authResolved = true;
+      window.clearTimeout(authTimeout);
       console.log('Auth state changed:', u?.uid || 'no user');
       setUser(u);
+      setAuthInitError(null);
       if (u) {
         setLoginError(null);
       } else {
@@ -260,7 +274,19 @@ export default function App() {
         setExternalReviews([]);
       }
       setLoading(false);
+    }, (error) => {
+      authResolved = true;
+      window.clearTimeout(authTimeout);
+      console.error('Auth state listener error:', error);
+      setAuthInitError(error?.message || 'Failed to initialize authentication.');
+      setUser(null);
+      setLoading(false);
     });
+
+    return () => {
+      window.clearTimeout(authTimeout);
+      unsubscribe();
+    };
   }, []);
 
   const handleLogin = async () => {
@@ -724,13 +750,13 @@ export default function App() {
             <LogIn size={20} />
             Authorize Google Sync
           </button>
-          {loginError && (
+          {(loginError || authInitError) && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium"
             >
-              {loginError}
+              {loginError || authInitError}
             </motion.div>
           )}
         </motion.div>
