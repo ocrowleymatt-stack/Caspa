@@ -2,7 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: fills notched/rounded-corner screens edge-to-edge.
+         interactive-widget=resizes-content: prevents the layout from jumping
+         when the virtual keyboard appears (Chrome 108+). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <!-- PWA / fullscreen capability flags -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>NovelWrite Pro</title>
   </head>
   <body>
@@ -10,4 +17,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

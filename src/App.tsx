@@ -954,7 +954,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-[100dvh] bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible">
+    <div className="flex h-full bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible">
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -1073,7 +1073,7 @@ export default function App() {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static">
+      <main className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static" style={{ minHeight: 0 }}>
         {/* Top Header */}
         <header className="h-20 border-b border-border-subtle flex items-center justify-between px-6 md:px-10 bg-surface-card relative z-10 shrink-0 no-print shadow-sm">
           <div className="flex items-center gap-6 md:gap-12 overflow-hidden h-full">
@@ -1216,13 +1216,14 @@ export default function App() {
           ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library'].includes(currentView) 
             ? 'h-full overflow-hidden print:overflow-visible' 
             : 'overflow-y-auto p-4 md:p-8 lg:p-12 print:overflow-visible print:p-0'
-        }`}>
+        }`} style={{ minHeight: 0 }}>
           <div
             className={`w-full ${
               ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library'].includes(currentView) 
                 ? `h-full w-full ${currentView === 'writing' ? '' : 'p-2 md:p-8'}`
                 : 'min-h-full max-w-7xl mx-auto py-8 md:py-12'
             }`}
+            style={{ minHeight: 0 }}
           >
             {currentView === 'library' && (
               <LibraryView 

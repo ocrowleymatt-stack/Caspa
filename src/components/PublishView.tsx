@@ -87,7 +87,11 @@ export default function PublishView({ project, chapters, updateProject, onNotify
       .sort((a, b) => a.order - b.order);
   }, [chapters]);
 
-  const totalWords = useMemo(() => exportableChapters.reduce((acc, c) => acc + (c.content?.trim().split(/\s+/).length || 0), 0), [exportableChapters]);
+  const totalWords = useMemo(() => exportableChapters.reduce((acc, c) => {
+    const t = c.content?.trim();
+    if (!t) return acc;
+    return acc + t.split(/\s+/).filter(w => w.length > 0).length;
+  }, 0), [exportableChapters]);
   const estPageCount = Math.ceil(totalWords / 300) + 12; // Approx 300 words/page + front matter
 
   const spineWidth = useMemo(() => {

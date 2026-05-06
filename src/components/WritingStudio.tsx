@@ -83,7 +83,11 @@ export default function WritingStudio({
   // Background Character Extraction (Auto-Absorb)
   useEffect(() => {
     const lastScanWordCount = parseInt(localStorage.getItem(`ls_last_char_scan_${project.id}`) || '0');
-    const currentWordCount = chapters.reduce((acc: number, c: Chapter) => acc + (c.content?.split(/\s+/).length || 0), 0);
+    const currentWordCount = chapters.reduce((acc: number, c: Chapter) => {
+      const t = c.content?.trim();
+      if (!t) return acc;
+      return acc + t.split(/\s+/).filter((w: string) => w.length > 0).length;
+    }, 0);
 
     if (currentWordCount > lastScanWordCount + 1000 && !isScanningChars) {
       const scan = async () => {
@@ -188,13 +192,10 @@ export default function WritingStudio({
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (editor && !isFocusMode) {
-      editor.style.height = 'auto';
-      editor.style.height = `${Math.max(800, editor.scrollHeight)}px`;
-    }
-  }, [localContent, isFocusMode]);
+  // IMPORTANT: We do NOT set an explicit pixel height on the textarea.
+  // Instead we let the textarea grow naturally with min-h, and rely on the
+  // parent overflow-y-auto container to provide scrolling. Setting a fixed
+  // pixel height larger than the viewport was the root cause of broken scroll.
 
   // Synchronize local state when chapter selection changes
   useEffect(() => {
@@ -648,9 +649,11 @@ export default function WritingStudio({
   };
 
   const wordCount = useMemo(() => {
-    if (!localContent.trim()) return 0;
-    // Strip symbols for word count
-    return localContent.trim().split(/\s+/).length;
+    const trimmed = localContent.trim();
+    if (!trimmed) return 0;
+    // Split on whitespace and filter out empty tokens to avoid counting
+    // whitespace-only strings as words (fixes the character-count confusion).
+    return trimmed.split(/\s+/).filter(token => token.length > 0).length;
   }, [localContent]);
 
   const readingTime = useMemo(() => {
@@ -694,7 +697,7 @@ export default function WritingStudio({
   };
 
   return (
-    <div className={`h-full flex flex-col lg:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`}>
+    <div className={`h-full flex flex-col lg:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`} style={{ minHeight: 0 }}>
       {/* Sidebar - Chapter Navigation & Sources */}
       <AnimatePresence initial={false}>
         {!isFocusMode && isLeftRailOpen && (
@@ -1047,6 +1050,7 @@ export default function WritingStudio({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="flex-1 flex flex-col overflow-hidden"
+              style={{ minHeight: 0 }}
             >
               {/* Internal Editor Header */}
               <div className={`h-auto min-h-20 border-b border-border-subtle flex flex-wrap items-center justify-between px-4 md:px-10 py-4 lg:py-0 bg-surface-card/80 backdrop-blur-xl shadow-2xl flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-4`}>
@@ -1218,8 +1222,8 @@ export default function WritingStudio({
                 </div>
               </div>
 
-              <div className="flex-1 flex overflow-hidden lg:flex-row flex-col relative">
-                <div className={`flex-1 flex flex-col ${isFocusMode ? 'p-6 md:p-10 lg:px-20 lg:py-10' : 'p-6 md:p-16 lg:px-32 lg:py-24'} overflow-y-auto w-full custom-scrollbar relative items-center transition-all duration-500`}>
+              <div className="flex-1 flex overflow-hidden lg:flex-row flex-col relative" style={{ minHeight: 0 }}>
+                <div className={`flex-1 flex flex-col ${isFocusMode ? 'p-6 md:p-10 lg:px-20 lg:py-10 pb-32' : 'p-6 md:p-16 lg:px-32 lg:py-24 pb-32'} overflow-y-auto w-full custom-scrollbar relative items-center transition-all duration-500`} style={{ minHeight: 0 }}>
                    {/* Summary Box */}
                   <div className="max-w-[80ch] w-full mb-12 opacity-60 focus-within:opacity-100 transition-all duration-700 bg-surface-card/50 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-border-subtle hover:border-brand-primary/20 relative">
                     {/* Prose Analysis Flyout */}
@@ -1367,7 +1371,7 @@ export default function WritingStudio({
                       value={localContent}
                       onChange={(e) => setLocalContent(e.target.value)}
                       placeholder="Initialize narrative thread..."
-                      className="w-full h-full bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/10 selection:bg-brand-primary/30"
+                      className="w-full min-h-[60vh] bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/10 selection:bg-brand-primary/30"
                       spellCheck={true}
                     />
                   </div>
