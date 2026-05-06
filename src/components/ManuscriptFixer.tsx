@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Zap, AlertCircle, CheckCircle2, ChevronRight, Play, Wand2, Hammer, Activity, FileUp, Target } from 'lucide-react';
+import { ShieldCheck, Zap, AlertCircle, CheckCircle2, ChevronRight, Play, Wand2, Hammer, Activity, FileUp, Target, Plus, X, Flame } from 'lucide-react';
 import { Project, Chapter, ProjectType, ResearchNote } from '../types';
+import { calculateSimilarity, findRedundantChapters } from '../lib/narrativeUtils';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -12,11 +13,12 @@ interface Props {
   updateProject: (updates: Partial<Project>) => void;
   updateChapters: (chaps: Chapter[]) => void;
   updatePlotNodes: (nodes: any[]) => void;
+  onAddResearch?: (note: ResearchNote) => Promise<void>;
   setView: (view: any) => void;
   onError?: (msg: string) => void;
 }
 
-export default function ManuscriptFixer({ project, chapters, research, updateProject, updateChapters, updatePlotNodes, setView, onError }: Props) {
+export default function ManuscriptFixer({ project, chapters, research, updateProject, updateChapters, updatePlotNodes, onAddResearch, setView, onError }: Props) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isFixing, setIsFixing] = useState(false);
   const [autoPilot, setAutoPilot] = useState(false);
@@ -30,6 +32,35 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
   
   const [showManualPaste, setShowManualPaste] = useState(false);
   const [pasteContent, setPasteContent] = useState('');
+
+  const [isRestructuring, setIsRestructuring] = useState(false);
+
+  const handleRipUp = async () => {
+    if (!confirm("CRITICAL WARNING: This will liquidate your current chapters and plot nodes. Your core story will be restructured from the ground up. Proceed?")) return;
+    
+    setIsRestructuring(true);
+    addLog("System: Initializing RIP UP AND START AGAIN protocol...");
+    try {
+      const { plotNodes, chapters: newChapters, research: newResearch } = await AIService.ripUpAndRestart(project, chapters, research);
+      
+      addLog("Success: Narrative architecture liquidated and replaced.");
+      addLog(`Reconstructed: ${newChapters.length} chapters, ${plotNodes.length} nodes, ${newResearch.length} creative sources.`);
+      
+      updatePlotNodes(plotNodes);
+      updateChapters(newChapters);
+      
+      if (onAddResearch && newResearch.length > 0) {
+        for (const res of newResearch) {
+          await onAddResearch(res);
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      addLog(`Fatal: Restructure sequence failed. ${err.message}`);
+    } finally {
+      setIsRestructuring(false);
+    }
+  };
 
   const runSlowCooker = async () => {
     setIsSlowCooking(true);
@@ -64,7 +95,9 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           [],
           research,
           project.maturity,
-          [] 
+          [], 
+          chap.directives || [],
+          project.targetWordCount
         );
 
         updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
@@ -111,14 +144,23 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           }
 
           addLog(`IO Success: ${fullText.length.toLocaleString()} characters buffered.`);
+          
+          let isPlan = false;
+          if (!bypassAI) {
+            addLog("AI Core: Detecting artifact typology...");
+            const type = await AIService.detectIngestionType(fullText);
+            isPlan = type === 'plan';
+            addLog(`Detected Archetype: ${isPlan ? "STRUCTURAL PLAN / BLUEPRINT" : "RAW MANUSCRIPT / DRAFT"}`);
+          }
+
           addLog("Phase 1: Detecting narrative architecture...");
           
-          let finalSegments: { title: string; summary: string; marker: string }[] = [];
+          let finalSegments: { title: string; summary: string; marker: string; directives?: string[] }[] = [];
           
           if (!bypassAI) {
             try {
-              addLog("AI Core: Sourcing structural markers (Neural)...");
-              const segments = await AIService.splitManuscript(fullText, project.type);
+              addLog(`AI Core: Sourcing structural markers (${isPlan ? "Instructional" : "Neural"})...`);
+              const segments = await AIService.splitManuscript(fullText, project.type, isPlan);
               if (segments && segments.length > 0) {
                 finalSegments = segments;
                 addLog(`AI Core Success: Found ${segments.length} logical boundaries.`);
@@ -240,10 +282,11 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
               id: generateId(),
               title: seg.title || `Chapter ${i + 1}`,
               summary: seg.summary || "Imported content.",
-              content: content,
+              content: isPlan ? "" : content,
+              directives: isPlan ? (seg.directives || [content]) : [],
               order: i,
               plotNodeIds: [],
-              tags: ['bulk-imported'],
+              tags: isPlan ? ['plan-imported'] : ['bulk-imported'],
               updatedAt: Date.now()
             };
           });
@@ -253,14 +296,15 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           addLog("Ingestion Sequence: 100% COMPLETE.");
           
           setAnalysis(`## Ingestion Successful
-Your manuscript has been parsed into **${finalSegments.length} chapters**. 
+Your ${isPlan ? "**Structural Plan**" : "manuscript"} has been parsed into **${finalSegments.length} chapters**. 
 
 **Diagnostic Overview:**
-- Source Method: ${bypassAI ? "Manual Sequential" : (finalSegments.length > 5 ? "Neural Analysis" : "Structural Recovery")}
+- Source Method: ${isPlan ? "Instructional Extraction" : (bypassAI ? "Manual Sequential" : (finalSegments.length > 5 ? "Neural Analysis" : "Structural Recovery"))}
+- Artifact Typology: ${isPlan ? "PLAN (Prioritizing Directions)" : "MANUSCRIPT (Prioritizing Word Count)"}
 - Character Count: ${fullText.length.toLocaleString()}
 - Node Density: ${Math.round(fullText.length / finalSegments.length)} chars/node
 
-Go to the **Writing Studio** to review the reconstructed chapters.`);
+${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioritize your specific chapter instructions over generic word count targets during drafting." : "Go to the **Writing Studio** to review the reconstructed chapters."}`);
         } catch (innerErr) {
           console.error("Internal processing error:", innerErr);
           addLog(`Process Error: ${innerErr instanceof Error ? innerErr.message : "Structure corrupted"}`);
@@ -398,7 +442,8 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
             research,
             project.maturity,
             project.sourceMaterials || [],
-            chap.directives || []
+            chap.directives || [],
+            project.targetWordCount
           );
 
           // Update local copy
@@ -465,9 +510,23 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
       // Step 3: Reconcile Chapters
       setFixProgress(40);
       addLog("Phase 3/5: Reconciling chapters with new structural logic...");
-      const reconciledNodes = await AIService.reconcileChapters(project, newNodes, chapters, research);
+      const rawBeats = await AIService.reconcileChapters(project, newNodes, chapters, research);
       
-      const newChapters: Chapter[] = reconciledNodes.map((beat, index) => {
+      // De-duplicate beats by title or high similarity
+      const uniqueBeats: { title: string; summary: string; plotNodeIds: string[] }[] = [];
+      for (const beat of rawBeats) {
+        const isDuplicate = uniqueBeats.some(b => 
+          b.title.toLowerCase() === beat.title.toLowerCase() || 
+          calculateSimilarity(b.summary, beat.summary) > 0.7
+        );
+        if (!isDuplicate) {
+          uniqueBeats.push(beat);
+        } else {
+          addLog(`Skipped redundant chapter structure: "${beat.title}"`);
+        }
+      }
+
+      const newChapters: Chapter[] = uniqueBeats.map((beat, index) => {
         const existingChap = chapters.find(c => c.title === beat.title);
         return {
           id: existingChap?.id || crypto.randomUUID(),
@@ -519,7 +578,8 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
             research,
             project.maturity,
             project.sourceMaterials || [],
-            chap.directives || []
+            chap.directives || [],
+            project.targetWordCount
           );
           
           updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
@@ -542,404 +602,239 @@ Go to the **Writing Studio** to review the reconstructed chapters.`);
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-12 px-6">
+    <div className="max-w-5xl mx-auto py-12 px-6 relative">
       <header className="mb-12 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 rounded-full mb-4">
-          <ShieldCheck size={14} className="text-indigo-600" />
-          <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Deep Architecture Engine</span>
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full mb-4">
+          <ShieldCheck size={14} className="text-brand-primary" />
+          <span className="text-[10px] font-black text-brand-primary uppercase tracking-widest">Deep Architecture Engine</span>
         </div>
-        <h1 className="text-4xl font-black text-slate-900 mb-4 tracking-tight italic font-serif">Finish & Fix <span className="text-[10px] not-italic text-slate-300 font-sans tracking-normal opacity-50">v2.55-stable</span></h1>
+        <h1 className="text-4xl font-black text-text-primary mb-4 tracking-tight italic font-serif">Finish & Fix <span className="text-[10px] not-italic text-text-secondary font-sans tracking-normal opacity-50">v2.55-stable</span></h1>
         
         {isFixingBadBook && (
           <div className="max-w-md mx-auto mt-8 mb-4 space-y-2">
-            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+            <div className="h-2 w-full bg-surface-muted rounded-full overflow-hidden shadow-inner border border-border-subtle">
               <motion.div 
-                className="h-full bg-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.5)]"
+                className="h-full bg-brand-primary shadow-[0_0_15px_rgba(59,130,246,0.6)]"
                 initial={{ width: 0 }}
                 animate={{ width: `${fixProgress}%` }}
                 transition={{ type: "spring", bounce: 0, duration: 0.5 }}
               />
             </div>
-            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-indigo-400">
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-brand-primary">
               <span>Macro Overhaul: {fixProgress < 20 ? 'Targeting' : fixProgress < 40 ? 'Architecting' : fixProgress < 60 ? 'Reconciling' : fixProgress < 75 ? 'Continuity' : 'Deep Drafting'}</span>
               <span>{Math.round(fixProgress)}%</span>
             </div>
           </div>
         )}
 
-        <p className="text-slate-500 max-w-2xl mx-auto font-medium">
+        <p className="text-text-secondary max-w-2xl mx-auto font-medium">
           The Global Manuscript Engine analyzes your entire work for structural integrity, logical consistency, and thematic resolution.
         </p>
         <button 
           onClick={() => window.location.reload()} 
-          className="mt-4 px-4 py-1 bg-red-50 text-red-500 text-[10px] font-black uppercase rounded-full hover:bg-red-100 transition-all"
+          className="mt-4 px-4 py-1 bg-red-500/10 text-red-500 text-[10px] font-black uppercase rounded-full hover:bg-red-500/20 transition-all border border-red-500/20"
         >
           Force System Refresh (Bust Cache)
         </button>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Controls */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-              <Zap size={14} className="text-yellow-500" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+        <div className="lg:col-span-1 space-y-4 md:space-y-6">
+          <div className="bg-surface-card p-4 md:p-6 rounded-2xl md:rounded-3xl border border-border-subtle shadow-2xl">
+            <h3 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-4 md:mb-6 flex items-center gap-2">
+              <Zap size={14} className="text-amber-500" />
               Directives
             </h3>
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3 md:gap-4">
               <button 
                 onClick={runFixBadBook}
                 disabled={isFixingBadBook}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group ${
-                  isFixingBadBook ? 'bg-slate-50 text-slate-400' : 'bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-200'
+                className={`w-full flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all group ${
+                  isFixingBadBook ? 'bg-surface-muted text-text-secondary' : 'bg-red-600 text-white hover:bg-red-700 shadow-xl shadow-red-900/20'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Target size={18} />
-                  <span className="text-sm font-bold">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <Target size={18} className="shrink-0" />
+                  <span className="text-xs md:text-sm font-bold text-left leading-tight">
                     {isFixingBadBook ? `Overhauling: ${Math.round(fixProgress)}%` : 'Fix a Bad Book (Macro)'}
                   </span>
                 </div>
                 {isFixingBadBook ? (
-                  <motion.div 
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  >
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
                     <Activity size={16} />
                   </motion.div>
-                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform shrink-0" />}
               </button>
 
               <button 
                 onClick={runFinishAndFix}
                 disabled={isFixing}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group ${
-                  isFixing ? 'bg-slate-50 text-slate-400' : 'bg-slate-900 text-white hover:bg-black shadow-lg shadow-black/10'
+                className={`w-full flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all group ${
+                  isFixing ? 'bg-surface-muted text-text-secondary' : 'bg-brand-dark text-text-primary hover:bg-black border border-border-subtle shadow-xl'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  < Hammer size={18} />
-                  <span className="text-sm font-bold">Manuscript Scan</span>
+                <div className="flex items-center gap-2 md:gap-3">
+                  <Hammer size={18} className="shrink-0" />
+                  <span className="text-xs md:text-sm font-bold">Manuscript Scan</span>
                 </div>
                 {isFixing ? (
-                  <motion.div 
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  >
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
                     <Activity size={16} />
                   </motion.div>
-                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform shrink-0" />}
               </button>
 
               <button 
                 onClick={startAutoPilot}
                 disabled={autoPilot}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group ${
-                  autoPilot ? 'bg-slate-50 text-slate-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
+                className={`w-full flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all group ${
+                  autoPilot ? 'bg-surface-muted text-text-secondary' : 'bg-brand-primary text-white hover:bg-brand-accent shadow-xl shadow-brand-primary/20'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Play size={18} />
-                  <span className="text-sm font-bold">Auto-Pilot Finish</span>
+                <div className="flex items-center gap-2 md:gap-3">
+                  <Play size={18} className="shrink-0" />
+                  <span className="text-xs md:text-sm font-bold">Auto-Pilot Finish</span>
                 </div>
                 {autoPilot ? (
-                  <motion.div 
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  >
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
                     <Activity size={16} />
                   </motion.div>
-                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform shrink-0" />}
               </button>
 
               <button 
-                onClick={runDeepDraft}
-                disabled={isDeepDrafting}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group ${
-                  isDeepDrafting ? 'bg-slate-50 text-slate-400' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200'
+                onClick={handleRipUp}
+                disabled={isRestructuring}
+                className={`w-full flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all group ${
+                   isRestructuring ? 'bg-surface-muted text-text-secondary' : 'bg-red-600 text-white hover:bg-red-700 shadow-[0_15px_40px_rgba(220,38,38,0.3)] border border-red-500/20'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Activity size={18} />
-                  <span className="text-sm font-bold">Deep Draft (Auto)</span>
+                <div className="flex items-center gap-2 md:gap-3">
+                  <Flame size={18} className={`shrink-0 ${isRestructuring ? 'animate-pulse' : ''}`} />
+                  <span className="text-xs md:text-sm font-black uppercase tracking-widest">Full Restructure & Redraft</span>
                 </div>
-                {isDeepDrafting ? (
-                  <motion.div 
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  >
-                    <Activity size={16} />
-                  </motion.div>
-                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+                {!isRestructuring && <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform shrink-0" />}
               </button>
 
-              <button 
-                onClick={runSlowCooker}
-                disabled={isSlowCooking}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group ${
-                  isSlowCooking ? 'bg-slate-50 text-slate-400' : 'bg-orange-600 text-white hover:bg-orange-700 shadow-lg shadow-orange-100 border-2 border-orange-400/20'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Activity size={18} />
-                    <div className="absolute inset-0 bg-white/20 blur-sm rounded-full" />
+              <div className="pt-4 border-t border-border-subtle sm:col-span-2 lg:col-span-1">
+                <label className={`w-full flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl transition-all group cursor-pointer ${isImporting ? 'bg-surface-muted text-text-secondary' : 'bg-brand-primary/10 border border-brand-primary/20 text-brand-primary hover:bg-brand-primary/20'}`}>
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <FileUp size={18} className="shrink-0" />
+                    <span className="text-xs md:text-sm font-bold">Bulk Ingest</span>
                   </div>
-                  <div className="text-left">
-                    <span className="text-sm font-bold block">AI Slow Cooker</span>
-                    <span className="text-[8px] font-medium opacity-70 block uppercase tracking-tighter">Economy Autopilot Drafting</span>
-                  </div>
-                </div>
-                {isSlowCooking ? (
-                  <motion.div 
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  >
-                    <Activity size={16} />
-                  </motion.div>
-                ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
-              </button>
-
-              <div className="pt-4 border-t border-slate-50">
-                <label 
-                  htmlFor="bulk-import-input"
-                  className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all group cursor-pointer ${
-                    isImporting ? 'bg-slate-50 text-slate-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <FileUp size={18} />
-                    <span className="text-sm font-bold">Bulk Import Manuscript</span>
-                  </div>
-                  {isImporting ? (
-                    <motion.div 
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Activity size={16} />
-                    </motion.div>
-                  ) : <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
-                  <input id="bulk-import-input" type="file" className="hidden" onChange={handleBulkImport} accept=".txt,.md" disabled={isImporting} />
+                  <input type="file" className="hidden" onChange={handleBulkImport} accept=".txt,.md" disabled={isImporting} />
+                  <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform shrink-0" />
                 </label>
-                <p className="mt-2 text-[9px] text-slate-400 font-medium px-2 italic">
-                  Upload a single file to intelligently split into chapters.
-                </p>
               </div>
 
-              <div className="pt-2">
-                <button 
-                  onClick={() => setShowManualPaste(true)}
-                  className="w-full py-3 border border-slate-200 text-slate-500 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
-                >
-                  <Zap size={12} className="text-blue-500" />
-                  Manual Text Injection
-                </button>
-              </div>
+              <button 
+                onClick={() => setShowManualPaste(true)}
+                className="w-full py-3 border border-border-subtle text-text-secondary rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-surface-muted transition-all flex items-center justify-center gap-2 sm:col-span-2 lg:col-span-1"
+              >
+                <Zap size={12} className="text-brand-primary" />
+                Manual Injection
+              </button>
             </div>
           </div>
-
-          <div className="bg-slate-900 p-6 rounded-3xl shadow-xl">
-             <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+          
+          <div className="bg-brand-dark p-6 rounded-3xl shadow-xl border border-border-subtle">
+            <h3 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-4 flex items-center gap-2 opacity-50">
               <Activity size={14} className="text-emerald-500" />
               Architect Logs
             </h3>
-            <div className="space-y-2 font-mono">
+            <div className="space-y-2 font-mono h-40 overflow-y-auto no-scrollbar">
               {logs.map((log, i) => (
-                <div key={i} className="text-[10px] text-emerald-400/80 last:text-emerald-400 animate-in fade-in slide-in-from-left-2 duration-300">
+                <div key={i} className="text-[10px] text-emerald-400 last:text-emerald-300 animate-in fade-in slide-in-from-left-2 duration-300">
                   {log}
                 </div>
               ))}
-              {logs.length === 0 && <div className="text-[10px] text-slate-600 italic">Waiting for command...</div>}
             </div>
           </div>
         </div>
 
-        {/* Results */}
         <div className="lg:col-span-2">
           <AnimatePresence mode="wait">
             {analysis ? (
               <motion.div 
+                key="results"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white p-10 rounded-3xl border border-slate-100 shadow-sm min-h-[600px]"
+                exit={{ opacity: 0, y: -20 }}
+                className="bg-surface-card p-10 rounded-3xl border border-border-subtle shadow-2xl min-h-[600px] relative overflow-hidden"
               >
-                <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
-                  <h2 className="text-xl font-black text-slate-900">System Report</h2>
-                  <div className="flex items-center gap-2 text-emerald-500 text-xs font-bold bg-emerald-50 px-3 py-1 rounded-full">
+                <div className="flex items-center justify-between mb-8 pb-4 border-b border-border-subtle">
+                  <h2 className="text-xl font-black text-text-primary italic font-serif tracking-tight">System Report</h2>
+                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-400/20">
                     <CheckCircle2 size={14} />
-                    Success
+                    Synchronized
                   </div>
                 </div>
-                <div className="markdown-body prose prose-slate max-w-none">
+                <div className="markdown-body prose prose-invert prose-brand max-w-none italic">
                   <Markdown>{analysis}</Markdown>
                 </div>
-                {analysis?.includes('Import Success') && (
-                  <button 
-                    onClick={() => setView('writing')}
-                    className="mt-8 w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-100 flex items-center justify-center gap-3 transition-all"
-                  >
-                    Enter Writing Studio
-                    <ChevronRight size={18} />
-                  </button>
-                )}
+                <button 
+                  onClick={() => setView('writing')}
+                  className="mt-8 w-full py-4 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-2xl transition-all active:scale-95"
+                >
+                  Enter Writing Studio
+                </button>
               </motion.div>
-            ) : isImporting ? (
-              <div className="h-full min-h-[600px] flex flex-col items-center justify-center p-20 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
-                <div className="relative mb-8">
-                  <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center">
-                    <Activity size={32} className="text-blue-600" />
-                  </div>
-                  <motion.div 
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    className="absolute inset-0 w-24 h-24 border-4 border-blue-100 border-t-blue-600 rounded-full" 
-                  />
-                </div>
-                <h3 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">Reformatting Manuscript...</h3>
-                <p className="text-slate-500 max-w-sm font-medium leading-relaxed mb-6">
-                  Our neural engine is scanning for character names, setting transitions, and atmospheric shifts to identify logical chapter boundaries.
-                </p>
-                <div className="w-full max-w-md h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                   <motion.div 
-                     initial={{ width: 0 }}
-                     animate={{ width: "100%" }}
-                     transition={{ duration: 15, ease: "linear" }}
-                     className="h-full bg-blue-600"
-                   />
+            ) : isImporting || isFixing ? (
+              <div className="h-full min-h-[600px] flex flex-col items-center justify-center p-20 text-center bg-surface-card rounded-3xl border border-border-subtle shadow-inner">
+                <Activity size={48} className="text-brand-primary animate-pulse mb-8" />
+                <h3 className="text-2xl font-black text-text-primary mb-4 tracking-tight italic font-serif">Processing Manuscript...</h3>
+                <p className="text-text-secondary max-w-sm font-medium opacity-60 italic mb-8"> neural core fragments the narrative architecture...</p>
+                <div className="w-full max-w-md h-1.5 bg-surface-muted rounded-full overflow-hidden">
+                  <motion.div initial={{ width: 0 }} animate={{ width: "100%" }} transition={{ duration: 10 }} className="h-full bg-brand-primary" />
                 </div>
               </div>
             ) : (
               <div 
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                className={`h-full min-h-[600px] flex flex-col items-center justify-center p-12 text-center rounded-3xl border-2 border-dashed transition-all group ${
-                  dragActive 
-                    ? 'bg-blue-50 border-blue-400 scale-[0.99] shadow-inner' 
-                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(e) => { e.preventDefault(); setDragActive(false); handleBulkImport(e as any); }}
+                className={`h-full min-h-[600px] flex flex-col items-center justify-center p-20 text-center rounded-[3rem] border-2 border-dashed transition-all relative overflow-hidden group ${
+                  dragActive ? 'border-brand-primary bg-brand-primary/5' : 'border-border-subtle bg-surface-card hover:border-text-secondary/30'
                 }`}
               >
-                <div className={`w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-sm mb-8 transition-transform group-hover:scale-110 ${
-                  dragActive ? 'scale-110 shadow-lg text-blue-600' : 'text-slate-300'
-                }`}>
-                  <FileUp size={32} />
-                </div>
-                <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight underline decoration-blue-500">Rapid Ingestion Hub v2.55</h3>
-                <p className="text-slate-500 text-sm max-w-xs font-medium mb-8 leading-relaxed">
-                  Drop your large `.txt` or `.md` manuscript here. 
-                  <br /><br />
-                  <span className="text-blue-600 font-bold">MANUAL OPTION NOW AVAILABLE BELOW</span>
-                </p>
-                
-                <div className="flex flex-col gap-4 w-full max-w-xs mb-12">
-                  <label htmlFor="hub-import-input" className="w-full text-center px-8 py-4 bg-slate-900 text-white font-black text-xs uppercase tracking-[0.2em] rounded-xl cursor-pointer hover:bg-black transition-all shadow-xl">
-                    1. Choose Source File
-                    <input id="hub-import-input" type="file" className="hidden" onChange={handleBulkImport} accept=".txt,.md" />
-                  </label>
-                  
-                  <div className="flex items-center gap-4">
-                    <div className="h-px flex-1 bg-slate-200"></div>
-                    <span className="text-[10px] font-black text-slate-300 uppercase">OR</span>
-                    <div className="h-px flex-1 bg-slate-200"></div>
-                  </div>
-
-                  <button 
-                    onClick={() => setShowManualPaste(true)}
-                    className="w-full py-4 bg-white border-2 border-blue-600 text-blue-600 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-3"
-                  >
-                    <Zap size={16} />
-                    2. Manual Text Injection (Stable)
-                  </button>
-                </div>
-
-                <div className="mt-4 flex flex-wrap justify-center gap-4">
-                   <button 
-                    onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = '.txt,.md';
-                      input.onchange = (e) => {
-                        const file = (e.target as HTMLInputElement).files?.[0];
-                        if (file) processFile(file, true);
-                      };
-                      input.click();
-                    }}
-                    className="text-[9px] font-black uppercase text-red-500 hover:text-red-600 tracking-widest border-b border-red-200"
-                   >
-                     Force Sequential Import (Bypass AI)
-                   </button>
-
-                   <button 
-                    onClick={() => setShowManualPaste(true)}
-                    className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 tracking-widest border-b border-blue-200"
-                   >
-                     Manual Text Injection
-                   </button>
-                </div>
-
-                <AnimatePresence>
-                  {showManualPaste && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-6"
-                    >
-                      <motion.div 
-                        initial={{ scale: 0.9, y: 20 }}
-                        animate={{ scale: 1, y: 0 }}
-                        className="bg-white w-full max-w-3xl rounded-3xl p-8 shadow-2xl flex flex-col gap-6"
-                      >
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-xl font-black text-slate-900 tracking-tight">Manual Manuscript Injection</h3>
-                          <button onClick={() => setShowManualPaste(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
-                        </div>
-                        <p className="text-sm text-slate-500 font-medium italic">
-                          Paste your raw manuscript below. Use this if file ingestion is blocked by browser security.
-                        </p>
-                        <textarea 
-                          value={pasteContent}
-                          onChange={(e) => setPasteContent(e.target.value)}
-                          placeholder="Paste your content here..."
-                          className="w-full h-[400px] p-6 rounded-2xl bg-slate-50 border border-slate-100 font-mono text-sm focus:ring-2 focus:ring-blue-500 transition-all resize-none"
-                        />
-                        <div className="flex gap-4">
-                          <button 
-                            onClick={handleManualImport}
-                            disabled={!pasteContent.trim()}
-                            className="flex-1 py-4 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-slate-200 disabled:opacity-20"
-                          >
-                            Execute Ingestion Sequence
-                          </button>
-                          <button 
-                            onClick={() => setShowManualPaste(false)}
-                            className="px-8 py-4 bg-slate-100 text-slate-500 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </motion.div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="mt-12 grid grid-cols-2 gap-4 w-full max-w-md">
-                   <div className="p-4 bg-white/50 rounded-2xl border border-slate-100 flex flex-col items-center gap-2">
-                      <Zap size={14} className="text-yellow-500" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">AI Splitting</span>
-                   </div>
-                   <div className="p-4 bg-white/50 rounded-2xl border border-slate-100 flex flex-col items-center gap-2">
-                      <Target size={14} className="text-blue-500" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Format Sync</span>
-                   </div>
-                </div>
+                <FileUp size={80} strokeWidth={0.5} className="text-text-secondary opacity-10 mb-8" />
+                <p className="text-xl font-black text-text-primary italic font-serif">Awaiting Ingestion Signal</p>
+                <p className="text-[10px] text-text-secondary font-black uppercase tracking-[0.4em] opacity-40 mt-4">Drag and drop artifacts to begin</p>
               </div>
             )}
           </AnimatePresence>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showManualPaste && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-brand-dark/95 backdrop-blur-2xl">
+            <motion.div 
+               initial={{ opacity: 0, scale: 0.95 }}
+               animate={{ opacity: 1, scale: 1 }}
+               exit={{ opacity: 0, scale: 0.95 }}
+               className="w-full max-w-4xl bg-surface-card border border-border-subtle rounded-[3rem] p-10 shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-black text-text-primary italic font-serif">Manual Injection</h3>
+                <button onClick={() => setShowManualPaste(false)} className="p-3 bg-surface-muted rounded-xl transition-all border border-border-subtle">
+                  <X size={20} />
+                </button>
+              </div>
+              <textarea 
+                value={pasteContent} 
+                onChange={(e) => setPasteContent(e.target.value)} 
+                className="w-full h-96 bg-brand-dark border border-border-subtle rounded-3xl p-8 text-text-primary focus:ring-2 focus:ring-brand-primary/20 outline-none resize-none"
+              />
+              <div className="flex justify-end gap-6 mt-10">
+                <button onClick={handleManualImport} className="px-10 py-4 bg-brand-primary text-white font-black text-[10px] uppercase tracking-widest rounded-2xl active:scale-95">
+                  Neural Fragmentation
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

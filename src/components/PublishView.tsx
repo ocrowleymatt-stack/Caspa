@@ -22,7 +22,7 @@ const DEFAULT_CONFIG: PublishingConfig = {
   trimSize: '6x9',
   paperType: 'white',
   coverTheme: {
-    backgroundColor: '#0f172a',
+    backgroundColor: '#0a0a0a',
     textColor: '#ffffff',
     fontFamily: 'serif',
     accentColor: '#3b82f6',
@@ -191,31 +191,25 @@ export default function PublishView({ project, chapters, updateProject, onNotify
           }
         }
       `}} />
-      <header className="mb-8 md:mb-12 no-print">
-        <div className="flex flex-col md:flex-row items-center md:justify-between md:items-end gap-6 mb-8">
+      <header className="mb-12 no-print">
+        <div className="flex flex-col md:flex-row items-center md:justify-between md:items-end gap-10 mb-12">
           <div className="text-center md:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-full mb-4 border border-amber-100/50">
-              <Shield size={14} className="text-amber-600" />
-              <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Sovereign Press • Human-Infused Architecture</span>
+            <div className="inline-flex items-center gap-3 px-4 py-1.5 bg-brand-primary/10 rounded-2xl mb-6 border border-brand-primary/20">
+              <Shield size={16} className="text-brand-primary" />
+              <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em]">Sovereign Press • High-Level Architecture</span>
             </div>
-            <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight italic font-serif">Masterwork Transmissions</h1>
+            <h1 className="text-4xl md:text-6xl font-black text-text-primary tracking-tighter italic font-serif leading-none">Masterwork Transmissions</h1>
           </div>
           
-          <div className="flex gap-2 p-1.5 bg-slate-100/80 backdrop-blur-md rounded-2xl w-full md:w-auto overflow-x-auto no-scrollbar border border-slate-200/50">
+          <div className="flex gap-2 p-2 bg-surface-muted rounded-[2rem] w-full md:w-auto overflow-x-auto no-scrollbar border border-border-subtle shadow-2xl">
             {(['export', 'preview', 'designer', 'transmute', 'kdp'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 md:flex-none relative ${
-                  activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                className={`px-6 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap flex-1 md:flex-none relative ${
+                  activeTab === tab ? 'bg-brand-primary text-white shadow-2xl shadow-brand-primary/20' : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
-                {activeTab === tab && (
-                  <motion.div 
-                    layoutId="activeTabGlow"
-                    className="absolute inset-0 bg-blue-400/5 rounded-xl blur-sm"
-                  />
-                )}
                 <span className="relative z-10">
                   {tab === 'kdp' ? 'KDP Logistics' : tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </span>
@@ -236,82 +230,95 @@ export default function PublishView({ project, chapters, updateProject, onNotify
               className="lg:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-8 no-print"
             >
               {/* Vitals Side */}
-              <div className="md:col-span-1 space-y-6">
-                <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden">
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">Manuscript Vitals</h3>
-                  <div className="space-y-6">
+              <div className="md:col-span-1 space-y-8">
+                <div className="bg-brand-dark text-white p-10 rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.5)] relative overflow-hidden border border-border-subtle group">
+                  <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
+                  <h3 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] mb-10">Manuscript Vitals</h3>
+                  <div className="space-y-10">
                     <div>
-                      <div className="text-4xl font-black italic font-serif">{totalWords.toLocaleString()}</div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Word Count</div>
+                      <div className="text-5xl font-black italic font-serif tracking-tighter text-text-primary leading-none mb-2">{totalWords.toLocaleString()}</div>
+                      <div className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] opacity-40">Word Count</div>
                     </div>
                     <div>
-                      <div className="text-4xl font-black italic font-serif">{estPageCount}</div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est. Book Pages</div>
+                      <div className="text-5xl font-black italic font-serif tracking-tighter text-text-primary leading-none mb-2">{estPageCount}</div>
+                      <div className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] opacity-40">Est. Book Pages</div>
                     </div>
                   </div>
                 </div>
                 
-                <div className="p-6 bg-white border border-slate-100 rounded-3xl shadow-sm">
-                  <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4">Export Standards</h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 text-[10px] font-medium text-slate-500">
-                      <CheckCircle2 size={14} className="text-emerald-500" /> Standardized Chapter Headings
-                    </div>
-                    <div className="flex items-center gap-3 text-[10px] font-medium text-slate-500">
-                      <CheckCircle2 size={14} className="text-emerald-500" /> UTF-8 Character Encoding
-                    </div>
-                    <div className="flex items-center gap-3 text-[10px] font-medium text-slate-500">
-                      <CheckCircle2 size={14} className="text-emerald-500" /> KDP-Ready Gutter Margins (via CSS)
-                    </div>
+                <div className="p-10 bg-surface-card border border-border-subtle rounded-[3rem] shadow-xl">
+                  <h4 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] mb-8">Export Standards</h4>
+                  <div className="space-y-5">
+                    {[
+                      'Standardized Chapter Headings',
+                      'UTF-8 Character Encoding',
+                      'High-Density Internal Guttering'
+                    ].map(std => (
+                      <div key={std} className="flex items-center gap-4 text-[11px] font-black text-text-secondary uppercase tracking-widest">
+                        <CheckCircle2 size={18} className="text-brand-primary" /> {std}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
               {/* Action Column */}
-              <div className="md:col-span-2 space-y-6">
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Download size={120} className="-mr-10 -mt-10 rotate-12" />
+              <div className="md:col-span-2 space-y-8">
+                <div className="bg-surface-card p-10 rounded-[3.5rem] border border-border-subtle shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-12 opacity-[0.02] group-hover:opacity-[0.06] transition-opacity duration-1000">
+                    <Download size={200} className="rotate-12" />
                   </div>
-                  <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-3 italic font-serif relative z-10">
-                    <Download className="text-blue-500" size={20} />
+                  <h3 className="text-2xl font-black text-text-primary mb-10 flex items-center gap-4 italic font-serif relative z-10 tracking-tight">
+                    <Download className="text-brand-primary" size={24} />
                     Final Manuscript Transmission
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
-                    <button onClick={exportAsMarkdown} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 text-left hover:bg-slate-900 transition-all group/btn shadow-sm hover:shadow-xl hover:shadow-blue-900/10 active:scale-[0.98]">
-                      <FileText size={20} className="text-blue-600 mb-4 group-hover/btn:text-white transition-colors" />
-                      <div className="text-sm font-black text-slate-900 group-hover/btn:text-white uppercase tracking-widest mb-1 transition-colors">Markdown (.md)</div>
-                      <div className="text-[10px] text-slate-500 group-hover/btn:text-slate-400 font-medium transition-colors">Industry standard for professional typesetting.</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+                    <button onClick={exportAsMarkdown} className="p-8 bg-brand-dark rounded-3xl border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98]">
+                      <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center mb-6 group-hover/btn:bg-brand-primary transition-colors">
+                        <FileText size={24} className="text-brand-primary group-hover/btn:text-white transition-colors" />
+                      </div>
+                      <div className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] mb-2">Markdown (.md)</div>
+                      <div className="text-[10px] text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">Industry standard for professional typesetting.</div>
                     </button>
-                    <button onClick={() => handleEpubExport()} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 text-left hover:bg-slate-900 transition-all group/btn shadow-sm hover:shadow-xl hover:shadow-amber-900/10 active:scale-[0.98]">
-                      <BookOpen size={20} className="text-amber-600 mb-4 group-hover/btn:text-white transition-colors" />
-                      <div className="text-sm font-black text-slate-900 group-hover/btn:text-white uppercase tracking-widest mb-1 transition-colors">EPUB (Digital)</div>
-                      <div className="text-[10px] text-slate-500 group-hover/btn:text-slate-400 font-medium transition-colors">Standard format for Kindles and e-readers.</div>
+                    <button onClick={() => handleEpubExport()} className="p-8 bg-brand-dark rounded-3xl border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98]">
+                      <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center mb-6 group-hover/btn:bg-brand-primary transition-colors">
+                        <BookOpen size={24} className="text-brand-primary group-hover/btn:text-white transition-colors" />
+                      </div>
+                      <div className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] mb-2">EPUB (Digital)</div>
+                      <div className="text-[10px] text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">Standard format for Kindles and e-readers.</div>
                     </button>
-                    <button onClick={() => window.print()} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 text-left hover:bg-slate-900 transition-all group/btn shadow-sm hover:shadow-xl hover:shadow-emerald-900/10 active:scale-[0.98] sm:col-span-2 lg:col-span-1">
-                      <Printer size={20} className="text-emerald-600 mb-4 group-hover/btn:text-white transition-colors" />
-                      <div className="text-sm font-black text-slate-900 group-hover/btn:text-white uppercase tracking-widest mb-1 transition-colors">Print-Ready Book (PDF)</div>
-                      <div className="text-[10px] text-slate-500 group-hover/btn:text-slate-400 font-medium transition-colors">High-fidelity book layout formatted for physical printing.</div>
+                    <button onClick={() => window.print()} className="p-8 bg-brand-dark rounded-3xl border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98] sm:col-span-2 lg:col-span-1">
+                      <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center mb-6 group-hover/btn:bg-brand-primary transition-colors">
+                         <Printer size={24} className="text-brand-primary group-hover/btn:text-white transition-colors" />
+                      </div>
+                      <div className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] mb-2">Print-Ready PDF</div>
+                      <div className="text-[10px] text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">High-fidelity book layout formatted for physical printing.</div>
                     </button>
                   </div>
                 </div>
 
-                <div className="bg-indigo-600 p-8 rounded-3xl shadow-xl shadow-indigo-100 relative overflow-hidden text-white">
-                  <div className="relative z-10">
-                    <h3 className="text-xl font-black italic font-serif mb-2">Live Reader Access</h3>
-                    <p className="text-indigo-100 text-xs font-medium mb-6">Create a private, clean-reading URL for beta readers and agents.</p>
+                <div className="bg-brand-primary p-12 rounded-[3.5rem] shadow-[0_50px_100px_rgba(59,130,246,0.3)] relative overflow-hidden text-white group cursor-pointer" onClick={togglePublicStatus}>
+                  <div className="absolute inset-0 bg-brand-accent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+                  <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                    <div>
+                      <h3 className="text-3xl font-black italic font-serif mb-2 tracking-tight leading-none">Live Reader Access</h3>
+                      <p className="text-white/70 text-sm font-medium">Coordinate private, high-level beta reading protocols via external link.</p>
+                    </div>
                     <div className="flex gap-4">
                       <button 
-                        onClick={project.isPublic ? () => navigator.clipboard.writeText(`${window.location.origin}/?read=${project.id}`) : togglePublicStatus}
-                        className="px-6 py-3 bg-white text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-indigo-50 transition-all"
+                        className="px-8 py-4 bg-white text-brand-primary rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (project.isPublic) {
+                             navigator.clipboard.writeText(`${window.location.origin}/?read=${project.id}`);
+                             onNotify('Access link decrypted and copied.', 'success');
+                          } else {
+                             togglePublicStatus();
+                          }
+                        }}
                       >
-                        {project.isPublic ? 'Copy Share Link' : 'Enable Public Access'}
+                        {project.isPublic ? 'Copy Intelligence URL' : 'Authorize Public Transmission'}
                       </button>
-                      {project.isPublic && (
-                        <button onClick={togglePublicStatus} className="px-6 py-3 bg-white/10 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/20 transition-all">
-                          Disable Access
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>

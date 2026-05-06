@@ -14,6 +14,8 @@ export interface Character {
   motivations: string[];
   quirks: string[];
   archetype?: string;
+  avatarUrl?: string;
+  physicalDescription?: string;
   updatedAt: number;
 }
 
@@ -29,13 +31,16 @@ export interface PlotNode {
 
 export interface Chapter {
   id: string;
+  projectId?: string; // Optional for compatibility, populated on save
   title: string;
   summary: string;
   content: string;
   order: number;
   plotNodeIds: string[]; // IDs of PlotNodes active in this chapter
   tags: string[];
+  isPlan?: boolean; // If true, this is a planning document, not a draft segment
   updatedAt: number;
+  ownerId?: string; // Added for relational security rules
   directives?: string[]; // Directives for next redrafting session
 }
 
@@ -155,10 +160,11 @@ export interface Project {
   sourceMaterials?: SourceMaterial[];
   externalReviews?: ExternalReview[];
   critiques?: { [documentId: string]: Critique[] };
-  stats?: {
+    stats?: {
     narrativeStreak: number;
     totalWords: number;
     aiContributions: number;
+    revCount?: number;
     lastActiveDay: string; // ISO date string
   };
   targetPrize?: string;
@@ -166,6 +172,15 @@ export interface Project {
   targetWordCount?: number;
   isPublic?: boolean;
   publicId?: string;
+  styleDNA?: {
+    proseIntensity: number; // 0-100
+    dialogueWeight: number; // 0-100
+    sensoryPriority: 'visual' | 'auditory' | 'olfactory' | 'tactile' | 'balanced';
+    aiPersona?: string;
+    vocabularyLevel: 'simple' | 'elevated' | 'erudite' | 'technical';
+    narrativeRhythm: number; // 0-100
+  };
+  isLocked?: boolean;
 }
 
-export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'research' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'research_assistant' | 'reviews';
+export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'reviews' | 'library';

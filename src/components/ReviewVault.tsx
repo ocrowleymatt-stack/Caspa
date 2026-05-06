@@ -52,22 +52,22 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
     <div className="h-full flex flex-col gap-8">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-slate-900 mb-1 italic font-serif">Review Vault</h2>
-          <p className="text-xs text-slate-500 font-medium uppercase tracking-[0.2em]">External feedback and critical ingestion.</p>
+          <h2 className="text-3xl font-black tracking-tight text-text-primary mb-1 italic font-serif">Review Vault</h2>
+          <p className="text-[10px] text-text-secondary font-black uppercase tracking-[0.2em] opacity-50">External feedback and critical ingestion.</p>
         </div>
         <div className="flex gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-brand-primary" size={14} />
             <input 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search feedback..."
-              className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-blue-100"
+              className="pl-10 pr-4 py-2 bg-surface-muted border border-border-subtle rounded-xl text-[10px] font-bold text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all w-64"
             />
           </div>
           <button 
             onClick={() => setIsAdding(true)}
-            className="px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded transition-all shadow-xl flex items-center gap-2 uppercase tracking-widest"
+            className="px-6 py-2 bg-brand-primary hover:bg-brand-accent text-white font-black text-[10px] rounded-xl transition-all shadow-xl shadow-brand-primary/20 flex items-center gap-2 uppercase tracking-widest active:scale-95"
           >
             <Plus size={14} />
             Ingest Review
@@ -77,56 +77,59 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-hidden">
         {/* Review List */}
-        <div className="lg:col-span-2 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+        <div className="lg:col-span-2 overflow-y-auto space-y-4 pr-2 no-scrollbar">
           <AnimatePresence mode="popLayout">
             {isAdding && (
               <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-blue-50 border border-blue-100 rounded-2xl p-6 mb-6 shadow-sm"
+                className="bg-brand-dark border border-brand-primary/20 rounded-[2rem] p-8 mb-6 shadow-2xl relative overflow-hidden"
               >
-                <div className="space-y-4">
-                   <div className="grid grid-cols-2 gap-4">
+                <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                  <MessageSquare size={80} />
+                </div>
+                <div className="space-y-6 relative z-10">
+                   <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-blue-600 tracking-widest pl-1">Source / Lens</label>
+                        <label className="text-[9px] font-black uppercase text-brand-primary tracking-widest pl-1">Source / Lens</label>
                         <input 
                           value={newReview.source}
                           onChange={(e) => setNewReview({ ...newReview, source: e.target.value })}
                           placeholder="e.g. Literary Agent, Beta Reader..."
-                          className="w-full bg-white border border-blue-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400/20"
+                          className="w-full bg-surface-card border border-border-subtle rounded-xl px-4 py-3 text-xs font-bold text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-blue-600 tracking-widest pl-1">Score / Weight (Optional)</label>
+                        <label className="text-[9px] font-black uppercase text-brand-primary tracking-widest pl-1">Score / Weight (Optional)</label>
                         <input 
                           type="number"
                           value={newReview.score}
                           onChange={(e) => setNewReview({ ...newReview, score: parseInt(e.target.value) })}
                           placeholder="0-100"
-                          className="w-full bg-white border border-blue-200 rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400/20"
+                          className="w-full bg-surface-card border border-border-subtle rounded-xl px-4 py-3 text-xs font-bold text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
                         />
                       </div>
                    </div>
                    <div className="space-y-2">
-                      <label className="text-[9px] font-black uppercase text-blue-600 tracking-widest pl-1">Observation / Critique</label>
+                      <label className="text-[9px] font-black uppercase text-brand-primary tracking-widest pl-1">Observation / Critique</label>
                       <textarea 
                         value={newReview.content}
                         onChange={(e) => setNewReview({ ...newReview, content: e.target.value })}
                         placeholder="Paste the review or notes here..."
-                        className="w-full h-32 bg-white border border-blue-200 rounded-xl px-4 py-3 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-400/20 resize-none"
+                        className="w-full h-32 bg-surface-card border border-border-subtle rounded-xl px-4 py-3 text-xs font-medium text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all resize-none italic leading-relaxed"
                       />
                    </div>
                    <div className="flex justify-end gap-3">
                       <button 
                         onClick={() => setIsAdding(false)}
-                        className="px-6 py-2 text-slate-500 hover:text-slate-700 font-black text-[10px] uppercase tracking-widest"
+                        className="px-6 py-2 text-text-secondary hover:text-text-primary font-black text-[10px] uppercase tracking-widest transition-all"
                       >
                         Cancel
                       </button>
                       <button 
                         onClick={handleAdd}
-                        className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] rounded-lg transition-all shadow-lg shadow-blue-200 uppercase tracking-widest"
+                        className="px-8 py-2 bg-brand-primary hover:bg-brand-accent text-white font-black text-[10px] rounded-xl transition-all shadow-xl shadow-brand-primary/20 uppercase tracking-widest active:scale-95"
                       >
                         Save to Vault
                       </button>
@@ -141,24 +144,25 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className={`group bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition-all ${r.isImplemented ? 'border-emerald-200 bg-emerald-50/20 opacity-80' : 'border-slate-200'}`}
+                layout
+                className={`group bg-surface-card border rounded-[2rem] p-8 shadow-sm hover:shadow-2xl transition-all relative overflow-hidden ${r.isImplemented ? 'border-emerald-500/20 bg-brand-dark/50 opacity-60' : 'border-border-subtle hover:border-brand-primary/30'}`}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${r.isImplemented ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-600'}`}>
-                      <Clipboard size={18} />
+                <div className="flex items-start justify-between mb-6 relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl transition-all ${r.isImplemented ? 'bg-emerald-500/10 text-emerald-500' : 'bg-surface-muted text-brand-primary group-hover:scale-110'}`}>
+                      <Clipboard size={20} />
                     </div>
                     <div>
-                      <h4 className="font-black text-slate-900 text-sm uppercase tracking-widest flex items-center gap-2">
+                      <h4 className="font-black text-text-primary text-sm uppercase tracking-widest flex items-center gap-2">
                         {r.source}
-                        {r.isImplemented && <CheckCircle size={12} className="text-emerald-600" />}
+                        {r.isImplemented && <CheckCircle size={14} className="text-emerald-500" />}
                       </h4>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{new Date(r.date).toLocaleDateString()}</span>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-[10px] text-text-secondary font-black uppercase tracking-widest opacity-50">{new Date(r.date).toLocaleDateString()}</span>
                         {r.score !== undefined && (
-                          <div className="flex items-center gap-1 text-[10px] font-black text-amber-500">
+                          <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
                              <Star size={10} className="fill-current" />
-                             {r.score}/100
+                             {r.score}
                           </div>
                         )}
                       </div>
@@ -168,29 +172,31 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                     <button 
                       onClick={() => toggleImplemented(r)}
                       title={r.isImplemented ? 'Mark as active' : 'Mark as implemented'}
-                      className={`p-2 rounded-lg transition-all ${r.isImplemented ? 'text-emerald-600 hover:bg-emerald-100' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`}
+                      className={`p-2.5 rounded-xl transition-all border ${r.isImplemented ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-surface-muted text-text-secondary hover:text-emerald-500 hover:border-emerald-500/20 border-border-subtle'}`}
                     >
                       <CheckCircle size={18} />
                     </button>
                     <button 
                       onClick={() => onDelete(r.id)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      className="p-2.5 bg-surface-muted text-text-secondary hover:text-red-500 rounded-xl transition-all border border-border-subtle hover:border-red-500/20"
                     >
                       <Trash2 size={18} />
                     </button>
                   </div>
                 </div>
 
-                <p className={`text-slate-600 text-sm leading-relaxed font-serif italic border-l-2 pl-4 transition-all ${r.isImplemented ? 'border-emerald-200 line-through text-slate-400' : 'border-slate-200'}`}>
-                  "{r.content}"
-                </p>
+                <div className="relative z-10">
+                  <div className={`text-text-primary text-base leading-relaxed font-serif italic border-l-4 pl-6 transition-all ${r.isImplemented ? 'border-emerald-500/20 line-through text-text-secondary opacity-50' : 'border-brand-primary/30'}`}>
+                    "{r.content}"
+                  </div>
+                </div>
               </motion.div>
             )) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-20 border-2 border-dashed border-slate-200 rounded-3xl text-slate-300 bg-white">
-                <Clipboard size={64} strokeWidth={1} className="opacity-10 mb-4" />
+              <div className="h-full flex flex-col items-center justify-center text-center p-20 border-2 border-dashed border-border-subtle rounded-[3rem] text-text-secondary bg-surface-card shadow-inner">
+                <Clipboard size={64} strokeWidth={0.5} className="opacity-10 mb-6" />
                 <div>
-                  <p className="text-lg font-bold text-slate-400 font-serif italic">Vault Empty</p>
-                  <p className="text-xs text-slate-300 font-medium uppercase tracking-widest mt-1">Ingest agent or beta reader feedback here.</p>
+                  <p className="text-xl font-black text-text-primary font-serif italic mb-2 tracking-tight">Vault Empty</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary opacity-40">Ingest agent or beta reader feedback here.</p>
                 </div>
               </div>
             )}
@@ -198,9 +204,9 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
         </div>
 
         {/* Strategies Sidebar */}
-        <div className="space-y-8">
-           <section className="bg-slate-950 text-white rounded-3xl p-8 shadow-2xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:rotate-12 transition-transform">
+        <div className="space-y-8 overflow-y-auto no-scrollbar pb-8">
+           <section className="bg-brand-dark text-text-primary rounded-[2rem] p-8 shadow-2xl border border-border-subtle relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:rotate-12 transition-all duration-700">
                 <Globe size={120} />
               </div>
               <header className="relative mb-6">
@@ -209,34 +215,39 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                   Intelligence Sync
                 </h3>
               </header>
-              <p className="text-xs text-slate-400 leading-relaxed mb-6 relative">
+              <p className="text-xs text-text-secondary leading-relaxed mb-8 relative font-medium italic">
                 External reviews are automatically integrated into the AI's drafting context. The engine will prioritize resolving high-weight critical observations.
               </p>
-              <div className="space-y-3 relative">
-                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  <span>Implementation Rate</span>
-                  <span className="text-blue-400">{reviews.length > 0 ? Math.round((reviews.filter(r=>r.isImplemented).length / reviews.length) * 100) : 0}%</span>
+              <div className="space-y-4 relative">
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                  <span className="text-text-secondary opacity-50">Implementation Rate</span>
+                  <span className="text-brand-primary">{reviews.length > 0 ? Math.round((reviews.filter(r=>r.isImplemented).length / reviews.length) * 100) : 0}%</span>
                 </div>
-                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                <div className="h-2 w-full bg-surface-muted rounded-full overflow-hidden shadow-inner border border-border-subtle">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${reviews.length > 0 ? (reviews.filter(r=>r.isImplemented).length / reviews.length) * 100 : 0}%` }}
-                    className="h-full bg-blue-600"
+                    className="h-full bg-brand-primary shadow-[0_0_15px_rgba(59,130,246,0.6)]"
+                    transition={{ type: "spring", bounce: 0, duration: 1 }}
                   />
                 </div>
               </div>
            </section>
 
-           <section className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
-             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Consolidated Notes</h4>
-             <div className="space-y-1">
+           <section className="bg-surface-card border border-border-subtle rounded-[2.5rem] p-8 shadow-xl">
+             <div className="flex items-center gap-2 mb-6">
+               <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+               <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-50">Consolidated Notes</h4>
+             </div>
+             <div className="space-y-2">
                 {reviews.filter(r => !r.isImplemented).length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No active critiques currently affecting context.</p>
+                  <p className="text-[10px] text-text-secondary italic opacity-40 font-medium">No active critiques currently affecting context.</p>
                 ) : (
                   reviews.filter(r => !r.isImplemented).slice(0, 5).map(r => (
-                    <div key={r.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0 group">
-                      <div className="w-1 h-1 rounded-full bg-blue-500 group-hover:scale-150 transition-transform" />
-                      <span className="text-xs font-bold text-slate-600 truncate flex-1">{r.source}</span>
+                    <div key={r.id} className="flex items-center gap-4 py-3 border-b border-border-subtle last:border-0 group cursor-default">
+                      <div className="w-1 h-1 rounded-full bg-text-secondary group-hover:bg-brand-primary group-hover:scale-[3] transition-all duration-300" />
+                      <span className="text-xs font-bold text-text-primary truncate flex-1 tracking-tight group-hover:pl-1 transition-all">{r.source}</span>
+                      <ExternalLink size={12} className="text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                   ))
                 )}

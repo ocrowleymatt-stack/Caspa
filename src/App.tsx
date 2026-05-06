@@ -33,7 +33,9 @@ import {
   Menu,
   MessageSquare,
   Upload,
-  Activity
+  Activity,
+  ChevronDown,
+  Plus
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -78,14 +80,14 @@ import Brainstorm from './components/Brainstorm';
 import CharacterForge from './components/CharacterForge';
 import PlotArchitect from './components/PlotArchitect';
 import WritingStudio from './components/WritingStudio';
-import { ResearchLibrary } from './components/ResearchLibrary';
+import LibraryView from './components/Library';
+import IntelligenceLab from './components/IntelligenceLab';
 import CriticSwarm from './components/CriticSwarm';
 import ManuscriptFixer from './components/ManuscriptFixer';
 import SettingsView from './components/SettingsView';
 import PublishView from './components/PublishView';
 import PrizeView from './components/PrizeView';
 import ReaderView from './components/ReaderView';
-import ResearchAssistant from './components/ResearchAssistant';
 import ReviewVault from './components/ReviewVault';
 
 const INITIAL_PROJECT: Project = {
@@ -113,6 +115,17 @@ export default function App() {
   const [user, setUser] = useState(auth.currentUser);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isProjectsLoading, setIsProjectsLoading] = useState(true);
+
+  // Load project cache on mount
+  useEffect(() => {
+    if (user) {
+      const cached = localStorage.getItem(`ls_projects_cache_${user.uid}`);
+      if (cached) {
+        setProjects(JSON.parse(cached));
+      }
+    }
+  }, [user]);
+
   const [project, setProject] = useState<Project>(INITIAL_PROJECT);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [plotNodes, setPlotNodes] = useState<PlotNode[]>([]);
@@ -136,7 +149,6 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [authInitError, setAuthInitError] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: 'error' | 'success' | 'info' }[]>([]);
@@ -176,12 +188,11 @@ export default function App() {
   }, []);
 
   const addNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
-    // Only surface errors and critical info to avoid noise
-    if (type === 'error') {
-      const id = crypto.randomUUID();
-      setNotifications(prev => [...prev.slice(-4), { id, message, type }]);
-      setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
-    }
+    // Only surface error-level messages to avoid notification noise
+    if (type !== 'error') return;
+    const id = Date.now().toString();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
   };
 
   // Mobile Detection
@@ -250,29 +261,13 @@ export default function App() {
 
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
 
-  // Handle redirect sign-in result on page load
-  useEffect(() => {
-    handleRedirectLogin().catch(err => console.error('Redirect login error:', err));
-  }, []);
-
   // Auth Listener
   useEffect(() => {
-    let authResolved = false;
-    const authTimeout = window.setTimeout(() => {
-      if (!authResolved) {
-        console.error('Auth initialization timed out. Falling back to signed-out state.');
-        setAuthInitError('Authentication service took too long to initialize. Please refresh and try again.');
-        setUser(null);
-        setLoading(false);
-      }
-    }, 10000);
-
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      authResolved = true;
-      window.clearTimeout(authTimeout);
+    // Handle redirect-based login result (fallback when popup is blocked)
+    handleRedirectLogin().catch(console.error);
+    return onAuthStateChanged(auth, (u) => {
       console.log('Auth state changed:', u?.uid || 'no user');
       setUser(u);
-      setAuthInitError(null);
       if (u) {
         setLoginError(null);
       } else {
@@ -285,19 +280,7 @@ export default function App() {
         setExternalReviews([]);
       }
       setLoading(false);
-    }, (error) => {
-      authResolved = true;
-      window.clearTimeout(authTimeout);
-      console.error('Auth state listener error:', error);
-      setAuthInitError(error?.message || 'Failed to initialize authentication.');
-      setUser(null);
-      setLoading(false);
     });
-
-    return () => {
-      window.clearTimeout(authTimeout);
-      unsubscribe();
-    };
   }, []);
 
   const handleLogin = async () => {
@@ -321,6 +304,8 @@ export default function App() {
     }
   }, [project.primaryProvider]);
 
+  const isCreatingInitialProjectRef = useRef(false);
+
   // Project List Sync
   useEffect(() => {
     if (!user) {
@@ -341,6 +326,7 @@ export default function App() {
 
       setProjects(projectsList);
       setIsProjectsLoading(false);
+      localStorage.setItem(`ls_projects_cache_${user.uid}`, JSON.stringify(projectsList));
       console.log('Project List Synced:', projectsList.length, 'projects found');
 
       if (projectsList.length === 0 && !loading) {
@@ -363,21 +349,40 @@ export default function App() {
           if (found) return found;
         }
 
-        // Fallback to first in list
-        return projectsList.length > 0 ? projectsList[0] : current;
+        // Fallback to first in list OR create one if authenticated
+        if (projectsList.length === 0) {
+          return INITIAL_PROJECT;
+        }
+        return projectsList[0];
       });
+
+    // After setting project, if we are still on default but have a user, trigger creation
+      // Handled by dedicated useEffect below
     }, (err) => {
       setIsProjectsLoading(false);
       try {
         handleFirestoreError(err, OperationType.GET, 'projects');
       } catch (e) {
         console.error("Projects sync failure:", e);
-        addNotification("Failed to load projects. Please refresh.", "error");
+        // Silenced notification per user request
       }
     });
 
     return unsubProjects;
-  }, [user]);
+  }, [user, loading]);
+
+  // Clear sub-states when project changes to prevent data bleeding
+  useEffect(() => {
+    setCharacters([]);
+    setPlotNodes([]);
+    setChapters([]);
+    setResearch([]);
+    setSourceMaterials([]);
+    setExternalReviews([]);
+    setPresence([]);
+    setHistory([]);
+    setFuture([]);
+  }, [project.id]);
 
   const createNewProject = async (title: string = 'Untitled Narrative') => {
     if (!user) return;
@@ -407,7 +412,8 @@ export default function App() {
 
   // Auto-create initial project if none exist
   useEffect(() => {
-    if (user && !loading && !isProjectsLoading && projects.length === 0 && project.id === 'default') {
+    if (user && !loading && !isProjectsLoading && projects.length === 0 && project.id === 'default' && !isCreatingInitialProjectRef.current) {
+      isCreatingInitialProjectRef.current = true;
       console.log('No projects found, triggering auto-creation...');
       createNewProject('My First Manuscript');
     }
@@ -442,7 +448,13 @@ export default function App() {
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/plotNodes`));
     
     const unsubChapters = onSnapshot(collection(db, 'projects', projectId, 'chapters'), (snap) => {
-      setChapters(snap.docs.map(d => d.data() as Chapter).sort((a, b) => a.order - b.order));
+      const chapterList = snap.docs.map(d => d.data() as Chapter).sort((a, b) => a.order - b.order);
+      setChapters(chapterList);
+      
+      // Update local hardsave cache for each chapter
+      chapterList.forEach(c => {
+        localStorage.setItem(`ls_hardsave_${c.id}`, c.content);
+      });
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/chapters`));
     
     const unsubResearch = onSnapshot(collection(db, 'projects', projectId, 'research'), (snap) => {
@@ -486,14 +498,14 @@ export default function App() {
   const updateProject = async (updates: Partial<Project>) => {
     if (!user || !project.id || project.id === 'default') return;
     
-    // Ensure publishing config exists if being updated or requested
-    const finalUpdates = { ...updates };
-    if (!project.publishing && !updates.publishing) {
-      // Lazy init publishing config if needed, or just let it be Partial
-    }
+    // Filter out undefined values to prevent Firestore update errors
+    const cleanedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+      if (value !== undefined) acc[key] = value;
+      return acc;
+    }, {} as any);
 
     // Optimistic Update
-    setProject(prev => ({ ...prev, ...finalUpdates }));
+    setProject(prev => ({ ...prev, ...cleanedUpdates }));
     pushToHistory(project);
 
     const path = `projects/${project.id}`;
@@ -502,7 +514,7 @@ export default function App() {
     
     try {
       await updateDoc(projectRef, { 
-        ...updates, 
+        ...cleanedUpdates, 
         lastModified: Date.now(),
         updatedAt: serverTimestamp() 
       });
@@ -513,30 +525,30 @@ export default function App() {
     }
   };
 
-  const deleteProject = async () => {
-    if (!user || !project.id || project.id === 'default') return;
-    if (!window.confirm("Are you sure you want to permanently delete this project? All chapters, characters, and data will be permanently removed.")) return;
+  const deleteProject = async (idToStepDown?: string) => {
+    const targetId = idToStepDown || project.id;
+    if (!user || !targetId || targetId === 'default') return;
     
-    const projectId = project.id;
-    const path = `projects/${projectId}`;
+    const path = `projects/${targetId}`;
+    const projectRef = doc(db, 'projects', targetId);
     const SUBCOLLECTIONS = ['characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials', 'externalReviews', 'presence'];
-    
     try {
-      // Cascade-delete all subcollections first to avoid orphaned data
+      // Cascade-delete all subcollections first to avoid orphaned Firestore data
       for (const subcoll of SUBCOLLECTIONS) {
-        const snap = await getDocs(collection(db, 'projects', projectId, subcoll));
+        const snap = await getDocs(collection(db, 'projects', targetId, subcoll));
         if (snap.docs.length > 0) {
           const batch = writeBatch(db);
           snap.docs.forEach(d => batch.delete(d.ref));
           await batch.commit();
         }
       }
-      // Delete the parent project document
-      await deleteDoc(doc(db, 'projects', projectId));
-      setHistory([]);
-      setFuture([]);
-      setProject(INITIAL_PROJECT);
-      setCurrentView('dashboard');
+      await deleteDoc(projectRef);
+      if (project.id === targetId) {
+        setProject(INITIAL_PROJECT);
+        setHistory([]);
+        setFuture([]);
+        setCurrentView('dashboard');
+      }
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
@@ -548,13 +560,15 @@ export default function App() {
       const projectRef = doc(db, 'projects', project.id);
       
       // Explicitly pick only fields allowed by firestore.rules to avoid Permission Denied
-      const allowedFields = {
-        title: project.title,
+      // Filter out undefined values
+      const allowedFields: any = {
+        title: project.title || 'Untitled',
         type: project.type,
         maturity: project.maturity,
-        genre: project.genre,
-        premise: project.premise,
-        tone: project.tone,
+        genre: project.genre || '',
+        premise: project.premise || '',
+        tone: project.tone || 'Cinematic',
+        ownerId: project.ownerId || user.uid,
         collaborators: project.collaborators || [],
         lastModified: Date.now(),
         stats: project.stats || {},
@@ -562,20 +576,122 @@ export default function App() {
         id: project.id,
         targetPrize: project.targetPrize || '',
         prizeAssessments: project.prizeAssessments || [],
-        sourceMaterials: project.sourceMaterials || [],
-        externalReviews: project.externalReviews || [],
         isPublic: project.isPublic || false,
         publicId: project.publicId || '',
         targetWordCount: project.targetWordCount || 0,
-        publishing: project.publishing || null,
         updatedAt: serverTimestamp()
       };
+
+      if (project.publishing) allowedFields.publishing = project.publishing;
+      if (project.primaryProvider) allowedFields.primaryProvider = project.primaryProvider;
 
       await updateDoc(projectRef, allowedFields);
       setTimeout(() => setIsSaving(false), 1000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, path);
       setIsSaving(false);
+    }
+  };
+
+  const onNotify = addNotification;
+
+  const handleBulkIngest = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    
+    if (file.size > 20 * 1024 * 1024) {
+      onNotify("Manuscript excessive in size. 20MB limit enforced.", "error");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      let content = '';
+      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        const workerUrl = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => (item as any).str).join(' ');
+          fullText += pageText + '\n\n';
+        }
+        content = fullText;
+      } else {
+        content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
+      }
+
+      const title = file.name.replace(/\.[^/.]+$/, "");
+      const newId = `project_${crypto.randomUUID()}`;
+      const projectRef = doc(db, 'projects', newId);
+      
+      const newProjectData: Project = { 
+        ...INITIAL_PROJECT,
+        title,
+        id: newId,
+        ownerId: user.uid,
+        createdAt: Date.now(),
+        lastModified: Date.now(),
+        updatedAt: serverTimestamp() as any,
+        premise: content.slice(0, 500)
+      };
+
+      await setDoc(projectRef, newProjectData);
+
+      // Deep Ingest: Split into chapters
+      const CHUNK_SIZE = 400000;
+      let batch = writeBatch(db);
+      let batchCount = 0;
+      let chaptersCreated = 0;
+
+      for (let i = 0; i < content.length; i += CHUNK_SIZE) {
+        const chunk = content.substring(i, i + CHUNK_SIZE);
+        const chapterId = crypto.randomUUID();
+        const chapterRef = doc(db, 'projects', newId, 'chapters', chapterId);
+        const newChapter: Chapter = {
+          id: chapterId,
+          title: content.length > CHUNK_SIZE ? `Ingested Section (Part ${chaptersCreated + 1})` : 'Full Manuscript Ingest',
+          content: chunk,
+          summary: 'Auto-synthesized from bulk ingestion.',
+          order: chaptersCreated,
+          plotNodeIds: [],
+          tags: ['ingested'],
+          updatedAt: Date.now()
+        };
+        batch.set(chapterRef, newChapter);
+        chaptersCreated++;
+        batchCount++;
+
+        if (batchCount === 100) {
+          await batch.commit();
+          batch = writeBatch(db);
+          batchCount = 0;
+        }
+      }
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+      
+      localStorage.setItem(`lastProject_${user.uid}`, newId);
+      setProject(newProjectData);
+      setCurrentView('dashboard');
+      onNotify('Manuscript successfully ingested and indexed.', 'success');
+    } catch (err) {
+      onNotify(`Intelligence Ingest failure: ${err instanceof Error ? err.message : 'Unknown artifact error'}`, 'error');
+      handleFirestoreError(err, OperationType.WRITE, 'projects/bulk_ingest');
+    } finally {
+      setIsSaving(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -609,7 +725,12 @@ export default function App() {
     if (!user) return;
     const path = `projects/${project.id}/chapters/${chap.id}`;
     try {
-      await setDoc(doc(db, 'projects', project.id, 'chapters', chap.id), chap);
+      await setDoc(doc(db, 'projects', project.id, 'chapters', chap.id), {
+        ...chap,
+        projectId: project.id,
+        ownerId: user.uid,
+        updatedAt: Date.now()
+      });
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
   const upsertSourceMaterial = async (source: SourceMaterial) => {
@@ -644,10 +765,61 @@ export default function App() {
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
-  const upsertPlotNodesBatch = async (nodes: PlotNode[]) => {
-    if (!user || nodes.length === 0) return;
-    const batch = writeBatch(db);
+  const upsertChapterBatch = async (chapList: Chapter[]) => {
+    if (!user || !project.id || project.id === 'default') return;
     
+    // Deletion of orphans: find IDs in current state that are NOT in the new list
+    const newIds = new Set(chapList.map(c => c.id));
+    const orphans = chapters.filter(c => !newIds.has(c.id));
+
+    if (orphans.length > 0) {
+      console.log(`Cloud Sync: Purging ${orphans.length} orphaned chapters.`);
+      const deleteBatch = writeBatch(db);
+      orphans.forEach(o => {
+        deleteBatch.delete(doc(db, 'projects', project.id, 'chapters', o.id));
+      });
+      await deleteBatch.commit();
+    }
+
+    // Split into chunks of 100 for insertion/update
+    const chunkSize = 100;
+    for (let i = 0; i < chapList.length; i += chunkSize) {
+      const chunk = chapList.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      
+      chunk.forEach(chap => {
+        const chapRef = doc(db, 'projects', project.id, 'chapters', chap.id);
+        batch.set(chapRef, { 
+          ...chap, 
+          projectId: project.id,
+          ownerId: user.uid,
+          updatedAt: Date.now() 
+        });
+      });
+
+      try {
+        await batch.commit();
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/chapters/BATCH_${i}`);
+      }
+    }
+  };
+
+  const upsertPlotNodesBatch = async (nodes: PlotNode[]) => {
+    if (!user || !project.id || project.id === 'default' || nodes.length === 0) return;
+
+    const newIds = new Set(nodes.map(n => n.id));
+    const orphans = plotNodes.filter(n => !newIds.has(n.id));
+
+    if (orphans.length > 0) {
+      const deleteBatch = writeBatch(db);
+      orphans.forEach(o => {
+        deleteBatch.delete(doc(db, 'projects', project.id, 'plotNodes', o.id));
+      });
+      await deleteBatch.commit();
+    }
+
+    const batch = writeBatch(db);
     nodes.forEach((node, idx) => {
       const ref = doc(db, 'projects', project.id, 'plotNodes', node.id);
       batch.set(ref, { ...node, order: idx, updatedAt: Date.now() });
@@ -657,48 +829,30 @@ export default function App() {
       await batch.commit();
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/plotNodes (batch)`); }
   };
-  const upsertChapterBatch = async (chapList: Chapter[]) => {
-    if (!user) return;
-    
-    // Split into chunks of 100 (well within Firebase 500 limit)
-    const chunkSize = 100;
-    for (let i = 0; i < chapList.length; i += chunkSize) {
-      const chunk = chapList.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-      
-      chunk.forEach(chap => {
-        const chapRef = doc(db, 'projects', project.id, 'chapters', chap.id);
-        batch.set(chapRef, { ...chap, updatedAt: Date.now() });
-      });
-
-      try {
-        await batch.commit();
-        console.log(`Cloud Sync: Batch ${Math.floor(i / chunkSize) + 1} finalized.`);
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/chapters/BATCH_${i}`);
-      }
-    }
-  };
 
   const navGroups = [
     {
-      title: "1. Conception",
+      title: "Manuscripts",
       items: [
-        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-        { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
-        { id: 'reviews', label: 'Review Vault', icon: MessageSquare },
-        { id: 'brainstorm', label: 'AI Brainstorm', icon: Sparkles },
+        { id: 'library', label: 'Universal Vault', icon: Library },
+        { id: 'dashboard', label: 'Narrative Pulse', icon: BarChart3 },
       ]
     },
     {
-      title: "2. World Building",
+      title: "1. Strategy",
+      items: [
+        { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
+        { id: 'reviews', label: 'Critical Vault', icon: MessageSquare },
+        { id: 'brainstorm', label: 'AI Spark', icon: Sparkles },
+      ]
+    },
+    {
+      title: "2. Foundations",
       items: [
         { id: 'characters', label: 'Character Forge', icon: Users },
-        { id: 'research', label: 'Research Library', icon: Library },
-        { id: 'research_assistant', label: 'Research Agent', icon: BrainCircuit },
+        { id: 'intelligence', label: 'Intelligence Lab', icon: BrainCircuit },
       ]
-    },
-    {
+    },    {
       title: "3. Structure",
       items: [
         { id: 'plot', label: 'Plot Architect', icon: GitBranch },
@@ -723,13 +877,25 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full shadow-[0_0_15px_rgba(37,99,235,0.3)]"
-        />
-        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Initializing Narrative Systems...</p>
+      <div className="h-screen bg-surface-bg flex flex-col items-center justify-center gap-6">
+        <div className="relative">
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+            className="w-16 h-16 border-2 border-brand-primary/20 border-t-brand-primary rounded-[2rem] shadow-[0_0_50px_rgba(59,130,246,0.3)]"
+          />
+          <div className="absolute inset-0 bg-brand-primary/10 rounded-[2rem] blur-xl animate-pulse" />
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-text-primary/80 font-black uppercase tracking-[0.4em] text-[10px] italic">Calibrating Narrative Systems</p>
+          <div className="w-32 h-0.5 bg-border-subtle rounded-full overflow-hidden">
+            <motion.div 
+              animate={{ x: [-128, 128] }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+              className="w-full h-full bg-brand-primary"
+            />
+          </div>
+        </div>
       </div>
     );
   }
@@ -750,33 +916,36 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-screen bg-slate-900 flex items-center justify-center p-8 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
+      <div className="h-screen bg-surface-bg flex items-center justify-center p-8 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
+        
         <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-white rounded-3xl p-12 shadow-2xl text-center space-y-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-md w-full bg-surface-card rounded-[3.5rem] p-12 shadow-[0_50px_100px_rgba(0,0,0,0.6)] text-center space-y-10 border border-border-subtle relative z-10"
         >
-          <div className="w-20 h-20 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center shadow-xl rotate-3">
-             <Globe size={40} className="text-white" />
+          <div className="w-24 h-24 bg-brand-primary rounded-[2.5rem] mx-auto flex items-center justify-center shadow-[0_20px_50px_rgba(59,130,246,0.4)] rotate-3 border-4 border-white/10">
+             <Globe size={48} className="text-white" />
           </div>
           <div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2 italic font-serif">NovelWrite <span className="text-blue-600 font-sans tracking-wide">PRO</span></h1>
-            <p className="text-slate-500 font-medium italic">Architecting tomorrow's narratives, today.</p>
+            <h1 className="text-5xl font-black text-text-primary tracking-tighter mb-3 italic font-serif">NovelWrite <span className="text-brand-primary font-sans tracking-wide not-italic">PRO</span></h1>
+            <p className="text-text-secondary font-black uppercase tracking-[0.2em] text-[10px] opacity-60">Architecting tomorrow's narratives</p>
           </div>
           <button 
             onClick={handleLogin}
-            className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-4 transition-all shadow-xl shadow-slate-200"
+            className="group w-full py-5 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-4 transition-all shadow-[0_20px_40px_rgba(59,130,246,0.3)] active:scale-95"
           >
-            <LogIn size={20} />
-            Authorize Google Sync
+            <LogIn size={20} className="group-hover:translate-x-1 transition-transform" />
+            Authorize Core Sync
           </button>
-          {(loginError || authInitError) && (
+          {loginError && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium"
             >
-              {loginError || authInitError}
+              {loginError}
             </motion.div>
           )}
         </motion.div>
@@ -785,7 +954,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-[100dvh] bg-surface-bg text-slate-900 font-sans selection:bg-blue-100 overflow-hidden print:h-auto print:overflow-visible">
+    <div className="flex h-[100dvh] bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible">
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -794,7 +963,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 bg-brand-dark/80 backdrop-blur-md z-[100]"
           />
         )}
       </AnimatePresence>
@@ -806,32 +975,32 @@ export default function App() {
           width: isSidebarOpen ? (isMobile ? '85%' : 260) : (isMobile ? 0 : 80),
           x: isMobile && !isSidebarOpen ? '-100%' : 0
         }}
-        className={`flex flex-col bg-slate-950 text-white relative shadow-2xl border-r border-slate-900 overflow-hidden no-print ${
-          isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-20'
+        className={`flex flex-col bg-brand-dark text-text-primary relative shadow-[0_0_50px_rgba(0,0,0,0.5)] border-r border-border-subtle overflow-hidden no-print ${
+          isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-50'
         }`}
       >
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center shadow-inner font-bold text-lg rotate-3">
+        <div className="p-8 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-brand-primary flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)] font-black text-xl rotate-3 text-white border border-white/10">
             N
           </div>
           {isSidebarOpen && (
             <motion.h1 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="font-black text-xl italic tracking-tight font-serif"
+              className="font-black text-2xl italic tracking-tighter font-serif text-text-primary"
             >
-              NovelWrite <span className="text-blue-500 font-normal font-sans tracking-widest text-[10px] uppercase ml-1 relative -top-1">PRO</span>
+              NovelWrite <span className="text-brand-primary font-normal font-sans tracking-widest text-[10px] uppercase ml-1 relative -top-1 opacity-80">AGENT</span>
             </motion.h1>
           )}
         </div>
 
-        <nav className="flex-1 px-4 space-y-4 mt-4 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 space-y-6 mt-4 overflow-y-auto no-scrollbar">
           {navGroups.map((group, groupIndex) => (
-            <div key={groupIndex} className="space-y-1">
+            <div key={groupIndex} className="space-y-2">
               {isSidebarOpen ? (
-                <div className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] px-3 mb-2">{group.title}</div>
+                <div className="text-[10px] font-black text-text-secondary uppercase tracking-[0.3em] px-4 mb-3 opacity-40">{group.title}</div>
               ) : (
-                <div className="w-full h-px bg-slate-800 my-2" />
+                <div className="w-full h-px bg-border-subtle my-6" />
               )}
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -843,14 +1012,14 @@ export default function App() {
                       setCurrentView(item.id as ViewType);
                       if (isMobile) setIsSidebarOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
+                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
                       isActive 
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
-                        : 'text-slate-500 hover:text-white hover:bg-white/5'
+                        ? 'bg-brand-primary text-white shadow-xl shadow-brand-primary/30 scale-[1.02]' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-white/5 active:scale-95'
                     }`}
                     title={item.label}
                   >
-                    <Icon size={18} className={isActive ? 'text-white' : 'group-hover:text-blue-400 transition-colors'} />
+                    <Icon size={20} className={isActive ? 'text-white' : 'group-hover:text-brand-primary transition-colors'} />
                     {isSidebarOpen && (
                       <span className="flex-1 text-left truncate">{item.label}</span>
                     )}
@@ -861,42 +1030,42 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="px-4 py-4 space-y-2 border-t border-slate-900 mx-3">
-          <div className={`flex items-center gap-1 ${isSidebarOpen ? 'justify-between' : 'justify-center flex-col'}`}>
+        <div className="px-4 py-6 space-y-3 border-t border-border-subtle mx-4">
+          <div className={`flex items-center gap-2 ${isSidebarOpen ? 'justify-between' : 'justify-center flex-col'}`}>
             <button 
               onClick={undo}
               disabled={history.length === 0}
-              className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all disabled:opacity-20"
+              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all disabled:opacity-10 active:scale-90"
               title="Undo (Ctrl+Z)"
             >
-              <RotateCcw size={16} />
+              <RotateCcw size={18} />
             </button>
             <button 
               onClick={redo}
               disabled={future.length === 0}
-              className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all disabled:opacity-20"
+              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all disabled:opacity-10 active:scale-90"
               title="Redo (Ctrl+Y)"
             >
-              <RotateCw size={16} />
+              <RotateCw size={18} />
             </button>
             <button 
               onClick={saveToCloud}
-              className={`p-2 text-slate-400 hover:text-blue-500 hover:bg-white/5 rounded-lg transition-all ${isSaving ? 'text-blue-500' : ''}`}
+              className={`p-2.5 text-text-secondary hover:text-brand-primary hover:bg-white/5 rounded-xl transition-all active:scale-90 ${isSaving ? 'text-brand-primary' : ''}`}
               title="Manual Sync"
             >
-              <Save size={16} />
+              <Save size={18} />
             </button>
           </div>
         </div>
 
-        <div className="p-6 border-t border-slate-900 flex items-center gap-4 bg-slate-900/50">
-          <img src={user.photoURL || ''} className="w-10 h-10 rounded-full border-2 border-slate-800 shadow-lg" alt="Profile" />
+        <div className="p-6 border-t border-border-subtle flex items-center gap-4 bg-white/5">
+          <img src={user.photoURL || ''} className="w-12 h-12 rounded-xl border border-border-subtle shadow-2xl" alt="Profile" />
           {isSidebarOpen && (
             <div className="flex-1 overflow-hidden">
-              <div className="text-xs font-black truncate text-slate-200 uppercase tracking-widest">{user.displayName}</div>
-              <button onClick={logout} className="text-[9px] font-bold text-slate-500 hover:text-red-400 transition-colors uppercase flex items-center gap-1 mt-1">
-                <LogOut size={10} />
-                Disconnect
+              <div className="text-xs font-black truncate text-text-primary uppercase tracking-widest">{user.displayName}</div>
+              <button onClick={logout} className="text-[10px] font-bold text-text-secondary hover:text-red-400 transition-colors uppercase flex items-center gap-1 mt-1">
+                <LogOut size={12} />
+                Disconnect Session
               </button>
             </div>
           )}
@@ -906,20 +1075,23 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static">
         {/* Top Header */}
-        <header className="h-16 border-b border-slate-200 flex items-center justify-between px-4 md:px-8 bg-white relative z-10 shrink-0 no-print">
-          <div className="flex items-center gap-4 md:gap-10 overflow-hidden h-full">
-            {!isMobile && <div className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono text-slate-400">v2.55</div>}
+        <header className="h-20 border-b border-border-subtle flex items-center justify-between px-6 md:px-10 bg-surface-card relative z-10 shrink-0 no-print shadow-sm">
+          <div className="flex items-center gap-6 md:gap-12 overflow-hidden h-full">
+            {!isMobile && <div className="text-[10px] bg-white/5 px-3 py-1 rounded-full font-mono text-text-secondary border border-border-subtle/50 uppercase tracking-widest italic opacity-50">MANUSCRIPT_CORE_2.5.5</div>}
             
-            <div className="relative">
+            <div className="relative h-full flex items-center">
               <button 
                 onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 transition-all rounded-xl group overflow-hidden"
+                className="flex items-center gap-4 px-5 py-2.5 hover:bg-white/5 transition-all rounded-2xl group overflow-hidden border border-transparent hover:border-border-subtle"
               >
-                <div className="flex flex-col items-start min-w-0">
-                  <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Active Manuscript</div>
-                  <div className="flex items-center gap-2 text-slate-900">
-                    <span className="italic font-serif truncate max-w-[150px] md:max-w-[250px] font-bold md:text-lg">{project.title}</span>
-                    <GitBranch size={14} className={`text-slate-300 group-hover:text-blue-500 transition-all ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+                <div className="flex flex-col items-start min-w-0 text-left">
+                  <div className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] leading-none mb-1.5 flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
+                    Live Vault
+                  </div>
+                  <div className="flex items-center gap-3 text-text-primary">
+                    <span className="italic font-serif truncate max-w-[150px] md:max-w-[400px] font-bold text-lg md:text-2xl leading-tight">{project.title}</span>
+                    <ChevronDown size={18} className={`text-text-secondary group-hover:text-brand-primary transition-all duration-300 ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
                   </div>
                 </div>
               </button>
@@ -927,21 +1099,21 @@ export default function App() {
               <AnimatePresence>
                 {isProjectMenuOpen && (
                   <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="fixed top-16 left-4 md:left-72 w-[85vw] md:w-80 bg-white rounded-2xl shadow-[0_30px_100px_-20px_rgba(0,0,0,0.3)] border border-slate-100 z-[110] overflow-hidden"
+                    initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 5, scale: 1 }}
+                    exit={{ opacity: 0, y: 15, scale: 0.98 }}
+                    className="absolute top-full left-0 w-[90vw] md:w-[480px] bg-surface-card rounded-3xl shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2"
                   >
-                    <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
-                      <div className="flex items-center justify-between mb-4 px-2">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Inventory</p>
-                        <span className="text-[9px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 font-bold">{projects.length} Total</span>
+                    <div className="p-6 max-h-[500px] overflow-y-auto no-scrollbar">
+                      <div className="flex items-center justify-between mb-6 px-2">
+                        <p className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em]">Archived Artifacts</p>
+                        <span className="text-[10px] bg-brand-primary/10 px-3 py-1 rounded-full text-brand-primary font-black uppercase">{projects.length} Total</span>
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         {isProjectsLoading ? (
-                          <div className="py-8 text-center text-[10px] font-bold text-slate-400 animate-pulse uppercase tracking-widest">Hydrating Archives...</div>
+                          <div className="py-12 text-center text-[11px] font-black text-text-secondary animate-pulse uppercase tracking-[0.3em]">Calibrating Vault...</div>
                         ) : projects.length === 0 ? (
-                          <div className="py-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Manuscripts Found</div>
+                          <div className="py-12 text-center text-[11px] font-black text-text-secondary uppercase tracking-[0.3em]">Void Detected</div>
                         ) : (
                           projects.map(p => (
                             <button
@@ -950,20 +1122,20 @@ export default function App() {
                                 setProject(p);
                                 setIsProjectMenuOpen(false);
                               }}
-                              className={`w-full text-left p-4 rounded-xl transition-all group/item ${
+                              className={`w-full text-left p-5 rounded-2xl transition-all group/item border ${
                                 p.id === project.id 
-                                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
-                                  : 'hover:bg-slate-50 text-slate-600'
+                                  ? 'bg-brand-primary border-brand-primary text-white shadow-2xl shadow-brand-primary/20' 
+                                  : 'hover:bg-white/5 border-border-subtle/30 text-text-secondary hover:text-text-primary'
                               }`}
                             >
-                              <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${p.id === project.id ? 'bg-white/20' : 'bg-slate-100 group-hover/item:rotate-3 transition-transform'}`}>
-                                  <PenTool size={14} className={p.id === project.id ? 'text-white' : 'text-slate-400'} />
+                              <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${p.id === project.id ? 'bg-white/20' : 'bg-surface-muted group-hover/item:bg-brand-primary/10 transition-colors'}`}>
+                                  <Library size={18} className={p.id === project.id ? 'text-white' : 'text-text-secondary group-hover/item:text-brand-primary'} />
                                 </div>
-                                <div className="min-w-0">
-                                  <div className="text-xs font-black leading-tight truncate">{p.title || 'Untitled'}</div>
-                                  <div className={`text-[9px] uppercase mt-1 tracking-tighter ${p.id === project.id ? 'text-blue-100' : 'text-slate-400'}`}>
-                                    {p.type} • Last Edited {new Date(p.lastModified).toLocaleDateString()}
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm font-black leading-tight truncate italic font-serif">{p.title || 'Untitled Narrative'}</div>
+                                  <div className={`text-[9px] uppercase mt-1 tracking-widest font-bold opacity-60 flex items-center gap-2`}>
+                                    {p.type} <div className="w-1 h-1 rounded-full bg-current" /> {new Date(p.lastModified).toLocaleDateString()}
                                   </div>
                                 </div>
                               </div>
@@ -972,114 +1144,27 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                    <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-2">
+                    <div className="p-6 bg-surface-muted/50 border-t border-border-subtle grid grid-cols-2 gap-3">
                        <button 
                         onClick={() => {
-                          const title = window.prompt('Enter manuscript title:', 'New Narrative');
+                          const title = window.prompt('Define narrative title:');
                           if (title) createNewProject(title);
                           setIsProjectMenuOpen(false);
                         }}
-                        className="w-full flex items-center justify-center gap-2 py-4 bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm active:scale-95"
+                        className="flex items-center justify-center gap-2 py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-brand-primary hover:text-white shadow-xl active:scale-95"
                       >
-                        <PenTool size={14} />
-                        New Archive Entry
+                        <Plus size={16} />
+                        New Archive
                       </button>
 
-                      <label className="w-full flex items-center justify-center gap-2 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-blue-200 cursor-pointer active:scale-95">
-                        <Upload size={14} />
-                        Bulk Ingest (.pdf, .txt, .json)
+                      <label className="flex items-center justify-center gap-2 py-4 bg-brand-primary text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-brand-accent shadow-xl shadow-brand-primary/20 cursor-pointer active:scale-95">
+                        <Upload size={16} />
+                        Ingest Case
                         <input 
                           type="file" 
                           className="hidden" 
                           accept=".pdf,.txt,.md,.json" 
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file || !user) return;
-                            
-                            if (file.size > 10 * 1024 * 1024) {
-                              window.alert("File too large. Max 10MB allowed.");
-                              return;
-                            }
-
-                            setIsProjectMenuOpen(false);
-                            
-                            try {
-                              let content = '';
-                              if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-                                // Dynamic import for worker if possible or use a reliable CDN
-                                const workerUrl = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-                                pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-
-                                const arrayBuffer = await file.arrayBuffer();
-                                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-                                const pdf = await loadingTask.promise;
-                                let fullText = '';
-                                for (let i = 1; i <= pdf.numPages; i++) {
-                                  const page = await pdf.getPage(i);
-                                  const textContent = await page.getTextContent();
-                                  const pageText = textContent.items.map((item: any) => (item as any).str).join(' ');
-                                  fullText += pageText + '\n\n';
-                                }
-                                content = fullText;
-                              } else {
-                                content = await new Promise<string>((resolve, reject) => {
-                                  const reader = new FileReader();
-                                  reader.onload = (event) => resolve(event.target?.result as string);
-                                  reader.onerror = reject;
-                                  reader.readAsText(file);
-                                });
-                              }
-
-                              const title = file.name.replace(/\.[^/.]+$/, "");
-                              const newId = `project_${crypto.randomUUID()}`;
-                              const projectRef = doc(db, 'projects', newId);
-                              
-                              const newProjectData: Project = { 
-                                ...INITIAL_PROJECT,
-                                title,
-                                id: newId,
-                                ownerId: user.uid,
-                                createdAt: Date.now(),
-                                lastModified: Date.now(),
-                                updatedAt: serverTimestamp() as any,
-                                premise: content.slice(0, 500)
-                              };
-
-                              await setDoc(projectRef, newProjectData);
-
-                              // Split into chapters if > 800kb
-                              const CHUNK_SIZE = 800000;
-                              let chaptersCreated = 0;
-                              for (let i = 0; i < content.length; i += CHUNK_SIZE) {
-                                const chunk = content.substring(i, i + CHUNK_SIZE);
-                                const chapterId = crypto.randomUUID();
-                                const chapterRef = doc(db, 'projects', newId, 'chapters', chapterId);
-                                const newChapter: Chapter = {
-                                  id: chapterId,
-                                  title: content.length > CHUNK_SIZE ? `Ingested Manuscript (Part ${chaptersCreated + 1})` : 'Ingested Manuscript',
-                                  content: chunk,
-                                  summary: 'Full manuscript ingest.',
-                                  order: chaptersCreated,
-                                  plotNodeIds: [],
-                                  tags: [],
-                                  updatedAt: Date.now()
-                                };
-                                await setDoc(chapterRef, newChapter);
-                                chaptersCreated++;
-                              }
-                              
-                              localStorage.setItem(`lastProject_${user.uid}`, newId);
-                              setProject(newProjectData);
-                              setCurrentView('dashboard');
-                              
-                              // Clear the input
-                              e.target.value = '';
-                            } catch (err) {
-                              console.error("Bulk Ingest failed:", err);
-                              window.alert(`Ingest failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-                              handleFirestoreError(err, OperationType.WRITE, 'projects (bulk ingest)');
-                            }
-                          }}
+                          onChange={handleBulkIngest} 
                         />
                       </label>
                     </div>
@@ -1089,21 +1174,21 @@ export default function App() {
             </div>
 
             {isSaving && (
-              <motion.span 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1 animate-pulse hidden md:flex"
+              <motion.div 
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="hidden md:flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full text-[9px] font-black text-brand-primary uppercase tracking-[0.1em]"
               >
-                <Save size={10} />
-                Manuscript Intelligence Indexed
-              </motion.span>
+                <div className="w-1 h-1 rounded-full bg-brand-primary animate-ping" />
+                Intelligence Synced
+              </motion.div>
             )}
           </div>
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
              {isMobile && (
                <button 
                  onClick={() => setIsSidebarOpen(true)}
-                 className="p-2 text-slate-800 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                 className="p-2.5 text-text-primary bg-surface-muted rounded-xl hover:bg-white/5 transition-colors border border-border-subtle"
                >
                  <Menu size={20} />
                </button>
@@ -1111,35 +1196,48 @@ export default function App() {
              {!isMobile && (
                <button 
                 onClick={() => setCurrentView('export')}
-                className="px-5 py-2 bg-slate-900 text-white rounded font-black text-[10px] hover:bg-slate-800 transition-all uppercase tracking-[0.2em] shadow-lg shadow-slate-200"
+                className="px-6 py-2.5 bg-brand-primary text-white rounded-xl font-black text-[10px] hover:bg-brand-accent transition-all uppercase tracking-[0.2em] shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95"
               >
                 Export & Publish
               </button>
              )}
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 text-slate-300 hover:text-slate-900 transition-colors hidden lg:block"
+              className="p-2.5 bg-surface-muted border border-border-subtle rounded-xl text-text-secondary hover:text-brand-primary hover:border-brand-primary/30 transition-all hidden lg:flex items-center justify-center active:scale-90 shadow-sm"
+              title="Toggle Sidebar Architecture"
             >
-              <GitBranch size={20} className={isSidebarOpen ? 'rotate-90 transition-transform' : 'transition-transform'} />
+              <GitBranch size={18} className={isSidebarOpen ? 'rotate-90 transition-transform duration-500' : 'transition-transform duration-500'} />
             </button>
           </div>
         </header>
 
         {/* View Transition Area */}
-        <div className={`flex-1 relative bg-slate-50/50 print:bg-white print:p-0 ${
-          ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research'].includes(currentView) 
-            ? 'overflow-hidden print:overflow-visible' 
-            : 'overflow-y-auto p-4 md:p-12 print:overflow-visible print:p-0'
+        <div className={`flex-1 relative bg-surface-bg print:bg-white print:p-0 ${
+          ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library'].includes(currentView) 
+            ? 'h-full overflow-hidden print:overflow-visible' 
+            : 'overflow-y-auto p-4 md:p-8 lg:p-12 print:overflow-visible print:p-0'
         }`}>
           <div
-            className={`w-full h-full print:h-auto ${
-              ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research'].includes(currentView) 
-                ? `h-full w-full ${currentView === 'writing' ? '' : 'p-4 md:p-8'}`
-                : 'min-h-full max-w-7xl mx-auto'
+            className={`w-full ${
+              ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library'].includes(currentView) 
+                ? `h-full w-full ${currentView === 'writing' ? '' : 'p-2 md:p-8'}`
+                : 'min-h-full max-w-7xl mx-auto py-8 md:py-12'
             }`}
           >
+            {currentView === 'library' && (
+              <LibraryView 
+                key="library"
+                projects={projects}
+                onSelectProject={(p) => {
+                  setProject(p);
+                  setCurrentView('dashboard');
+                }}
+                onCreateProject={() => createNewProject()}
+                onDeleteProject={(id) => deleteProject(id)}
+              />
+            )}
             {(currentView === 'dashboard' || currentView === 'brainstorm') && (
-                 <>
+                 <div key={project.id}>
                    {currentView === 'dashboard' && (
                      <Dashboard 
                        project={{ ...project, stats: { ...project.stats, totalWords } }} 
@@ -1157,15 +1255,17 @@ export default function App() {
                      <Brainstorm 
                        project={project} 
                        research={research}
+                       sourceMaterials={sourceMaterials}
                        updateProject={updateProject} 
                        onAddResearch={upsertResearch}
                        onError={(msg) => addNotification(msg, 'error')}
                      />
                    )}
-                 </>
+                 </div>
               )}
               {currentView === 'characters' && (
                 <CharacterForge 
+                  key={project.id}
                   project={{ ...project, characters }} 
                   research={research}
                   chapters={chapters}
@@ -1179,6 +1279,7 @@ export default function App() {
               )}
               {currentView === 'plot' && (
                 <PlotArchitect 
+                  key={project.id}
                   project={{ ...project, chapters, sourceMaterials }}
                   chapters={chapters} 
                   plotNodes={plotNodes} 
@@ -1196,35 +1297,24 @@ export default function App() {
                   onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
-              {currentView === 'research' && (
-                <ResearchLibrary 
+              {currentView === 'intelligence' && (
+                <IntelligenceLab 
+                  key={project.id}
                   project={project} 
                   research={research} 
                   chapters={chapters}
-                  onAdd={async (note) => {
-                    const path = `projects/${project.id}/research/${note.id}`;
-                    try {
-                      await setDoc(doc(db, 'projects', project.id, 'research', note.id), { ...note, updatedAt: Date.now() });
-                    } catch (e) {
-                      handleFirestoreError(e, OperationType.WRITE, path);
-                    }
-                  }}
-                  onDelete={(id) => deleteSubDoc('research', id)}
-                  onError={(msg) => addNotification(msg, 'error')}
-                />
-              )}
-              {currentView === 'research_assistant' && (
-                <ResearchAssistant 
-                  project={project} 
-                  research={research} 
-                  chapters={chapters}
+                  sourceMaterials={sourceMaterials}
                   onAddResearch={upsertResearch}
+                  onDeleteResearch={(id) => deleteSubDoc('research', id)}
                   onAddChapter={upsertChapter}
+                  onAddSource={upsertSourceMaterial}
+                  onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
                   onNotify={(msg, type) => addNotification(msg, type)}
                 />
               )}
               {currentView === 'writing' && (
                 <WritingStudio 
+                  key={project.id}
                   project={{ ...project, chapters, sourceMaterials, research, externalReviews }} 
                   plotNodes={plotNodes}
                   presence={presence}
@@ -1244,6 +1334,7 @@ export default function App() {
               )}
               {currentView === 'swarm' && (
                 <CriticSwarm 
+                  key={project.id}
                   projectType={project.type}
                   maturity={project.maturity}
                   chapters={chapters}
@@ -1260,6 +1351,7 @@ export default function App() {
               )}
               {currentView === 'prizes' && (
                 <PrizeView 
+                  key={project.id}
                   project={project}
                   chapters={chapters}
                   updateProject={updateProject}
@@ -1267,6 +1359,7 @@ export default function App() {
               )}
               {currentView === 'reviews' && (
                 <ReviewVault 
+                  key={project.id}
                   project={project}
                   reviews={externalReviews}
                   onUpsert={upsertExternalReview}
@@ -1275,6 +1368,7 @@ export default function App() {
               )}
               {currentView === 'export' && (
                 <PublishView 
+                  key={project.id}
                   project={project}
                   chapters={chapters}
                   updateProject={updateProject}
@@ -1283,6 +1377,7 @@ export default function App() {
               )}
               {currentView === 'architect' && (
                 <ManuscriptFixer 
+                  key={project.id}
                   project={{ ...project, sourceMaterials, research }}
                   chapters={chapters}
                   research={research}
@@ -1295,12 +1390,14 @@ export default function App() {
                     setPlotNodes(nodes);
                     await upsertPlotNodesBatch(nodes);
                   }}
+                  onAddResearch={upsertResearch}
                   setView={setCurrentView}
                   onError={(msg) => addNotification(msg, 'error')}
                 />
               )}
               {currentView === 'settings' && (
                 <SettingsView 
+                  key={project.id}
                   project={project} 
                   updateProject={updateProject}
                   deleteProject={deleteProject}
@@ -1309,31 +1406,18 @@ export default function App() {
             </div>
           </div>
         </main>
-        {/* Error Notification Toasts */}
-        <AnimatePresence>
-          {notifications.length > 0 && (
-            <div className="fixed bottom-6 right-6 z-[200] flex flex-col gap-2 pointer-events-none">
-              {notifications.map(n => (
-                <motion.div
-                  key={n.id}
-                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium max-w-sm bg-red-50 border-red-200 text-red-800"
-                >
-                  <span className="shrink-0 mt-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[9px] font-black">!</span>
-                  <span className="leading-snug">{n.message}</span>
-                  <button
-                    onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))}
-                    className="shrink-0 ml-auto text-red-400 hover:text-red-600 transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </AnimatePresence>
+        {/* Error toast notifications */}
+        {notifications.length > 0 && (
+          <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+            {notifications.map(n => (
+              <div key={n.id} className="bg-red-900 border border-red-600 text-red-100 px-4 py-3 rounded-lg shadow-lg flex items-start gap-2">
+                <span className="text-red-400 mt-0.5">⚠</span>
+                <span className="text-sm flex-1">{n.message}</span>
+                <button onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))} className="text-red-400 hover:text-red-200 ml-1">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
 }

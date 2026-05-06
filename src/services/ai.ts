@@ -4,12 +4,12 @@
  */
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview } from "../types";
+import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const XAI_API_KEY = (import.meta as any).env.VITE_GROK_API_KEY;
-const CLAUDE_API_KEY = (import.meta as any).env.VITE_ANTHROPIC_API_KEY;
-const OPENAI_API_KEY = (import.meta as any).env.VITE_OPENAI_API_KEY;
+const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
+const CLAUDE_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_ANTHROPIC_API_KEY : undefined;
+const OPENAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_OPENAI_API_KEY : undefined;
 
 let globalPrimaryProvider: IntelligenceProvider = 'gemini';
 
@@ -34,27 +34,27 @@ function safeParseJSON(text: string, fallback: any = {}) {
 }
 
 const LITERARY_ENGINE_RULES = `
-LITERARY ENGINE — STANDING RULES (CRITICAL):
-1. Identify real dramatic engine (hidden wound/desire/fear).
-2. Story first, style second. Cut 25-40% of first-pass drafts.
-3. Spare imagery. One perfect image beats five.
-4. Concrete objects/gestures/smells over abstract explanations.
-5. Subtext over declaration. Let truth leak through behaviour.
-6. Every scene must TURN (change power/danger/intimacy/status).
-7. Characters must WANT something immediately.
-8. Villains are heroes of their own stories; martyrs or saviours.
-9. Dialogue must carry CONFLICT (threaten, evade, manipulate).
-10. Avoid emotion labels. Show physical/behavioural evidence.
-11. Escalate danger/moral cost/uncertainty every chapter.
-12. Preserve mystery. Do not explain too early.
-13. Cut repeated motifs unless transformed.
-14. Make place a character that pressures the story.
-15. First lines must create tension/disturbance.
-16. CLARIFY GENRE: Maintain a single dominant narrative spine.
-17. FICTIONALISE properly: Remove all real-world legal ambiguity.
-18. Avoid TONE SATURATION. Dynamic range is mandatory.
-19. No sludge. No padding. No cowardice. Authorize the AI to cut redundant or weak prose aggressively.
-20. ENDINGS must be inevitable but surprising. End on an image that bites.
+LITERARY ENGINE — STANDING RULES (MASTER COMMAND):
+1. Identify real dramatic engine: Find the hidden wound, desire, betrayal, fear, irony, or transformation underneath it.
+2. Story first, style second: Prose must serve plot, character, tension, rhythm, or revelation. If a sentence is pretty but useless, cut it.
+3. Every scene must TURN: Each scene must change something: power, knowledge, danger, intimacy, belief, status, or direction. If nothing turns, strike it.
+4. Concrete before abstract: Prefer objects, gestures, rooms, weather, smells, clothes, silence, and behaviour over explanation. 
+5. Subtext is superior: Characters should rarely say exactly what they mean. Let truth leak through behavior.
+6. Cut the "Pretty Sludge": Eliminate decorative adjectives and fake profundity. Aim for 40% reduction in first-pass drafts. Be brutal.
+7. Tone Dynamics: Use valleys of calm to make the peaks of intensity feel higher. Avoid tone saturation.
+8. Imagery of Precision: Use strong imagery sparingly. One perfect "image that bites" beats five decorative ones.
+9. Dialogue is Conflict: It must conceal, threaten, seduce, evade, expose, manipulate, wound, bargain, or confess accidentally.
+10. Characters must want something immediately: Even in silence, apply pressure through a mask and a pressure point.
+11. Endings must be inevitable but surprising. Land on an image that resonates with the character's core wound.
+12. Prose Hierarchy: 1. Clarity, 2. Tension, 3. Character truth, 4. Rhythm, 5. Beauty, 6. Cleverness.
+13. Default Structural Arc: Hook -> Character under pressure -> Specific setting -> Hidden wound -> Immediate desire -> Obstacle -> Escalation -> Reversal -> Cost -> Image-led ending.
+14. Cut Repeated Motifs: A motif is powerful when it returns transformed. If it returns unchanged, reduce or eliminate it. No thematic static.
+15. Ban Filler: Avoid vague menace, repeated adjectives, lore dumps, or exposition disguised as dialogue.
+16. Characters are Heroes of their own stories: Villains don't think they are evil; they think they are misunderstood or necessary.
+17. Make Place a Character: Settings must pressure the story and shape behavior.
+18. First lines create tension: Opening image must contain disturbance, threat, or mystery.
+19. WORD COUNT PRECISION: All generated drafts must respect the structural scale of the project. If a target word count is provided, you must NOT exceed it by more than 3%. Prioritize density, sensory precision, and "show, do not tell" over padding or generic descriptions.
+20. PLAN PRIORITIZATION: If a "Structural Plan" or "Instructional Archetype" is provided (outline, beat sheet, specific chapter instructions), those instructions MANDATORY override any default word count targets or generic structural rules. Be subservient to the Plan's specific creative goals.
 `;
 
 /**
@@ -298,7 +298,8 @@ const AGENT_PERSONAS = {
   writer: "You are a Seasoned Author with multiple bestsellers. Focus on craft, industry standards, and the 'engine' of readable prose.",
   medical: "You are a General Practitioner (GP). Focus on medical realism, clinical accuracy, and the physical reality of health/trauma.",
   historical: "You are a Historian. Focus on period-accuracy, cultural context, and ensuring temporal integrity.",
-  sensitivity: "You are a Diversity & Sensitivity Consultant. Focus on accurate representation of LGBT+ identities, women's experiences, socioeconomic nuances, and age-specific realism. Flag tropes and harmful biases."
+  sensitivity: "You are a Diversity & Sensitivity Consultant. Focus on accurate representation of LGBT+ identities, women's experiences, socioeconomic nuances, and age-specific realism. Flag tropes and harmful biases.",
+  repetition: "You are a Repetition Detective. Your sole job is to identify redundant phrases, motifs that return unchanged, echoes of earlier chapters, and 'thematic static' where the story spins its wheels."
 };
 
 const getMaturityDirectives = (level: string) => {
@@ -316,9 +317,37 @@ export const AIService = {
   setPrimaryProvider(provider: IntelligenceProvider) {
     globalPrimaryProvider = provider;
   },
-  async brainstorm(premise: string, genre: string, tone: string, type: ProjectType, research: ResearchNote[] = [], maturity = 'standard', externalReviews: ExternalReview[] = []): Promise<string> {
+
+  async detectIngestionType(text: string): Promise<'manuscript' | 'plan'> {
+    const prompt = `Analyze this text and determine if it is a "Manuscript" (raw narrative prose, partial book, draft) or a "Plan" (outline, chapter-by-chapter instructions, structural blueprint, beat sheet).
+    
+    TEXT SAMPLE:
+    "${text.slice(0, 10000)}"
+    
+    Return ONLY the word "manuscript" or "plan".`;
+    
+    const response = await callAI({ prompt, model: "gemini-2.0-flash" });
+    return response?.toLowerCase().includes('plan') ? 'plan' : 'manuscript';
+  },
+
+  async brainstorm(
+    premise: string, 
+    genre: string, 
+    tone: string, 
+    type: ProjectType, 
+    research: ResearchNote[] = [], 
+    sourceMaterials: SourceMaterial[] = [],
+    maturity = 'standard', 
+    externalReviews: ExternalReview[] = [],
+    improvementGoal?: string
+  ): Promise<string> {
     const researchContext = research.length > 0 
       ? `\nRESEARCH ATTACHED:\n${research.map(r => `- ${r.title}: ${r.content}`).join('\n')}`
+      : "";
+
+    const maxSourceContentLength = 100000;
+    const sourceContext = sourceMaterials.length > 0 
+      ? `\nSOURCE MATERIALS:\n${sourceMaterials.map(s => `- ${s.name}: ${s.content}`).join('\n\n').slice(0, maxSourceContentLength)}`
       : "";
 
     const reviewContext = externalReviews.filter(r => !r.isImplemented).length > 0 
@@ -335,26 +364,38 @@ export const AIService = {
       legal: "Focus on logical precedence, argumentative rigor, technical precision, and persuasive flow.",
       academic: "Focus on hypothesis testing, literature contextualization, methodological transparency, and intellectual contribution.",
       stageplay: "Focus on stagecraft, acoustic presence, spatial dynamics, and performative tension.",
-      radioplay: "Focus on acoustic atmosphere, sound cues, vocal diversity, and narrative efficiency for audio."
+      radioplay: "Focus on acoustic atmosphere, sound cues, vocal diversity, and narrative efficiency for audio.",
+      experimental: "Focus on boundary-pushing structure and novel metaphors."
     };
 
-    const prompt = `You are the Central Orchestrator of a synthetic writer's room. 
+    const improvementDirective = improvementGoal 
+      ? `\nIMPROVEMENT FOCUS: The user specifically wants to improve the "${improvementGoal}" of this work. Prioritize suggestions that address this lens.`
+      : "";
+
+    const prompt = `You are a World-Class Story Architect and Intelligence Orchestrator. 
       Project Type: ${type}
-      Genre: ${genre}
+      Genre: ${genre} (IMPORTANT: Anchor ALL suggestions strictly in this genre. Do NOT default to sci-fi unless explicit).
       Tone: ${tone}
-      Initial Premise: "${premise}"
+      Context: "${premise}"
       
-      SPECIFIC DIRECTIVE: ${projectSpecificDirectives[type] || projectSpecificDirectives.novel}
+      CORE DIRECTIVE: ${projectSpecificDirectives[type] || projectSpecificDirectives.novel}
+      ${improvementDirective}
       
       ${getMaturityDirectives(maturity)}
       ${researchContext}
+      ${sourceContext}
       ${reviewContext}
       
       ${LITERARY_ENGINE_RULES}
       
-      Provide a multi-faceted expansion including structural milestones, character/subject archetypes, and thematic escalation.`;
+      Provide a sophisticated narrative expansion. Include:
+      1. Structural Pivot Points (specific scene ideas that "turn" the story).
+      2. Character/Subject Deepening (internal wounds or hidden motivations).
+      3. Atmospheric/Thematic Resonance (symbols or sensory motifs unique to the ${genre} setting).
+      
+      Output should be professional, insightful, and strictly relevant to the provided genre and goal.`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-1.5-flash" });
   },
 
   async generateCharacter(concept: string, type: ProjectType, research: ResearchNote[] = [], maturity = 'standard'): Promise<Character> {
@@ -362,7 +403,8 @@ export const AIService = {
       ? `\nRESEARCH CONTEXT FOR CHARACTERS:\n${research.map(r => `- ${r.title}: ${r.content}`).join('\n')}`
       : "";
 
-    const prompt = `Create a character for a ${type}. Concept: "${concept}". ${getMaturityDirectives(maturity)} ${researchContext} Return as JSON.`;
+    const prompt = `Create a character for a ${type}. Concept: "${concept}". ${getMaturityDirectives(maturity)} ${researchContext}
+    Include a detailed 'physicalDescription' that can be used for biometric portrait synthesis. Return as JSON.`;
     const schema = {
       type: Type.OBJECT,
       properties: {
@@ -374,9 +416,10 @@ export const AIService = {
         fears: { type: Type.ARRAY, items: { type: Type.STRING } },
         motivations: { type: Type.ARRAY, items: { type: Type.STRING } },
         quirks: { type: Type.ARRAY, items: { type: Type.STRING } },
-        archetype: { type: Type.STRING }
+        archetype: { type: Type.STRING },
+        physicalDescription: { type: Type.STRING }
       },
-      required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
+      required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype", "physicalDescription"]
     };
 
     const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
@@ -401,7 +444,7 @@ export const AIService = {
     const chaptersContext = chapters.map((c: any) => `### Chapter: ${c.title}\n${c.content}`).join('\n\n').slice(0, maxContentLength);
     const sourceContext = (project.sourceMaterials || []).map((s: any) => `### Source [${s.name}]\n${s.content}`).join('\n\n').slice(0, maxContentLength);
     const researchContext = research.length > 0 
-      ? `\n=== RESEARCH CONTEXT ===\n${research.map(r => `[${r.title}]: ${r.content}`).join('\n')}`
+      ? `\n=== RESEARCH CONTEXT ===\n${research.map(r => `[${r.title}] (Category: ${r.category || 'General'}): ${r.content}`).join('\n\n')}`
       : "";
     const reviewContext = (project.externalReviews || []).filter(r => !r.isImplemented).length > 0
       ? `\n=== EXTERNAL CRITICAL REVIEWS ===\n${(project.externalReviews || []).filter(r => !r.isImplemented).map(r => `[FROM ${r.source}]: ${r.content}`).join('\n')}`
@@ -411,19 +454,22 @@ export const AIService = {
     prompt += LITERARY_ENGINE_RULES;
     
     if (chaptersContext || sourceContext || researchContext || reviewContext) {
-      prompt += `Analyze ALL of the following materials. YOU MUST draw characters, events, and thematic arcs directly from this text to construct the structural plot beats. Resolve any active critical reviews.
+      prompt += `Analyze ALL of the following materials. 
+
+CRITICAL DIRECTIVE: If there are "AI Brainstorm" or "Structural Plan" notes in the RESEARCH CONTEXT, you MUST base your narrative beats and architecture directly on those specific ideas, structures, and character arcs. The Brainstorm/Research notes override standard defaults. Reconcile them with the existing chapters and source materials.
 
 === EXISTING MANUSCRIPT/CHAPTERS ===
 ${chaptersContext}
 
 === SOURCE MATERIALS ===
 ${sourceContext}
+
 ${researchContext}
 
 === EXTERNAL FEEDBACK ===
 ${reviewContext}
 
-Based ONLY on the provided text, outline the major narrative beats. Return a JSON array of objects.`;
+Based ONLY on the provided text and strictly following any structural plans found in the RESEARCH CONTEXT, outline the major narrative beats. Return a JSON array of objects.`;
     } else {
       prompt += `Return a JSON array of objects.`;
     }
@@ -470,7 +516,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
   },
 
   async getSwarmCritique(text: string, type: ProjectType, maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], customRoles?: string[]): Promise<Critique[]> {
-    const defaultRoles: (keyof typeof AGENT_PERSONAS)[] = ['vocal', 'structural', 'factual', 'agent', 'sentence', 'thematic', 'writer', 'medical', 'historical', 'sensitivity'];
+    const defaultRoles: (keyof typeof AGENT_PERSONAS)[] = ['vocal', 'structural', 'factual', 'agent', 'sentence', 'thematic', 'writer', 'repetition'];
     if (type === 'legal') defaultRoles.push('legal');
     if (type === 'academic') defaultRoles.push('academic');
     if (type === 'experimental' || type === 'screenplay') defaultRoles.push('comedy');
@@ -562,11 +608,19 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       experimental: "Avant-garde Author"
     };
 
-    const targetContext = projectTargetWords 
+    const isPlanDriven = directives.length > 0;
+
+    const targetContext = (projectTargetWords && !isPlanDriven)
       ? `\nPROJECT TARGET SCALE: This is part of a larger work aiming for ~${projectTargetWords.toLocaleString()} words. 
-         CALCULATED CHAPTER DEPTH: Aim for approximately 2,000 - 3,500 words for this section to maintain the necessary structural density for the target scale. 
-         Avoid compression; use sensory detail and dialogue to expand the momentum.`
-      : "";
+         STRICT DEPTH DIRECTIVE: You MUST draft this chapter at approximately ${Math.round(projectTargetWords / 25).toLocaleString()} words. 
+         WORD LIMIT: Do NOT exceed this target by more than 3%.
+         DO NOT rush. Expand scenes, utilize dialogue, and provide dense sensory descriptions to meet this specific structural volume, but maintain strict word count discipline.
+         If the draft is too short, the structural integrity of the project will fail.`
+      : isPlanDriven 
+        ? `\nPLAN-DRIVEN DRAFTING: Specific chapter directives have been provided. 
+           BYPASS generic word count targets. Follow the density and structural instructions within the "CRITICAL AUTHOR DIRECTIVES" section below. 
+           Prioritize implementing every beat in the plan over meeting a specific word count.`
+        : "";
 
     const researchContext = research.length > 0 
       ? `\nRESEARCH ARCHIVE (INTEGRATE THESE SENSORY DETAILS):\n${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('\n')}`
@@ -586,7 +640,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       
       ${LITERARY_ENGINE_RULES}
       
-      TASK: Write a full, immersive, and high-fidelity draft for Chapter: "${title}".
+      TASK: Write a full, immersive, and high-fidelity "Prize-Winning" draft for Chapter: "${title}".
       SCENE OBJECTIVES: ${summary}
       ${authorDirectives}
       ${reviewContext}
@@ -604,12 +658,14 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       AUTHORIAL DIRECTIVE:
       - Use standard Markdown formatting.
       - Write only the prose. No notes, no meta-commentary.
+      - AVOID ECHOES: Do not repeat motifs, imagery, or sentence rhythms present in the continuity text context unless they return transformed.
       - Maintain depth consistent with a ~${projectTargetWords ? projectTargetWords.toLocaleString() : '50,000'} word scale, but prioritize sharpening over padding.
       - CUT the sludge. If a scene doesn't turn, strike it.
-      - Show, do not tell. Focus on sensory details and internal monologue.
+      - Show, do not tell. Focus on sensory details, internal monologue, and subtext.
+      - Find the "winding" of the scene—where the power shifts or the secret leaks.
     `;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType, deep = false): Promise<ResearchNote> {
@@ -695,19 +751,46 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
     return Array.isArray(data.topics) ? data.topics : [];
   },
 
-  async generateArchitecture(title: string, genre: string, premise: string): Promise<any> {
-    const prompt = `You are a World-Class Non-Fiction Structuring Agent. 
+  async generateNarrativeGraph(
+    title: string, 
+    genre: string, 
+    premise: string, 
+    type: ProjectType,
+    research: ResearchNote[] = [],
+    sourceMaterials: SourceMaterial[] = []
+  ): Promise<any> {
+    const isNonFiction = ['academic', 'cookbook', 'coursebook', 'essays', 'biography', 'memoir'].includes(type);
+    
+    const researchContext = research.length > 0 
+      ? `\nRESEARCH ATTACHED:\n${research.map(r => `- ${r.title}: ${r.content}`).join('\n')}`
+      : "";
+
+    const maxSourceContentLength = 100000;
+    const sourceContext = sourceMaterials.length > 0 
+      ? `\nSOURCE MATERIALS:\n${sourceMaterials.map(s => `- ${s.name}: ${s.content}`).join('\n\n').slice(0, maxSourceContentLength)}`
+      : "";
+
+    const prompt = `You are a World-Class ${isNonFiction ? 'Knowledge' : 'Narrative'} Architect. 
       Project: "${title}"
       Genre/Field: ${genre}
+      Type: ${type}
       Premise: ${premise}
+
+      ${researchContext}
+      ${sourceContext}
       
-      Generate a comprehensive Table of Contents and Research Roadmap for a definitive non-fiction work.
-      Return JSON with "chapters" (title, focus) and "researchTracks" (topic, priority).`;
+      TASK: Generate a comprehensive ${isNonFiction ? 'Structural Roadmap' : 'World Intelligence Graph'} for this work.
+      ${isNonFiction 
+        ? 'Include a highly granular Table of Contents and Research Roadmap for definitive authority.' 
+        : 'Include a set of "Foundation Nodes" (Setting/World Bible, Character Motifs, etc.) and specific "Narrative Tracks" (historical textures, cultural artifacts, technical jargon) to ground the fiction.'
+      }
+      
+      Return JSON with "nodes" (title, focus) and "researchTracks" (topic, priority).`;
     
     const schema = {
       type: Type.OBJECT,
       properties: {
-        chapters: {
+        nodes: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
@@ -730,7 +813,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
           }
         }
       },
-      required: ["chapters", "researchTracks"]
+      required: ["nodes", "researchTracks"]
     };
 
     const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
@@ -745,6 +828,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       EXCLUDE characters already in the Forge: [${currentChars}].
       
       For each NEW character found, provide a full profile according to the requested JSON schema.
+      Include a 'physicalDescription' based on any textual evidence in the draft.
       Focus on their dramatic engine, role in the story, and sensory details mentioned in the text.
 
       MANUSCRIPT SAMPLE:
@@ -768,9 +852,10 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
               fears: { type: Type.ARRAY, items: { type: Type.STRING } },
               motivations: { type: Type.ARRAY, items: { type: Type.STRING } },
               quirks: { type: Type.ARRAY, items: { type: Type.STRING } },
-              archetype: { type: Type.STRING }
+              archetype: { type: Type.STRING },
+              physicalDescription: { type: Type.STRING }
             },
-            required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
+            required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype", "physicalDescription"]
           }
         }
       },
@@ -796,20 +881,38 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       ? `\nEXTERNAL CRITICAL REVIEWS:\n${externalReviews.filter(r => !r.isImplemented).map(r => `- [FROM ${r.source}]: ${r.content}`).join('\n')}`
       : "";
 
-    const prompt = `Analyze narrative continuity between the Plot Nodes, the current Chapter sequence, and critical external feedback.
+    const prompt = `Analyze narrative continuity and structural redundancy between the Plot Nodes, the current Chapter sequence, and critical external feedback.
       ${researchContext}
       ${reviewContext}
       
       Plot Nodes: ${JSON.stringify(nodes.map(n => ({ title: n.title, status: n.status })))}
-      Chapters: ${JSON.stringify(chapters.map(c => ({ title: c.title, nodes: c.plotNodeIds || [] })))}
+      Chapters: ${JSON.stringify(chapters.map(c => ({ title: c.title, summary: c.summary, nodes: c.plotNodeIds || [] })))}
       
-      Identify orphaned nodes, logic gaps, and unresolved critical feedback. Format as Markdown.`;
+      TASK:
+      1. Identify orphaned nodes and logic gaps.
+      2. Identify REPETITION AND REDUNDANCY: Flag chapters that cover the same plot ground or repeat character realizations.
+      3. Identify NARRATIVE LOOPING: Where the story spins its wheels without a significant turn.
+      
+      Format as a professional literary report in Markdown.`;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
   },
 
-  async splitManuscript(fullText: string, type: ProjectType): Promise<{ title: string; summary: string; marker: string }[]> {
-    const prompt = `STRUCTURAL ARCHITECT: Analyze this raw manuscript of a ${type}. 
+  async splitManuscript(fullText: string, type: ProjectType, isPlan = false): Promise<{ title: string; summary: string; marker: string; directives?: string[] }[]> {
+    const prompt = isPlan ? 
+    `PLAN ARCHITECT: Analyze this structural blueprint/plan for a ${type}.
+     Identify the logical chapter divisions described in the plan.
+     For each chapter identified in the plan:
+     - Generate a Title.
+     - Provide a "Directive": The EXACT instructions or beats from the plan that belong to this chapter.
+     - Create a Summary of the chapter's intent.
+     - Identify a "Marker": the unique phrase starting this section in the plan.
+     
+     PLAN TEXT:
+     ${fullText}
+     
+     Return as a JSON array of objects: { "chapters": [{ "title": string, "summary": string, "marker": string, "directives": string[] }] }`
+    : `STRUCTURAL ARCHITECT: Analyze this raw manuscript of a ${type}. 
   
   Your task is to identify logical chapter boundaries WITHOUT returning the full text.
   1. Detect natural breakpoints (aim for 15-25 chapters if the text is long enough).
@@ -833,7 +936,8 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
             properties: {
               title: { type: Type.STRING },
               summary: { type: Type.STRING },
-              marker: { type: Type.STRING }
+              marker: { type: Type.STRING },
+              directives: { type: Type.ARRAY, items: { type: Type.STRING } }
             },
             required: ["title", "summary", "marker"]
           }
@@ -842,7 +946,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-2.5-pro-preview-05-06" });
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-1.5-pro" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -860,7 +964,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       MANUSCRIPT:\n${fullText.slice(0, 100000)}
       ${sourceContext}`;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
   },
 
   async automateNextSteps(project: Project, chapters: Chapter[]): Promise<{ title: string; summary: string }[]> {
@@ -895,7 +999,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["beats"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
     const data = safeParseJSON(text || "[]", []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
@@ -920,7 +1024,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       [GRAMS/FX: Sound cues]
       [CHARACTER NAME]: [Dialogue with performance directions in brackets]`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-1.5-flash" });
   },
 
   async generateCoverPrompt(project: Project, author: string, subtitle: string, basePrompt: string): Promise<string> {
@@ -941,7 +1045,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       
       OUTPUT ONLY THE FINAL CONCATENATED PROMPT.`;
     
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-1.5-flash" });
   },
 
   async generateAudiobookScript(project: Project, chapters: Chapter[]): Promise<string> {
@@ -961,7 +1065,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       MANUSCRIPT SAMPLE:
       ${fullText}`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-1.5-flash" });
   },
 
   async reconcileChapters(project: Project, plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] = []): Promise<{ title: string; summary: string; plotNodeIds: string[] }[]> {
@@ -983,6 +1087,11 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
     CURRENT CHAPTERS:
     ${chapters.map(c => `- ${c.title}: ${c.summary} (Current Plot Node links: ${(c.plotNodeIds || []).join(', ')})`).join('\n')}
     
+    TASK: Harmonize these beats into a tight, non-repetitive manuscript structure. 
+    - AVOID DUPLICATION: If two chapters cover the same plot ground or repeat information, merge them immediately.
+    - Ensure every chapter has a unique "turn" and contributes new information to the narrative engine.
+    - Map each chapter to the most relevant Plot Nodes.
+
     Return as a JSON object: { "chapters": [{ "title": string, "summary": string, "plotNodeIds": string[] }] }`;
 
     const schema = {
@@ -1004,7 +1113,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return (data.chapters || []).map((c: any) => ({
       ...c,
@@ -1020,7 +1129,11 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       academic: "Highly-Cited Research Fellow",
       stageplay: "Tony Award Winning Playwright",
       radioplay: "BBC Audio Drama Lead",
-      experimental: "Post-Modernist Maverick"
+      experimental: "Post-Modernist Maverick",
+      subject_bible: "World-Class Narrative Architect",
+      cookbook: "Master Gastronome",
+      illustrated: "Visual Narrative Specialist",
+      coursebook: "Pedagogical Master"
     };
 
     const targetContext = projectTargetWords 
@@ -1044,7 +1157,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       : "";
 
     const prompt = `You are a ${personaMap[type || 'novel']}. 
-      TASK: Elevate the following scene to "Award-Winning" caliber.
+      TASK: Elevate the following scene to "Prize-Winning" caliber.
       
       ${LITERARY_ENGINE_RULES}
       ${getMaturityDirectives(maturity)}
@@ -1060,13 +1173,15 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       ${reviewContext}
       
       AUTHORIAL STANCE:
-      - Refine the prose for maximum emotional resonance and clarity.
+      - Refine the prose for maximum emotional resonance, clarity, and subtext.
       - Prioritize sharpening and tightening the manuscript.
+      - AVOID ECHOES: Do not repeat motifs, imagery, or sentence rhythms present in the continuity text unless they return transformed.
       - Maintain depth appropriate for the project scale without artificial padding.
       - Ensure sensory immersion is absolute.
-      - Return ONLY the enhanced text.`;
+      - Find the "winding" of the scene—where the power shifts or the secret leaks.
+      - Return ONLY the enhanced text. No preamble.`;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    return await callAI({ prompt, model: "gemini-1.5-pro" });
   },
 
   async assessPrizeWorthiness(project: Project, chapters: Chapter[]): Promise<PrizeAssessment[]> {
@@ -1121,7 +1236,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["assessments"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-1.5-pro" });
     const data = safeParseJSON(response || "{}");
     return data.assessments || [];
   },
@@ -1129,7 +1244,204 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
   async critique(text: string): Promise<string> {
     const prompt = `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
       Writing Sample: "${text}"`;
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-1.5-flash" });
+  },
+
+  async analyzeProse(text: string, type: ProjectType, previousContext: string = ""): Promise<{ type: string; message: string; severity: 'low' | 'medium' | 'high' }[]> {
+    const prompt = `
+      You are a brutal Sentence Stylist and Literary Agent. Analyze the following ${type} segment based on these STRICT STANDING RULES:
+      
+      ${LITERARY_ENGINE_RULES}
+      
+      TASK: Identify exactly where these rules are violated. 
+      
+      CRITICAL FOCUS ON REPETITION:
+      - Look for "Echoes": Words or sentence structures repeated close together.
+      - Narrative Static: Ideas and motifs that have been said before in the provided context but add no new energy.
+      - "Pretty Sludge": Recursive adjectives, fake profundity, decorative filler.
+      - Abstract over Concrete: Vague descriptions of emotions instead of specific gestures/images.
+      
+      PREVIOUS CONTEXT (SUMMARY OF PRIOR BEATS):
+      ${previousContext.slice(-2000)}
+      
+      TEXT TO ANALYZE:
+      "${text.slice(0, 10000)}"
+      
+      Return a JSON object with a "violations" array. Each violation needs:
+      - "type": (e.g. "Echo", "Static", "Sludge", "Abstract", "Subtext")
+      - "message": A specific, bitey explanation of the failure.
+      - "severity": low, medium, or high.
+    `;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        violations: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              type: { type: Type.STRING },
+              message: { type: Type.STRING },
+              severity: { type: Type.STRING, enum: ["low", "medium", "high"] }
+            },
+            required: ["type", "message", "severity"]
+          }
+        }
+      },
+      required: ["violations"]
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const data = safeParseJSON(response || "{}");
+    return Array.isArray(data.violations) ? data.violations : [];
+  },
+
+  async synthesizePortrait(description: string, archetype: string): Promise<string> {
+    const prompt = `A highly detailed cinematic character portrait. 
+      Subject: ${description}
+      Vibe: ${archetype || 'Dramatic, noir lighting, elite literature quality'}
+      Style: Professional character photography, shallow depth of field, realistic textures.`;
+    
+    //@ts-ignore
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1"
+        }
+      }
+    });
+
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("Visual DNA synthesis failed: No image data returned.");
+  },
+
+  async checkSceneTurn(text: string): Promise<{ turned: boolean; score: number; reasoning: string; missing: string }> {
+    const prompt = `
+      Rule 6: EVERY SCENE MUST TURN.
+      Analyze this narrative segment. A scene "turns" when something fundamental changes: power, knowledge, danger, intimacy, belief, status, or direction.
+      
+      TEXT:
+      "${text.slice(0, 5000)}"
+      
+      TASK: Determine if the scene turns. Provide a scoring (1-100), detailed reasoning, and what is missing if it doesn't turn.
+      Return JSON: { "turned": boolean, "score": number, "reasoning": string, "missing": string }
+    `;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        turned: { type: Type.BOOLEAN },
+        score: { type: Type.NUMBER },
+        reasoning: { type: Type.STRING },
+        missing: { type: Type.STRING }
+      },
+      required: ["turned", "score", "reasoning", "missing"]
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    return safeParseJSON(response || "{}");
+  },
+
+  async ripUpAndRestart(project: Project, chapters: Chapter[], research: ResearchNote[]): Promise<{ plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] }> {
+    const prompt = `
+      EXECUTE PROTOCOL: RIP UP AND RESTART.
+      
+      The current manuscript for "${project.title}" is being liquidated. We are performing a full restructure.
+      
+      CORE ENGINE: ${project.type} / ${project.genre} / ${project.tone}
+      TARGET SCALE: ${project.targetWordCount || 50000} words total.
+      
+      CURRENT ELEMENTS:
+      ${chapters.map(c => `- ${c.title}: ${c.summary}`).join('\n')}
+      
+      TASK:
+      1. Salvage the core dramatic wound and potential.
+      2. Construct a high-momentum PLOT LATTICE (15-25 nodes).
+      3. Propose a new CHAPTER STRUCTURE (exactly 20-30 chapters) designed to support the ${project.targetWordCount || 50000} word target.
+      4. Generate 5 "CREATIVE SOURCES" (Research Notes) that provide deep technical, atmospheric, or philosophical grounding for this specific restructure.
+      
+      Return JSON: { 
+        "plotNodes": [{ "id": string, "title": string, "description": string, "type": "beat"|"reversal"|"climax"|"pinch"|"hook", "order": number }],
+        "chapters": [{ "title": string, "summary": string, "plotNodeIds": string[] }],
+        "newResearch": [{ "title": string, "content": string, "tags": string[] }]
+      }
+    `;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        plotNodes: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              type: { type: Type.STRING },
+              order: { type: Type.NUMBER }
+            },
+            required: ["id", "title", "description", "type", "order"]
+          }
+        },
+        chapters: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              summary: { type: Type.STRING },
+              plotNodeIds: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["title", "summary", "plotNodeIds"]
+          }
+        },
+        newResearch: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              content: { type: Type.STRING },
+              tags: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["title", "content", "tags"]
+          }
+        }
+      },
+      required: ["plotNodes", "chapters", "newResearch"]
+    };
+
+    const data = await callAI({ prompt, json: true, schema, model: "gemini-1.5-pro" });
+    const result = safeParseJSON(data || "{}");
+
+    return {
+      plotNodes: (result.plotNodes || []).map((n: any) => ({ ...n, x: Math.random() * 800, y: Math.random() * 600 })),
+      chapters: (result.chapters || []).map((c: any, i: number) => ({
+        id: crypto.randomUUID(),
+        title: c.title,
+        summary: c.summary,
+        content: "",
+        order: i,
+        plotNodeIds: c.plotNodeIds,
+        updatedAt: Date.now()
+      })),
+      research: (result.newResearch || []).map((r: any) => ({
+        id: crypto.randomUUID(),
+        title: r.title,
+        content: r.content,
+        tags: r.tags,
+        source: 'AI Restructure',
+        createdAt: Date.now()
+      }))
+    };
   }
 };
 
