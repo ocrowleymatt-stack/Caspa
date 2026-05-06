@@ -235,7 +235,7 @@ export default function IntelligenceLab({
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6">
+    <div className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6 pb-20" style={{ minHeight: 0 }}>
       <header className="mb-8 md:mb-12">
         <div className="flex items-center gap-2 px-3 py-1 bg-brand-primary/10 text-brand-primary rounded-full w-fit mb-4">
           <BrainCircuit size={14} />

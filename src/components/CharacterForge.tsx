@@ -125,7 +125,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-6 md:py-12 px-4 md:px-6 flex flex-col md:flex-row gap-10 pb-10">
+    <div className="h-full overflow-y-auto custom-scrollbar max-w-7xl mx-auto py-6 md:py-12 px-4 md:px-6 flex flex-col md:flex-row gap-10 pb-10" style={{ minHeight: 0 }}>
       {/* Left List */}
       <div className="w-full md:w-[400px] flex flex-col gap-8 shrink-0 md:pr-10">
         <header className="text-center md:text-left bg-surface-card p-8 rounded-[2.5rem] border border-border-subtle shadow-2xl">

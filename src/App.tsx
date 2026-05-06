@@ -52,14 +52,12 @@ import {
   Presence,
   ExternalReview
 } from './types';
-import { auth, db, loginWithGoogle, logout, handleRedirectLogin } from './lib/firebase';
+import { auth, db, loginWithGoogle, logout } from './lib/firebase';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { 
   onSnapshot, 
   doc, 
-  collection,
-  getDocs,
-  getDoc,
+  collection, 
   setDoc, 
   updateDoc, 
   deleteDoc, 
@@ -169,6 +167,7 @@ export default function App() {
     if (readId) {
       const fetchPublicProject = async () => {
         try {
+          const { getDoc, doc, collection, getDocs, query, orderBy } = await import('firebase/firestore');
           const pSnap = await getDoc(doc(db, 'projects', readId));
           if (pSnap.exists()) {
             const data = pSnap.data() as Project;
@@ -188,11 +187,11 @@ export default function App() {
   }, []);
 
   const addNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
-    // Only surface error-level messages to avoid notification noise
-    if (type !== 'error') return;
-    const id = Date.now().toString();
+    const id = crypto.randomUUID();
     setNotifications(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 6000);
   };
 
   // Mobile Detection
@@ -263,8 +262,12 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    // Handle redirect-based login result (fallback when popup is blocked)
-    handleRedirectLogin().catch(console.error);
+    const initAuth = async () => {
+      const { handleRedirectLogin } = await import('./lib/firebase');
+      await handleRedirectLogin();
+    };
+    initAuth();
+
     return onAuthStateChanged(auth, (u) => {
       console.log('Auth state changed:', u?.uid || 'no user');
       setUser(u);
@@ -531,24 +534,35 @@ export default function App() {
     
     const path = `projects/${targetId}`;
     const projectRef = doc(db, 'projects', targetId);
-    const SUBCOLLECTIONS = ['characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials', 'externalReviews', 'presence'];
     try {
-      // Cascade-delete all subcollections first to avoid orphaned Firestore data
-      for (const subcoll of SUBCOLLECTIONS) {
-        const snap = await getDocs(collection(db, 'projects', targetId, subcoll));
-        if (snap.docs.length > 0) {
+      // Cascade delete subcollections
+      const subColls = ['characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials', 'externalReviews', 'presence'];
+      const { collection, getDocs, writeBatch } = await import('firebase/firestore');
+      
+      for (const collName of subColls) {
+        const collRef = collection(db, 'projects', targetId, collName);
+        const snapshot = await getDocs(collRef);
+        if (snapshot.size > 0) {
           const batch = writeBatch(db);
-          snap.docs.forEach(d => batch.delete(d.ref));
+          snapshot.docs.forEach(d => batch.delete(d.ref));
           await batch.commit();
         }
       }
+
       await deleteDoc(projectRef);
       if (project.id === targetId) {
-        setProject(INITIAL_PROJECT);
+        const uId = user.uid;
+        const uProjects = projects.filter(p => p.id !== targetId);
+        if (uProjects.length > 0) {
+          setProject(uProjects[0]);
+        } else {
+          setProject(INITIAL_PROJECT);
+          setCurrentView('dashboard');
+        }
         setHistory([]);
         setFuture([]);
-        setCurrentView('dashboard');
       }
+      addNotification('Project permanently deleted with all associated assets.', 'info');
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
@@ -650,6 +664,7 @@ export default function App() {
 
       // Deep Ingest: Split into chapters
       const CHUNK_SIZE = 400000;
+      const { writeBatch } = await import('firebase/firestore');
       let batch = writeBatch(db);
       let batchCount = 0;
       let chaptersCreated = 0;
@@ -705,6 +720,7 @@ export default function App() {
   };
   const upsertCharacterBatch = async (charList: Character[]) => {
     if (!user || charList.length === 0) return;
+    const { writeBatch } = await import('firebase/firestore');
     const batch = writeBatch(db);
     charList.forEach(char => {
       const ref = doc(db, 'projects', project.id, 'characters', char.id);
@@ -767,6 +783,7 @@ export default function App() {
 
   const upsertChapterBatch = async (chapList: Chapter[]) => {
     if (!user || !project.id || project.id === 'default') return;
+    const { writeBatch } = await import('firebase/firestore');
     
     // Deletion of orphans: find IDs in current state that are NOT in the new list
     const newIds = new Set(chapList.map(c => c.id));
@@ -807,6 +824,7 @@ export default function App() {
 
   const upsertPlotNodesBatch = async (nodes: PlotNode[]) => {
     if (!user || !project.id || project.id === 'default' || nodes.length === 0) return;
+    const { writeBatch } = await import('firebase/firestore');
 
     const newIds = new Set(nodes.map(n => n.id));
     const orphans = plotNodes.filter(n => !newIds.has(n.id));
@@ -954,7 +972,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible">
+    <div className="flex h-full bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible" style={{ minHeight: 0 }}>
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -1073,7 +1091,10 @@ export default function App() {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static" style={{ minHeight: 0 }}>
+      <main 
+        className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static"
+        style={{ minHeight: 0 }}
+      >
         {/* Top Header */}
         <header className="h-20 border-b border-border-subtle flex items-center justify-between px-6 md:px-10 bg-surface-card relative z-10 shrink-0 no-print shadow-sm">
           <div className="flex items-center gap-6 md:gap-12 overflow-hidden h-full">
@@ -1212,15 +1233,18 @@ export default function App() {
         </header>
 
         {/* View Transition Area */}
-        <div className={`flex-1 relative bg-surface-bg print:bg-white print:p-0 ${
-          ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library'].includes(currentView) 
-            ? 'h-full overflow-hidden print:overflow-visible' 
-            : 'overflow-y-auto p-4 md:p-8 lg:p-12 print:overflow-visible print:p-0'
-        }`} style={{ minHeight: 0 }}>
+        <div 
+          className={`flex-1 flex flex-col relative bg-surface-bg print:bg-white print:p-0 ${
+            ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
+              ? 'overflow-hidden print:overflow-visible' 
+              : 'overflow-y-auto custom-scrollbar p-4 md:p-8 lg:p-12 print:overflow-visible print:p-0'
+          }`}
+          style={{ minHeight: 0 }}
+        >
           <div
             className={`w-full ${
-              ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library'].includes(currentView) 
-                ? `h-full w-full ${currentView === 'writing' ? '' : 'p-2 md:p-8'}`
+              ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
+                ? `flex-1 flex flex-col h-full w-full ${currentView === 'writing' ? '' : 'p-2 md:p-8'}`
                 : 'min-h-full max-w-7xl mx-auto py-8 md:py-12'
             }`}
             style={{ minHeight: 0 }}
@@ -1407,18 +1431,40 @@ export default function App() {
             </div>
           </div>
         </main>
-        {/* Error toast notifications */}
-        {notifications.length > 0 && (
-          <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
-            {notifications.map(n => (
-              <div key={n.id} className="bg-red-900 border border-red-600 text-red-100 px-4 py-3 rounded-lg shadow-lg flex items-start gap-2">
-                <span className="text-red-400 mt-0.5">⚠</span>
-                <span className="text-sm flex-1">{n.message}</span>
-                <button onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))} className="text-red-400 hover:text-red-200 ml-1">✕</button>
-              </div>
+
+        {/* Notifications Toast */}
+        <div className="fixed bottom-8 right-8 z-[100] flex flex-col gap-3 pointer-events-none">
+          <AnimatePresence>
+            {notifications.map((n) => (
+              <motion.div
+                key={n.id}
+                initial={{ opacity: 0, x: 20, y: 0, scale: 0.9 }}
+                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
+                className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border min-w-[300px] backdrop-blur-xl ${
+                  n.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                  n.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                  'bg-brand-primary/10 border-brand-primary/20 text-brand-primary'
+                }`}
+              >
+                <div className={`p-2 rounded-lg ${
+                  n.type === 'error' ? 'bg-red-500/20' :
+                  n.type === 'success' ? 'bg-emerald-500/20' :
+                  'bg-brand-primary/20'
+                }`}>
+                  {n.type === 'error' ? <X size={14} /> : n.type === 'success' ? <Zap size={14} /> : <Activity size={14} />}
+                </div>
+                <p className="text-xs font-black uppercase tracking-widest leading-tight">{n.message}</p>
+                <button 
+                  onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))}
+                  className="ml-auto opacity-50 hover:opacity-100 transition-opacity"
+                >
+                  <X size={14} />
+                </button>
+              </motion.div>
             ))}
-          </div>
-        )}
+          </AnimatePresence>
+        </div>
       </div>
     );
 }

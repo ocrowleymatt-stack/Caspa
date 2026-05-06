@@ -34,7 +34,7 @@ export default function Library({
 
   // Let's pass the active projectId to the Library component
   return (
-    <div className="p-8 md:p-16 max-w-7xl mx-auto space-y-12 h-full overflow-y-auto no-scrollbar bg-surface-bg transition-colors duration-500 pb-32">
+    <div className="p-8 md:p-16 max-w-7xl mx-auto space-y-12 h-full overflow-y-auto custom-scrollbar bg-surface-bg transition-colors duration-500 pb-32" style={{ minHeight: 0 }}>
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-10 border-b border-border-subtle pb-16">
         <div>
           <div className="text-[10px] font-black text-brand-primary uppercase tracking-[0.5em] mb-4 flex items-center gap-3">

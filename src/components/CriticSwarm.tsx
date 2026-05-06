@@ -131,7 +131,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
   const sortedCritiques = [...localCritiques].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   return (
-    <div className="h-full flex flex-col gap-8">
+    <div className="h-full flex flex-col gap-8" style={{ minHeight: 0 }}>
       <header className="flex items-center justify-between bg-surface-card p-6 rounded-[2.5rem] border border-border-subtle shadow-2xl relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
         <div className="flex items-center gap-6 relative z-10">
@@ -168,7 +168,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-y-auto lg:overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-y-auto custom-scrollbar" style={{ minHeight: 0 }}>
         {/* Critique Cards */}
         <div className="lg:col-span-2 overflow-y-auto space-y-6 pr-2 no-scrollbar pb-10">
           <AnimatePresence mode="popLayout">

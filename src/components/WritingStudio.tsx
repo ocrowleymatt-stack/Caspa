@@ -83,11 +83,7 @@ export default function WritingStudio({
   // Background Character Extraction (Auto-Absorb)
   useEffect(() => {
     const lastScanWordCount = parseInt(localStorage.getItem(`ls_last_char_scan_${project.id}`) || '0');
-    const currentWordCount = chapters.reduce((acc: number, c: Chapter) => {
-      const t = c.content?.trim();
-      if (!t) return acc;
-      return acc + t.split(/\s+/).filter((w: string) => w.length > 0).length;
-    }, 0);
+    const currentWordCount = chapters.reduce((acc: number, c: Chapter) => acc + (c.content?.split(/\s+/).length || 0), 0);
 
     if (currentWordCount > lastScanWordCount + 1000 && !isScanningChars) {
       const scan = async () => {
@@ -190,12 +186,6 @@ export default function WritingStudio({
   const [hasDraft, setHasDraft] = useState(false);
 
   const editorRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-resize textarea
-  // IMPORTANT: We do NOT set an explicit pixel height on the textarea.
-  // Instead we let the textarea grow naturally with min-h, and rely on the
-  // parent overflow-y-auto container to provide scrolling. Setting a fixed
-  // pixel height larger than the viewport was the root cause of broken scroll.
 
   // Synchronize local state when chapter selection changes
   useEffect(() => {
@@ -649,11 +639,9 @@ export default function WritingStudio({
   };
 
   const wordCount = useMemo(() => {
-    const trimmed = localContent.trim();
-    if (!trimmed) return 0;
-    // Split on whitespace and filter out empty tokens to avoid counting
-    // whitespace-only strings as words (fixes the character-count confusion).
-    return trimmed.split(/\s+/).filter(token => token.length > 0).length;
+    if (!localContent.trim()) return 0;
+    // Strip symbols for word count and filter empty tokens
+    return localContent.trim().split(/\s+/).filter(t => t.length > 0).length;
   }, [localContent]);
 
   const readingTime = useMemo(() => {
@@ -697,7 +685,10 @@ export default function WritingStudio({
   };
 
   return (
-    <div className={`h-full flex flex-col lg:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`} style={{ minHeight: 0 }}>
+    <div 
+      className={`h-full flex flex-col lg:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`}
+      style={{ minHeight: 0 }}
+    >
       {/* Sidebar - Chapter Navigation & Sources */}
       <AnimatePresence initial={false}>
         {!isFocusMode && isLeftRailOpen && (
@@ -1016,7 +1007,7 @@ export default function WritingStudio({
   </AnimatePresence>
 
   {/* Main Study Area */}
-  <div className="flex-1 flex flex-col bg-surface-bg relative z-0 min-w-0">
+  <div className="flex-1 flex flex-col bg-surface-bg relative z-0 min-w-0" style={{ minHeight: 0 }}>
         {/* Toggle Buttons for Rails */}
         {!isFocusMode && !isLeftRailOpen && (
           <motion.button 
@@ -1221,9 +1212,14 @@ export default function WritingStudio({
                   </motion.button>
                 </div>
               </div>
-
-              <div className="flex-1 flex overflow-hidden lg:flex-row flex-col relative" style={{ minHeight: 0 }}>
-                <div className={`flex-1 flex flex-col ${isFocusMode ? 'p-6 md:p-10 lg:px-20 lg:py-10 pb-32' : 'p-6 md:p-16 lg:px-32 lg:py-24 pb-32'} overflow-y-auto w-full custom-scrollbar relative items-center transition-all duration-500`} style={{ minHeight: 0 }}>
+              <div 
+                className="flex-1 flex overflow-hidden lg:flex-row flex-col relative"
+                style={{ minHeight: 0 }}
+              >
+                <div 
+                  className={`flex-1 flex flex-col ${isFocusMode ? 'p-6 md:p-10 lg:px-20 lg:py-10' : 'p-6 md:p-16 lg:px-32 lg:py-24'} overflow-y-auto w-full custom-scrollbar relative items-center transition-all duration-500 pb-32`}
+                  style={{ minHeight: 0 }}
+                >
                    {/* Summary Box */}
                   <div className="max-w-[80ch] w-full mb-12 opacity-60 focus-within:opacity-100 transition-all duration-700 bg-surface-card/50 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-border-subtle hover:border-brand-primary/20 relative">
                     {/* Prose Analysis Flyout */}
