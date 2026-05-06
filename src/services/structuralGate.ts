@@ -43,10 +43,10 @@ function countMatches(text: string, words: string[]) {
 }
 
 function headingReport(text: string) {
-  const headings = text.match(/^#{1,3}\s+.+$/gm) || [];
-  const clean = headings.map(h => h.replace(/^#{1,3}\s+/, '').trim().toLowerCase());
+  const headings: string[] = text.match(/^#{1,3}\s+.+$/gm) || [];
+  const clean = headings.map((h: string) => h.replace(/^#{1,3}\s+/, '').trim().toLowerCase());
   const unique = new Set(clean);
-  const emptyish = headings.filter(h => h.trim().length < 8).length;
+  const emptyish = headings.filter((h: string) => h.trim().length < 8).length;
   return {
     count: headings.length,
     duplicateCount: clean.length - unique.size,

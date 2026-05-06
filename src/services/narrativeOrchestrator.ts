@@ -83,7 +83,7 @@ Project: ${args.project.title}
 ${context}
 ${args.draft.slice(0, 45000)}`;
 
-  const raw = await AIService.callAI({ prompt, json: true, model: 'gemini-flash-latest' } as any);
+  const raw = await AIService.callAI({ prompt, json: true, model: 'gemini-2.0-flash' } as any);
   const parsed = safeParseJSON(raw || '{}', {});
   let score = normaliseScore(parsed);
 
@@ -98,7 +98,19 @@ export async function runNarrativeQualityCycle(args: any): Promise<NarrativeCycl
   const chapters = args.chapters || [];
   updateNarrativeRuntimeMemory({ project: args.project, chapters, characters: args.characters || [] });
 
-  let draft = await AIService.writeDraft(...arguments as any);
+  let draft = await AIService.writeDraft(
+    args.title || '',
+    args.summary || '',
+    args.context || '',
+    args.type || 'novel',
+    args.activeNodes || [],
+    args.research || [],
+    args.maturity || 'standard',
+    args.sourceMaterials || [],
+    args.directives || [],
+    args.projectTargetWords,
+    args.externalReviews || []
+  );
 
   let structural = evaluateStructuralProgression({
     chapterTitle: args.title,

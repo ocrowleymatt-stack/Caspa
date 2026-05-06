@@ -136,6 +136,6 @@ Return JSON shape:
   "executiveDiagnosis": "short brutal diagnosis"
 }`;
 
-  const raw = await AIService.callAI({ prompt, json: true, model: 'gemini-3.1-pro-preview' } as any);
+  const raw = await AIService.callAI({ prompt, json: true, model: 'gemini-2.5-pro-preview-05-06' } as any);
   return normaliseReport(safeParseJSON(raw || '{}', {}));
 }

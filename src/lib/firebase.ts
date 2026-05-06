@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './firestoreUtils';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -28,7 +28,17 @@ testConnection();
 
 export async function loginWithGoogle() {
   try {
-    const result = await signInWithPopup(auth, googleProvider);
+    let result;
+    try {
+      result = await signInWithPopup(auth, googleProvider);
+    } catch (popupError: any) {
+      // Fallback to redirect if popup is blocked
+      if (popupError?.code === 'auth/popup-blocked' || popupError?.code === 'auth/popup-closed-by-user') {
+        await signInWithRedirect(auth, googleProvider);
+        return null; // Redirect will handle the rest
+      }
+      throw popupError;
+    }
     const user = result.user;
     
     // Store user data
@@ -67,6 +77,33 @@ export async function loginWithGoogle() {
   } catch (error) {
     console.error('Sign in error:', error);
     throw error;
+  }
+}
+
+export async function handleRedirectLogin() {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result) return null;
+    const user = result.user;
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef).catch(() => null);
+      const userData = {
+        email: user.email || '',
+        displayName: user.displayName || '',
+        photoURL: user.photoURL || '',
+        lastLoginAt: Date.now()
+      };
+      if (!userSnap || !userSnap.exists()) {
+        await setDoc(userRef, { ...userData, createdAt: Date.now() });
+      } else {
+        await setDoc(userRef, userData, { merge: true });
+      }
+    }
+    return user;
+  } catch (error) {
+    console.error('Redirect sign-in error:', error);
+    return null;
   }
 }
 

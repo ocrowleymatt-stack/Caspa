@@ -50,12 +50,14 @@ import {
   Presence,
   ExternalReview
 } from './types';
-import { auth, db, loginWithGoogle, logout } from './lib/firebase';
+import { auth, db, loginWithGoogle, logout, handleRedirectLogin } from './lib/firebase';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { 
   onSnapshot, 
   doc, 
-  collection, 
+  collection,
+  getDocs,
+  getDoc,
   setDoc, 
   updateDoc, 
   deleteDoc, 
@@ -155,7 +157,6 @@ export default function App() {
     if (readId) {
       const fetchPublicProject = async () => {
         try {
-          const { getDoc, doc, collection, getDocs, query, orderBy } = await import('firebase/firestore');
           const pSnap = await getDoc(doc(db, 'projects', readId));
           if (pSnap.exists()) {
             const data = pSnap.data() as Project;
@@ -174,8 +175,13 @@ export default function App() {
     }
   }, []);
 
-  const addNotification = (_message: string, _type: 'error' | 'success' | 'info' = 'info') => {
-    return; // Silenced per user request to "stop them totally"
+  const addNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
+    // Only surface errors and critical info to avoid noise
+    if (type === 'error') {
+      const id = crypto.randomUUID();
+      setNotifications(prev => [...prev.slice(-4), { id, message, type }]);
+      setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
+    }
   };
 
   // Mobile Detection
@@ -243,6 +249,11 @@ export default function App() {
   }, [project, history, future]);
 
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+
+  // Handle redirect sign-in result on page load
+  useEffect(() => {
+    handleRedirectLogin().catch(err => console.error('Redirect login error:', err));
+  }, []);
 
   // Auth Listener
   useEffect(() => {
@@ -504,16 +515,28 @@ export default function App() {
 
   const deleteProject = async () => {
     if (!user || !project.id || project.id === 'default') return;
-    if (!window.confirm("Are you sure you want to permanently delete this project? Data cannot be recovered.")) return;
+    if (!window.confirm("Are you sure you want to permanently delete this project? All chapters, characters, and data will be permanently removed.")) return;
     
-    const path = `projects/${project.id}`;
-    const projectRef = doc(db, 'projects', project.id);
+    const projectId = project.id;
+    const path = `projects/${projectId}`;
+    const SUBCOLLECTIONS = ['characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials', 'externalReviews', 'presence'];
+    
     try {
-      await deleteDoc(projectRef);
+      // Cascade-delete all subcollections first to avoid orphaned data
+      for (const subcoll of SUBCOLLECTIONS) {
+        const snap = await getDocs(collection(db, 'projects', projectId, subcoll));
+        if (snap.docs.length > 0) {
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+      // Delete the parent project document
+      await deleteDoc(doc(db, 'projects', projectId));
       setHistory([]);
       setFuture([]);
+      setProject(INITIAL_PROJECT);
       setCurrentView('dashboard');
-      // Suppressed per user request: addNotification('Project permanently deleted.', 'info');
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, path); }
   };
 
@@ -566,7 +589,6 @@ export default function App() {
   };
   const upsertCharacterBatch = async (charList: Character[]) => {
     if (!user || charList.length === 0) return;
-    const { writeBatch } = await import('firebase/firestore');
     const batch = writeBatch(db);
     charList.forEach(char => {
       const ref = doc(db, 'projects', project.id, 'characters', char.id);
@@ -624,7 +646,6 @@ export default function App() {
 
   const upsertPlotNodesBatch = async (nodes: PlotNode[]) => {
     if (!user || nodes.length === 0) return;
-    const { writeBatch } = await import('firebase/firestore');
     const batch = writeBatch(db);
     
     nodes.forEach((node, idx) => {
@@ -638,7 +659,6 @@ export default function App() {
   };
   const upsertChapterBatch = async (chapList: Chapter[]) => {
     if (!user) return;
-    const { writeBatch } = await import('firebase/firestore');
     
     // Split into chunks of 100 (well within Firebase 500 limit)
     const chunkSize = 100;
@@ -1289,6 +1309,31 @@ export default function App() {
             </div>
           </div>
         </main>
+        {/* Error Notification Toasts */}
+        <AnimatePresence>
+          {notifications.length > 0 && (
+            <div className="fixed bottom-6 right-6 z-[200] flex flex-col gap-2 pointer-events-none">
+              {notifications.map(n => (
+                <motion.div
+                  key={n.id}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium max-w-sm bg-red-50 border-red-200 text-red-800"
+                >
+                  <span className="shrink-0 mt-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[9px] font-black">!</span>
+                  <span className="leading-snug">{n.message}</span>
+                  <button
+                    onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))}
+                    className="shrink-0 ml-auto text-red-400 hover:text-red-600 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
 }

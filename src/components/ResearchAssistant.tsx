@@ -165,7 +165,7 @@ export default function ResearchAssistant({ project, research, chapters, onAddRe
         onNotify('Large research set detected. Synthesising a bounded payload to avoid browser/model failure.', 'info');
       }
       const prompt = `Synthesize the following research notes into a coherent, granular section for a non-fiction book.\n\nFocus on concrete detail, sensory facts, small mechanical or social details, and verified information.\n\nRESEARCH DATA:${payload}\n\nFormat as a professional manuscript section with citations internally.`;
-      const result = await AIService.callAI({ prompt, model: "gemini-3.1-pro-preview" });
+      const result = await AIService.callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
       setSynthesisResult(result || '');
       setActiveStep('synthesis');
     } catch (error) {

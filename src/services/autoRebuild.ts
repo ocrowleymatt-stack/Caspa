@@ -118,7 +118,7 @@ async function clusterFragmentsIntoChapters(fragments: AutoRebuildFragment[], pr
 
   const raw = await AIService.callAI({
     json: true,
-    model: 'gemini-3.1-pro-preview',
+    model: 'gemini-2.5-pro-preview-05-06',
     prompt: `
 You are rebuilding a damaged gothic queer occult thriller manuscript into a clean novel spine.
 Return ONLY valid JSON.

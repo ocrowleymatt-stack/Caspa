@@ -68,7 +68,7 @@ async function callAI(options: {
   maxTokens?: number;
   providerOverride?: IntelligenceProvider;
 }) {
-  const { prompt, model = "gemini-flash-latest", json = false, schema, maxTokens, providerOverride } = options;
+  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride } = options;
   
   const primary = providerOverride || globalPrimaryProvider;
   
@@ -114,10 +114,10 @@ async function callGemini(options: {
   maxTokens?: number;
   useSearch?: boolean;
 }) {
-  const { prompt, model = "gemini-flash-latest", json = false, schema, maxTokens, useSearch = false } = options;
+  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, useSearch = false } = options;
 
   try {
-    const targetModel = model.includes("pro") ? "gemini-3.1-pro-preview" : "gemini-flash-latest";
+    const targetModel = model.includes("pro") ? "gemini-2.5-pro-preview-05-06" : "gemini-2.0-flash";
     const generationConfig: any = { temperature: 0.7 };
 
     if (json) {
@@ -354,7 +354,7 @@ export const AIService = {
       
       Provide a multi-faceted expansion including structural milestones, character/subject archetypes, and thematic escalation.`;
 
-    return await callAI({ prompt, model: "gemini-flash-latest" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async generateCharacter(concept: string, type: ProjectType, research: ResearchNote[] = [], maturity = 'standard'): Promise<Character> {
@@ -379,7 +379,7 @@ export const AIService = {
       required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-flash-latest" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(text || "{}");
     return {
       name: data.name || 'Unknown Character',
@@ -447,7 +447,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["nodes"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     let data = safeParseJSON(text || "[]", []);
     
     if (!Array.isArray(data)) {
@@ -530,7 +530,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
         Return ONLY valid JSON according to the requested schema.
       `;
 
-      const responseText = await callAI({ prompt, json: true, schema, model: "gemini-flash-latest" });
+      const responseText = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
       const data = safeParseJSON(responseText || "{}");
       
       const suggestions = Array.isArray(data.suggestions) 
@@ -609,7 +609,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       - Show, do not tell. Focus on sensory details and internal monologue.
     `;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType, deep = false): Promise<ResearchNote> {
@@ -649,7 +649,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       prompt, 
       json: true, 
       schema, 
-      model: deep ? "gemini-3.1-pro-preview" : "gemini-flash-latest",
+      model: deep ? "gemini-2.5-pro-preview-05-06" : "gemini-2.0-flash",
       // @ts-ignore - support passing useSearch hiddenly or through options
       useSearch: deep 
     });
@@ -690,7 +690,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["topics"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-flash-latest" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(response || "{}");
     return Array.isArray(data.topics) ? data.topics : [];
   },
@@ -733,7 +733,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["chapters", "researchTracks"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     return safeParseJSON(response || "{}");
   },
 
@@ -777,7 +777,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["characters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(text || '{"characters":[]}', { characters: [] });
     
     return (data.characters || []).map((char: any) => ({
@@ -805,7 +805,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       
       Identify orphaned nodes, logic gaps, and unresolved critical feedback. Format as Markdown.`;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async splitManuscript(fullText: string, type: ProjectType): Promise<{ title: string; summary: string; marker: string }[]> {
@@ -842,7 +842,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-3.1-pro-preview" });
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -860,7 +860,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       MANUSCRIPT:\n${fullText.slice(0, 100000)}
       ${sourceContext}`;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async automateNextSteps(project: Project, chapters: Chapter[]): Promise<{ title: string; summary: string }[]> {
@@ -895,7 +895,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["beats"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-flash-latest" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(text || "[]", []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
@@ -920,7 +920,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       [GRAMS/FX: Sound cues]
       [CHARACTER NAME]: [Dialogue with performance directions in brackets]`;
 
-    return await callAI({ prompt, model: "gemini-flash-latest" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async generateCoverPrompt(project: Project, author: string, subtitle: string, basePrompt: string): Promise<string> {
@@ -941,7 +941,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       
       OUTPUT ONLY THE FINAL CONCATENATED PROMPT.`;
     
-    return await callAI({ prompt, model: "gemini-flash-latest" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async generateAudiobookScript(project: Project, chapters: Chapter[]): Promise<string> {
@@ -961,7 +961,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       MANUSCRIPT SAMPLE:
       ${fullText}`;
 
-    return await callAI({ prompt, model: "gemini-flash-latest" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async reconcileChapters(project: Project, plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] = []): Promise<{ title: string; summary: string; plotNodeIds: string[] }[]> {
@@ -1004,7 +1004,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-flash-latest" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return (data.chapters || []).map((c: any) => ({
       ...c,
@@ -1066,7 +1066,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       - Ensure sensory immersion is absolute.
       - Return ONLY the enhanced text.`;
 
-    return await callAI({ prompt, model: "gemini-3.1-pro-preview" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async assessPrizeWorthiness(project: Project, chapters: Chapter[]): Promise<PrizeAssessment[]> {
@@ -1121,7 +1121,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
       required: ["assessments"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(response || "{}");
     return data.assessments || [];
   },
@@ -1129,7 +1129,7 @@ Based ONLY on the provided text, outline the major narrative beats. Return a JSO
   async critique(text: string): Promise<string> {
     const prompt = `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
       Writing Sample: "${text}"`;
-    return await callAI({ prompt, model: "gemini-flash-latest" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   }
 };
 
