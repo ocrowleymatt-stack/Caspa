@@ -975,7 +975,7 @@ export default function App() {
   return (
     <PinGate>
     <div 
-      className="flex h-full bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
+      className="flex h-dvh bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
       style={{ minHeight: 0 }}
     >
       {/* Sidebar Overlay for Mobile */}
@@ -1243,7 +1243,7 @@ export default function App() {
           style={{ minHeight: 0 }}
         >
           <div
-            className={`w-full flex-1 flex flex-col ${
+            className={`w-full flex-1 flex flex-col min-h-0 overflow-hidden ${
               ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
                 ? `w-full ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
                 : 'w-full'
