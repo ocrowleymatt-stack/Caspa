@@ -166,3 +166,85 @@
     }
   }
 }
+
+@layer components {
+  .app-shell {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .app-header,
+  .studio-header {
+    contain: layout paint;
+  }
+}
+
+@layer utilities {
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  @layer components {
+    .app-shell,
+    .h-dvh {
+      height: -webkit-fill-available;
+    }
+  }
+}
+
+@media (max-height: 760px), (max-width: 1280px) {
+  .app-sidebar-brand {
+    padding: 1rem;
+  }
+
+  .app-sidebar-nav {
+    margin-top: 0;
+    gap: 0.75rem;
+  }
+
+  .app-sidebar-nav button {
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    letter-spacing: 0.08em;
+  }
+
+  .app-sidebar-actions,
+  .app-sidebar-user {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .app-sidebar-user img {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .app-header {
+    min-height: 3.5rem;
+  }
+
+  .studio-header {
+    min-height: 3.5rem;
+  }
+
+  .writing-scroll textarea {
+    line-height: 1.65;
+  }
+}
+
+@media (max-height: 680px) {
+  .app-sidebar nav [class*="tracking-[0.3em]"] {
+    letter-spacing: 0.16em;
+  }
+
+  .app-sidebar-brand h1,
+  .app-sidebar-user {
+    transform: scale(0.92);
+    transform-origin: left center;
+  }
+}

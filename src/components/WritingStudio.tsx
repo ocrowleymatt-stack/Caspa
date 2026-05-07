@@ -152,7 +152,7 @@ export default function WritingStudio({
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 1024);
+    const check = () => setIsMobile(window.innerWidth < 1180);
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
@@ -694,7 +694,7 @@ export default function WritingStudio({
         {!isFocusMode && isLeftRailOpen && (
           <motion.aside 
             initial={{ width: 0, opacity: 0, x: -50 }}
-            animate={{ width: isMobile ? '100vw' : 320, opacity: 1, x: 0 }}
+            animate={{ width: isMobile ? '100vw' : 'clamp(15rem, 21vw, 18rem)', opacity: 1, x: 0 }}
             exit={{ width: 0, opacity: 0, x: -50 }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
             className={`border-r border-border-subtle bg-surface-card flex flex-col z-30 h-full relative overflow-hidden shrink-0 no-print ${isMobile ? 'fixed inset-0 shadow-[0_0_100px_rgba(0,0,0,0.8)]' : 'relative'}`}
@@ -709,7 +709,7 @@ export default function WritingStudio({
               </button>
             </div>
         {/* Manuscript Section */}
-        <div className="flex-none p-8 border-b border-border-subtle relative bg-surface-card shadow-sm">
+        <div className="flex-none p-4 xl:p-6 border-b border-border-subtle relative bg-surface-card shadow-sm">
           {isMobile && (
             <button 
               onClick={() => setIsSidebarVisible(false)}
@@ -824,7 +824,7 @@ export default function WritingStudio({
             </div>
           </div>
           {!collapsedSections.foundations && (
-            <div className="space-y-2 max-h-[40vh] overflow-y-auto no-scrollbar pr-1">
+            <div className="space-y-2 max-h-[32dvh] overflow-y-auto custom-scrollbar pr-1">
               {chapters.map((chapter: Chapter) => (
               <div key={chapter.id} className="group relative">
                 <button
@@ -863,7 +863,7 @@ export default function WritingStudio({
         </div>
 
         {/* Source Ingestion Section */}
-        <div className="p-8 flex-1 flex flex-col gap-6 overflow-hidden bg-surface-muted/30">
+        <div className="p-4 xl:p-6 flex-1 flex flex-col gap-4 overflow-hidden bg-surface-muted/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h3 className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] flex items-center gap-3">
@@ -917,7 +917,7 @@ export default function WritingStudio({
             </div>
           </div>
           
-          <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar pr-1">
+          <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
             {allSources.length > 0 ? (
               <div className="space-y-3">
                 {allSources.map(source => (
@@ -984,7 +984,7 @@ export default function WritingStudio({
 
         {/* Collaborative Presence */}
         {presence.length > 0 && (
-          <div className="p-8 border-t border-border-subtle bg-surface-card">
+          <div className="p-4 xl:p-6 border-t border-border-subtle bg-surface-card">
             <div className="text-[10px] font-black text-text-secondary mb-4 uppercase tracking-[0.3em] flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
               Live Presence Matrix
@@ -1044,7 +1044,7 @@ export default function WritingStudio({
               style={{ minHeight: 0 }}
             >
               {/* Internal Editor Header */}
-              <div className={`h-auto min-h-20 border-b border-border-subtle flex flex-wrap items-center justify-between px-4 md:px-10 py-4 lg:py-0 bg-surface-card/80 backdrop-blur-xl shadow-2xl flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-4`}>
+              <div className={`studio-header h-auto min-h-16 border-b border-border-subtle flex flex-wrap items-center justify-between px-3 md:px-6 lg:px-8 py-3 bg-surface-card/80 backdrop-blur-xl shadow-2xl flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-3`}>
                 <div className="flex items-center gap-3 md:gap-8 shrink-0">
                   {!isFocusMode && (
                     <button 
@@ -1217,11 +1217,11 @@ export default function WritingStudio({
                 style={{ minHeight: 0 }}
               >
                 <div 
-                  className={`flex-1 flex flex-col ${isFocusMode ? 'p-6 md:p-10 lg:px-20 lg:py-10' : 'p-6 md:p-16 lg:px-32 lg:py-24'} overflow-y-auto w-full custom-scrollbar relative items-center transition-all duration-500 pb-32`}
+                  className={`writing-scroll flex-1 flex flex-col ${isFocusMode ? 'p-4 md:p-8 lg:px-14 lg:py-8' : 'p-4 md:p-8 lg:px-12 xl:px-20 2xl:px-32 lg:py-12 xl:py-16'} overflow-y-auto w-full custom-scrollbar relative items-center transition-all duration-500 pb-24`}
                   style={{ minHeight: 0 }}
                 >
                    {/* Summary Box */}
-                  <div className="max-w-[80ch] w-full mb-12 opacity-60 focus-within:opacity-100 transition-all duration-700 bg-surface-card/50 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-border-subtle hover:border-brand-primary/20 relative">
+                  <div className="max-w-[84ch] w-full mb-8 lg:mb-10 opacity-70 focus-within:opacity-100 transition-all duration-700 bg-surface-card/50 p-4 md:p-7 lg:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-border-subtle hover:border-brand-primary/20 relative">
                     {/* Prose Analysis Flyout */}
                     <AnimatePresence>
                       {showProsePanel && (
@@ -1326,7 +1326,7 @@ export default function WritingStudio({
                   </div>
  
                   {/* Writing Area */}
-                  <div className="max-w-[80ch] w-full flex flex-col pb-60">
+                  <div className="max-w-[84ch] w-full flex flex-col pb-40">
                     <AnimatePresence>
                       {hasDraft && (
                         <motion.div 
@@ -1367,7 +1367,7 @@ export default function WritingStudio({
                       value={localContent}
                       onChange={(e) => setLocalContent(e.target.value)}
                       placeholder="Initialize narrative thread..."
-                      className="w-full min-h-[60vh] bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/10 selection:bg-brand-primary/30"
+                      className="w-full min-h-[65dvh] bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/10 selection:bg-brand-primary/30"
                       spellCheck={true}
                     />
                   </div>
@@ -1379,12 +1379,12 @@ export default function WritingStudio({
                     <motion.div 
                       key="right-rail"
                       initial={{ width: 0, opacity: 0 }}
-                      animate={{ width: isMobile ? '100vw' : 280, opacity: 1 }}
+                      animate={{ width: isMobile ? '100vw' : 'clamp(13rem, 18vw, 15.5rem)', opacity: 1 }}
                       exit={{ width: 0, opacity: 0 }}
                       transition={{ type: "spring", damping: 30, stiffness: 300 }}
                       className={`h-full border-l border-border-subtle bg-surface-card flex flex-col z-30 shrink-0 relative overflow-hidden ${isMobile ? 'fixed inset-0 pt-20' : ''}`}
                     >
-                      <div className="p-8 border-b border-border-subtle flex items-center justify-between">
+                      <div className="p-4 xl:p-6 border-b border-border-subtle flex items-center justify-between">
                         <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em]">Strategic Ops</span>
                         <div className="flex items-center gap-4">
                           <Sparkles size={14} className="text-brand-primary animate-pulse" />
@@ -1397,11 +1397,11 @@ export default function WritingStudio({
                           </button>
                         </div>
                       </div>
-                      <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8">
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 xl:p-5 space-y-4 xl:space-y-5">
                         <button 
                           onClick={handleAnalyzeProse}
                           disabled={isAnalyzingProse}
-                          className={`w-full p-6 h-32 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-4 bg-surface-muted/30 ${
+                          className={`w-full p-4 h-24 xl:h-28 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
                             isAnalyzingProse ? 'animate-pulse border-brand-primary bg-brand-primary/5' : 'hover:border-brand-primary hover:bg-brand-primary/5'
                           }`}
                         >
@@ -1412,7 +1412,7 @@ export default function WritingStudio({
                         <button 
                           onClick={handleCheckTurn}
                           disabled={isCheckingTurn}
-                          className={`w-full p-6 h-32 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-4 bg-surface-muted/30 ${
+                          className={`w-full p-4 h-24 xl:h-28 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
                             isCheckingTurn ? 'animate-pulse border-brand-primary bg-brand-primary/5' : 'hover:border-brand-primary hover:bg-brand-primary/5'
                           }`}
                         >
@@ -1425,7 +1425,7 @@ export default function WritingStudio({
                         <button 
                           onClick={handleCritique}
                           disabled={isCritiquing}
-                          className="w-full p-6 bg-brand-dark border border-border-subtle text-text-secondary hover:text-brand-primary hover:border-brand-primary rounded-3xl shadow-xl active:scale-95 transition-all group flex flex-col items-center justify-center gap-4"
+                          className="w-full p-4 bg-brand-dark border border-border-subtle text-text-secondary hover:text-brand-primary hover:border-brand-primary rounded-3xl shadow-xl active:scale-95 transition-all group flex flex-col items-center justify-center gap-3"
                         >
                           <Users size={32} className={isCritiquing ? 'animate-pulse' : ''} />
                           <span className="text-[9px] font-black uppercase tracking-widest">Narrative Swarm</span>
@@ -1444,7 +1444,7 @@ export default function WritingStudio({
                 </AnimatePresence>
 
                 {/* Mobile Bottom Bar for Actions */}
-                <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-surface-card/90 backdrop-blur-xl border border-border-subtle p-2 rounded-2xl shadow-2xl z-[80]">
+                <div className="lg:hidden fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-surface-card/90 backdrop-blur-xl border border-border-subtle p-1.5 rounded-2xl shadow-2xl z-[80]">
                   <button onClick={recenter} className="p-3 text-text-secondary hover:text-brand-primary"><RefreshCcw size={20} /></button>
                   <button onClick={handleAnalyzeProse} className="p-3 text-text-secondary hover:text-brand-primary"><CircleSlash size={20} /></button>
                   <button onClick={handleCheckTurn} className="p-3 text-text-secondary hover:text-brand-primary"><Flame size={20} /></button>
@@ -1459,7 +1459,7 @@ export default function WritingStudio({
                     <motion.div 
                       key="critique"
                       initial={{ width: 0, opacity: 0 }}
-                      animate={{ width: isMobile ? '100vw' : 450, opacity: 1 }}
+                      animate={{ width: isMobile ? '100vw' : 'clamp(20rem, 30vw, 26rem)', opacity: 1 }}
                       exit={{ width: 0, opacity: 0 }}
                       className={`border-l border-border-subtle bg-brand-dark flex flex-col overflow-hidden shadow-[-40px_0_100px_rgba(0,0,0,0.5)] h-full relative z-50 ${isMobile ? 'fixed inset-0 pt-20' : ''}`}
                     >

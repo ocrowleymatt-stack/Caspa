@@ -14,8 +14,8 @@ export default function ReaderView({ project, chapters, onBack, isLoggedIn }: Pr
   const sortedChapters = [...chapters].sort((a, b) => a.order - b.order);
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900 font-serif selection:bg-stone-200">
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-200 px-6 py-4 flex items-center justify-between">
+    <div className="h-dvh overflow-y-auto bg-stone-50 text-stone-900 font-serif selection:bg-stone-200 custom-scrollbar">
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <button 
             onClick={onBack}
@@ -39,8 +39,8 @@ export default function ReaderView({ project, chapters, onBack, isLoggedIn }: Pr
         )}
       </nav>
 
-      <div className="max-w-3xl mx-auto py-20 px-8">
-        <header className="mb-20 text-center">
+      <div className="max-w-3xl mx-auto py-12 sm:py-20 px-5 sm:px-8">
+        <header className="mb-12 sm:mb-20 text-center">
           <BookOpen size={48} className="mx-auto text-stone-300 mb-6" />
           <h1 className="text-5xl font-black mb-4 tracking-tight leading-tight">{project.title}</h1>
           <div className="flex items-center justify-center gap-6 text-stone-500 text-sm font-sans uppercase tracking-widest font-bold">
@@ -58,7 +58,7 @@ export default function ReaderView({ project, chapters, onBack, isLoggedIn }: Pr
           </div>
         </header>
 
-        <div className="space-y-32">
+        <div className="space-y-20 sm:space-y-32">
           {sortedChapters.map((chapter, index) => (
             <article key={chapter.id} className="prose prose-stone max-w-none">
               <div className="text-center mb-12">
