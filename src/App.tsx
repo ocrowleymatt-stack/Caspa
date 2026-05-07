@@ -895,7 +895,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-screen bg-surface-bg flex flex-col items-center justify-center gap-6">
+      <div className="h-dvh bg-surface-bg flex flex-col items-center justify-center gap-6">
         <div className="relative">
           <motion.div 
             animate={{ rotate: 360 }}
@@ -934,7 +934,7 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-screen bg-surface-bg flex items-center justify-center p-8 relative overflow-hidden">
+      <div className="h-dvh bg-surface-bg flex items-center justify-center p-4 sm:p-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
         
@@ -972,7 +972,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible" style={{ minHeight: 0 }}>
+    <div className="app-shell flex bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible" style={{ minHeight: 0 }}>
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -990,14 +990,14 @@ export default function App() {
       <motion.aside 
         initial={false}
         animate={{ 
-          width: isSidebarOpen ? (isMobile ? '85%' : 260) : (isMobile ? 0 : 80),
+          width: isSidebarOpen ? (isMobile ? 'min(85vw, 22rem)' : 240) : (isMobile ? 0 : 68),
           x: isMobile && !isSidebarOpen ? '-100%' : 0
         }}
-        className={`flex flex-col bg-brand-dark text-text-primary relative shadow-[0_0_50px_rgba(0,0,0,0.5)] border-r border-border-subtle overflow-hidden no-print ${
+        className={`app-sidebar flex flex-col bg-brand-dark text-text-primary relative shadow-[0_0_50px_rgba(0,0,0,0.5)] border-r border-border-subtle overflow-hidden no-print ${
           isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-50'
         }`}
       >
-        <div className="p-8 flex items-center gap-4">
+        <div className="app-sidebar-brand p-6 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-brand-primary flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)] font-black text-xl rotate-3 text-white border border-white/10">
             N
           </div>
@@ -1012,7 +1012,7 @@ export default function App() {
           )}
         </div>
 
-        <nav className="flex-1 px-4 space-y-6 mt-4 overflow-y-auto no-scrollbar">
+        <nav className="app-sidebar-nav flex-1 px-3 space-y-4 mt-2 overflow-y-auto custom-scrollbar">
           {navGroups.map((group, groupIndex) => (
             <div key={groupIndex} className="space-y-2">
               {isSidebarOpen ? (
@@ -1030,7 +1030,7 @@ export default function App() {
                       setCurrentView(item.id as ViewType);
                       if (isMobile) setIsSidebarOpen(false);
                     }}
-                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300 group text-[11px] font-bold uppercase tracking-widest ${
                       isActive 
                         ? 'bg-brand-primary text-white shadow-xl shadow-brand-primary/30 scale-[1.02]' 
                         : 'text-text-secondary hover:text-text-primary hover:bg-white/5 active:scale-95'
@@ -1048,7 +1048,7 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="px-4 py-6 space-y-3 border-t border-border-subtle mx-4">
+        <div className="app-sidebar-actions px-3 py-4 space-y-3 border-t border-border-subtle mx-3">
           <div className={`flex items-center gap-2 ${isSidebarOpen ? 'justify-between' : 'justify-center flex-col'}`}>
             <button 
               onClick={undo}
@@ -1076,7 +1076,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="p-6 border-t border-border-subtle flex items-center gap-4 bg-white/5">
+        <div className="app-sidebar-user p-4 border-t border-border-subtle flex items-center gap-3 bg-white/5">
           <img src={user.photoURL || ''} className="w-12 h-12 rounded-xl border border-border-subtle shadow-2xl" alt="Profile" />
           {isSidebarOpen && (
             <div className="flex-1 overflow-hidden">
@@ -1092,18 +1092,18 @@ export default function App() {
 
       {/* Main Content */}
       <main 
-        className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static"
+        className="flex-1 min-w-0 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static"
         style={{ minHeight: 0 }}
       >
         {/* Top Header */}
-        <header className="h-20 border-b border-border-subtle flex items-center justify-between px-6 md:px-10 bg-surface-card relative z-10 shrink-0 no-print shadow-sm">
-          <div className="flex items-center gap-6 md:gap-12 overflow-hidden h-full">
+        <header className="app-header min-h-16 lg:min-h-18 border-b border-border-subtle flex items-center justify-between px-3 sm:px-5 lg:px-8 py-2 bg-surface-card relative z-10 shrink-0 no-print shadow-sm gap-3">
+          <div className="flex items-center gap-3 lg:gap-8 overflow-hidden h-full min-w-0">
             {!isMobile && <div className="text-[10px] bg-white/5 px-3 py-1 rounded-full font-mono text-text-secondary border border-border-subtle/50 uppercase tracking-widest italic opacity-50">MANUSCRIPT_CORE_2.5.5</div>}
             
             <div className="relative h-full flex items-center">
               <button 
                 onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                className="flex items-center gap-4 px-5 py-2.5 hover:bg-white/5 transition-all rounded-2xl group overflow-hidden border border-transparent hover:border-border-subtle"
+                className="flex items-center gap-3 px-3 lg:px-4 py-2 hover:bg-white/5 transition-all rounded-2xl group overflow-hidden border border-transparent hover:border-border-subtle min-w-0"
               >
                 <div className="flex flex-col items-start min-w-0 text-left">
                   <div className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] leading-none mb-1.5 flex items-center gap-2">
@@ -1123,9 +1123,9 @@ export default function App() {
                     initial={{ opacity: 0, y: 15, scale: 0.98 }}
                     animate={{ opacity: 1, y: 5, scale: 1 }}
                     exit={{ opacity: 0, y: 15, scale: 0.98 }}
-                    className="absolute top-full left-0 w-[90vw] md:w-[480px] bg-surface-card rounded-3xl shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2"
+                    className="absolute top-full left-0 w-[90vw] md:w-[480px] max-h-[calc(100dvh-5rem)] bg-surface-card rounded-3xl shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2 flex flex-col"
                   >
-                    <div className="p-6 max-h-[500px] overflow-y-auto no-scrollbar">
+                    <div className="p-4 sm:p-6 flex-1 overflow-y-auto custom-scrollbar">
                       <div className="flex items-center justify-between mb-6 px-2">
                         <p className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em]">Archived Artifacts</p>
                         <span className="text-[10px] bg-brand-primary/10 px-3 py-1 rounded-full text-brand-primary font-black uppercase">{projects.length} Total</span>
@@ -1165,7 +1165,7 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                    <div className="p-6 bg-surface-muted/50 border-t border-border-subtle grid grid-cols-2 gap-3">
+                    <div className="p-4 sm:p-6 bg-surface-muted/50 border-t border-border-subtle grid grid-cols-2 gap-3 shrink-0">
                        <button 
                         onClick={() => {
                           const title = window.prompt('Define narrative title:');
@@ -1205,7 +1205,7 @@ export default function App() {
               </motion.div>
             )}
           </div>
-          <div className="flex items-center gap-2 md:gap-3 shrink-0">
+          <div className="flex items-center gap-2 lg:gap-3 shrink-0">
              {isMobile && (
                <button 
                  onClick={() => setIsSidebarOpen(true)}
@@ -1244,7 +1244,7 @@ export default function App() {
           <div
             className={`w-full ${
               ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
-                ? `flex-1 flex flex-col h-full w-full ${currentView === 'writing' ? '' : 'p-2 md:p-8'}`
+                ? `flex-1 flex flex-col h-full w-full min-w-0 ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
                 : 'min-h-full max-w-7xl mx-auto py-8 md:py-12'
             }`}
             style={{ minHeight: 0 }}
