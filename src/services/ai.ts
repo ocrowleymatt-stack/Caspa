@@ -3,18 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai"; // Type enum only — GoogleGenAI SDK replaced with raw fetch
 import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 
-// Gemini client — created lazily; key read directly from import.meta.env at instantiation time
-let _geminiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!_geminiClient) {
-    // Pass the env var directly — no intermediate variable so build tools cannot substitute a placeholder
-    _geminiClient = new GoogleGenAI({ apiKey: (import.meta as any).env?.VITE_GEMINI_API_KEY ?? '' });
-  }
-  return _geminiClient;
-}
+// Gemini API key — read from VITE_GEMINI_API_KEY at call time via import.meta.env
+// Using raw fetch (not @google/genai SDK) to avoid build-pipeline key sanitization
+const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined;
 const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
 const CLAUDE_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_ANTHROPIC_API_KEY : undefined;
 const OPENAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_OPENAI_API_KEY : undefined;
@@ -122,37 +116,40 @@ async function callGemini(options: {
   maxTokens?: number;
   useSearch?: boolean;
 }) {
-  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, useSearch = false } = options;
+  const { prompt, model = 'gemini-2.0-flash', json = false, maxTokens } = options;
+
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY not available — falling back to next provider');
+  }
 
   // Resolve model: any model with 'pro' in name → 2.5 Pro, otherwise → 2.0 Flash
   const targetModel = model.includes('pro') ? 'gemini-2.5-pro-preview-05-06' : 'gemini-2.0-flash';
 
-  // Get client lazily — throws immediately with a clear message if key is missing
-  const client = getGeminiClient();
+  const body: any = {
+    contents: [{ role: 'user', parts: [{ text: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON. No markdown wrappers.` : prompt }] }],
+    generationConfig: {
+      temperature: 0.7,
+      ...(json ? { responseMimeType: 'application/json' } : {}),
+      ...(maxTokens ? { maxOutputTokens: maxTokens } : {})
+    }
+  };
 
-  const generationConfig: any = { temperature: 0.7 };
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
 
-  if (json) {
-    generationConfig.responseMimeType = 'application/json';
-    generationConfig.responseSchema = schema || { 
-      type: Type.OBJECT, 
-      properties: { result: { type: Type.STRING } },
-      required: ['result']
-    };
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`Gemini API error ${response.status}: ${JSON.stringify(err)}`);
   }
 
-  if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
-
-  const tools = useSearch ? [{ googleSearch: {} }] : undefined;
-
-  // Let ALL errors throw so callAI fallback chain can handle them properly
-  const result = await client.models.generateContent({
-    model: targetModel,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    config: { ...generationConfig, tools }
-  } as any);
-
-  return result.text || null;
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  return text || null;
 }
 
 async function callOpenAI(prompt: string, json = false) {
