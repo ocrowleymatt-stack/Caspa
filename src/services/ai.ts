@@ -1296,7 +1296,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["assessments"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-1.5-pro" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(response || "{}");
     return data.assessments || [];
   },
@@ -1481,7 +1481,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["plotNodes", "chapters", "newResearch"]
     };
 
-    const data = await callAI({ prompt, json: true, schema, model: "gemini-1.5-pro" });
+    const data = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const result = safeParseJSON(data || "{}");
 
     return {
