@@ -597,7 +597,21 @@ Based ONLY on the provided text and strictly following any structural plans foun
     return Promise.all(critiquePromises);
   },
 
-  async writeDraft(title: string, summary: string, context: string, type: ProjectType, activeNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], directives: string[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = []): Promise<string> {
+  async writeDraft(
+    title: string,
+    summary: string,
+    context: string,
+    type: ProjectType,
+    activeNodes: PlotNode[],
+    research: ResearchNote[] = [],
+    maturity = 'standard',
+    sourceMaterials: { name: string, content: string }[] = [],
+    directives: string[] = [],
+    projectTargetWords?: number,
+    externalReviews: ExternalReview[] = [],
+    draftStage?: 1 | 2 | 3 | 4,
+    chapterCount?: number
+  ): Promise<string> {
     const personaMap = {
       novel: "Literary Novelist",
       screenplay: "Hollywood Screenwriter (use Fountain industry format)",
@@ -608,19 +622,50 @@ Based ONLY on the provided text and strictly following any structural plans foun
       experimental: "Avant-garde Author"
     };
 
+    // ── Staged drafting: compute per-chapter word count target ────────────────
+    // Pass percentages: 1=10%, 2=25%, 3=75%, 4=100%
+    const PASS_PERCENTAGES: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
+    const PASS_LABELS: Record<number, string> = {
+      1: "FIRST PASS (10% — skeletal prose, scene beats, key dialogue only)",
+      2: "SECOND PASS (25% — expanded scenes, richer description, subtext)",
+      3: "THIRD PASS (75% — near-final prose, full sensory depth, pacing refined)",
+      4: "FOURTH PASS (100% — final polish, every sentence prize-ready)"
+    };
+    const PASS_INSTRUCTIONS: Record<number, string> = {
+      1: "FIRST PASS RULES: Write skeletal prose only. Hit every scene beat. Include key dialogue. No padding. Leave deliberate room for expansion in later passes. Aim for clarity of structure over beauty.",
+      2: "SECOND PASS RULES: Expand scenes from the skeletal first pass. Add subtext, interiority, and sensory grounding. Reassess chapter pacing against the overall arc. Strengthen character voice.",
+      3: "THIRD PASS RULES: Near-final prose. Full sensory depth. Tighten pacing. Ensure every scene turns. Reassess chapter structure and cut anything that doesn't serve the arc.",
+      4: "FOURTH PASS RULES: Final polish. Every sentence must be prize-ready. Cut all sludge. Perfect rhythm and voice. This is the version that goes to the publisher."
+    };
+    const passPercent = draftStage ? PASS_PERCENTAGES[draftStage] : 1.0;
+    const passLabel   = draftStage ? PASS_LABELS[draftStage]    : null;
+    const passInstr   = draftStage ? PASS_INSTRUCTIONS[draftStage] : null;
+    const effectiveChapterCount = chapterCount && chapterCount > 0 ? chapterCount : 25;
+    const perChapterTarget = (projectTargetWords && draftStage)
+      ? Math.round((projectTargetWords * passPercent) / effectiveChapterCount)
+      : null;
+
     const isPlanDriven = directives.length > 0;
 
-    const targetContext = (projectTargetWords && !isPlanDriven)
-      ? `\nPROJECT TARGET SCALE: This is part of a larger work aiming for ~${projectTargetWords.toLocaleString()} words. 
-         STRICT DEPTH DIRECTIVE: You MUST draft this chapter at approximately ${Math.round(projectTargetWords / 25).toLocaleString()} words. 
+    const targetContext = (perChapterTarget && !isPlanDriven)
+      ? `
+         DRAFT STAGE: ${passLabel}
+         PROJECT TARGET SCALE: This is part of a larger work aiming for ~${projectTargetWords!.toLocaleString()} words total across ${effectiveChapterCount} chapters.
+         STRICT DEPTH DIRECTIVE FOR THIS PASS: You MUST draft this chapter at approximately ${perChapterTarget.toLocaleString()} words.
          WORD LIMIT: Do NOT exceed this target by more than 3%.
-         DO NOT rush. Expand scenes, utilize dialogue, and provide dense sensory descriptions to meet this specific structural volume, but maintain strict word count discipline.
-         If the draft is too short, the structural integrity of the project will fail.`
-      : isPlanDriven 
-        ? `\nPLAN-DRIVEN DRAFTING: Specific chapter directives have been provided. 
-           BYPASS generic word count targets. Follow the density and structural instructions within the "CRITICAL AUTHOR DIRECTIVES" section below. 
-           Prioritize implementing every beat in the plan over meeting a specific word count.`
-        : "";
+         ${passInstr}
+         DO NOT rush. Maintain strict word count discipline.`
+      : (projectTargetWords && !isPlanDriven)
+        ? `\nPROJECT TARGET SCALE: This is part of a larger work aiming for ~${projectTargetWords.toLocaleString()} words. 
+           STRICT DEPTH DIRECTIVE: You MUST draft this chapter at approximately ${Math.round(projectTargetWords / 25).toLocaleString()} words. 
+           WORD LIMIT: Do NOT exceed this target by more than 3%.
+           DO NOT rush. Expand scenes, utilize dialogue, and provide dense sensory descriptions to meet this specific structural volume, but maintain strict word count discipline.
+           If the draft is too short, the structural integrity of the project will fail.`
+        : isPlanDriven 
+          ? `\nPLAN-DRIVEN DRAFTING: Specific chapter directives have been provided. 
+             BYPASS generic word count targets. Follow the density and structural instructions within the "CRITICAL AUTHOR DIRECTIVES" section below. 
+             Prioritize implementing every beat in the plan over meeting a specific word count.`
+          : "";
 
     const researchContext = research.length > 0 
       ? `\nRESEARCH ARCHIVE (INTEGRATE THESE SENSORY DETAILS):\n${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('\n')}`
@@ -816,7 +861,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["nodes", "researchTracks"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
     return safeParseJSON(response || "{}");
   },
 
@@ -862,7 +907,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["characters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
     const data = safeParseJSON(text || '{"characters":[]}', { characters: [] });
     
     return (data.characters || []).map((char: any) => ({
@@ -1292,7 +1337,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["violations"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
     const data = safeParseJSON(response || "{}");
     return Array.isArray(data.violations) ? data.violations : [];
   },
@@ -1345,7 +1390,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["turned", "score", "reasoning", "missing"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
     return safeParseJSON(response || "{}");
   },
 

@@ -5,13 +5,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Book, Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, ShieldAlert, AlertCircle, Save, Trash2, Trophy, Target, Plus, ChevronDown, Activity } from 'lucide-react';
-import { Project, ViewType, ProjectType, MaturityLevel } from '../types';
+import { Project, Chapter, ViewType, ProjectType, MaturityLevel } from '../types';
+import DraftStagePanel from './DraftStagePanel';
 import { motion, AnimatePresence } from 'motion/react';
 import { PROJECT_TYPES, MATURITY_LEVELS, GENRES, TONES } from '../constants';
 
 interface Props {
   project: Project;
   projects: Project[];
+  chapters: Chapter[];
   selectProject: (project: Project) => void;
   createNewProject: (title?: string) => void;
   updateProject: (updates: Partial<Project>) => void;
@@ -24,6 +26,7 @@ interface Props {
 export default function Dashboard({ 
   project, 
   projects, 
+  chapters,
   selectProject, 
   createNewProject, 
   updateProject, 
@@ -81,7 +84,8 @@ export default function Dashboard({
   ];
 
   return (
-    <div className="space-y-12 pb-24">
+    <div className="h-full overflow-y-auto overscroll-contain custom-scrollbar" style={{ minHeight: 0 }}>
+      <div className="max-w-7xl mx-auto space-y-12 pb-32 px-4 md:px-8">
       {/* Target Prize Banner */}
       {project.targetPrize && (
         <motion.div 
@@ -325,6 +329,13 @@ export default function Dashboard({
             </div>
           )}
         </section>
+
+        {/* Draft Stage Panel */}
+        <section className="md:col-span-12">
+          <DraftStagePanel project={project} chapters={chapters} updateProject={updateProject} />
+        </section>
+
+      </div>
       </div>
     </div>
   );

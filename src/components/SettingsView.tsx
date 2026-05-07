@@ -94,7 +94,8 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-16 pb-32">
+    <div className="h-full overflow-y-auto overscroll-contain custom-scrollbar px-4 pb-32" style={{ minHeight: 0 }}>
+      <div className="max-w-4xl mx-auto space-y-16 py-12">
       <header className="bg-surface-card p-10 rounded-[3rem] border border-border-subtle shadow-2xl relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
         <div className="flex items-center gap-4 mb-4 relative z-10">
@@ -535,6 +536,7 @@ export default function SettingsView({ project, updateProject, deleteProject }: 
         </div>
       </section>
     </div>
-    </div>
-  );
+  </div>
+</div>
+);
 }

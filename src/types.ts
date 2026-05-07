@@ -181,6 +181,14 @@ export interface Project {
     narrativeRhythm: number; // 0-100
   };
   isLocked?: boolean;
+  /**
+   * Current drafting pass (1–4).
+   * Pass 1 = 10% of target, Pass 2 = 25%, Pass 3 = 75%, Pass 4 = 100%.
+   * Undefined / 0 means no staged drafting has started yet.
+   */
+  draftStage?: 1 | 2 | 3 | 4;
+  /** Timestamp of when each pass was completed */
+  draftPassHistory?: { pass: number; completedAt: number; wordCountAtCompletion: number }[];
 }
 
 export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'reviews' | 'library';

@@ -87,11 +87,7 @@ export default function PublishView({ project, chapters, updateProject, onNotify
       .sort((a, b) => a.order - b.order);
   }, [chapters]);
 
-  const totalWords = useMemo(() => exportableChapters.reduce((acc, c) => {
-    const t = c.content?.trim();
-    if (!t) return acc;
-    return acc + t.split(/\s+/).filter(w => w.length > 0).length;
-  }, 0), [exportableChapters]);
+  const totalWords = useMemo(() => exportableChapters.reduce((acc, c) => acc + (c.content?.trim().split(/\s+/).filter(t => t.length > 0).length || 0), 0), [exportableChapters]);
   const estPageCount = Math.ceil(totalWords / 300) + 12; // Approx 300 words/page + front matter
 
   const spineWidth = useMemo(() => {
@@ -151,8 +147,9 @@ export default function PublishView({ project, chapters, updateProject, onNotify
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6 print:p-0 print:max-w-none print:m-0 print:bg-white">
-      <style dangerouslySetInnerHTML={{ __html: `
+    <div className="h-full overflow-y-auto custom-scrollbar overscroll-contain pb-32">
+      <div className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6 print:p-0 print:max-w-none print:m-0 print:bg-white">
+        <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page {
             margin: 1.25in;
@@ -205,7 +202,7 @@ export default function PublishView({ project, chapters, updateProject, onNotify
             <h1 className="text-4xl md:text-6xl font-black text-text-primary tracking-tighter italic font-serif leading-none">Masterwork Transmissions</h1>
           </div>
           
-          <div className="flex gap-2 p-2 bg-surface-muted rounded-[2rem] w-full md:w-auto overflow-x-auto no-scrollbar border border-border-subtle shadow-2xl">
+          <div className="flex gap-2 p-2 bg-surface-muted rounded-[2rem] w-full md:w-auto overflow-x-auto custom-scrollbar border border-border-subtle shadow-2xl">
             {(['export', 'preview', 'designer', 'transmute', 'kdp'] as const).map(tab => (
               <button
                 key={tab}
@@ -915,6 +912,7 @@ export default function PublishView({ project, chapters, updateProject, onNotify
             </p>
          </div>
       </footer>
+      </div>
     </div>
   );
 }

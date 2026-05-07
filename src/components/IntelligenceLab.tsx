@@ -235,7 +235,11 @@ export default function IntelligenceLab({
   };
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6 pb-20" style={{ minHeight: 0 }}>
+    <div 
+      className="h-full overflow-y-auto overscroll-contain custom-scrollbar px-4 pb-32"
+      style={{ minHeight: 0 }}
+    >
+      <div className="max-w-6xl mx-auto py-6 md:py-12 md:px-2">
       <header className="mb-8 md:mb-12">
         <div className="flex items-center gap-2 px-3 py-1 bg-brand-primary/10 text-brand-primary rounded-full w-fit mb-4">
           <BrainCircuit size={14} />
@@ -245,7 +249,7 @@ export default function IntelligenceLab({
         <p className="text-text-secondary max-w-2xl mt-2 font-medium text-sm md:text-lg">Forge the factual and sensory foundations of your masterpiece, and ingest third-party source material.</p>
       </header>
 
-      <div className="flex gap-2 md:gap-4 mb-8 p-1 bg-surface-muted rounded-2xl w-full md:w-fit overflow-x-auto no-scrollbar">
+      <div className="flex gap-2 md:gap-4 mb-8 p-1 bg-surface-muted rounded-2xl w-full md:w-fit overflow-x-auto custom-scrollbar">
         {(['architecture', 'exploration', 'synthesis', 'archive'] as const).map(step => (
           <button
             key={step}
@@ -324,7 +328,7 @@ export default function IntelligenceLab({
                         )}
                       </div>
 
-                      <div className="space-y-3 flex-1 pr-1">
+                      <div className="space-y-3 flex-1 pr-1 overflow-y-auto custom-scrollbar">
                         {structure.researchTracks?.map((track: any, idx: number) => {
                           const isResearching = researchingTracks.includes(track.topic);
                           const isSelected = selectedTracks.includes(track.topic);
@@ -579,7 +583,7 @@ export default function IntelligenceLab({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 pt-2 min-h-[500px]">
-                  <div className="space-y-3 pr-2">
+                  <div className="space-y-3 pr-2 overflow-y-auto custom-scrollbar">
                     {filteredArchive.map(item => (
                       <button
                         key={item.id}
@@ -608,7 +612,7 @@ export default function IntelligenceLab({
                     )}
                   </div>
 
-                  <div className="bg-surface-muted border border-border-subtle rounded-2xl p-6 relative">
+                  <div className="bg-surface-muted border border-border-subtle rounded-2xl p-6 relative overflow-y-auto custom-scrollbar">
                     {selectedArchiveItem ? (
                       <div className="space-y-4">
                         <div className="flex items-start justify-between">
@@ -699,6 +703,7 @@ export default function IntelligenceLab({
               </div>
            </div>
         </div>
+      </div>
       </div>
     </div>
   );

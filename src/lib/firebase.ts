@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './firestoreUtils';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -42,98 +42,75 @@ async function testConnection() {
 
 testConnection();
 
-/**
- * Handle the result of a signInWithRedirect call on page load.
- * Called once during app initialization to complete redirect-based auth flows.
- */
-export async function handleRedirectLogin() {
-  try {
-    const result = await getRedirectResult(auth);
-    if (result?.user) {
-      const user = result.user;
-      const userRef = doc(db, 'users', user.uid);
-      const userData = {
-        email: user.email || '',
-        displayName: user.displayName || '',
-        photoURL: user.photoURL || '',
-        lastLoginAt: Date.now()
-      };
-      try {
-        const snap = await getDoc(userRef);
-        if (!snap.exists()) {
-          await setDoc(userRef, { ...userData, createdAt: Date.now() });
-        } else {
-          await setDoc(userRef, userData, { merge: true });
-        }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
-      }
-    }
-  } catch (e) {
-    console.error('Redirect login error:', e);
-  }
-}
-
 export async function loginWithGoogle() {
   console.log('Attempting Google Login... Auth Tenant ID:', (auth as any).tenantId);
   try {
-    // One last check before calling the popup
     if ((auth as any).tenantId) {
-      console.warn('Tenant ID was found during login attempt! Force clearing again.');
       (auth as any).tenantId = null;
     }
-
-    let result;
+    
     try {
-      result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      return await handleUserSync(result.user);
     } catch (popupError: any) {
-      // Fall back to redirect if popup is blocked by the browser
-      if (popupError?.code === 'auth/popup-blocked' || popupError?.code === 'auth/popup-closed-by-user') {
+      if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-interactive-request') {
+        console.log('Popup blocked or cancelled, falling back to redirect...');
         await signInWithRedirect(auth, googleProvider);
-        return null; // page will reload after redirect
+        return null;
       }
       throw popupError;
     }
-
-    const user = result.user;
-    
-    // Store user data
-    if (user) {
-      const userRef = doc(db, 'users', user.uid);
-      let userSnap;
-      try {
-        userSnap = await getDoc(userRef);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
-        throw error;
-      }
-      
-      const userData = {
-        email: user.email || '',
-        displayName: user.displayName || '',
-        photoURL: user.photoURL || '',
-        lastLoginAt: Date.now()
-      };
-      
-      try {
-        if (!userSnap || !userSnap.exists()) {
-          await setDoc(userRef, {
-            ...userData,
-            createdAt: Date.now()
-          });
-        } else {
-          await setDoc(userRef, userData, { merge: true });
-        }
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
-      }
-    }
-    
-    return user;
   } catch (error) {
     console.error('Sign in error:', error);
     throw error;
   }
+}
+
+export async function handleRedirectLogin() {
+  try {
+    const result = await getRedirectResult(auth);
+    if (result) {
+      return await handleUserSync(result.user);
+    }
+    return null;
+  } catch (error) {
+    console.error('Redirect result error:', error);
+    throw error;
+  }
+}
+
+async function handleUserSync(user: any) {
+  if (user) {
+    const userRef = doc(db, 'users', user.uid);
+    let userSnap;
+    try {
+      userSnap = await getDoc(userRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+      throw error;
+    }
+    
+    const userData = {
+      email: user.email || '',
+      displayName: user.displayName || '',
+      photoURL: user.photoURL || '',
+      lastLoginAt: Date.now()
+    };
+    
+    try {
+      if (!userSnap || !userSnap.exists()) {
+        await setDoc(userRef, {
+          ...userData,
+          createdAt: Date.now()
+        });
+      } else {
+        await setDoc(userRef, userData, { merge: true });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+    }
+  }
+  return user;
 }
 
 export async function logout() {

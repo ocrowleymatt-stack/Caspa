@@ -265,7 +265,11 @@ You can now review these changes in the **Writing Studio**.`);
   };
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar max-w-7xl mx-auto py-6 md:py-12 px-4 md:px-6 flex flex-col gap-10" style={{ minHeight: 0 }}>
+    <div 
+      className="h-full overflow-y-auto custom-scrollbar px-4 pb-32"
+      style={{ minHeight: 0 }}
+    >
+      <div className="max-w-7xl mx-auto py-6 md:py-12 md:px-2 flex flex-col gap-10">
       <header className="flex flex-col md:flex-row items-center justify-between gap-8 bg-surface-card p-10 rounded-[3.5rem] border border-border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.4)] relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
         <div className="text-center md:text-left relative z-10">
@@ -424,6 +428,7 @@ You can now review these changes in the **Writing Studio**.`);
             </AnimatePresence>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

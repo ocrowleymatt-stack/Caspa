@@ -187,6 +187,23 @@ export default function WritingStudio({
 
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) {
+      // Use requestAnimationFrame to ensure the DOM is ready for measurement
+      const resize = () => {
+        editor.style.height = 'auto';
+        editor.style.height = `${editor.scrollHeight}px`;
+      };
+      resize();
+      
+      // Also resize on window resize
+      window.addEventListener('resize', resize);
+      return () => window.removeEventListener('resize', resize);
+    }
+  }, [localContent]);
+
   // Synchronize local state when chapter selection changes
   useEffect(() => {
     if (selectedChapter) {
@@ -425,9 +442,11 @@ export default function WritingStudio({
         project.research || [],
         project.maturity,
         project.sourceMaterials || [],
-        [], // directives placeholder
+        selectedChapter.directives || [], // chapter directives from plan
         project.targetWordCount,
-        project.externalReviews || []
+        project.externalReviews || [],
+        project.draftStage,       // staged pass number (1-4)
+        chapters.length            // total chapter count for per-chapter target
       );
       
       const newContent = (localContent + '\n\n' + content).trim();
@@ -1007,7 +1026,10 @@ export default function WritingStudio({
   </AnimatePresence>
 
   {/* Main Study Area */}
-  <div className="flex-1 flex flex-col bg-surface-bg relative z-0 min-w-0" style={{ minHeight: 0 }}>
+  <div 
+    className="flex-1 flex flex-col bg-surface-bg relative z-0 min-w-0"
+    style={{ minHeight: 0 }}
+  >
         {/* Toggle Buttons for Rails */}
         {!isFocusMode && !isLeftRailOpen && (
           <motion.button 
@@ -1035,7 +1057,7 @@ export default function WritingStudio({
 
         <AnimatePresence mode="wait">
           {selectedChapter ? (
-            <motion.div 
+             <motion.div 
               key={selectedChapter.id}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1044,7 +1066,7 @@ export default function WritingStudio({
               style={{ minHeight: 0 }}
             >
               {/* Internal Editor Header */}
-              <div className={`studio-header h-auto min-h-16 border-b border-border-subtle flex flex-wrap items-center justify-between px-3 md:px-6 lg:px-8 py-3 bg-surface-card/80 backdrop-blur-xl shadow-2xl flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-3`}>
+              <div className={`h-auto min-h-16 studio-header border-b border-border-subtle flex flex-wrap items-center justify-between px-3 md:px-6 lg:px-8 py-3 bg-surface-card/80 backdrop-blur-xl shadow-2xl flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-4`}>
                 <div className="flex items-center gap-3 md:gap-8 shrink-0">
                   {!isFocusMode && (
                     <button 
@@ -1086,7 +1108,7 @@ export default function WritingStudio({
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 md:gap-4 shrink-0 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
+                <div className="flex items-center gap-2 md:gap-4 shrink-0 overflow-x-auto custom-scrollbar pb-1 lg:pb-0">
                   <button 
                     onClick={handleManualSave}
                     disabled={isSaving}
@@ -1139,7 +1161,7 @@ export default function WritingStudio({
                             <h4 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.3em]">Meta-Vector Scene</h4>
                             <Tag size={14} className="text-text-secondary opacity-30" />
                           </div>
-                          <div className="space-y-2 max-h-80 overflow-y-auto no-scrollbar">
+                          <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
                             {plotNodes.map(node => (
                               <button
                                 key={node.id}
@@ -1217,11 +1239,12 @@ export default function WritingStudio({
                 style={{ minHeight: 0 }}
               >
                 <div 
-                  className={`writing-scroll flex-1 flex flex-col ${isFocusMode ? 'p-4 md:p-8 lg:px-14 lg:py-8' : 'p-4 md:p-8 lg:px-12 xl:px-20 2xl:px-32 lg:py-12 xl:py-16'} overflow-y-auto w-full custom-scrollbar relative items-center transition-all duration-500 pb-24`}
+                  className={`flex-1 flex flex-col writing-scroll ${isFocusMode ? 'p-4 md:p-8 lg:px-14 lg:py-8' : 'p-4 md:p-8 lg:px-12 xl:px-20 2xl:px-32 lg:py-12 xl:py-16'} overflow-y-auto overscroll-contain w-full custom-scrollbar relative transition-all duration-500 pb-32`}
                   style={{ minHeight: 0 }}
                 >
+                   <div className="w-full max-w-[80ch] mx-auto flex flex-col items-center">
                    {/* Summary Box */}
-                  <div className="max-w-[84ch] w-full mb-8 lg:mb-10 opacity-70 focus-within:opacity-100 transition-all duration-700 bg-surface-card/50 p-4 md:p-7 lg:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-border-subtle hover:border-brand-primary/20 relative">
+                  <div className="max-w-[80ch] w-full mb-12 opacity-60 focus-within:opacity-100 transition-all duration-700 bg-surface-card/50 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-border-subtle hover:border-brand-primary/20 relative">
                     {/* Prose Analysis Flyout */}
                     <AnimatePresence>
                       {showProsePanel && (
@@ -1287,7 +1310,7 @@ export default function WritingStudio({
                               </button>
                             </div>
                           ) : proseViolations.length > 0 ? (
-                            <div className="space-y-4 max-h-[400px] overflow-y-auto no-scrollbar pr-1">
+                            <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
                               {proseViolations.map((v, i) => (
                                 <div key={i} className={`p-4 rounded-2xl border ${
                                   v.severity === 'high' ? 'bg-red-500/5 border-red-500/20' : 
@@ -1326,7 +1349,7 @@ export default function WritingStudio({
                   </div>
  
                   {/* Writing Area */}
-                  <div className="max-w-[84ch] w-full flex flex-col pb-40">
+                  <div className="max-w-[80ch] w-full flex flex-col pb-60">
                     <AnimatePresence>
                       {hasDraft && (
                         <motion.div 
@@ -1367,11 +1390,13 @@ export default function WritingStudio({
                       value={localContent}
                       onChange={(e) => setLocalContent(e.target.value)}
                       placeholder="Initialize narrative thread..."
-                      className="w-full min-h-[65dvh] bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/10 selection:bg-brand-primary/30"
+                      className="w-full h-auto min-h-[65dvh] bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/10 selection:bg-brand-primary/30"
                       spellCheck={true}
                     />
                   </div>
                 </div>
+              </div>
+
 
                 {/* Right Rail - Analysis & Actions */}
                 <AnimatePresence>
@@ -1384,7 +1409,7 @@ export default function WritingStudio({
                       transition={{ type: "spring", damping: 30, stiffness: 300 }}
                       className={`h-full border-l border-border-subtle bg-surface-card flex flex-col z-30 shrink-0 relative overflow-hidden ${isMobile ? 'fixed inset-0 pt-20' : ''}`}
                     >
-                      <div className="p-4 xl:p-6 border-b border-border-subtle flex items-center justify-between">
+                      <div className="p-8 border-b border-border-subtle flex items-center justify-between">
                         <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em]">Strategic Ops</span>
                         <div className="flex items-center gap-4">
                           <Sparkles size={14} className="text-brand-primary animate-pulse" />
@@ -1401,7 +1426,7 @@ export default function WritingStudio({
                         <button 
                           onClick={handleAnalyzeProse}
                           disabled={isAnalyzingProse}
-                          className={`w-full p-4 h-24 xl:h-28 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
+                          className={`w-full p-4 h-32 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
                             isAnalyzingProse ? 'animate-pulse border-brand-primary bg-brand-primary/5' : 'hover:border-brand-primary hover:bg-brand-primary/5'
                           }`}
                         >
@@ -1412,7 +1437,7 @@ export default function WritingStudio({
                         <button 
                           onClick={handleCheckTurn}
                           disabled={isCheckingTurn}
-                          className={`w-full p-4 h-24 xl:h-28 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
+                          className={`w-full p-4 h-32 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
                             isCheckingTurn ? 'animate-pulse border-brand-primary bg-brand-primary/5' : 'hover:border-brand-primary hover:bg-brand-primary/5'
                           }`}
                         >
@@ -1479,7 +1504,7 @@ export default function WritingStudio({
                           <X size={24} strokeWidth={3} className="group-hover:scale-110 transition-transform" />
                         </button>
                       </div>
-                      <div className="p-10 overflow-y-auto no-scrollbar flex-1 space-y-12">
+                      <div className="p-10 overflow-y-auto custom-scrollbar flex-1 space-y-12">
                         {isCritiquing ? (
                           <div className="h-full flex flex-col items-center justify-center gap-8">
                              <div className="relative">
@@ -1586,7 +1611,7 @@ export default function WritingStudio({
                   <X size={28} />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-16 no-scrollbar bg-surface-muted/30">
+              <div className="flex-1 overflow-y-auto p-16 custom-scrollbar bg-surface-muted/30">
                 <div className="max-w-[75ch] mx-auto">
                   <div className="text-text-primary/90 leading-[2] font-serif whitespace-pre-wrap text-xl md:text-2xl selection:bg-brand-primary/30 first-letter:text-5xl first-letter:font-black first-letter:mr-3 first-letter:float-left">
                     {viewingSource.content}

@@ -168,9 +168,12 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-y-auto custom-scrollbar" style={{ minHeight: 0 }}>
+      <div 
+        className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-hidden"
+        style={{ minHeight: 0 }}
+      >
         {/* Critique Cards */}
-        <div className="lg:col-span-2 overflow-y-auto space-y-6 pr-2 no-scrollbar pb-10">
+        <div className="lg:col-span-2 overflow-y-auto overscroll-contain space-y-6 pr-2 custom-scrollbar pb-32">
           <AnimatePresence mode="popLayout">
             {sortedCritiques.length > 0 ? sortedCritiques.map((c, i) => (
               <motion.div 
@@ -316,7 +319,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
         </div>
 
         {/* System Summary Sidebar */}
-        <div className="bg-brand-dark text-text-primary rounded-[3rem] p-10 flex flex-col gap-10 shadow-[0_50px_100px_rgba(0,0,0,0.5)] border border-border-subtle relative overflow-hidden group">
+        <div className="bg-brand-dark text-text-primary rounded-[3rem] p-10 flex flex-col gap-10 shadow-[0_50px_100px_rgba(0,0,0,0.5)] border border-border-subtle relative overflow-y-auto overscroll-contain custom-scrollbar group">
            <div className="absolute -top-10 -right-10 p-12 opacity-[0.02] pointer-events-none text-brand-primary group-hover:opacity-5 transition-opacity duration-1000">
               <Zap size={300} />
            </div>

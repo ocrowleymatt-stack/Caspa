@@ -895,7 +895,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-dvh bg-surface-bg flex flex-col items-center justify-center gap-6">
+      <div className="h-screen bg-surface-bg flex flex-col items-center justify-center gap-6">
         <div className="relative">
           <motion.div 
             animate={{ rotate: 360 }}
@@ -934,7 +934,7 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-dvh bg-surface-bg flex items-center justify-center p-4 sm:p-8 relative overflow-hidden">
+      <div className="h-screen bg-surface-bg flex items-center justify-center p-8 relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
         
@@ -972,7 +972,10 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell flex bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible" style={{ minHeight: 0 }}>
+    <div 
+      className="flex h-full bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
+      style={{ minHeight: 0 }}
+    >
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -990,14 +993,14 @@ export default function App() {
       <motion.aside 
         initial={false}
         animate={{ 
-          width: isSidebarOpen ? (isMobile ? 'min(85vw, 22rem)' : 240) : (isMobile ? 0 : 68),
+          width: isSidebarOpen ? (isMobile ? '85%' : 260) : (isMobile ? 0 : 80),
           x: isMobile && !isSidebarOpen ? '-100%' : 0
         }}
-        className={`app-sidebar flex flex-col bg-brand-dark text-text-primary relative shadow-[0_0_50px_rgba(0,0,0,0.5)] border-r border-border-subtle overflow-hidden no-print ${
+        className={`flex flex-col bg-brand-dark text-text-primary relative shadow-[0_0_50px_rgba(0,0,0,0.5)] border-r border-border-subtle overflow-hidden no-print ${
           isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-50'
         }`}
       >
-        <div className="app-sidebar-brand p-6 flex items-center gap-3">
+        <div className="p-8 flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-brand-primary flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)] font-black text-xl rotate-3 text-white border border-white/10">
             N
           </div>
@@ -1012,7 +1015,7 @@ export default function App() {
           )}
         </div>
 
-        <nav className="app-sidebar-nav flex-1 px-3 space-y-4 mt-2 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 space-y-6 mt-4 overflow-y-auto custom-scrollbar">
           {navGroups.map((group, groupIndex) => (
             <div key={groupIndex} className="space-y-2">
               {isSidebarOpen ? (
@@ -1030,7 +1033,7 @@ export default function App() {
                       setCurrentView(item.id as ViewType);
                       if (isMobile) setIsSidebarOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300 group text-[11px] font-bold uppercase tracking-widest ${
+                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
                       isActive 
                         ? 'bg-brand-primary text-white shadow-xl shadow-brand-primary/30 scale-[1.02]' 
                         : 'text-text-secondary hover:text-text-primary hover:bg-white/5 active:scale-95'
@@ -1048,7 +1051,7 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="app-sidebar-actions px-3 py-4 space-y-3 border-t border-border-subtle mx-3">
+        <div className="px-4 py-6 space-y-3 border-t border-border-subtle mx-4">
           <div className={`flex items-center gap-2 ${isSidebarOpen ? 'justify-between' : 'justify-center flex-col'}`}>
             <button 
               onClick={undo}
@@ -1076,7 +1079,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="app-sidebar-user p-4 border-t border-border-subtle flex items-center gap-3 bg-white/5">
+        <div className="p-6 border-t border-border-subtle flex items-center gap-4 bg-white/5">
           <img src={user.photoURL || ''} className="w-12 h-12 rounded-xl border border-border-subtle shadow-2xl" alt="Profile" />
           {isSidebarOpen && (
             <div className="flex-1 overflow-hidden">
@@ -1092,18 +1095,18 @@ export default function App() {
 
       {/* Main Content */}
       <main 
-        className="flex-1 min-w-0 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static"
+        className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static min-w-0"
         style={{ minHeight: 0 }}
       >
         {/* Top Header */}
-        <header className="app-header min-h-16 lg:min-h-18 border-b border-border-subtle flex items-center justify-between px-3 sm:px-5 lg:px-8 py-2 bg-surface-card relative z-10 shrink-0 no-print shadow-sm gap-3">
-          <div className="flex items-center gap-3 lg:gap-8 overflow-hidden h-full min-w-0">
+        <header className="h-20 border-b border-border-subtle flex items-center justify-between px-6 md:px-10 bg-surface-card relative z-10 shrink-0 no-print shadow-sm">
+          <div className="flex items-center gap-6 md:gap-12 overflow-hidden h-full">
             {!isMobile && <div className="text-[10px] bg-white/5 px-3 py-1 rounded-full font-mono text-text-secondary border border-border-subtle/50 uppercase tracking-widest italic opacity-50">MANUSCRIPT_CORE_2.5.5</div>}
             
             <div className="relative h-full flex items-center">
               <button 
                 onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                className="flex items-center gap-3 px-3 lg:px-4 py-2 hover:bg-white/5 transition-all rounded-2xl group overflow-hidden border border-transparent hover:border-border-subtle min-w-0"
+                className="flex items-center gap-4 px-5 py-2.5 hover:bg-white/5 transition-all rounded-2xl group overflow-hidden border border-transparent hover:border-border-subtle"
               >
                 <div className="flex flex-col items-start min-w-0 text-left">
                   <div className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] leading-none mb-1.5 flex items-center gap-2">
@@ -1123,9 +1126,9 @@ export default function App() {
                     initial={{ opacity: 0, y: 15, scale: 0.98 }}
                     animate={{ opacity: 1, y: 5, scale: 1 }}
                     exit={{ opacity: 0, y: 15, scale: 0.98 }}
-                    className="absolute top-full left-0 w-[90vw] md:w-[480px] max-h-[calc(100dvh-5rem)] bg-surface-card rounded-3xl shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2 flex flex-col"
+                    className="absolute top-full left-0 w-[90vw] md:w-[480px] bg-surface-card rounded-3xl shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2"
                   >
-                    <div className="p-4 sm:p-6 flex-1 overflow-y-auto custom-scrollbar">
+                    <div className="p-6 max-h-[500px] overflow-y-auto custom-scrollbar">
                       <div className="flex items-center justify-between mb-6 px-2">
                         <p className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em]">Archived Artifacts</p>
                         <span className="text-[10px] bg-brand-primary/10 px-3 py-1 rounded-full text-brand-primary font-black uppercase">{projects.length} Total</span>
@@ -1234,18 +1237,14 @@ export default function App() {
 
         {/* View Transition Area */}
         <div 
-          className={`flex-1 flex flex-col relative bg-surface-bg print:bg-white print:p-0 ${
-            ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
-              ? 'overflow-hidden print:overflow-visible' 
-              : 'overflow-y-auto custom-scrollbar p-4 md:p-8 lg:p-12 print:overflow-visible print:p-0'
-          }`}
+          className={`flex-1 relative bg-surface-bg print:bg-white print:p-0 flex flex-col overflow-hidden`}
           style={{ minHeight: 0 }}
         >
           <div
-            className={`w-full ${
+            className={`w-full flex-1 flex flex-col ${
               ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
-                ? `flex-1 flex flex-col h-full w-full min-w-0 ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
-                : 'min-h-full max-w-7xl mx-auto py-8 md:py-12'
+                ? `w-full ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
+                : 'w-full'
             }`}
             style={{ minHeight: 0 }}
           >
@@ -1262,11 +1261,12 @@ export default function App() {
               />
             )}
             {(currentView === 'dashboard' || currentView === 'brainstorm') && (
-                 <div key={project.id}>
+                 <div key={project.id} className="flex-1 flex flex-col min-h-0">
                    {currentView === 'dashboard' && (
                      <Dashboard 
                        project={{ ...project, stats: { ...project.stats, totalWords } }} 
                        projects={projects}
+                       chapters={chapters}
                        selectProject={(p) => setProject(p)}
                        createNewProject={createNewProject}
                        updateProject={updateProject} 
@@ -1289,144 +1289,164 @@ export default function App() {
                  </div>
               )}
               {currentView === 'characters' && (
-                <CharacterForge 
-                  key={project.id}
-                  project={{ ...project, characters }} 
-                  research={research}
-                  chapters={chapters}
-                  updateProject={async (updates) => {
-                    if (updates.characters) {
-                      await upsertCharacterBatch(updates.characters);
-                    }
-                  }} 
-                  onError={(msg) => addNotification(msg, 'error')}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <CharacterForge 
+                    key={project.id}
+                    project={{ ...project, characters }} 
+                    research={research}
+                    chapters={chapters}
+                    updateProject={async (updates) => {
+                      if (updates.characters) {
+                        await upsertCharacterBatch(updates.characters);
+                      }
+                    }} 
+                    onError={(msg) => addNotification(msg, 'error')}
+                  />
+                </div>
               )}
               {currentView === 'plot' && (
-                <PlotArchitect 
-                  key={project.id}
-                  project={{ ...project, chapters, sourceMaterials }}
-                  chapters={chapters} 
-                  plotNodes={plotNodes} 
-                  research={research}
-                  updateProject={updateProject}
-                  updatePlotNodes={async (nodes) => {
-                     setPlotNodes(nodes);
-                     await upsertPlotNodesBatch(nodes);
-                  }}
-                  updateChapters={async (chapList) => {
-                    setChapters(chapList);
-                    await upsertChapterBatch(chapList);
-                  }}
-                  onNotify={(msg, type) => addNotification(msg, type)}
-                  onError={(msg) => addNotification(msg, 'error')}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <PlotArchitect 
+                    key={project.id}
+                    project={{ ...project, chapters, sourceMaterials }}
+                    chapters={chapters} 
+                    plotNodes={plotNodes} 
+                    research={research}
+                    updateProject={updateProject}
+                    updatePlotNodes={async (nodes) => {
+                       setPlotNodes(nodes);
+                       await upsertPlotNodesBatch(nodes);
+                    }}
+                    updateChapters={async (chapList) => {
+                      setChapters(chapList);
+                      await upsertChapterBatch(chapList);
+                    }}
+                    onNotify={(msg, type) => addNotification(msg, type)}
+                    onError={(msg) => addNotification(msg, 'error')}
+                  />
+                </div>
               )}
               {currentView === 'intelligence' && (
-                <IntelligenceLab 
-                  key={project.id}
-                  project={project} 
-                  research={research} 
-                  chapters={chapters}
-                  sourceMaterials={sourceMaterials}
-                  onAddResearch={upsertResearch}
-                  onDeleteResearch={(id) => deleteSubDoc('research', id)}
-                  onAddChapter={upsertChapter}
-                  onAddSource={upsertSourceMaterial}
-                  onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
-                  onNotify={(msg, type) => addNotification(msg, type)}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <IntelligenceLab 
+                    key={project.id}
+                    project={project} 
+                    research={research} 
+                    chapters={chapters}
+                    sourceMaterials={sourceMaterials}
+                    onAddResearch={upsertResearch}
+                    onDeleteResearch={(id) => deleteSubDoc('research', id)}
+                    onAddChapter={upsertChapter}
+                    onAddSource={upsertSourceMaterial}
+                    onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                    onNotify={(msg, type) => addNotification(msg, type)}
+                  />
+                </div>
               )}
               {currentView === 'writing' && (
-                <WritingStudio 
-                  key={project.id}
-                  project={{ ...project, chapters, sourceMaterials, research, externalReviews }} 
-                  plotNodes={plotNodes}
-                  presence={presence}
-                  updateProject={updateProject} 
-                  updateChapters={async (chapList) => {
-                     setChapters(chapList);
-                     await upsertChapterBatch(chapList);
-                  }}
-                  setView={setCurrentView}
-                  upsertChapter={upsertChapter}
-                  onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
-                  onUpsertSource={upsertSourceMaterial}
-                  onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
-                  onUpsertCharacters={upsertCharacterBatch}
-                  onError={(msg) => addNotification(msg, 'error')}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <WritingStudio 
+                    key={project.id}
+                    project={{ ...project, chapters, sourceMaterials, research, externalReviews }} 
+                    plotNodes={plotNodes}
+                    presence={presence}
+                    updateProject={updateProject} 
+                    updateChapters={async (chapList) => {
+                       setChapters(chapList);
+                       await upsertChapterBatch(chapList);
+                    }}
+                    setView={setCurrentView}
+                    upsertChapter={upsertChapter}
+                    onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
+                    onUpsertSource={upsertSourceMaterial}
+                    onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                    onUpsertCharacters={upsertCharacterBatch}
+                    onError={(msg) => addNotification(msg, 'error')}
+                  />
+                </div>
               )}
               {currentView === 'swarm' && (
-                <CriticSwarm 
-                  key={project.id}
-                  projectType={project.type}
-                  maturity={project.maturity}
-                  chapters={chapters}
-                  sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
-                  existingCritiques={project.critiques}
-                  updateProject={updateProject}
-                  updateChapters={async (chaps) => {
-                    setChapters(chaps);
-                    await upsertChapterBatch(chaps);
-                  }}
-                  setView={setCurrentView}
-                  onError={(msg) => addNotification(msg, 'error')}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <CriticSwarm 
+                    key={project.id}
+                    projectType={project.type}
+                    maturity={project.maturity}
+                    chapters={chapters}
+                    sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
+                    existingCritiques={project.critiques}
+                    updateProject={updateProject}
+                    updateChapters={async (chaps) => {
+                      setChapters(chaps);
+                      await upsertChapterBatch(chaps);
+                    }}
+                    setView={setCurrentView}
+                    onError={(msg) => addNotification(msg, 'error')}
+                  />
+                </div>
               )}
               {currentView === 'prizes' && (
-                <PrizeView 
-                  key={project.id}
-                  project={project}
-                  chapters={chapters}
-                  updateProject={updateProject}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <PrizeView 
+                    key={project.id}
+                    project={project}
+                    chapters={chapters}
+                    updateProject={updateProject}
+                  />
+                </div>
               )}
               {currentView === 'reviews' && (
-                <ReviewVault 
-                  key={project.id}
-                  project={project}
-                  reviews={externalReviews}
-                  onUpsert={upsertExternalReview}
-                  onDelete={(id) => deleteSubDoc('externalReviews', id)}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <ReviewVault 
+                    key={project.id}
+                    project={project}
+                    reviews={externalReviews}
+                    onUpsert={upsertExternalReview}
+                    onDelete={(id) => deleteSubDoc('externalReviews', id)}
+                  />
+                </div>
               )}
               {currentView === 'export' && (
-                <PublishView 
-                  key={project.id}
-                  project={project}
-                  chapters={chapters}
-                  updateProject={updateProject}
-                  onNotify={(msg, type) => addNotification(msg, type)}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <PublishView 
+                    key={project.id}
+                    project={project}
+                    chapters={chapters}
+                    updateProject={updateProject}
+                    onNotify={(msg, type) => addNotification(msg, type)}
+                  />
+                </div>
               )}
               {currentView === 'architect' && (
-                <ManuscriptFixer 
-                  key={project.id}
-                  project={{ ...project, sourceMaterials, research }}
-                  chapters={chapters}
-                  research={research}
-                  updateProject={updateProject}
-                  updateChapters={async (chaps) => {
-                    setChapters(chaps);
-                    await upsertChapterBatch(chaps);
-                  }}
-                  updatePlotNodes={async (nodes) => {
-                    setPlotNodes(nodes);
-                    await upsertPlotNodesBatch(nodes);
-                  }}
-                  onAddResearch={upsertResearch}
-                  setView={setCurrentView}
-                  onError={(msg) => addNotification(msg, 'error')}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <ManuscriptFixer 
+                    key={project.id}
+                    project={{ ...project, sourceMaterials, research }}
+                    chapters={chapters}
+                    research={research}
+                    updateProject={updateProject}
+                    updateChapters={async (chaps) => {
+                      setChapters(chaps);
+                      await upsertChapterBatch(chaps);
+                    }}
+                    updatePlotNodes={async (nodes) => {
+                      setPlotNodes(nodes);
+                      await upsertPlotNodesBatch(nodes);
+                    }}
+                    onAddResearch={upsertResearch}
+                    setView={setCurrentView}
+                    onError={(msg) => addNotification(msg, 'error')}
+                  />
+                </div>
               )}
               {currentView === 'settings' && (
-                <SettingsView 
-                  key={project.id}
-                  project={project} 
-                  updateProject={updateProject}
-                  deleteProject={deleteProject}
-                />
+                <div className="flex-1 flex flex-col min-h-0">
+                  <SettingsView 
+                    key={project.id}
+                    project={project} 
+                    updateProject={updateProject}
+                    deleteProject={deleteProject}
+                  />
+                </div>
               )}
             </div>
           </div>

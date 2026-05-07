@@ -97,7 +97,10 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           project.maturity,
           [], 
           chap.directives || [],
-          project.targetWordCount
+          project.targetWordCount,
+          [],
+          project.draftStage,
+          chapters.length
         );
 
         updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
@@ -146,7 +149,12 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           addLog(`IO Success: ${fullText.length.toLocaleString()} characters buffered.`);
           
           let isPlan = false;
-          if (!bypassAI) {
+          // JSON files are ALWAYS treated as book plans — no AI detection needed
+          const isJsonFile = file.name.toLowerCase().endsWith('.json');
+          if (isJsonFile) {
+            isPlan = true;
+            addLog("JSON Detected: Treating as STRUCTURAL PLAN / BLUEPRINT (automatic — no AI detection needed).");
+          } else if (!bypassAI) {
             addLog("AI Core: Detecting artifact typology...");
             const type = await AIService.detectIngestionType(fullText);
             isPlan = type === 'plan';
@@ -154,7 +162,133 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           }
 
           addLog("Phase 1: Detecting narrative architecture...");
-          
+
+          const generateId = () => {
+             try { return crypto.randomUUID(); } 
+             catch (e) { return Math.random().toString(36).substring(2) + Date.now().toString(36); }
+          };
+
+          // ── JSON PLAN: Parse directly, no AI splitting needed ──────────────────────
+          if (isJsonFile) {
+            try {
+              const planData = JSON.parse(fullText);
+              addLog("JSON Parse: Structural plan decoded successfully.");
+
+              // Extract chapters from common JSON plan shapes
+              const rawChapters: any[] = planData.chapters || planData.outline || planData.acts || planData.sections || [];
+              const rawCharacters: any[] = planData.characters || planData.cast || [];
+              const rawPlotNodes: any[] = planData.plotNodes || planData.plot_nodes || planData.plotlines || planData.arcs || [];
+
+              if (rawCharacters.length > 0) {
+                const characters = rawCharacters.map((c: any, i: number) => ({
+                  id: generateId(),
+                  name: c.name || `Character ${i + 1}`,
+                  role: c.role || c.archetype || 'supporting',
+                  backstory: c.backstory || c.background || c.bio || '',
+                  traits: Array.isArray(c.traits) ? c.traits : (c.traits ? [c.traits] : []),
+                  goals: Array.isArray(c.goals) ? c.goals : (c.goals ? [c.goals] : []),
+                  fears: Array.isArray(c.fears) ? c.fears : (c.fears ? [c.fears] : []),
+                  motivations: Array.isArray(c.motivations) ? c.motivations : (c.motivations ? [c.motivations] : []),
+                  quirks: Array.isArray(c.quirks) ? c.quirks : (c.quirks ? [c.quirks] : []),
+                  archetype: c.archetype || '',
+                  physicalDescription: c.physicalDescription || c.appearance || '',
+                  updatedAt: Date.now()
+                }));
+                // updateProject doesn't handle characters directly — we surface them via plot nodes as directives
+                addLog(`JSON Characters: Extracted ${characters.length} character profiles.`);
+              }
+
+              if (rawPlotNodes.length > 0) {
+                const plotNodes = rawPlotNodes.map((n: any, i: number) => ({
+                  id: generateId(),
+                  title: n.title || n.name || `Plot Thread ${i + 1}`,
+                  description: n.description || n.summary || n.content || '',
+                  status: 'active' as const,
+                  type: (n.type === 'main' || n.type === 'sub' || n.type === 'theme') ? n.type : 'main' as const,
+                  order: i,
+                  updatedAt: Date.now()
+                }));
+                updatePlotNodes(plotNodes);
+                addLog(`JSON Plot Nodes: Seeded ${plotNodes.length} plot threads.`);
+              }
+
+              if (rawChapters.length > 0) {
+                const newChapters: Chapter[] = rawChapters.map((c: any, i: number) => {
+                  const directive = [
+                    c.summary || c.description || c.content || c.synopsis || '',
+                    c.beats ? `Beats: ${Array.isArray(c.beats) ? c.beats.join('; ') : c.beats}` : '',
+                    c.goals ? `Goals: ${Array.isArray(c.goals) ? c.goals.join('; ') : c.goals}` : '',
+                    c.notes || ''
+                  ].filter(Boolean).join('\n');
+                  return {
+                    id: generateId(),
+                    title: c.title || c.name || `Chapter ${i + 1}`,
+                    summary: c.summary || c.description || c.synopsis || 'Plan-imported chapter.',
+                    content: '',
+                    directives: directive ? [directive] : [],
+                    order: i,
+                    plotNodeIds: [],
+                    tags: ['json-plan', 'plan-imported'],
+                    isPlan: true,
+                    updatedAt: Date.now()
+                  };
+                });
+                addLog(`JSON Chapters: Seeded ${newChapters.length} chapter blueprints.`);
+                await updateChapters(newChapters);
+                addLog("Ingestion Sequence: 100% COMPLETE.");
+                setAnalysis(`## JSON Plan Ingested Successfully
+
+Your book plan has been decoded and seeded into the project from scratch.
+
+**Diagnostic Overview:**
+- Source Method: JSON Structural Plan (Direct Parse)
+- Chapters Seeded: **${newChapters.length}**
+- Plot Nodes Seeded: **${rawPlotNodes.length}**
+- Characters Detected: **${rawCharacters.length}**
+
+**Plan Instruction Protocol Active:** Go to the **Writing Studio** to begin drafting. The system will use your chapter directives as the blueprint for each pass.`);
+              } else {
+                // No chapters array found — treat the whole JSON as a plan directive
+                addLog("JSON: No chapters array found. Treating entire JSON as a single plan directive.");
+                const singleChapter: Chapter[] = [{
+                  id: generateId(),
+                  title: planData.title || 'Book Plan',
+                  summary: planData.premise || planData.summary || planData.description || 'Imported JSON plan.',
+                  content: '',
+                  directives: [fullText.slice(0, 8000)],
+                  order: 0,
+                  plotNodeIds: [],
+                  tags: ['json-plan', 'plan-imported'],
+                  isPlan: true,
+                  updatedAt: Date.now()
+                }];
+                await updateChapters(singleChapter);
+                addLog("Ingestion Sequence: 100% COMPLETE.");
+                setAnalysis(`## JSON Plan Ingested\n\nYour JSON plan has been loaded as a single blueprint directive. Go to the **Writing Studio** to begin drafting.`);
+              }
+
+              // Update project metadata from plan if available
+              const projectUpdates: Partial<Project> = {};
+              if (planData.title && !project.title) projectUpdates.title = planData.title;
+              if (planData.genre) projectUpdates.genre = planData.genre;
+              if (planData.premise || planData.logline) projectUpdates.premise = planData.premise || planData.logline;
+              if (planData.targetWordCount || planData.target_word_count) {
+                projectUpdates.targetWordCount = planData.targetWordCount || planData.target_word_count;
+              }
+              if (Object.keys(projectUpdates).length > 0) {
+                updateProject(projectUpdates);
+                addLog(`JSON Metadata: Updated project with ${Object.keys(projectUpdates).join(', ')}.`);
+              }
+
+            } catch (jsonErr: any) {
+              addLog(`JSON Parse Error: ${jsonErr.message}. Falling back to text ingestion.`);
+              // Fall through to normal text processing below
+            }
+            setIsImporting(false);
+            return;
+          }
+          // ── END JSON PLAN ──────────────────────────────────────────────────────────────────────
+
           let finalSegments: { title: string; summary: string; marker: string; directives?: string[] }[] = [];
           
           if (!bypassAI) {
@@ -217,11 +351,6 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
 
           addLog(`Architecture: ${finalSegments.length} nodes ready for reconstruction.`);
             
-          const generateId = () => {
-             try { return crypto.randomUUID(); } 
-             catch (e) { return Math.random().toString(36).substring(2) + Date.now().toString(36); }
-          };
-
           const newChapters: Chapter[] = finalSegments.map((seg, i) => {
             const nextSeg = finalSegments[i + 1];
             let content = "";
@@ -602,7 +731,8 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-12 px-6 relative">
+    <div className="h-full overflow-y-auto overscroll-contain custom-scrollbar pb-32" style={{ minHeight: 0 }}>
+      <div className="max-w-5xl mx-auto py-12 px-6 relative">
       <header className="mb-12 text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full mb-4">
           <ShieldCheck size={14} className="text-brand-primary" />
@@ -742,7 +872,7 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
               <Activity size={14} className="text-emerald-500" />
               Architect Logs
             </h3>
-            <div className="space-y-2 font-mono h-40 overflow-y-auto no-scrollbar">
+            <div className="space-y-2 font-mono h-40 overflow-y-auto custom-scrollbar">
               {logs.map((log, i) => (
                 <div key={i} className="text-[10px] text-emerald-400 last:text-emerald-300 animate-in fade-in slide-in-from-left-2 duration-300">
                   {log}
@@ -836,5 +966,6 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
         )}
       </AnimatePresence>
     </div>
+  </div>
   );
 }

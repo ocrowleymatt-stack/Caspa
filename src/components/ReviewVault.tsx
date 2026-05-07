@@ -77,7 +77,7 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-hidden">
         {/* Review List */}
-        <div className="lg:col-span-2 overflow-y-auto space-y-4 pr-2 no-scrollbar">
+        <div className="lg:col-span-2 overflow-y-auto overscroll-contain space-y-4 pr-2 custom-scrollbar pb-32">
           <AnimatePresence mode="popLayout">
             {isAdding && (
               <motion.div 
@@ -204,7 +204,7 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
         </div>
 
         {/* Strategies Sidebar */}
-        <div className="space-y-8 overflow-y-auto no-scrollbar pb-8">
+        <div className="space-y-8 overflow-y-auto overscroll-contain custom-scrollbar pb-32 pr-2">
            <section className="bg-brand-dark text-text-primary rounded-[2rem] p-8 shadow-2xl border border-border-subtle relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:rotate-12 transition-all duration-700">
                 <Globe size={120} />
