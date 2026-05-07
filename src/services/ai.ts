@@ -57,8 +57,9 @@ LITERARY ENGINE — STANDING RULES (MASTER COMMAND):
 16. Characters are Heroes of their own stories: Villains don't think they are evil; they think they are misunderstood or necessary.
 17. Make Place a Character: Settings must pressure the story and shape behavior.
 18. First lines create tension: Opening image must contain disturbance, threat, or mystery.
-19. WORD COUNT PRECISION: All generated drafts must respect the structural scale of the project. If a target word count is provided, you must NOT exceed it by more than 3%. Prioritize density, sensory precision, and "show, do not tell" over padding or generic descriptions.
-20. PLAN PRIORITIZATION: If a "Structural Plan" or "Instructional Archetype" is provided (outline, beat sheet, specific chapter instructions), those instructions MANDATORY override any default word count targets or generic structural rules. Be subservient to the Plan's specific creative goals.
+19. WORD COUNT PRECISION: All generated drafts must hit the STRICT WORD TARGET stated above. Do NOT exceed it by more than 3%. Do NOT fall below 90% of it. Word count discipline is non-negotiable.
+20. PLAN PRIORITIZATION: If a "Structural Plan" or "Instructional Archetype" is provided, those instructions MANDATORY override generic structural rules. Be subservient to the Plan's specific creative goals.
+21. STAGED GROWTH SUPREMACY: The DRAFT STAGE and STRICT WORD TARGET stated above OVERRIDE rules 1-20 where they conflict. At Pass 1, lean skeletal prose overrides all calls for sensory depth, imagery, or immersion. The manuscript grows across passes — do not pre-empt later passes by writing at full depth now.
 `;
 
 /**
@@ -203,7 +204,7 @@ async function callClaude(prompt: string, json = false) {
         "anthropic-dangerous-direct-browser-access": "true"
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-latest",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
         messages: [
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
@@ -250,7 +251,7 @@ async function callXAI(prompt: string, json = false) {
         "Authorization": `Bearer ${XAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "grok-beta",
+        model: "grok-3",
         messages: [
           { 
             role: "system", 
@@ -407,6 +408,7 @@ export const AIService = {
       : "";
 
     const prompt = `Create a character for a ${type}. Concept: "${concept}". ${getMaturityDirectives(maturity)} ${researchContext}
+    IMPORTANT: Always provide a real, appropriate name for this character — a name that fits the genre, setting, and maturity level of the work. Never return a placeholder like "Unknown" or "Character 1".
     Include a detailed 'physicalDescription' that can be used for biometric portrait synthesis. Return as JSON.`;
     const schema = {
       type: Type.OBJECT,
@@ -428,7 +430,7 @@ export const AIService = {
     const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(text || "{}");
     return {
-      name: data.name || 'Unknown Character',
+      name: (data.name && data.name !== 'Unknown' && data.name !== 'Unknown Character') ? data.name : `${concept.split(' ')[0] || 'Character'}_${Date.now().toString(36)}`,
       role: data.role || 'Supporting',
       backstory: data.backstory || '',
       traits: Array.isArray(data.traits) ? data.traits : [],
@@ -613,7 +615,8 @@ Based ONLY on the provided text and strictly following any structural plans foun
     projectTargetWords?: number,
     externalReviews: ExternalReview[] = [],
     draftStage?: 1 | 2 | 3 | 4,
-    chapterCount?: number
+    chapterCount?: number,
+    cutMode?: boolean
   ): Promise<string> {
     const personaMap = {
       novel: "Literary Novelist",
@@ -625,50 +628,66 @@ Based ONLY on the provided text and strictly following any structural plans foun
       experimental: "Avant-garde Author"
     };
 
-    // ── Staged drafting: compute per-chapter word count target ────────────────
-    // Pass percentages: 1=10%, 2=25%, 3=75%, 4=100%
+    // ── Staged drafting: Pass percentages 1=10%, 2=25%, 3=75%, 4=100% ──────────
+    // If no draftStage is set, default to Pass 1 (lean skeleton) to prevent bloat.
+    const effectiveDraftStage: 1 | 2 | 3 | 4 = draftStage || 1;
     const PASS_PERCENTAGES: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
     const PASS_LABELS: Record<number, string> = {
-      1: "FIRST PASS (10% — skeletal prose, scene beats, key dialogue only)",
-      2: "SECOND PASS (25% — expanded scenes, richer description, subtext)",
-      3: "THIRD PASS (75% — near-final prose, full sensory depth, pacing refined)",
-      4: "FOURTH PASS (100% — final polish, every sentence prize-ready)"
+      1: "FIRST PASS (10% depth — skeletal prose only)",
+      2: "SECOND PASS (25% depth — expanded scenes, subtext added)",
+      3: "THIRD PASS (75% depth — near-final prose, pacing refined)",
+      4: "FOURTH PASS (100% depth — final polish)"
+    };
+    // Per-pass task instructions — strictly controls output style and forbids purple prose at early passes
+    const PASS_TASK: Record<number, string> = {
+      1: `Write a SKELETAL FIRST DRAFT of Chapter: "${title}". STRICT RULES FOR THIS PASS:\n- Hit every scene beat listed in SCENE OBJECTIVES.\n- Include essential dialogue only — no embellishment.\n- No descriptive padding, no sensory flourishes, no internal monologue beyond one line per character.\n- Aim for LEAN FUNCTIONAL PROSE. Structure and plot clarity over style.\n- DO NOT write purple prose. DO NOT write beautifully. Write clearly and structurally.\n- Output must be approximately the STRICT WORD TARGET above. Do not exceed it.`,
+      2: `Write a SECOND PASS EXPANSION of Chapter: "${title}". RULES:\n- Expand the skeletal structure with subtext and character interiority.\n- Add ONE grounding sensory detail per scene — no more.\n- Strengthen dialogue so it reveals character or shifts power.\n- Still lean. No decorative adjectives. No lush description.\n- Output must be approximately the STRICT WORD TARGET above.`,
+      3: `Write a THIRD PASS NEAR-FINAL DRAFT of Chapter: "${title}". RULES:\n- Full scene depth. Pacing refined. Every scene must turn.\n- Sensory grounding is now appropriate but must serve the story, not decorate it.\n- Cut anything that doesn't advance plot, character, or tension.\n- Output must be approximately the STRICT WORD TARGET above.`,
+      4: `Write the FINAL POLISHED DRAFT of Chapter: "${title}". RULES:\n- Every sentence must earn its place. Cut all sludge.\n- Perfect rhythm, voice, and subtext.\n- This is the version that goes to the publisher.\n- Output must be approximately the STRICT WORD TARGET above.`
     };
     const PASS_INSTRUCTIONS: Record<number, string> = {
-      1: "FIRST PASS RULES: Write skeletal prose only. Hit every scene beat. Include key dialogue. No padding. Leave deliberate room for expansion in later passes. Aim for clarity of structure over beauty.",
-      2: "SECOND PASS RULES: Expand scenes from the skeletal first pass. Add subtext, interiority, and sensory grounding. Reassess chapter pacing against the overall arc. Strengthen character voice.",
-      3: "THIRD PASS RULES: Near-final prose. Full sensory depth. Tighten pacing. Ensure every scene turns. Reassess chapter structure and cut anything that doesn't serve the arc.",
-      4: "FOURTH PASS RULES: Final polish. Every sentence must be prize-ready. Cut all sludge. Perfect rhythm and voice. This is the version that goes to the publisher."
+      1: "PASS 1 ANTI-BLOAT ENFORCEMENT: If you write more than the word target, you have failed. Skeletal prose only. No purple prose. No lush imagery. No extended internal monologue.",
+      2: "PASS 2 DISCIPLINE: Expand only what the story requires. One sensory detail per scene maximum. No decorative adjectives.",
+      3: "PASS 3 DISCIPLINE: Near-final depth is permitted but every word must serve the story. Cut anything decorative that doesn't also function narratively.",
+      4: "PASS 4 POLISH: Final version. Every sentence prize-ready. No filler."
     };
-    const passPercent = draftStage ? PASS_PERCENTAGES[draftStage] : 1.0;
-    const passLabel   = draftStage ? PASS_LABELS[draftStage]    : null;
-    const passInstr   = draftStage ? PASS_INSTRUCTIONS[draftStage] : null;
+    const passPercent = PASS_PERCENTAGES[effectiveDraftStage];
+    const passLabel   = PASS_LABELS[effectiveDraftStage];
+    const passInstr   = PASS_INSTRUCTIONS[effectiveDraftStage];
+    const passTask    = PASS_TASK[effectiveDraftStage];
     const effectiveChapterCount = chapterCount && chapterCount > 0 ? chapterCount : 25;
-    const perChapterTarget = (projectTargetWords && draftStage)
+    // Always compute a per-chapter target — never fall back to full depth
+    const perChapterTarget = projectTargetWords
       ? Math.round((projectTargetWords * passPercent) / effectiveChapterCount)
-      : null;
+      : Math.round((50000 * passPercent) / effectiveChapterCount); // safe default: 50k / chapters
 
     const isPlanDriven = directives.length > 0;
 
-    const targetContext = (perChapterTarget && !isPlanDriven)
-      ? `
-         DRAFT STAGE: ${passLabel}
-         PROJECT TARGET SCALE: This is part of a larger work aiming for ~${projectTargetWords!.toLocaleString()} words total across ${effectiveChapterCount} chapters.
-         STRICT DEPTH DIRECTIVE FOR THIS PASS: You MUST draft this chapter at approximately ${perChapterTarget.toLocaleString()} words.
-         WORD LIMIT: Do NOT exceed this target by more than 3%.
-         ${passInstr}
-         DO NOT rush. Maintain strict word count discipline.`
-      : (projectTargetWords && !isPlanDriven)
-        ? `\nPROJECT TARGET SCALE: This is part of a larger work aiming for ~${projectTargetWords.toLocaleString()} words. 
-           STRICT DEPTH DIRECTIVE: You MUST draft this chapter at approximately ${Math.round(projectTargetWords / 25).toLocaleString()} words. 
-           WORD LIMIT: Do NOT exceed this target by more than 3%.
-           DO NOT rush. Expand scenes, utilize dialogue, and provide dense sensory descriptions to meet this specific structural volume, but maintain strict word count discipline.
-           If the draft is too short, the structural integrity of the project will fail.`
-        : isPlanDriven 
-          ? `\nPLAN-DRIVEN DRAFTING: Specific chapter directives have been provided. 
-             BYPASS generic word count targets. Follow the density and structural instructions within the "CRITICAL AUTHOR DIRECTIVES" section below. 
-             Prioritize implementing every beat in the plan over meeting a specific word count.`
-          : "";
+    // ── Cut & Compress mode ──────────────────────────────────────────────────
+    const cutModeDirective = cutMode ? `
+
+CUT & COMPRESS MODE — ACTIVE:
+You are in anti-bloat mode. Your PRIMARY directive is to REDUCE, CUT, and COMPRESS the existing content.
+- ACTIVELY DELETE: Remove any sentence, paragraph, or scene that does not directly advance plot, character, or tension.
+- TARGET REDUCTION: Aim to reduce the existing content by 20-40%. Shorter is always better in this mode.
+- CUT THESE WITHOUT MERCY: Decorative adjectives, repeated motifs, lore dumps, exposition disguised as dialogue, filler transitions, redundant interiority, weather that does nothing, any sentence that is pretty but useless.
+- COMPRESS DIALOGUE: Cut any exchange that does not reveal character, shift power, or advance plot.
+- MERGE SCENES: If two scenes serve the same narrative function, merge them into one tighter scene.
+- KILL YOUR DARLINGS: If a passage is beautiful but slows the story, delete it.
+- OUTPUT: Return only the compressed, tightened prose. Do NOT add new content unless it directly replaces something cut.
+- WORD COUNT: The output MUST be shorter than the input. If the input is already lean, reduce by at least 10%.
+` : '';
+
+    const targetContext = isPlanDriven
+      ? `\nDRAFT STAGE: ${passLabel}\nPLAN-DRIVEN DRAFTING: Specific chapter directives have been provided. Follow the density and structural instructions within the "CRITICAL AUTHOR DIRECTIVES" section below. Prioritize implementing every beat in the plan over meeting a specific word count. However, still respect the pass stage — do not write beyond ${passLabel} depth.`
+      : `
+DRAFT STAGE: ${passLabel}
+PROJECT SCALE: ${(projectTargetWords || 50000).toLocaleString()} words total across ${effectiveChapterCount} chapters.
+STRICT WORD TARGET FOR THIS CHAPTER: ${perChapterTarget!.toLocaleString()} words.
+HARD WORD LIMIT: Do NOT exceed ${Math.round(perChapterTarget! * 1.03).toLocaleString()} words (3% tolerance).
+Do NOT write below ${Math.round(perChapterTarget! * 0.90).toLocaleString()} words (90% floor).
+${passInstr}
+STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% manuscript depth. Writing beyond this depth is a failure. The manuscript will be expanded in later passes.`;
 
     const researchContext = research.length > 0 
       ? `\nRESEARCH ARCHIVE (INTEGRATE THESE SENSORY DETAILS):\n${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('\n')}`
@@ -685,10 +704,10 @@ Based ONLY on the provided text and strictly following any structural plans foun
     const prompt = `You are an elite ${type} writer. 
       ${maturityDirective}
       ${targetContext}
-      
+      ${cutModeDirective}
       ${LITERARY_ENGINE_RULES}
       
-      TASK: Write a full, immersive, and high-fidelity "Prize-Winning" draft for Chapter: "${title}".
+      TASK: ${cutMode ? `Redraft and COMPRESS the chapter "${title}" — cut bloat, delete what does not serve the story, and return a tighter, leaner version.` : passTask}
       SCENE OBJECTIVES: ${summary}
       ${authorDirectives}
       ${reviewContext}
@@ -707,10 +726,12 @@ Based ONLY on the provided text and strictly following any structural plans foun
       - Use standard Markdown formatting.
       - Write only the prose. No notes, no meta-commentary.
       - AVOID ECHOES: Do not repeat motifs, imagery, or sentence rhythms present in the continuity text context unless they return transformed.
-      - Maintain depth consistent with a ~${projectTargetWords ? projectTargetWords.toLocaleString() : '50,000'} word scale, but prioritize sharpening over padding.
+      - STAGED GROWTH: You are at ${passLabel}. Do NOT write beyond this depth. The manuscript grows across passes.
       - CUT the sludge. If a scene doesn't turn, strike it.
-      - Show, do not tell. Focus on sensory details, internal monologue, and subtext.
-      - Find the "winding" of the scene—where the power shifts or the secret leaks.
+      - NO PURPLE PROSE: Do not write ornate, decorative, or flowery language. Clarity and function over beauty at all pass stages.
+      - Find the "winding" of the scene — where the power shifts or the secret leaks — but express it in plain, direct prose.
+      - WORD COUNT IS LAW: Output must land within 3% of the STRICT WORD TARGET. Too long = failure. Too short = failure.
+      - CHARACTER NAMES IN PROSE: Character names are stored in the library for reference only. In prose, use a character's name only when the narrative naturally calls for it. Characters may be referred to by role, pronoun, relationship, or description throughout. Never force a name into prose as a rule.
     `;
 
     return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
@@ -1169,7 +1190,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
     }));
   },
 
-  async deepSimmer(chapter: Chapter, context: string, type: ProjectType, plotNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = [], draftStage?: 1 | 2 | 3 | 4, chapterCount?: number): Promise<string> {
+  async deepSimmer(chapter: Chapter, context: string, type: ProjectType, plotNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = [], draftStage?: 1 | 2 | 3 | 4, chapterCount?: number, cutMode?: boolean): Promise<string> {
     const personaMap = {
       novel: "Literary Genius / Prize-Winning Novelist",
       screenplay: "A-List Script Doctor",
@@ -1203,8 +1224,25 @@ Based ONLY on the provided text and strictly following any structural plans foun
         ? `\nPROJECT TARGET SCALE: ~${projectTargetWords.toLocaleString()} words total. Maintain depth and pacing accordingly.`
         : "";
 
+    const cutModeSimmerDirective = cutMode ? `
+
+CUT & COMPRESS MODE — ACTIVE:
+Your PRIMARY directive is to REDUCE, CUT, and COMPRESS this chapter.
+- ACTIVELY DELETE: Remove any sentence, paragraph, or scene that does not directly advance plot, character, or tension.
+- TARGET REDUCTION: Aim to reduce the existing content by 20-40%.
+- CUT WITHOUT MERCY: Decorative adjectives, repeated motifs, lore dumps, filler transitions, redundant interiority, weather that does nothing, any sentence that is pretty but useless.
+- COMPRESS DIALOGUE: Cut any exchange that does not reveal character, shift power, or advance plot.
+- MERGE SCENES: If two scenes serve the same narrative function, merge them.
+- KILL YOUR DARLINGS: If a passage is beautiful but slows the story, delete it.
+- OUTPUT: Return only the compressed, tightened prose. Do NOT add new content.
+- WORD COUNT: The output MUST be shorter than the input.
+` : '';
+
     const researchContext = research.length > 0 
-      ? `\nIMPACTFUL RESEARCH TO INTEGRATE:\n${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('\n')}`
+      ? `
+IMPACTFUL RESEARCH TO INTEGRATE:
+${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('
+')}`
       : "";
 
     const nodeContext = plotNodes.length > 0 
@@ -1220,11 +1258,12 @@ Based ONLY on the provided text and strictly following any structural plans foun
       : "";
 
     const prompt = `You are a ${personaMap[type || 'novel']}. 
-      TASK: Elevate the following scene to "Prize-Winning" caliber.
+      TASK: ${cutMode ? 'COMPRESS and CUT this scene — remove bloat, delete what does not serve the story, return a tighter version.' : 'Elevate the following scene to "Prize-Winning" caliber.'}
       
       ${LITERARY_ENGINE_RULES}
       ${getMaturityDirectives(maturity)}
       ${targetContext}
+      ${cutModeSimmerDirective}
       
       TITLE: "${chapter.title}"
       BRIEF: ${chapter.summary}

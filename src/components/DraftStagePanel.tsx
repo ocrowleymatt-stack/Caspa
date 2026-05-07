@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronRight, RefreshCw, Target, BookOpen, Layers, CheckCircle2 } from 'lucide-react';
+import { ChevronRight, RefreshCw, Target, BookOpen, Layers, CheckCircle2, Scissors } from 'lucide-react';
 import { Project, Chapter } from '../types';
 
 interface Props {
@@ -190,6 +190,33 @@ export default function DraftStagePanel({ project, chapters, updateProject }: Pr
           </div>
         </div>
       )}
+
+      {/* Cut & Compress toggle */}
+      <div className="px-4 pb-4 border-t border-white/5 pt-3">
+        <button
+          onClick={() => updateProject({ cutMode: !project.cutMode })}
+          className={`w-full flex items-center justify-between gap-2 text-xs font-semibold py-2 px-3 rounded-lg border transition-all ${
+            project.cutMode
+              ? 'bg-red-500/15 border-red-500/40 text-red-300 hover:bg-red-500/20'
+              : 'border-white/10 text-white/40 hover:text-white/60 hover:border-white/20 hover:bg-white/5'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <Scissors size={12} />
+            Cut & Compress Mode
+          </span>
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+            project.cutMode ? 'bg-red-500/30 text-red-200' : 'bg-white/5 text-white/30'
+          }`}>
+            {project.cutMode ? 'ON' : 'OFF'}
+          </span>
+        </button>
+        {project.cutMode && (
+          <p className="text-[10px] text-red-300/60 mt-1.5 leading-relaxed">
+            All AI redraft operations will actively cut, compress, and delete bloat. Output will be shorter than input.
+          </p>
+        )}
+      </div>
     </motion.div>
   );
 }

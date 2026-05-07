@@ -1,5 +1,4 @@
-import { ProjectType, MaturityLevel } from './types';
-import { Book, AlertCircle, ShieldAlert } from 'lucide-react';
+import { IconStandard, IconMature, IconTransgressive } from './components/MaturityIcons';
 
 export const PROJECT_TYPES: { value: ProjectType; label: string }[] = [
   { value: 'novel', label: 'Novel' },
@@ -40,26 +39,26 @@ export const TONES = [
 export const MATURITY_LEVELS: { value: MaturityLevel; label: string; icon: any; color: string; bgColor: string; description: string }[] = [
   { 
     value: 'standard', 
-    label: 'Standard', 
-    icon: Book, 
-    color: 'text-slate-600', 
+    label: 'Vanilla',
+    icon: IconStandard,
+    color: 'text-slate-400', 
     bgColor: 'bg-slate-100',
-    description: 'Safe for general audiences. Focuses on narrative structure without explicit content.'
+    description: 'Clean content. No explicit material. Safe for general audiences.'
   },
   { 
     value: 'mature', 
-    label: 'Mature', 
-    icon: AlertCircle, 
-    color: 'text-amber-600', 
+    label: 'Porny',
+    icon: IconMature,
+    color: 'text-amber-500', 
     bgColor: 'bg-amber-100',
-    description: 'Contains complex themes, strong language, or non-graphic violence appropriate for adult readers.'
+    description: 'Adult themes, strong language, and suggestive content. Clothes are optional.'
   },
   { 
     value: 'transgressive', 
-    label: 'Transgressive', 
-    icon: ShieldAlert, 
-    color: 'text-red-600', 
+    label: 'Hardcore',
+    icon: IconTransgressive,
+    color: 'text-red-500', 
     bgColor: 'bg-red-100',
-    description: 'Highly experimental or boundary-pushing content. Exploring darker psychological depths.'
+    description: 'Explicit content. Nothing is off the table. The AI will not look away.'
   },
 ];

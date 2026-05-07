@@ -444,7 +444,15 @@ export default function App() {
 
     // Subcollections Sync
     const unsubChars = onSnapshot(collection(db, 'projects', projectId, 'characters'), (snap) => {
-      setCharacters(snap.docs.map(d => d.data() as Character).sort((a, b) => b.updatedAt - a.updatedAt));
+      const normaliseChar = (d: any): Character => ({
+        ...d,
+        traits: Array.isArray(d.traits) ? d.traits : [],
+        goals: Array.isArray(d.goals) ? d.goals : [],
+        fears: Array.isArray(d.fears) ? d.fears : [],
+        motivations: Array.isArray(d.motivations) ? d.motivations : [],
+        quirks: Array.isArray(d.quirks) ? d.quirks : [],
+      });
+      setCharacters(snap.docs.map(d => normaliseChar(d.data())).sort((a, b) => b.updatedAt - a.updatedAt));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/characters`));
     
     const unsubNodes = onSnapshot(collection(db, 'projects', projectId, 'plotNodes'), (snap) => {
@@ -599,6 +607,9 @@ export default function App() {
 
       if (project.publishing) allowedFields.publishing = project.publishing;
       if (project.primaryProvider) allowedFields.primaryProvider = project.primaryProvider;
+      if (project.draftStage !== undefined) allowedFields.draftStage = project.draftStage;
+      if (project.draftPassHistory !== undefined) allowedFields.draftPassHistory = project.draftPassHistory;
+      if (project.cutMode !== undefined) allowedFields.cutMode = project.cutMode;
 
       await updateDoc(projectRef, allowedFields);
       setTimeout(() => setIsSaving(false), 1000);
@@ -721,15 +732,61 @@ export default function App() {
   };
   const upsertCharacterBatch = async (charList: Character[]) => {
     if (!user || charList.length === 0) return;
-    const { writeBatch } = await import('firebase/firestore');
-    const batch = writeBatch(db);
-    charList.forEach(char => {
+    // Read existing characters LIVE from Firestore (not stale React state)
+    // to avoid the stale-closure bug where rapid successive calls all see an empty set.
+    const { getDocs, writeBatch: wb } = await import('firebase/firestore');
+    const existingSnap = await getDocs(collection(db, 'projects', project.id, 'characters'));
+    const existingNames = new Set(
+      existingSnap.docs.map(d => (d.data().name || '').trim().toLowerCase())
+    );
+    const seenInBatch = new Set<string>();
+    const dedupedList = charList.filter(char => {
+      const key = (char.name || '').trim().toLowerCase();
+      if (!key) return false; // skip unnamed
+      if (existingNames.has(key) || seenInBatch.has(key)) return false;
+      seenInBatch.add(key);
+      return true;
+    });
+    if (dedupedList.length === 0) return;
+    const batch = wb(db);
+    dedupedList.forEach(char => {
       const ref = doc(db, 'projects', project.id, 'characters', char.id);
       batch.set(ref, { ...char, updatedAt: Date.now() });
     });
     try {
       await batch.commit();
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/characters (batch)`); }
+  };
+
+  // One-time cleanup: remove duplicate characters (same name), keeping the most recently updated.
+  const deduplicateCharacters = async () => {
+    if (!user || !project.id) return;
+    const { getDocs, writeBatch: wb } = await import('firebase/firestore');
+    const snap = await getDocs(collection(db, 'projects', project.id, 'characters'));
+    const byName = new Map<string, { id: string; updatedAt: number }[]>();
+    snap.docs.forEach(d => {
+      const data = d.data();
+      const key = (data.name || '').trim().toLowerCase();
+      if (!key) return;
+      if (!byName.has(key)) byName.set(key, []);
+      byName.get(key)!.push({ id: d.id, updatedAt: data.updatedAt || 0 });
+    });
+    const batch = wb(db);
+    let deleteCount = 0;
+    byName.forEach(entries => {
+      if (entries.length <= 1) return;
+      // Sort descending by updatedAt — keep the first (most recent), delete the rest
+      entries.sort((a, b) => b.updatedAt - a.updatedAt);
+      entries.slice(1).forEach(entry => {
+        batch.delete(doc(db, 'projects', project.id, 'characters', entry.id));
+        deleteCount++;
+      });
+    });
+    if (deleteCount === 0) { onNotify('No duplicate characters found.', 'success'); return; }
+    try {
+      await batch.commit();
+      onNotify(`Removed ${deleteCount} duplicate character${deleteCount > 1 ? 's' : ''}.`, 'success');
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/characters (dedup)`); }
   };
   const upsertPlotNode = async (node: PlotNode) => {
     if (!user) return;
@@ -1302,6 +1359,7 @@ export default function App() {
                         await upsertCharacterBatch(updates.characters);
                       }
                     }} 
+                    onDeduplicateCharacters={deduplicateCharacters}
                     onError={(msg) => addNotification(msg, 'error')}
                   />
                 </div>

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Book, Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, ShieldAlert, AlertCircle, Save, Trash2, Trophy, Target, Plus, ChevronDown, Activity } from 'lucide-react';
+import { Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, Save, Trash2, Trophy, Target, Plus, ChevronDown, Activity } from 'lucide-react';
 import { Project, Chapter, ViewType, ProjectType, MaturityLevel } from '../types';
 import DraftStagePanel from './DraftStagePanel';
 import { motion, AnimatePresence } from 'motion/react';
@@ -299,6 +299,7 @@ export default function Dashboard({
               <input 
                 type="number"
                 placeholder="Custom..."
+                value={![1000, 5000, 20000, 50000, 80000, 100000].includes(project.targetWordCount ?? 0) && project.targetWordCount ? project.targetWordCount : ''}
                 className="w-full py-4 px-6 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-text-primary outline-none focus:border-brand-primary focus:bg-white/10 transition-all placeholder:text-text-secondary/30"
                 onChange={(e) => {
                   const val = parseInt(e.target.value);

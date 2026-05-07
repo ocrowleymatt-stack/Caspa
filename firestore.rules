@@ -75,8 +75,10 @@ service cloud.firestore {
                         'collaborators', 'lastModified', 'stats', 'critiques', 
                         'targetPrize', 'prizeAssessments', 'isPublic', 'publicId', 
                         'targetWordCount', 'publishing', 'updatedAt', 'primaryProvider',
-                        'characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials', // Allow these even if used as subcollections
-                        'lastModified', 'id', 'ownerId', 'createdAt' // Include immutable fields just in case they are in the payload
+                        'characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials',
+                        'lastModified', 'id', 'ownerId', 'createdAt',
+                        'draftStage', 'draftPassHistory', 'cutMode',
+                        'externalReviews', 'styleDNA', 'isLocked'
                       ]);
 
       allow delete: if isSignedIn() && isOwner(existing());

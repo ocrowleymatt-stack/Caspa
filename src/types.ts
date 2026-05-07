@@ -189,6 +189,11 @@ export interface Project {
   draftStage?: 1 | 2 | 3 | 4;
   /** Timestamp of when each pass was completed */
   draftPassHistory?: { pass: number; completedAt: number; wordCountAtCompletion: number }[];
+  /**
+   * When true, all redraft operations (writeDraft, deepSimmer, Deep Draft, Fix a Bad Book)
+   * will actively cut, compress, and delete bloat rather than expand content.
+   */
+  cutMode?: boolean;
 }
 
 export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'reviews' | 'library';

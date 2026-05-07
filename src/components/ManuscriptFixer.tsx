@@ -100,7 +100,8 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           project.targetWordCount,
           [],
           project.draftStage,
-          chapters.length
+          chapters.length,
+          project.cutMode    // honour Cut & Compress mode
         );
 
         updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
@@ -182,7 +183,7 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
               if (rawCharacters.length > 0) {
                 const characters = rawCharacters.map((c: any, i: number) => ({
                   id: generateId(),
-                  name: c.name || `Character ${i + 1}`,
+                  name: (c.name && c.name !== 'Unknown' && !/^character\s*\d+$/i.test(c.name)) ? c.name : (c.role ? `${c.role.split(' ')[0]}_${(i+1)}` : `Character_${(i+1)}`),
                   role: c.role || c.archetype || 'supporting',
                   backstory: c.backstory || c.background || c.bio || '',
                   traits: Array.isArray(c.traits) ? c.traits : (c.traits ? [c.traits] : []),
@@ -493,45 +494,136 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
 
   const startAutoPilot = async () => {
     setAutoPilot(true);
-    addLog("Engaging Auto-Pilot: Finalizing Narrative Path...");
+    addLog("AUTO-PILOT ENGAGED: Full pipeline — Apply Suggestions → Fix Structure → Write Prose to Target");
     try {
-      addLog("System: Surveying current manuscript structure...");
-      console.log('Auto-Pilot: Project State', { chapterCount: chapters.length, title: project.title });
-      
-      addLog("AI Core: Calculating logical conclusion beats...");
-      const beats = await AIService.automateNextSteps(project, chapters);
-      
-      if (!beats || beats.length === 0) {
-        addLog("AI Core: No new beats recommended. The narrative may already be complete.");
-        return;
+      // ── PHASE 1: Apply all pending AI suggestions from research/brainstorm ──
+      addLog("Phase 1/5: Scanning for pending AI suggestions and brainstorm directives...");
+      const pendingDirectives: string[] = [];
+      if (research && research.length > 0) {
+        const brainstormNotes = research.filter(r =>
+          r.category === 'brainstorm' ||
+          r.title?.toLowerCase().includes('brainstorm') ||
+          r.title?.toLowerCase().includes('structural plan') ||
+          r.title?.toLowerCase().includes('ai spark')
+        );
+        if (brainstormNotes.length > 0) {
+          addLog(`Phase 1: Found ${brainstormNotes.length} brainstorm/structural notes — injecting as directives.`);
+          brainstormNotes.forEach(n => pendingDirectives.push(`[BRAINSTORM DIRECTIVE] ${n.title}: ${n.content.slice(0, 500)}`));
+        } else {
+          addLog("Phase 1: No pending brainstorm directives found. Proceeding with structural analysis.");
+        }
       }
 
-      addLog(`AI Core: ${beats.length} new beats successfully architected.`);
-      addLog(`Architecting ${beats.length} new chapters into the structure...`);
-      const newChapters: Chapter[] = [...chapters];
-      
-      for (const beat of beats) {
-        const id = crypto.randomUUID();
-        const newChap: Chapter = {
-          id,
-          title: beat.title || "Untitled Resolution",
-          summary: beat.summary || "No summary provided.",
-          content: '',
-          order: newChapters.length,
-          plotNodeIds: [],
-          tags: ['automated-finalization'],
-          updatedAt: Date.now()
-        };
-        newChapters.push(newChap);
-        addLog(`Constructed: ${newChap.title}`);
+      // ── PHASE 2: Structural gap analysis — generate missing beats ──
+      addLog("Phase 2/5: Analysing narrative structure for gaps and missing beats...");
+      const beats = await AIService.automateNextSteps(project, chapters);
+      let workingChapters: Chapter[] = [...chapters];
+
+      if (beats && beats.length > 0) {
+        addLog(`Phase 2: ${beats.length} structural gap(s) identified. Inserting missing chapter beats...`);
+        for (const beat of beats) {
+          const id = crypto.randomUUID();
+          const newChap: Chapter = {
+            id,
+            title: beat.title || 'Untitled Beat',
+            summary: beat.summary || 'No summary provided.',
+            content: '',
+            order: workingChapters.length,
+            plotNodeIds: [],
+            tags: ['auto-pilot'],
+            directives: pendingDirectives.length > 0 ? pendingDirectives : [],
+            updatedAt: Date.now()
+          };
+          workingChapters.push(newChap);
+          addLog(`Phase 2: Inserted beat — "${newChap.title}"`);
+        }
+        await updateChapters(workingChapters);
+        addLog("Phase 2: Structure committed to cloud.");
+      } else {
+        addLog("Phase 2: Structure is complete. No new beats required.");
       }
-      
-      addLog("System Sync: Committing new architecture to cloud registry...");
-      await updateChapters(newChapters);
-      addLog("Chapter Generation Complete: Manuscript finalized and synchronized.");
+
+      // ── PHASE 3: Identify all chapters needing prose (empty or stub-only) ──
+      addLog("Phase 3/5: Identifying chapters requiring prose generation...");
+      const STUB_THRESHOLD = 200; // chapters with fewer than 200 words are treated as stubs
+      const chaptersNeedingProse = workingChapters.filter(c => {
+        const wordCount = c.content.trim().split(/\s+/).filter(Boolean).length;
+        return wordCount < STUB_THRESHOLD;
+      });
+
+      if (chaptersNeedingProse.length === 0) {
+        addLog("Phase 3: All chapters already have substantial prose. Auto-Pilot complete.");
+        return;
+      }
+      addLog(`Phase 3: ${chaptersNeedingProse.length} chapter(s) require prose generation (empty or stub < ${STUB_THRESHOLD} words).`);
+
+      // ── PHASE 4: Word count targeting ──
+      const totalTarget = project.targetWordCount || 50000;
+      const totalChapters = workingChapters.length || 20;
+      addLog(`Phase 4/5: Word count target — ${totalTarget.toLocaleString()} words across ${totalChapters} chapters.`);
+      addLog(`Phase 4: Per-chapter target at current pass = ${Math.round(totalTarget / totalChapters).toLocaleString()} words (before pass multiplier).`);
+
+      // ── PHASE 5: Write full prose for every chapter needing it ──
+      addLog(`Phase 5/5: Writing prose for ${chaptersNeedingProse.length} chapter(s)...`);
+      let updatedChaps = [...workingChapters];
+
+      for (let i = 0; i < chaptersNeedingProse.length; i++) {
+        const chap = chaptersNeedingProse[i];
+        addLog(`Phase 5 [${i + 1}/${chaptersNeedingProse.length}]: Drafting "${chap.title}"...`);
+
+        // Build continuity context from all preceding chapters
+        const earlierContent = updatedChaps
+          .filter(c => c.order < chap.order)
+          .map(c => c.content)
+          .join('\n\n')
+          .slice(-5000);
+
+        // Merge any brainstorm directives with chapter-specific directives
+        const chapterDirectives = [
+          ...(chap.directives || []),
+          ...pendingDirectives
+        ];
+
+        try {
+          const content = await AIService.writeDraft(
+            chap.title,
+            chap.summary,
+            earlierContent,
+            project.type,
+            [],
+            research,
+            project.maturity,
+            project.sourceMaterials || [],
+            chapterDirectives,
+            totalTarget,          // project word count target
+            [],
+            project.draftStage,   // honour current draft pass
+            totalChapters,        // total chapter count for per-chapter calculation
+            project.cutMode       // honour Cut & Compress mode
+          );
+
+          updatedChaps = updatedChaps.map(c =>
+            c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c
+          );
+          await updateChapters(updatedChaps);
+          const wc = content.trim().split(/\s+/).filter(Boolean).length;
+          addLog(`Phase 5 [${i + 1}/${chaptersNeedingProse.length}]: "${chap.title}" — ${wc.toLocaleString()} words written. Saved.`);
+        } catch (err: any) {
+          addLog(`Phase 5: Warning — failed to draft "${chap.title}". Continuing... (${err.message || 'unknown error'})`);
+          console.error(err);
+        }
+      }
+
+      // ── Final summary ──
+      const totalWordsWritten = updatedChaps.reduce((sum, c) => {
+        return sum + c.content.trim().split(/\s+/).filter(Boolean).length;
+      }, 0);
+      addLog(`AUTO-PILOT COMPLETE: ${chaptersNeedingProse.length} chapter(s) drafted. Total manuscript: ~${totalWordsWritten.toLocaleString()} words.`);
+      addLog(`Target was ${totalTarget.toLocaleString()} words. ${totalWordsWritten >= totalTarget * 0.9 ? 'TARGET MET.' : `Gap: ${(totalTarget - totalWordsWritten).toLocaleString()} words remaining — run again or advance to next pass.`}`);
+
     } catch (err: any) {
       console.error('Auto-Pilot Failure:', err);
-      const msg = err.message || "Auto-Pilot sequence interrupted";
+      const msg = err.message || 'Auto-Pilot sequence interrupted';
       addLog(`Fatal: ${msg}`);
       onError?.(msg);
     } finally {
@@ -572,7 +664,11 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
             project.maturity,
             project.sourceMaterials || [],
             chap.directives || [],
-            project.targetWordCount
+            project.targetWordCount,
+            [],
+            project.draftStage,   // honour current draft pass
+            chapters.length,       // per-chapter word target
+            project.cutMode        // honour Cut & Compress mode
           );
 
           // Update local copy
@@ -708,7 +804,11 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
             project.maturity,
             project.sourceMaterials || [],
             chap.directives || [],
-            project.targetWordCount
+            project.targetWordCount,
+            [],
+            project.draftStage,   // honour current draft pass
+            newChapters.length,    // per-chapter word target
+            project.cutMode        // honour Cut & Compress mode
           );
           
           updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);

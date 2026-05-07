@@ -409,7 +409,8 @@ export default function WritingStudio({
         project.targetWordCount,
         project.externalReviews || [],
         project.draftStage,
-        chapters.length
+        chapters.length,
+        project.cutMode       // honour Cut & Compress mode
       );
       setLocalContent(refined);
       updateChapter(selectedChapter.id, { content: refined });
@@ -448,7 +449,8 @@ export default function WritingStudio({
         project.targetWordCount,
         project.externalReviews || [],
         project.draftStage,       // staged pass number (1-4)
-        chapters.length            // total chapter count for per-chapter target
+        chapters.length,           // total chapter count for per-chapter target
+        project.cutMode            // honour Cut & Compress mode
       );
       
       const newContent = (localContent + '\n\n' + content).trim();
