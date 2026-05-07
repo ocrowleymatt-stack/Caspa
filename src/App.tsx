@@ -264,8 +264,14 @@ export default function App() {
   // Auth Listener
   useEffect(() => {
     const initAuth = async () => {
-      const { handleRedirectLogin } = await import('./lib/firebase');
-      await handleRedirectLogin();
+      try {
+        const { handleRedirectLogin } = await import('./lib/firebase');
+        await handleRedirectLogin();
+      } catch (error) {
+        console.error('Redirect login initialization failed:', error);
+        setLoginError(error instanceof Error ? error.message : 'Unable to complete sign-in redirect.');
+        setLoading(false);
+      }
     };
     initAuth();
 

@@ -123,6 +123,10 @@ service cloud.firestore {
         );
       }
 
+      match /externalReviews/{reviewId} {
+        allow read, write: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+      }
+
       match /presence/{userId} {
         allow read: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
         allow write: if isSignedIn() && userId == request.auth.uid && 
