@@ -87,6 +87,7 @@ import PublishView from './components/PublishView';
 import PrizeView from './components/PrizeView';
 import ReaderView from './components/ReaderView';
 import ReviewVault from './components/ReviewVault';
+import PinGate from './components/PinGate';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -972,6 +973,7 @@ export default function App() {
   }
 
   return (
+    <PinGate>
     <div 
       className="flex h-full bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
       style={{ minHeight: 0 }}
@@ -1486,6 +1488,7 @@ export default function App() {
           </AnimatePresence>
         </div>
       </div>
+    </PinGate>
     );
 }
 
