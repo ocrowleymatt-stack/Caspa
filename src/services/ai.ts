@@ -395,7 +395,7 @@ export const AIService = {
       
       Output should be professional, insightful, and strictly relevant to the provided genre and goal.`;
 
-    return await callAI({ prompt, model: "gemini-1.5-flash" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async generateCharacter(concept: string, type: ProjectType, research: ResearchNote[] = [], maturity = 'standard'): Promise<Character> {
@@ -710,7 +710,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       - Find the "winding" of the scene—where the power shifts or the secret leaks.
     `;
 
-    return await callAI({ prompt, model: "gemini-1.5-pro" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType, deep = false): Promise<ResearchNote> {
@@ -861,7 +861,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["nodes", "researchTracks"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     return safeParseJSON(response || "{}");
   },
 
@@ -907,7 +907,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["characters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-3.1-pro-preview" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(text || '{"characters":[]}', { characters: [] });
     
     return (data.characters || []).map((char: any) => ({
@@ -940,7 +940,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       
       Format as a professional literary report in Markdown.`;
 
-    return await callAI({ prompt, model: "gemini-1.5-pro" });
+     return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async splitManuscript(fullText: string, type: ProjectType, isPlan = false): Promise<{ title: string; summary: string; marker: string; directives?: string[] }[]> {
@@ -991,7 +991,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-1.5-pro" });
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -1009,7 +1009,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       MANUSCRIPT:\n${fullText.slice(0, 100000)}
       ${sourceContext}`;
 
-    return await callAI({ prompt, model: "gemini-1.5-pro" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async automateNextSteps(project: Project, chapters: Chapter[]): Promise<{ title: string; summary: string }[]> {
@@ -1044,7 +1044,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["beats"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(text || "[]", []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
@@ -1069,7 +1069,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       [GRAMS/FX: Sound cues]
       [CHARACTER NAME]: [Dialogue with performance directions in brackets]`;
 
-    return await callAI({ prompt, model: "gemini-1.5-flash" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async generateCoverPrompt(project: Project, author: string, subtitle: string, basePrompt: string): Promise<string> {
@@ -1090,7 +1090,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       
       OUTPUT ONLY THE FINAL CONCATENATED PROMPT.`;
     
-    return await callAI({ prompt, model: "gemini-1.5-flash" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async generateAudiobookScript(project: Project, chapters: Chapter[]): Promise<string> {
@@ -1110,7 +1110,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       MANUSCRIPT SAMPLE:
       ${fullText}`;
 
-    return await callAI({ prompt, model: "gemini-1.5-flash" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
   async reconcileChapters(project: Project, plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] = []): Promise<{ title: string; summary: string; plotNodeIds: string[] }[]> {
@@ -1158,7 +1158,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-1.5-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return (data.chapters || []).map((c: any) => ({
       ...c,
@@ -1166,7 +1166,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
     }));
   },
 
-  async deepSimmer(chapter: Chapter, context: string, type: ProjectType, plotNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = []): Promise<string> {
+  async deepSimmer(chapter: Chapter, context: string, type: ProjectType, plotNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = [], draftStage?: 1 | 2 | 3 | 4, chapterCount?: number): Promise<string> {
     const personaMap = {
       novel: "Literary Genius / Prize-Winning Novelist",
       screenplay: "A-List Script Doctor",
@@ -1181,9 +1181,24 @@ Based ONLY on the provided text and strictly following any structural plans foun
       coursebook: "Pedagogical Master"
     };
 
-    const targetContext = projectTargetWords 
-      ? `\nPROJECT TARGET SCALE: ~${projectTargetWords.toLocaleString()} words total. Maintain depth and pacing accordingly.`
-      : "";
+    // Stage-aware depth target for Deep Simmer
+    const PASS_PERCENTAGES: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
+    const PASS_SIMMER_LABELS: Record<number, string> = {
+      1: "PASS 1 SIMMER (10%): Tighten skeletal prose. Do NOT expand beyond the pass target. Preserve deliberate gaps.",
+      2: "PASS 2 SIMMER (25%): Deepen subtext and sensory grounding. Reassess chapter pacing. Stay within 25% of total target.",
+      3: "PASS 3 SIMMER (75%): Near-final polish. Full sensory depth. Tighten pacing. Ensure every scene turns.",
+      4: "PASS 4 SIMMER (100%): Final prize-ready polish. Every sentence must earn its place."
+    };
+    const effectiveChapCount = chapterCount && chapterCount > 0 ? chapterCount : 25;
+    const passPercent = draftStage ? PASS_PERCENTAGES[draftStage] : 1.0;
+    const perChapterTarget = (projectTargetWords && draftStage)
+      ? Math.round((projectTargetWords * passPercent) / effectiveChapCount)
+      : null;
+    const targetContext = perChapterTarget
+      ? `\nDEEP SIMMER STAGE: ${PASS_SIMMER_LABELS[draftStage!]}\nSTRICT DEPTH: Refine to approximately ${perChapterTarget.toLocaleString()} words for this chapter. Do NOT exceed by more than 3%.`
+      : projectTargetWords
+        ? `\nPROJECT TARGET SCALE: ~${projectTargetWords.toLocaleString()} words total. Maintain depth and pacing accordingly.`
+        : "";
 
     const researchContext = research.length > 0 
       ? `\nIMPACTFUL RESEARCH TO INTEGRATE:\n${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('\n')}`
@@ -1226,7 +1241,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       - Find the "winding" of the scene—where the power shifts or the secret leaks.
       - Return ONLY the enhanced text. No preamble.`;
 
-    return await callAI({ prompt, model: "gemini-1.5-pro" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async assessPrizeWorthiness(project: Project, chapters: Chapter[]): Promise<PrizeAssessment[]> {
@@ -1289,10 +1304,10 @@ Based ONLY on the provided text and strictly following any structural plans foun
   async critique(text: string): Promise<string> {
     const prompt = `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
       Writing Sample: "${text}"`;
-    return await callAI({ prompt, model: "gemini-1.5-flash" });
+    return await callAI({ prompt, model: "gemini-2.0-flash" });
   },
 
-  async analyzeProse(text: string, type: ProjectType, previousContext: string = ""): Promise<{ type: string; message: string; severity: 'low' | 'medium' | 'high' }[]> {
+  async analyzeProse(text: string, type: ProjectType, previousContext: string = "", externalReviews: { source: string; content: string; isImplemented?: boolean }[] = []): Promise<{ type: string; message: string; severity: 'low' | 'medium' | 'high' }[]> {
     const prompt = `
       You are a brutal Sentence Stylist and Literary Agent. Analyze the following ${type} segment based on these STRICT STANDING RULES:
       
@@ -1308,6 +1323,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       
       PREVIOUS CONTEXT (SUMMARY OF PRIOR BEATS):
       ${previousContext.slice(-2000)}
+      ${externalReviews.filter(r => !r.isImplemented).length > 0 ? `\n      UNRESOLVED EXTERNAL REVIEWS (CHECK IF PROSE STILL VIOLATES THESE):\n      ${externalReviews.filter(r => !r.isImplemented).map(r => `- [FROM ${r.source}]: ${r.content}`).join('\n')}` : ""}
       
       TEXT TO ANALYZE:
       "${text.slice(0, 10000)}"
@@ -1337,7 +1353,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["violations"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(response || "{}");
     return Array.isArray(data.violations) ? data.violations : [];
   },
@@ -1367,13 +1383,14 @@ Based ONLY on the provided text and strictly following any structural plans foun
     throw new Error("Visual DNA synthesis failed: No image data returned.");
   },
 
-  async checkSceneTurn(text: string): Promise<{ turned: boolean; score: number; reasoning: string; missing: string }> {
+  async checkSceneTurn(text: string, externalReviews: { source: string; content: string; isImplemented?: boolean }[] = []): Promise<{ turned: boolean; score: number; reasoning: string; missing: string }> {
     const prompt = `
       Rule 6: EVERY SCENE MUST TURN.
       Analyze this narrative segment. A scene "turns" when something fundamental changes: power, knowledge, danger, intimacy, belief, status, or direction.
       
       TEXT:
       "${text.slice(0, 5000)}"
+      ${externalReviews.filter(r => !r.isImplemented).length > 0 ? `\n      EXTERNAL REVIEW CONTEXT (CHECK IF THESE CONCERNS RELATE TO THE SCENE TURN):\n      ${externalReviews.filter(r => !r.isImplemented).map(r => `- [FROM ${r.source}]: ${r.content}`).join('\n')}` : ""}
       
       TASK: Determine if the scene turns. Provide a scoring (1-100), detailed reasoning, and what is missing if it doesn't turn.
       Return JSON: { "turned": boolean, "score": number, "reasoning": string, "missing": string }
@@ -1390,7 +1407,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["turned", "score", "reasoning", "missing"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-3-flash-preview" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     return safeParseJSON(response || "{}");
   },
 

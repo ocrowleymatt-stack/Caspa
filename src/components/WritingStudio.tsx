@@ -407,7 +407,9 @@ export default function WritingStudio({
         project.maturity,
         project.sourceMaterials || [],
         project.targetWordCount,
-        project.externalReviews || []
+        project.externalReviews || [],
+        project.draftStage,
+        chapters.length
       );
       setLocalContent(refined);
       updateChapter(selectedChapter.id, { content: refined });
@@ -466,15 +468,7 @@ export default function WritingStudio({
     setIsAnalyzingProse(true);
     setShowProsePanel(true);
     try {
-      const precedingContext = chapters
-        .filter(c => c.order < selectedChapter.order)
-        .slice(-3)
-        .map(c => `[CHAPTER: ${c.title}]\n${c.summary}`)
-        .join('\n\n');
-
-      const violations = await AIService.analyzeProse(localContent, project.type, precedingContext);
-      
-      // Local Echo Detection (Algorithmic)
+      // ── STAGE 1: Fast local heuristic pre-filters (run first, no API cost) ──
       const localEchoes = detectEchoes(localContent);
       const echoViolations: { type: string, message: string, severity: 'low' | 'medium' | 'high' }[] = localEchoes.slice(0, 5).map(echo => ({
         type: 'Echo',
@@ -482,7 +476,6 @@ export default function WritingStudio({
         severity: 'low'
       }));
 
-      // Chapter Redundancy Check
       const redundant = findRedundantChapters(chapters);
       const isRedundant = redundant.some(r => r.chapterId === selectedChapter.id);
       if (isRedundant) {
@@ -493,7 +486,39 @@ export default function WritingStudio({
         });
       }
 
+      // Surface local violations immediately so user sees fast feedback
+      setProseViolations([...echoViolations]);
+
+      // ── STAGE 2: AI deep prose analysis (runs after local pre-filters) ──
+      const precedingContext = chapters
+        .filter(c => c.order < selectedChapter.order)
+        .slice(-3)
+        .map(c => `[CHAPTER: ${c.title}]\n${c.summary}`)
+        .join('\n\n');
+
+      const violations = await AIService.analyzeProse(
+        localContent,
+        project.type,
+        precedingContext,
+        project.externalReviews || []
+      );
+
+      // Merge: local pre-filter violations first, then AI violations
       setProseViolations([...echoViolations, ...violations]);
+
+      // ── STAGE 3: Auto-trigger scene-turn check after prose analysis ──
+      if (localContent.trim().length >= 200) {
+        setIsCheckingTurn(true);
+        setSceneTurnResult(null);
+        try {
+          const turnResult = await AIService.checkSceneTurn(localContent, project.externalReviews || []);
+          setSceneTurnResult(turnResult);
+        } catch (turnErr) {
+          console.warn('Scene turn auto-check failed silently:', turnErr);
+        } finally {
+          setIsCheckingTurn(false);
+        }
+      }
     } catch (err: any) {
       console.error(err);
       onError?.(err.message || 'Prose Analysis failed.');
@@ -531,7 +556,7 @@ export default function WritingStudio({
         project.type, 
         project.maturity, 
         project.sourceMaterials || [],
-        ['vocal', 'structural', 'factual', 'agent', 'sentence', 'thematic']
+        ['vocal', 'structural', 'factual', 'agent', 'sentence', 'thematic', 'writer', 'repetition']
       );
       
       setCritiqueText(results[0]?.content || "Analysis complete.");
