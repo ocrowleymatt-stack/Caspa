@@ -6,7 +6,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// GoogleGenAI client is created lazily at call time so the key is read at runtime, not baked in at build time
+let _geminiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  // Try build-time injected key first, then VITE_ prefixed runtime key as fallback
+  const key = (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'undefined')
+    ? process.env.GEMINI_API_KEY
+    : ((import.meta as any).env?.VITE_GEMINI_API_KEY || '');
+  if (!key || key === 'undefined' || key === '') {
+    throw new Error('GEMINI_API_KEY is not configured. Check Secrets in AI Studio.');
+  }
+  // Reset client if key changed (e.g. hot-reload in dev)
+  if (!_geminiClient) {
+    _geminiClient = new GoogleGenAI({ apiKey: key });
+  }
+  return _geminiClient;
+}
 const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
 const CLAUDE_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_ANTHROPIC_API_KEY : undefined;
 const OPENAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_OPENAI_API_KEY : undefined;
@@ -116,41 +131,35 @@ async function callGemini(options: {
 }) {
   const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, useSearch = false } = options;
 
-  try {
-    const targetModel = model.includes("pro") ? "gemini-2.5-pro-preview-05-06" : "gemini-2.0-flash";
-    const generationConfig: any = { temperature: 0.7 };
+  // Resolve model: any model with 'pro' in name → 2.5 Pro, otherwise → 2.0 Flash
+  const targetModel = model.includes('pro') ? 'gemini-2.5-pro-preview-05-06' : 'gemini-2.0-flash';
 
-    if (json) {
-      generationConfig.responseMimeType = "application/json";
-      generationConfig.responseSchema = schema || { 
-        type: Type.OBJECT, 
-        properties: { result: { type: Type.STRING } },
-        required: ["result"]
-      };
-    }
+  // Get client lazily — throws immediately with a clear message if key is missing
+  const client = getGeminiClient();
 
-    if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
+  const generationConfig: any = { temperature: 0.7 };
 
-    const tools = useSearch ? [{ googleSearch: {} }] : undefined;
-
-    const result = await ai.models.generateContent({
-      model: targetModel,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        ...generationConfig,
-        tools
-      }
-    } as any);
-
-    return result.text || null;
-  } catch (error: any) {
-    const errorMsg = error.message || String(error);
-    if (errorMsg.includes("429") || errorMsg.includes("403") || errorMsg.toLowerCase().includes("quota") || errorMsg.toLowerCase().includes("safety")) {
-      throw error; // Re-throw to trigger fallback
-    }
-    console.error("Gemini Internal Error:", error);
-    return null;
+  if (json) {
+    generationConfig.responseMimeType = 'application/json';
+    generationConfig.responseSchema = schema || { 
+      type: Type.OBJECT, 
+      properties: { result: { type: Type.STRING } },
+      required: ['result']
+    };
   }
+
+  if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
+
+  const tools = useSearch ? [{ googleSearch: {} }] : undefined;
+
+  // Let ALL errors throw so callAI fallback chain can handle them properly
+  const result = await client.models.generateContent({
+    model: targetModel,
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    config: { ...generationConfig, tools }
+  } as any);
+
+  return result.text || null;
 }
 
 async function callOpenAI(prompt: string, json = false) {
