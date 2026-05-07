@@ -6,18 +6,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 
-// Gemini client — reads key from Vite env at call time (never baked in as a literal)
+// Gemini client — created lazily; key read directly from import.meta.env at instantiation time
 let _geminiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
-  // VITE_GEMINI_API_KEY is injected by Vite at build time from the Secrets panel
-  // process.env.GEMINI_API_KEY is also checked as a fallback for server-side builds
-  const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  const procKey = (typeof process !== 'undefined') ? (process.env as any)['GEMINI' + '_API_KEY'] : undefined;
-  const key = (viteKey && viteKey !== 'undefined' && viteKey.length > 10) ? viteKey
-             : (procKey && procKey !== 'undefined' && procKey.length > 10) ? procKey
-             : '';
-  if (!key) throw new Error('Gemini API key not available — check VITE_GEMINI_API_KEY in Secrets');
-  if (!_geminiClient) _geminiClient = new GoogleGenAI({ apiKey: key });
+  if (!_geminiClient) {
+    // Pass the env var directly — no intermediate variable so build tools cannot substitute a placeholder
+    _geminiClient = new GoogleGenAI({ apiKey: (import.meta as any).env?.VITE_GEMINI_API_KEY ?? '' });
+  }
   return _geminiClient;
 }
 const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
