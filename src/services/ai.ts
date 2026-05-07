@@ -9,14 +9,20 @@ import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapt
 // GoogleGenAI client is created lazily at call time so the key is read at runtime, not baked in at build time
 let _geminiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
-  // Try build-time injected key first, then VITE_ prefixed runtime key as fallback
-  const key = (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'undefined')
-    ? process.env.GEMINI_API_KEY
-    : ((import.meta as any).env?.VITE_GEMINI_API_KEY || '');
-  if (!key || key === 'undefined' || key === '') {
+  // Priority order:
+  // 1. import.meta.env.VITE_GEMINI_API_KEY — injected by AI Studio at build time via VITE_ prefix
+  // 2. process.env.GEMINI_API_KEY — injected by vite.config define (may be 'undefined' string if not set)
+  // 3. import.meta.env.GEMINI_API_KEY — fallback for other deployment environments
+  const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  const procKey = process.env.GEMINI_API_KEY;
+  const metaKey = (import.meta as any).env?.GEMINI_API_KEY;
+  const key = (viteKey && viteKey !== 'undefined' && viteKey !== '') ? viteKey
+    : (procKey && procKey !== 'undefined' && procKey !== '') ? procKey
+    : (metaKey && metaKey !== 'undefined' && metaKey !== '') ? metaKey
+    : '';
+  if (!key) {
     throw new Error('GEMINI_API_KEY is not configured. Check Secrets in AI Studio.');
   }
-  // Reset client if key changed (e.g. hot-reload in dev)
   if (!_geminiClient) {
     _geminiClient = new GoogleGenAI({ apiKey: key });
   }
