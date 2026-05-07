@@ -13,7 +13,9 @@ const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).e
 const CLAUDE_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_ANTHROPIC_API_KEY : undefined;
 const OPENAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_OPENAI_API_KEY : undefined;
 
-let globalPrimaryProvider: IntelligenceProvider = 'gemini';
+// XAI (Grok) is the primary provider — its key is correctly injected by AI Studio's build pipeline.
+// Gemini is kept as a fallback but its key is sanitized to MY_GEMINI_API_KEY by AI Studio's build step.
+let globalPrimaryProvider: IntelligenceProvider = 'grok';
 
 function safeParseJSON(text: string, fallback: any = {}) {
   try {
@@ -74,8 +76,10 @@ async function callAI(options: {
   
   const primary = providerOverride || globalPrimaryProvider;
   
+  // Provider order: grok (XAI) → openai → claude → gemini
+  // Gemini is last because AI Studio's build pipeline sanitizes its key to MY_GEMINI_API_KEY
   const providers: IntelligenceProvider[] = [primary];
-  ['gemini', 'claude', 'openai', 'grok'].forEach(p => {
+  ['grok', 'openai', 'claude', 'gemini'].forEach(p => {
     if (p !== primary) providers.push(p as IntelligenceProvider);
   });
 
