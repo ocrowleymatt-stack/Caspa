@@ -21,6 +21,7 @@ interface Props {
 
 export default function CharacterForge({ project, research, chapters = [], updateProject, updateCharacters, onDeduplicateCharacters, onError }: Props) {
   const [loading, setLoading] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [isGeneratingPortrait, setIsGeneratingPortrait] = useState(false);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
@@ -127,11 +128,12 @@ export default function CharacterForge({ project, research, chapters = [], updat
 
   return (
     <div 
-      className="h-full flex flex-col min-h-0 px-4 pb-10"
+      className="h-full overflow-y-auto custom-scrollbar px-4 pb-10"
+      style={{ minHeight: 0 }}
     >
-      <div className="flex-1 min-h-0 max-w-7xl w-full mx-auto py-6 md:py-12 md:px-2 flex flex-col md:flex-row gap-10">
+      <div className="max-w-7xl mx-auto py-6 md:py-12 md:px-2 flex flex-col md:flex-row gap-10">
       {/* Left List */}
-      <div className="w-full md:w-[400px] flex flex-col gap-8 shrink-0 md:pr-10 md:overflow-y-auto md:custom-scrollbar">
+      <div className="w-full md:w-[400px] flex flex-col gap-8 shrink-0 md:pr-10">
         <header className="text-center md:text-left bg-surface-card p-8 rounded-[2.5rem] border border-border-subtle shadow-2xl">
           <div className="flex items-center gap-3 mb-2 justify-center md:justify-start">
              <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
@@ -153,11 +155,18 @@ export default function CharacterForge({ project, research, chapters = [], updat
           </button>
 
           {onDeduplicateCharacters && (
-            <button
-              onClick={onDeduplicateCharacters}
-              className="w-full py-3 bg-red-900/20 border border-red-500/30 text-red-400 rounded-2xl transition-all hover:bg-red-900/40 flex items-center justify-center gap-3 text-[9px] font-black uppercase tracking-[0.2em] active:scale-95"
+            <button 
+              onClick={async () => {
+                setPurging(true);
+                await onDeduplicateCharacters();
+                setPurging(false);
+              }}
+              disabled={purging || (project.characters || []).length < 2}
+              className="w-full py-4 bg-red-500/10 border border-red-500/30 text-red-500 rounded-2xl disabled:opacity-30 transition-all hover:bg-red-500/20 flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] active:scale-95"
             >
-              <Trash2 size={13} />
+              {purging ? (
+                <Activity size={14} className="animate-spin" />
+              ) : <Trash2 size={14} />}
               Purge Duplicate Personnel
             </button>
           )}
@@ -237,7 +246,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
       </div>
 
       {/* Right Detail */}
-      <div className="flex-1 min-h-0 bg-brand-dark border border-border-subtle rounded-[4rem] overflow-y-auto custom-scrollbar flex flex-col shadow-2xl relative">
+      <div className="flex-1 bg-brand-dark border border-border-subtle rounded-[4rem] overflow-hidden flex flex-col shadow-2xl relative">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] grayscale pointer-events-none" />
         <AnimatePresence mode="wait">
           {selectedChar ? (

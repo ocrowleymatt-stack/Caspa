@@ -444,15 +444,17 @@ export default function App() {
 
     // Subcollections Sync
     const unsubChars = onSnapshot(collection(db, 'projects', projectId, 'characters'), (snap) => {
-      const normaliseChar = (d: any): Character => ({
-        ...d,
-        traits: Array.isArray(d.traits) ? d.traits : [],
-        goals: Array.isArray(d.goals) ? d.goals : [],
-        fears: Array.isArray(d.fears) ? d.fears : [],
-        motivations: Array.isArray(d.motivations) ? d.motivations : [],
-        quirks: Array.isArray(d.quirks) ? d.quirks : [],
-      });
-      setCharacters(snap.docs.map(d => normaliseChar(d.data())).sort((a, b) => b.updatedAt - a.updatedAt));
+      setCharacters(snap.docs.map(d => {
+        const data = d.data() as Character;
+        return {
+          ...data,
+          traits: Array.isArray(data.traits) ? data.traits : [],
+          goals: Array.isArray(data.goals) ? data.goals : [],
+          fears: Array.isArray(data.fears) ? data.fears : [],
+          motivations: Array.isArray(data.motivations) ? data.motivations : [],
+          quirks: Array.isArray(data.quirks) ? data.quirks : []
+        };
+      }).sort((a, b) => b.updatedAt - a.updatedAt));
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/characters`));
     
     const unsubNodes = onSnapshot(collection(db, 'projects', projectId, 'plotNodes'), (snap) => {
@@ -731,62 +733,83 @@ export default function App() {
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
   const upsertCharacterBatch = async (charList: Character[]) => {
-    if (!user || charList.length === 0) return;
-    // Read existing characters LIVE from Firestore (not stale React state)
-    // to avoid the stale-closure bug where rapid successive calls all see an empty set.
-    const { getDocs, writeBatch: wb } = await import('firebase/firestore');
-    const existingSnap = await getDocs(collection(db, 'projects', project.id, 'characters'));
-    const existingNames = new Set(
-      existingSnap.docs.map(d => (d.data().name || '').trim().toLowerCase())
-    );
-    const seenInBatch = new Set<string>();
-    const dedupedList = charList.filter(char => {
-      const key = (char.name || '').trim().toLowerCase();
-      if (!key) return false; // skip unnamed
-      if (existingNames.has(key) || seenInBatch.has(key)) return false;
-      seenInBatch.add(key);
-      return true;
-    });
-    if (dedupedList.length === 0) return;
-    const batch = wb(db);
-    dedupedList.forEach(char => {
-      const ref = doc(db, 'projects', project.id, 'characters', char.id);
-      batch.set(ref, { ...char, updatedAt: Date.now() });
-    });
+    if (!user || charList.length === 0 || !project.id || project.id === 'default') return;
+
     try {
+      const { getDocs, query, collection, writeBatch } = await import('firebase/firestore');
+      
+      // LIVE FETCH to ensure we don't have race conditions with stale React state
+      const snap = await getDocs(query(collection(db, 'projects', project.id, 'characters')));
+      const liveExistingNames = new Set(snap.docs.map(d => (d.data() as Character).name.trim().toLowerCase()));
+      
+      const finalBatch: Character[] = [];
+      const internalSet = new Set<string>();
+
+      for (const char of charList) {
+        const normalized = char.name.trim().toLowerCase();
+        if (!liveExistingNames.has(normalized) && !internalSet.has(normalized)) {
+          finalBatch.push(char);
+          internalSet.add(normalized);
+        }
+      }
+
+      if (finalBatch.length === 0) {
+        console.log('upsertCharacterBatch: All incoming characters are already present (Live Check).');
+        return;
+      }
+
+      const batch = writeBatch(db);
+      finalBatch.forEach(char => {
+        const ref = doc(db, 'projects', project.id, 'characters', char.id);
+        batch.set(ref, { ...char, updatedAt: Date.now() });
+      });
+      
       await batch.commit();
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/characters (batch)`); }
+      onNotify(`Imported ${finalBatch.length} new personnel profiles.`, 'success');
+    } catch (e) { 
+      handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/characters (batch)`); 
+    }
   };
 
-  // One-time cleanup: remove duplicate characters (same name), keeping the most recently updated.
   const deduplicateCharacters = async () => {
-    if (!user || !project.id) return;
-    const { getDocs, writeBatch: wb } = await import('firebase/firestore');
-    const snap = await getDocs(collection(db, 'projects', project.id, 'characters'));
-    const byName = new Map<string, { id: string; updatedAt: number }[]>();
-    snap.docs.forEach(d => {
-      const data = d.data();
-      const key = (data.name || '').trim().toLowerCase();
-      if (!key) return;
-      if (!byName.has(key)) byName.set(key, []);
-      byName.get(key)!.push({ id: d.id, updatedAt: data.updatedAt || 0 });
-    });
-    const batch = wb(db);
-    let deleteCount = 0;
-    byName.forEach(entries => {
-      if (entries.length <= 1) return;
-      // Sort descending by updatedAt — keep the first (most recent), delete the rest
-      entries.sort((a, b) => b.updatedAt - a.updatedAt);
-      entries.slice(1).forEach(entry => {
-        batch.delete(doc(db, 'projects', project.id, 'characters', entry.id));
-        deleteCount++;
-      });
-    });
-    if (deleteCount === 0) { onNotify('No duplicate characters found.', 'success'); return; }
+    if (!user || !project.id || project.id === 'default') return;
+    
     try {
-      await batch.commit();
-      onNotify(`Removed ${deleteCount} duplicate character${deleteCount > 1 ? 's' : ''}.`, 'success');
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/characters (dedup)`); }
+      const { getDocs, query, collection, writeBatch } = await import('firebase/firestore');
+      const snap = await getDocs(query(collection(db, 'projects', project.id, 'characters')));
+      const allChars = snap.docs.map(d => ({ ...(d.data() as Character), _ref: d.ref }));
+      
+      const nameGroups: Record<string, typeof allChars> = {};
+      allChars.forEach(c => {
+        const key = c.name.trim().toLowerCase();
+        if (!nameGroups[key]) nameGroups[key] = [];
+        nameGroups[key].push(c);
+      });
+
+      const batch = writeBatch(db);
+      let purgeCount = 0;
+
+      Object.values(nameGroups).forEach(group => {
+        if (group.length > 1) {
+          // Sort by updatedAt descending, keep the first one (most recent)
+          group.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          const [keeper, ...duplicates] = group;
+          duplicates.forEach(dupe => {
+            batch.delete(dupe._ref);
+            purgeCount++;
+          });
+        }
+      });
+
+      if (purgeCount > 0) {
+        await batch.commit();
+        onNotify(`Personnel Purge Complete: Removed ${purgeCount} redundant entries.`, 'success');
+      } else {
+        onNotify('Archive Integrity Verified: No duplicates detected.', 'info');
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `projects/${project.id}/characters (purge)`);
+    }
   };
   const upsertPlotNode = async (node: PlotNode) => {
     if (!user) return;
@@ -978,63 +1001,67 @@ export default function App() {
 
   if (isReading && readerProject) {
     return (
-      <ReaderView 
-        project={readerProject} 
-        chapters={readerChapters} 
-        isLoggedIn={!!user}
-        onBack={() => {
-          setIsReading(false);
-          window.history.replaceState({}, '', window.location.pathname);
-        }}
-      />
+      <PinGate>
+        <ReaderView 
+          project={readerProject} 
+          chapters={readerChapters} 
+          isLoggedIn={!!user}
+          onBack={() => {
+            setIsReading(false);
+            window.history.replaceState({}, '', window.location.pathname);
+          }}
+        />
+      </PinGate>
     );
   }
 
   if (!user) {
     return (
-      <div className="h-screen bg-surface-bg flex items-center justify-center p-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
-        
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-surface-card rounded-[3.5rem] p-12 shadow-[0_50px_100px_rgba(0,0,0,0.6)] text-center space-y-10 border border-border-subtle relative z-10"
-        >
-          <div className="w-24 h-24 bg-brand-primary rounded-[2.5rem] mx-auto flex items-center justify-center shadow-[0_20px_50px_rgba(59,130,246,0.4)] rotate-3 border-4 border-white/10">
-             <Globe size={48} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-5xl font-black text-text-primary tracking-tighter mb-3 italic font-serif">NovelWrite <span className="text-brand-primary font-sans tracking-wide not-italic">PRO</span></h1>
-            <p className="text-text-secondary font-black uppercase tracking-[0.2em] text-[10px] opacity-60">Architecting tomorrow's narratives</p>
-          </div>
-          <button 
-            onClick={handleLogin}
-            className="group w-full py-5 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-4 transition-all shadow-[0_20px_40px_rgba(59,130,246,0.3)] active:scale-95"
+      <PinGate>
+        <div className="h-screen bg-surface-bg flex items-center justify-center p-8 relative overflow-hidden">
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
+          
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-md w-full bg-surface-card rounded-[3.5rem] p-12 shadow-[0_50px_100px_rgba(0,0,0,0.6)] text-center space-y-10 border border-border-subtle relative z-10"
           >
-            <LogIn size={20} className="group-hover:translate-x-1 transition-transform" />
-            Authorize Core Sync
-          </button>
-          {loginError && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium"
+            <div className="w-24 h-24 bg-brand-primary rounded-[2.5rem] mx-auto flex items-center justify-center shadow-[0_20px_50px_rgba(59,130,246,0.4)] rotate-3 border-4 border-white/10">
+               <Globe size={48} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-5xl font-black text-text-primary tracking-tighter mb-3 italic font-serif">NovelWrite <span className="text-brand-primary font-sans tracking-wide not-italic">PRO</span></h1>
+              <p className="text-text-secondary font-black uppercase tracking-[0.2em] text-[10px] opacity-60">Architecting tomorrow's narratives</p>
+            </div>
+            <button 
+              onClick={handleLogin}
+              className="group w-full py-5 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-4 transition-all shadow-[0_20px_40px_rgba(59,130,246,0.3)] active:scale-95"
             >
-              {loginError}
-            </motion.div>
-          )}
-        </motion.div>
-      </div>
+              <LogIn size={20} className="group-hover:translate-x-1 transition-transform" />
+              Authorize Core Sync
+            </button>
+            {loginError && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium"
+              >
+                {loginError}
+              </motion.div>
+            )}
+          </motion.div>
+        </div>
+      </PinGate>
     );
   }
 
   return (
     <PinGate>
-    <div 
-      className="flex h-dvh bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
-      style={{ minHeight: 0 }}
-    >
+      <div 
+        className="flex h-dvh bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
+        style={{ minHeight: 0 }}
+      >
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -1300,7 +1327,7 @@ export default function App() {
           style={{ minHeight: 0 }}
         >
           <div
-            className={`w-full flex-1 flex flex-col min-h-0 overflow-hidden ${
+            className={`w-full flex-1 flex flex-col min-h-0 ${
               ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
                 ? `w-full ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
                 : 'w-full'
@@ -1491,6 +1518,10 @@ export default function App() {
                     updatePlotNodes={async (nodes) => {
                       setPlotNodes(nodes);
                       await upsertPlotNodesBatch(nodes);
+                    }}
+                    onImportCharacters={async (chars) => {
+                      setCharacters(prev => [...prev, ...chars]); // Optimistic update
+                      await upsertCharacterBatch(chars);
                     }}
                     onAddResearch={upsertResearch}
                     setView={setCurrentView}

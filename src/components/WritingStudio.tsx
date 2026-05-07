@@ -410,7 +410,7 @@ export default function WritingStudio({
         project.externalReviews || [],
         project.draftStage,
         chapters.length,
-        project.cutMode       // honour Cut & Compress mode
+        project.cutMode
       );
       setLocalContent(refined);
       updateChapter(selectedChapter.id, { content: refined });
@@ -445,12 +445,12 @@ export default function WritingStudio({
         project.research || [],
         project.maturity,
         project.sourceMaterials || [],
-        selectedChapter.directives || [], // chapter directives from plan
+        [], // directives placeholder
         project.targetWordCount,
         project.externalReviews || [],
-        project.draftStage,       // staged pass number (1-4)
-        chapters.length,           // total chapter count for per-chapter target
-        project.cutMode            // honour Cut & Compress mode
+        project.draftStage,  // staged pass number (1-4)
+        chapters.length,       // total chapter count
+        project.cutMode
       );
       
       const newContent = (localContent + '\n\n' + content).trim();
@@ -467,31 +467,32 @@ export default function WritingStudio({
 
   const handleAnalyzeProse = async () => {
     if (!localContent.trim() || !selectedChapter) return;
-    setIsAnalyzingProse(true);
+    
+    // 1. FAST FEEDBACK (Algorithmic)
+    const localEchoes = detectEchoes(localContent);
+    const echoViolations: { type: string, message: string, severity: 'low' | 'medium' | 'high' }[] = localEchoes.slice(0, 5).map(echo => ({
+      type: 'Echo',
+      message: `Word "${echo.word.toUpperCase()}" is echoing close together. Rule 14: Cut thematic static.`,
+      severity: 'low'
+    }));
+
+    // Chapter Redundancy Check
+    const redundant = findRedundantChapters(chapters);
+    const isRedundant = redundant.some(r => r.chapterId === selectedChapter.id);
+    if (isRedundant) {
+      echoViolations.unshift({
+        type: 'Static',
+        message: `NARRATIVE LOOP WARNING: This chapter overlaps significantly with existing beats. Ensure a unique "turn".`,
+        severity: 'medium' as const
+      });
+    }
+
+    setProseViolations([...echoViolations]);
     setShowProsePanel(true);
+
+    // 2. AI ANALYSIS
+    setIsAnalyzingProse(true);
     try {
-      // ── STAGE 1: Fast local heuristic pre-filters (run first, no API cost) ──
-      const localEchoes = detectEchoes(localContent);
-      const echoViolations: { type: string, message: string, severity: 'low' | 'medium' | 'high' }[] = localEchoes.slice(0, 5).map(echo => ({
-        type: 'Echo',
-        message: `Word "${echo.word.toUpperCase()}" is echoing close together. Rule 14: Cut thematic static.`,
-        severity: 'low'
-      }));
-
-      const redundant = findRedundantChapters(chapters);
-      const isRedundant = redundant.some(r => r.chapterId === selectedChapter.id);
-      if (isRedundant) {
-        echoViolations.unshift({
-          type: 'Static',
-          message: `NARRATIVE LOOP WARNING: This chapter overlaps significantly with existing beats. Ensure a unique "turn".`,
-          severity: 'medium' as const
-        });
-      }
-
-      // Surface local violations immediately so user sees fast feedback
-      setProseViolations([...echoViolations]);
-
-      // ── STAGE 2: AI deep prose analysis (runs after local pre-filters) ──
       const precedingContext = chapters
         .filter(c => c.order < selectedChapter.order)
         .slice(-3)
@@ -499,24 +500,23 @@ export default function WritingStudio({
         .join('\n\n');
 
       const violations = await AIService.analyzeProse(
-        localContent,
-        project.type,
-        precedingContext,
+        localContent, 
+        project.type, 
+        precedingContext, 
         project.externalReviews || []
       );
-
-      // Merge: local pre-filter violations first, then AI violations
+      
       setProseViolations([...echoViolations, ...violations]);
 
-      // ── STAGE 3: Auto-trigger scene-turn check after prose analysis ──
-      if (localContent.trim().length >= 200) {
+      // 3. AUTO-TRIGGER SCENE TURN CHECK
+      if (localContent.length >= 200) {
         setIsCheckingTurn(true);
         setSceneTurnResult(null);
         try {
           const turnResult = await AIService.checkSceneTurn(localContent, project.externalReviews || []);
           setSceneTurnResult(turnResult);
-        } catch (turnErr) {
-          console.warn('Scene turn auto-check failed silently:', turnErr);
+        } catch (e) {
+          console.warn("Auto-turn check silent failure:", e);
         } finally {
           setIsCheckingTurn(false);
         }
@@ -538,7 +538,7 @@ export default function WritingStudio({
     setShowProsePanel(true);
     setSceneTurnResult(null);
     try {
-      const result = await AIService.checkSceneTurn(localContent);
+      const result = await AIService.checkSceneTurn(localContent, project.externalReviews || []);
       setSceneTurnResult(result);
     } catch (err: any) {
       console.error(err);

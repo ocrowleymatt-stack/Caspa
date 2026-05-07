@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Zap, AlertCircle, CheckCircle2, ChevronRight, Play, Wand2, Hammer, Activity, FileUp, Target, Plus, X, Flame } from 'lucide-react';
-import { Project, Chapter, ProjectType, ResearchNote } from '../types';
+import { Project, Chapter, ProjectType, ResearchNote, Character } from '../types';
 import { calculateSimilarity, findRedundantChapters } from '../lib/narrativeUtils';
 import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,12 +13,13 @@ interface Props {
   updateProject: (updates: Partial<Project>) => void;
   updateChapters: (chaps: Chapter[]) => void;
   updatePlotNodes: (nodes: any[]) => void;
+  onImportCharacters?: (chars: Character[]) => Promise<void>;
   onAddResearch?: (note: ResearchNote) => Promise<void>;
   setView: (view: any) => void;
   onError?: (msg: string) => void;
 }
 
-export default function ManuscriptFixer({ project, chapters, research, updateProject, updateChapters, updatePlotNodes, onAddResearch, setView, onError }: Props) {
+export default function ManuscriptFixer({ project, chapters, research, updateProject, updateChapters, updatePlotNodes, onImportCharacters, onAddResearch, setView, onError }: Props) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isFixing, setIsFixing] = useState(false);
   const [autoPilot, setAutoPilot] = useState(false);
@@ -101,7 +102,7 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           [],
           project.draftStage,
           chapters.length,
-          project.cutMode    // honour Cut & Compress mode
+          project.cutMode
         );
 
         updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
@@ -149,13 +150,61 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
 
           addLog(`IO Success: ${fullText.length.toLocaleString()} characters buffered.`);
           
+          // JSON Plan Detection
+          if (file.type === 'application/json' || file.name.endsWith('.json')) {
+            addLog("System IO: Detected JSON Plan artifact. Parsing structure...");
+            try {
+              const data = JSON.parse(fullText);
+              if (data.chapters && Array.isArray(data.chapters)) {
+                addLog(`Success: Found ${data.chapters.length} chapters in JSON plan.`);
+                const mappedChapters: Chapter[] = data.chapters.map((c: any, i: number) => ({
+                  id: crypto.randomUUID(),
+                  title: c.title || `Chapter ${i + 1}`,
+                  summary: c.summary || c.description || "",
+                  content: "",
+                  directives: c.directives || (c.beats ? c.beats : []),
+                  order: i,
+                  plotNodeIds: [],
+                  isPlan: true,
+                  updatedAt: Date.now()
+                }));
+
+                await updateChapters(mappedChapters);
+
+                // Auto-seed characters if present
+                if (data.characters && Array.isArray(data.characters)) {
+                  addLog(`Success: Found ${data.characters.length} characters in plan. Seeding archive...`);
+                  const mappedCharacters: Character[] = data.characters.map((c: any, i: number) => ({
+                    id: c.id || crypto.randomUUID(),
+                    name: (c.name && c.name !== 'Unknown' && !/^character\s*\d+$/i.test(c.name)) ? c.name : (c.role ? `${c.role.split(' ')[0]}_${(i+1)}` : `Char_${(i+1)}`),
+                    role: c.role || 'Supporting',
+                    backstory: c.backstory || '',
+                    traits: c.traits || [],
+                    goals: c.goals || [],
+                    fears: c.fears || [],
+                    motivations: c.motivations || [],
+                    quirks: c.quirks || [],
+                    archetype: c.archetype || 'Unknown',
+                    updatedAt: Date.now()
+                  }));
+                  
+                  if (onImportCharacters) {
+                    await onImportCharacters(mappedCharacters);
+                  }
+                }
+
+                addLog("Ingestion Sequence: 100% COMPLETE (JSON Plan Mode).");
+                setAnalysis(`## Ingestion Successful: JSON Plan Detected\n\nYour project structure has been seeded from the provided JSON file. **${mappedChapters.length} Chapters** have been initialized with instructions and summary context.`);
+                setIsImporting(false);
+                return;
+              }
+            } catch (e) {
+              addLog("Warning: JSON parsing failed or schema mismatch. Falling back to default extraction.");
+            }
+          }
+
           let isPlan = false;
-          // JSON files are ALWAYS treated as book plans — no AI detection needed
-          const isJsonFile = file.name.toLowerCase().endsWith('.json');
-          if (isJsonFile) {
-            isPlan = true;
-            addLog("JSON Detected: Treating as STRUCTURAL PLAN / BLUEPRINT (automatic — no AI detection needed).");
-          } else if (!bypassAI) {
+          if (!bypassAI) {
             addLog("AI Core: Detecting artifact typology...");
             const type = await AIService.detectIngestionType(fullText);
             isPlan = type === 'plan';
@@ -163,133 +212,7 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           }
 
           addLog("Phase 1: Detecting narrative architecture...");
-
-          const generateId = () => {
-             try { return crypto.randomUUID(); } 
-             catch (e) { return Math.random().toString(36).substring(2) + Date.now().toString(36); }
-          };
-
-          // ── JSON PLAN: Parse directly, no AI splitting needed ──────────────────────
-          if (isJsonFile) {
-            try {
-              const planData = JSON.parse(fullText);
-              addLog("JSON Parse: Structural plan decoded successfully.");
-
-              // Extract chapters from common JSON plan shapes
-              const rawChapters: any[] = planData.chapters || planData.outline || planData.acts || planData.sections || [];
-              const rawCharacters: any[] = planData.characters || planData.cast || [];
-              const rawPlotNodes: any[] = planData.plotNodes || planData.plot_nodes || planData.plotlines || planData.arcs || [];
-
-              if (rawCharacters.length > 0) {
-                const characters = rawCharacters.map((c: any, i: number) => ({
-                  id: generateId(),
-                  name: (c.name && c.name !== 'Unknown' && !/^character\s*\d+$/i.test(c.name)) ? c.name : (c.role ? `${c.role.split(' ')[0]}_${(i+1)}` : `Character_${(i+1)}`),
-                  role: c.role || c.archetype || 'supporting',
-                  backstory: c.backstory || c.background || c.bio || '',
-                  traits: Array.isArray(c.traits) ? c.traits : (c.traits ? [c.traits] : []),
-                  goals: Array.isArray(c.goals) ? c.goals : (c.goals ? [c.goals] : []),
-                  fears: Array.isArray(c.fears) ? c.fears : (c.fears ? [c.fears] : []),
-                  motivations: Array.isArray(c.motivations) ? c.motivations : (c.motivations ? [c.motivations] : []),
-                  quirks: Array.isArray(c.quirks) ? c.quirks : (c.quirks ? [c.quirks] : []),
-                  archetype: c.archetype || '',
-                  physicalDescription: c.physicalDescription || c.appearance || '',
-                  updatedAt: Date.now()
-                }));
-                // updateProject doesn't handle characters directly — we surface them via plot nodes as directives
-                addLog(`JSON Characters: Extracted ${characters.length} character profiles.`);
-              }
-
-              if (rawPlotNodes.length > 0) {
-                const plotNodes = rawPlotNodes.map((n: any, i: number) => ({
-                  id: generateId(),
-                  title: n.title || n.name || `Plot Thread ${i + 1}`,
-                  description: n.description || n.summary || n.content || '',
-                  status: 'active' as const,
-                  type: (n.type === 'main' || n.type === 'sub' || n.type === 'theme') ? n.type : 'main' as const,
-                  order: i,
-                  updatedAt: Date.now()
-                }));
-                updatePlotNodes(plotNodes);
-                addLog(`JSON Plot Nodes: Seeded ${plotNodes.length} plot threads.`);
-              }
-
-              if (rawChapters.length > 0) {
-                const newChapters: Chapter[] = rawChapters.map((c: any, i: number) => {
-                  const directive = [
-                    c.summary || c.description || c.content || c.synopsis || '',
-                    c.beats ? `Beats: ${Array.isArray(c.beats) ? c.beats.join('; ') : c.beats}` : '',
-                    c.goals ? `Goals: ${Array.isArray(c.goals) ? c.goals.join('; ') : c.goals}` : '',
-                    c.notes || ''
-                  ].filter(Boolean).join('\n');
-                  return {
-                    id: generateId(),
-                    title: c.title || c.name || `Chapter ${i + 1}`,
-                    summary: c.summary || c.description || c.synopsis || 'Plan-imported chapter.',
-                    content: '',
-                    directives: directive ? [directive] : [],
-                    order: i,
-                    plotNodeIds: [],
-                    tags: ['json-plan', 'plan-imported'],
-                    isPlan: true,
-                    updatedAt: Date.now()
-                  };
-                });
-                addLog(`JSON Chapters: Seeded ${newChapters.length} chapter blueprints.`);
-                await updateChapters(newChapters);
-                addLog("Ingestion Sequence: 100% COMPLETE.");
-                setAnalysis(`## JSON Plan Ingested Successfully
-
-Your book plan has been decoded and seeded into the project from scratch.
-
-**Diagnostic Overview:**
-- Source Method: JSON Structural Plan (Direct Parse)
-- Chapters Seeded: **${newChapters.length}**
-- Plot Nodes Seeded: **${rawPlotNodes.length}**
-- Characters Detected: **${rawCharacters.length}**
-
-**Plan Instruction Protocol Active:** Go to the **Writing Studio** to begin drafting. The system will use your chapter directives as the blueprint for each pass.`);
-              } else {
-                // No chapters array found — treat the whole JSON as a plan directive
-                addLog("JSON: No chapters array found. Treating entire JSON as a single plan directive.");
-                const singleChapter: Chapter[] = [{
-                  id: generateId(),
-                  title: planData.title || 'Book Plan',
-                  summary: planData.premise || planData.summary || planData.description || 'Imported JSON plan.',
-                  content: '',
-                  directives: [fullText.slice(0, 8000)],
-                  order: 0,
-                  plotNodeIds: [],
-                  tags: ['json-plan', 'plan-imported'],
-                  isPlan: true,
-                  updatedAt: Date.now()
-                }];
-                await updateChapters(singleChapter);
-                addLog("Ingestion Sequence: 100% COMPLETE.");
-                setAnalysis(`## JSON Plan Ingested\n\nYour JSON plan has been loaded as a single blueprint directive. Go to the **Writing Studio** to begin drafting.`);
-              }
-
-              // Update project metadata from plan if available
-              const projectUpdates: Partial<Project> = {};
-              if (planData.title && !project.title) projectUpdates.title = planData.title;
-              if (planData.genre) projectUpdates.genre = planData.genre;
-              if (planData.premise || planData.logline) projectUpdates.premise = planData.premise || planData.logline;
-              if (planData.targetWordCount || planData.target_word_count) {
-                projectUpdates.targetWordCount = planData.targetWordCount || planData.target_word_count;
-              }
-              if (Object.keys(projectUpdates).length > 0) {
-                updateProject(projectUpdates);
-                addLog(`JSON Metadata: Updated project with ${Object.keys(projectUpdates).join(', ')}.`);
-              }
-
-            } catch (jsonErr: any) {
-              addLog(`JSON Parse Error: ${jsonErr.message}. Falling back to text ingestion.`);
-              // Fall through to normal text processing below
-            }
-            setIsImporting(false);
-            return;
-          }
-          // ── END JSON PLAN ──────────────────────────────────────────────────────────────────────
-
+          
           let finalSegments: { title: string; summary: string; marker: string; directives?: string[] }[] = [];
           
           if (!bypassAI) {
@@ -352,6 +275,11 @@ Your book plan has been decoded and seeded into the project from scratch.
 
           addLog(`Architecture: ${finalSegments.length} nodes ready for reconstruction.`);
             
+          const generateId = () => {
+             try { return crypto.randomUUID(); } 
+             catch (e) { return Math.random().toString(36).substring(2) + Date.now().toString(36); }
+          };
+
           const newChapters: Chapter[] = finalSegments.map((seg, i) => {
             const nextSeg = finalSegments[i + 1];
             let content = "";
@@ -494,95 +422,68 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
 
   const startAutoPilot = async () => {
     setAutoPilot(true);
-    addLog("AUTO-PILOT ENGAGED: Full pipeline — Apply Suggestions → Fix Structure → Write Prose to Target");
+    addLog("Engaging Auto-Pilot: Staged Narrative Expansion Protocol...");
     try {
-      // ── PHASE 1: Apply all pending AI suggestions from research/brainstorm ──
-      addLog("Phase 1/5: Scanning for pending AI suggestions and brainstorm directives...");
-      const pendingDirectives: string[] = [];
-      if (research && research.length > 0) {
-        const brainstormNotes = research.filter(r =>
-          r.category === 'brainstorm' ||
-          r.title?.toLowerCase().includes('brainstorm') ||
-          r.title?.toLowerCase().includes('structural plan') ||
-          r.title?.toLowerCase().includes('ai spark')
-        );
-        if (brainstormNotes.length > 0) {
-          addLog(`Phase 1: Found ${brainstormNotes.length} brainstorm/structural notes — injecting as directives.`);
-          brainstormNotes.forEach(n => pendingDirectives.push(`[BRAINSTORM DIRECTIVE] ${n.title}: ${n.content.slice(0, 500)}`));
-        } else {
-          addLog("Phase 1: No pending brainstorm directives found. Proceeding with structural analysis.");
-        }
-      }
+      // Phase 1: Scan research notes for brainstorm/structural directives
+      addLog("Phase 1: Harvesting structural directives from research...");
+      const brainstormDirectives = research
+        .filter(r => r.category === 'brainstorm' || r.tags?.includes('structural') || r.tags?.includes('brainstorm'))
+        .map(r => r.content);
 
-      // ── PHASE 2: Structural gap analysis — generate missing beats ──
-      addLog("Phase 2/5: Analysing narrative structure for gaps and missing beats...");
+      // Phase 2: Find structural gaps
+      addLog("Phase 2: Surveying architecture for narrative gaps...");
       const beats = await AIService.automateNextSteps(project, chapters);
-      let workingChapters: Chapter[] = [...chapters];
-
+      let workingChapters = [...chapters];
+      
       if (beats && beats.length > 0) {
-        addLog(`Phase 2: ${beats.length} structural gap(s) identified. Inserting missing chapter beats...`);
+        addLog(`Architecture: Found ${beats.length} missing narrative turns. Inserting beats...`);
         for (const beat of beats) {
-          const id = crypto.randomUUID();
           const newChap: Chapter = {
-            id,
-            title: beat.title || 'Untitled Beat',
-            summary: beat.summary || 'No summary provided.',
+            id: crypto.randomUUID(),
+            title: beat.title || "Untitled Resolution",
+            summary: beat.summary || "No summary provided.",
             content: '',
             order: workingChapters.length,
             plotNodeIds: [],
-            tags: ['auto-pilot'],
-            directives: pendingDirectives.length > 0 ? pendingDirectives : [],
+            directives: beat.directives || [],
+            tags: ['automated-finalization'],
             updatedAt: Date.now()
           };
           workingChapters.push(newChap);
-          addLog(`Phase 2: Inserted beat — "${newChap.title}"`);
         }
         await updateChapters(workingChapters);
-        addLog("Phase 2: Structure committed to cloud.");
-      } else {
-        addLog("Phase 2: Structure is complete. No new beats required.");
+        addLog("System Sync: New architecture committed to cloud registry.");
       }
 
-      // ── PHASE 3: Identify all chapters needing prose (empty or stub-only) ──
-      addLog("Phase 3/5: Identifying chapters requiring prose generation...");
-      const STUB_THRESHOLD = 200; // chapters with fewer than 200 words are treated as stubs
-      const chaptersNeedingProse = workingChapters.filter(c => {
-        const wordCount = c.content.trim().split(/\s+/).filter(Boolean).length;
-        return wordCount < STUB_THRESHOLD;
-      });
-
+      // Phase 3: Identify chapters needing prose
+      addLog("Phase 3: Identifying skeletal chapters needing prose synthesis...");
+      const chaptersNeedingProse = workingChapters.filter(c => !c.content.trim() || c.content.split(/\s+/).length < 200);
+      
       if (chaptersNeedingProse.length === 0) {
-        addLog("Phase 3: All chapters already have substantial prose. Auto-Pilot complete.");
+        addLog("Status: Functional parity achieved. No chapters require drafting.");
         return;
       }
-      addLog(`Phase 3: ${chaptersNeedingProse.length} chapter(s) require prose generation (empty or stub < ${STUB_THRESHOLD} words).`);
 
-      // ── PHASE 4: Word count targeting ──
-      const totalTarget = project.targetWordCount || 50000;
-      const totalChapters = workingChapters.length || 20;
-      addLog(`Phase 4/5: Word count target — ${totalTarget.toLocaleString()} words across ${totalChapters} chapters.`);
-      addLog(`Phase 4: Per-chapter target at current pass = ${Math.round(totalTarget / totalChapters).toLocaleString()} words (before pass multiplier).`);
+      // Phase 4: Target Logic
+      const totalWordsTarget = project.targetWordCount || 50000;
+      const totalChapters = workingChapters.length || 25;
+      const wordsPerChapter = Math.round(totalWordsTarget / totalChapters);
+      addLog(`Phase 4: Global Word Count Target locked at ~${wordsPerChapter.toLocaleString()} words/chapter.`);
 
-      // ── PHASE 5: Write full prose for every chapter needing it ──
-      addLog(`Phase 5/5: Writing prose for ${chaptersNeedingProse.length} chapter(s)...`);
-      let updatedChaps = [...workingChapters];
+      // Phase 5: Loop through all chapters needing prose
+      addLog(`Phase 5: Initiating Staged Drafting for ${chaptersNeedingProse.length} chapters...`);
+      let totalWordsWritten = 0;
 
-      for (let i = 0; i < chaptersNeedingProse.length; i++) {
-        const chap = chaptersNeedingProse[i];
-        addLog(`Phase 5 [${i + 1}/${chaptersNeedingProse.length}]: Drafting "${chap.title}"...`);
-
-        // Build continuity context from all preceding chapters
-        const earlierContent = updatedChaps
+      for (const chap of chaptersNeedingProse) {
+        addLog(`Synthesis: Drafting "${chap.title}"...`);
+        
+        const earlierContent = workingChapters
           .filter(c => c.order < chap.order)
           .map(c => c.content)
           .join('\n\n')
           .slice(-5000);
 
-        // Merge any brainstorm directives with chapter-specific directives
-        const chapterDirectives = [
-          ...(chap.directives || []),
-          ...pendingDirectives
-        ];
+        const mergedDirectives = [...(chap.directives || []), ...brainstormDirectives];
 
         try {
           const content = await AIService.writeDraft(
@@ -590,40 +491,34 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
             chap.summary,
             earlierContent,
             project.type,
-            [],
+            [], // activeNodes
             research,
             project.maturity,
             project.sourceMaterials || [],
-            chapterDirectives,
-            totalTarget,          // project word count target
-            [],
-            project.draftStage,   // honour current draft pass
-            totalChapters,        // total chapter count for per-chapter calculation
-            project.cutMode       // honour Cut & Compress mode
+            mergedDirectives,
+            project.targetWordCount || 50000,
+            [], // externalReviews
+            project.draftStage,
+            totalChapters,
+            project.cutMode
           );
 
-          updatedChaps = updatedChaps.map(c =>
-            c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c
-          );
-          await updateChapters(updatedChaps);
-          const wc = content.trim().split(/\s+/).filter(Boolean).length;
-          addLog(`Phase 5 [${i + 1}/${chaptersNeedingProse.length}]: "${chap.title}" — ${wc.toLocaleString()} words written. Saved.`);
+          const draftWordCount = content.split(/\s+/).length;
+          totalWordsWritten += draftWordCount;
+          
+          workingChapters = workingChapters.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
+          await updateChapters(workingChapters);
+          addLog(`Success: "${chap.title}" saved. [${draftWordCount} words generated]`);
         } catch (err: any) {
-          addLog(`Phase 5: Warning — failed to draft "${chap.title}". Continuing... (${err.message || 'unknown error'})`);
+          addLog(`Warning: Failed to draft ${chap.title}. Attempting skip...`);
           console.error(err);
         }
       }
 
-      // ── Final summary ──
-      const totalWordsWritten = updatedChaps.reduce((sum, c) => {
-        return sum + c.content.trim().split(/\s+/).filter(Boolean).length;
-      }, 0);
-      addLog(`AUTO-PILOT COMPLETE: ${chaptersNeedingProse.length} chapter(s) drafted. Total manuscript: ~${totalWordsWritten.toLocaleString()} words.`);
-      addLog(`Target was ${totalTarget.toLocaleString()} words. ${totalWordsWritten >= totalTarget * 0.9 ? 'TARGET MET.' : `Gap: ${(totalTarget - totalWordsWritten).toLocaleString()} words remaining — run again or advance to next pass.`}`);
-
+      addLog(`Auto-Pilot COMPLETE. Total generated: ${totalWordsWritten.toLocaleString()} words vs Target: ${(wordsPerChapter * chaptersNeedingProse.length).toLocaleString()}.`);
     } catch (err: any) {
       console.error('Auto-Pilot Failure:', err);
-      const msg = err.message || 'Auto-Pilot sequence interrupted';
+      const msg = err.message || "Auto-Pilot sequence interrupted";
       addLog(`Fatal: ${msg}`);
       onError?.(msg);
     } finally {
@@ -666,9 +561,9 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
             chap.directives || [],
             project.targetWordCount,
             [],
-            project.draftStage,   // honour current draft pass
-            chapters.length,       // per-chapter word target
-            project.cutMode        // honour Cut & Compress mode
+            project.draftStage,
+            chapters.length,
+            project.cutMode
           );
 
           // Update local copy
@@ -806,9 +701,9 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
             chap.directives || [],
             project.targetWordCount,
             [],
-            project.draftStage,   // honour current draft pass
-            newChapters.length,    // per-chapter word target
-            project.cutMode        // honour Cut & Compress mode
+            project.draftStage,
+            newChapters.length,
+            project.cutMode
           );
           
           updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);

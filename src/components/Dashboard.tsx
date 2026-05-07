@@ -5,10 +5,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Users, GitBranch, PenTool, Sparkles, FileText, BookOpen, Layers, Save, Trash2, Trophy, Target, Plus, ChevronDown, Activity } from 'lucide-react';
-import { Project, Chapter, ViewType, ProjectType, MaturityLevel } from '../types';
-import DraftStagePanel from './DraftStagePanel';
+import { Project, ViewType, ProjectType, MaturityLevel, Chapter } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { PROJECT_TYPES, MATURITY_LEVELS, GENRES, TONES } from '../constants';
+import DraftStagePanel from './DraftStagePanel';
 
 interface Props {
   project: Project;
@@ -72,7 +72,7 @@ export default function Dashboard({
   const stats = [
     { label: 'Personnel Profiles', value: project.characters?.length || 0, icon: Users, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'characters' },
     { label: 'Narrative Vectors', value: project.plotNodes?.length || 0, icon: GitBranch, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'plot' },
-    { label: 'Coded Segments', value: project.chapters?.length || 0, icon: Book, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'writing' },
+    { label: 'Coded Segments', value: project.chapters?.length || 0, icon: BookOpen, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'writing' },
     { 
       label: project.targetWordCount ? `${Math.round(((project.stats?.totalWords || 0) / project.targetWordCount) * 100)}% Synchronized` : 'Target Offline', 
       value: project.stats?.totalWords || 0, 
@@ -331,11 +331,14 @@ export default function Dashboard({
           )}
         </section>
 
-        {/* Draft Stage Panel */}
+        {/* Draft Stage System */}
         <section className="md:col-span-12">
-          <DraftStagePanel project={project} chapters={chapters} updateProject={updateProject} />
+          <DraftStagePanel 
+            project={project} 
+            chapters={chapters} 
+            updateProject={updateProject} 
+          />
         </section>
-
       </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { ProjectType, MaturityLevel } from './types';
 import { IconStandard, IconMature, IconTransgressive } from './components/MaturityIcons';
 
 export const PROJECT_TYPES: { value: ProjectType; label: string }[] = [
@@ -24,16 +25,7 @@ export const GENRES = [
 ];
 
 export const TONES = [
-  'Cinematic',
-  'Noir',
-  'Gritty',
-  'Whimsical',
-  'Formal',
-  'Academic',
-  'Poetic',
-  'Minimalist',
-  'Humorous',
-  'Suspenseful'
+  'Cinematic', 'Noir', 'Gritty', 'Whimsical', 'Formal', 'Academic', 'Poetic', 'Minimalist', 'Humorous', 'Suspenseful'
 ];
 
 export const MATURITY_LEVELS: { value: MaturityLevel; label: string; icon: any; color: string; bgColor: string; description: string }[] = [
@@ -51,7 +43,7 @@ export const MATURITY_LEVELS: { value: MaturityLevel; label: string; icon: any; 
     icon: IconMature,
     color: 'text-amber-500', 
     bgColor: 'bg-amber-100',
-    description: 'Adult themes, strong language, and suggestive content. Clothes are optional.'
+    description: 'Adult themes and suggestive content. Clothes are optional.'
   },
   { 
     value: 'transgressive', 
@@ -59,6 +51,6 @@ export const MATURITY_LEVELS: { value: MaturityLevel; label: string; icon: any; 
     icon: IconTransgressive,
     color: 'text-red-500', 
     bgColor: 'bg-red-100',
-    description: 'Explicit content. Nothing is off the table. The AI will not look away.'
+    description: 'Explicit content. Nothing is off the table.'
   },
 ];

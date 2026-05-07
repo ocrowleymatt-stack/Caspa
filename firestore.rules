@@ -76,9 +76,8 @@ service cloud.firestore {
                         'targetPrize', 'prizeAssessments', 'isPublic', 'publicId', 
                         'targetWordCount', 'publishing', 'updatedAt', 'primaryProvider',
                         'characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials',
-                        'lastModified', 'id', 'ownerId', 'createdAt',
-                        'draftStage', 'draftPassHistory', 'cutMode',
-                        'externalReviews', 'styleDNA', 'isLocked'
+                        'externalReviews', 'styleDNA', 'isLocked', 'draftStage', 'draftPassHistory',
+                        'id', 'ownerId', 'createdAt', 'cutMode'
                       ]);
 
       allow delete: if isSignedIn() && isOwner(existing());
