@@ -224,7 +224,7 @@ export default function IntelligenceLab({
         
         Format as a professional manuscript section or world-bible entry.`;
       
-      const result = await AIService.callAI({ prompt, model: "gemini-1.5-pro" });
+      const result = await AIService.callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
       setSynthesisResult(result || '');
       setActiveStep('synthesis');
     } catch (error) {
