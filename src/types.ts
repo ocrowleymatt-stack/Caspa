@@ -186,4 +186,4 @@ export interface Project {
   cutMode?: boolean;
 }
 
-export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'reviews' | 'library';
+export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'reviews' | 'library' | 'bundle';

@@ -35,7 +35,8 @@ import {
   Upload,
   Activity,
   ChevronDown,
-  Plus
+  Plus,
+  Scale
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -88,6 +89,7 @@ import PrizeView from './components/PrizeView';
 import ReaderView from './components/ReaderView';
 import ReviewVault from './components/ReviewVault';
 import PinGate from './components/PinGate';
+import CourtBundleView from './components/CourtBundleView';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -975,6 +977,7 @@ export default function App() {
       title: "5. Delivery",
       items: [
         { id: 'export', label: 'Export & Publish', icon: Globe },
+        { id: 'bundle', label: 'Evidence Bundle', icon: Scale },
         { id: 'settings', label: 'Settings', icon: Settings },
       ]
     }
@@ -1495,6 +1498,19 @@ export default function App() {
                     reviews={externalReviews}
                     onUpsert={upsertExternalReview}
                     onDelete={(id) => deleteSubDoc('externalReviews', id)}
+                  />
+                </div>
+              )}
+              {currentView === 'bundle' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <CourtBundleView
+                    key={project.id}
+                    project={project}
+                    chapters={chapters}
+                    research={research}
+                    characters={characters}
+                    plotNodes={plotNodes}
+                    onNotify={(msg, type) => addNotification(msg, type)}
                   />
                 </div>
               )}
