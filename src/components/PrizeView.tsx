@@ -34,7 +34,8 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
   const targetPrizeData = assessments.find(a => a.prizeName === project.targetPrize);
 
   return (
-    <div className="max-w-6xl mx-auto py-12 px-6">
+    <div className="h-full overflow-y-auto overscroll-contain custom-scrollbar pb-32" style={{ minHeight: 0 }}>
+      <div className="max-w-6xl mx-auto py-12 px-6">
       <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-full mb-4">
@@ -52,7 +53,14 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
           disabled={loading}
           className="px-8 py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl flex items-center gap-3 disabled:opacity-50"
         >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} className="text-amber-400" />}
+          {loading ? (
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            >
+              <Loader2 size={16} />
+            </motion.div>
+          ) : <Sparkles size={16} className="text-amber-400" />}
           Run Real-time Audit
         </button>
       </header>
@@ -226,5 +234,6 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
         )}
       </div>
     </div>
+  </div>
   );
 }

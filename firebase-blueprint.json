@@ -1,5 +1,94 @@
 {
   "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A writing project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["novel", "screenplay", "stageplay", "radioplay", "legal", "academic", "experimental"] },
+        "maturity": { "type": "string", "enum": ["standard", "mature", "transgressive"] },
+        "genre": { "type": "string" },
+        "premise": { "type": "string" },
+        "tone": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "collaborators": { "type": "array", "items": { "type": "string" } },
+        "lastModified": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "isPublic": { "type": "boolean" },
+        "publicId": { "type": "string" },
+        "targetPrize": { "type": "string" }
+      },
+      "required": ["id", "title", "ownerId"]
+    },
+    "Character": {
+      "title": "Character",
+      "description": "A character in the story",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "backstory": { "type": "string" },
+        "archetype": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name"]
+    },
+    "PlotNode": {
+      "title": "Plot Node",
+      "description": "A narrative beat or plot point",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "ended", "resolved"] },
+        "type": { "type": "string", "enum": ["main", "sub", "theme"] },
+        "order": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "title", "order"]
+    },
+    "Chapter": {
+      "title": "Chapter",
+      "description": "A chapter in the manuscript",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "content": { "type": "string" },
+        "order": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "title", "order"]
+    },
+    "ResearchNote": {
+      "title": "Research Note",
+      "description": "Factual or thematic research",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "title"]
+    },
+    "Presence": {
+      "title": "Presence",
+      "description": "Real-time user presence",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "lastSeen": { "type": "number" }
+      },
+      "required": ["userId", "lastSeen"]
+    },
     "User": {
       "title": "User",
       "description": "User profile data",
@@ -8,169 +97,57 @@
         "email": { "type": "string" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
-        "createdAt": { "type": "number" },
-        "lastLoginAt": { "type": "number" }
-      },
-      "required": ["email", "createdAt", "lastLoginAt"]
-    },
-    "Project": {
-      "title": "Project",
-      "description": "The main novel project container",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "type": { "type": "string" },
-        "maturity": { "type": "string" },
-        "genre": { "type": "string" },
-        "premise": { "type": "string" },
-        "tone": { "type": "string" },
-        "ownerId": { "type": "string" },
-        "collaborators": { "type": "array", "items": { "type": "string" } },
-        "lastModified": { "type": "number" },
-        "createdAt": { "type": "number" },
-        "stats": { "type": "object" },
-        "critiques": { "type": "object" }
-      },
-      "required": ["title", "ownerId", "lastModified", "createdAt"]
-    },
-    "Character": {
-      "title": "Character",
-      "description": "Detailed character profile",
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "role": { "type": "string" },
-        "backstory": { "type": "string" },
-        "traits": { "type": "array", "items": { "type": "string" } },
-        "goals": { "type": "array", "items": { "type": "string" } },
-        "fears": { "type": "array", "items": { "type": "string" } },
-        "motivations": { "type": "array", "items": { "type": "string" } },
-        "quirks": { "type": "array", "items": { "type": "string" } },
-        "archetype": { "type": "string" },
-        "updatedAt": { "type": "number" }
-      },
-      "required": ["name", "role", "updatedAt"]
-    },
-    "PlotNode": {
-      "title": "Plot Node",
-      "description": "A tracked line of plot or thematic beat",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "description": { "type": "string" },
-        "status": { "type": "string", "enum": ["active", "ended", "resolved"] },
-        "type": { "type": "string", "enum": ["main", "sub", "theme"] },
-        "order": { "type": "number" },
-        "updatedAt": { "type": "number" }
-      },
-      "required": ["title", "status", "order"]
-    },
-    "Chapter": {
-      "title": "Chapter",
-      "description": "A manuscript chapter or scene",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "summary": { "type": "string" },
-        "content": { "type": "string" },
-        "order": { "type": "number" },
-        "plotNodeIds": { "type": "array", "items": { "type": "string" } },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "updatedAt": { "type": "number" }
-      },
-      "required": ["title", "order", "updatedAt"]
-    },
-    "ResearchNote": {
-      "title": "Research Note",
-      "description": "A specialist research entry",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "content": { "type": "string" },
-        "source": { "type": "string" },
-        "sources": { "type": "array", "items": { "type": "string" } },
-        "category": { "type": "string" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "updatedAt": { "type": "number" }
-      },
-      "required": ["title", "content", "updatedAt"]
-    },
-    "Comment": {
-      "title": "Comment",
-      "description": "In-line collaborator feedback",
-      "type": "object",
-      "properties": {
-        "authorId": { "type": "string" },
-        "authorName": { "type": "string" },
-        "text": { "type": "string" },
-        "position": { "type": "number" },
-        "resolved": { "type": "boolean" },
+        "lastLoginAt": { "type": "number" },
         "createdAt": { "type": "number" }
       },
-      "required": ["authorId", "text", "createdAt"]
+      "required": ["email"]
     },
-    "sourceMaterials": {
+    "SourceMaterial": {
       "title": "Source Material",
-      "description": "Background documents or manuscripts",
+      "description": "Reference material uploaded by user",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "name": { "type": "string" },
         "content": { "type": "string" },
         "type": { "type": "string" },
         "updatedAt": { "type": "number" }
       },
-      "required": ["name", "content", "updatedAt"]
-    },
-    "Presence": {
-      "title": "Presence",
-      "description": "Real-time user state",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "cursorPosition": { "type": "number" },
-        "activeChapterId": { "type": "string" },
-        "lastSeen": { "type": "number" }
-      },
-      "required": ["userId", "lastSeen"]
+      "required": ["id", "name", "content"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
+    "projects": {
+      "schema": "Project",
+      "description": "Root collection for all writing projects"
+    },
+    "projects/{projectId}/characters": {
+      "schema": "Character",
+      "description": "Characters for a specific project"
+    },
+    "projects/{projectId}/plotNodes": {
+      "schema": "PlotNode",
+      "description": "Plot beats for a specific project"
+    },
+    "projects/{projectId}/chapters": {
+      "schema": "Chapter",
+      "description": "Chapters for a specific project"
+    },
+    "projects/{projectId}/research": {
+      "schema": "ResearchNote",
+      "description": "Research notes for a specific project"
+    },
+    "projects/{projectId}/presence": {
+      "schema": "Presence",
+      "description": "Active users on a specific project"
+    },
+    "projects/{projectId}/sourceMaterials": {
+      "schema": "SourceMaterial",
+      "description": "Source materials for a specific project"
+    },
+    "users": {
       "schema": "User",
       "description": "User profiles"
-    },
-    "/projects/{projectId}": {
-      "schema": "Project",
-      "description": "Novel projects"
-    },
-    "/projects/{projectId}/characters/{characterId}": {
-      "schema": "Character",
-      "description": "Cast members"
-    },
-    "/projects/{projectId}/plotNodes/{nodeId}": {
-      "schema": "PlotNode",
-      "description": "Structural plot lines"
-    },
-    "/projects/{projectId}/chapters/{chapterId}": {
-      "schema": "Chapter",
-      "description": "Manuscript chapters"
-    },
-    "/projects/{projectId}/research/{noteId}": {
-      "schema": "ResearchNote",
-      "description": "Specialist research notes"
-    },
-    "/projects/{projectId}/chapters/{chapterId}/comments/{commentId}": {
-      "schema": "Comment",
-      "description": "In-line comments on chapters"
-    },
-    "/projects/{projectId}/presence/{userId}": {
-      "schema": "Presence",
-      "description": "User presence in project"
-    },
-    "/projects/{projectId}/sourceMaterials/{sourceId}": {
-      "schema": "sourceMaterials",
-      "description": "Uploaded source documents"
     }
   }
 }
