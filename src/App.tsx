@@ -55,6 +55,18 @@ import {
 } from './types';
 import { auth, db, loginWithGoogle, logout } from './lib/firebase';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
+import {
+  createProject as persistCreateProject,
+  saveProject as persistSaveProject,
+  upsertChapter as persistUpsertChapter,
+  upsertChapterBatch as persistUpsertChapterBatch,
+  loadCachedChapters,
+  loadCachedProject,
+  loadCachedProjectId,
+  setActiveProjectId,
+  mergeChaptersWithLocalHardsaves,
+  isLikelyOffline,
+} from './lib/persistenceService';
 import { 
   onSnapshot, 
   doc, 
@@ -214,6 +226,8 @@ export default function App() {
   const [history, setHistory] = useState<Project[]>([]);
   const [future, setFuture] = useState<Project[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
 
   // Derived Stats
   const totalWords = chapters.reduce((acc, c) => {
@@ -325,6 +339,29 @@ export default function App() {
       return;
     }
 
+    // ── Local-first: immediately hydrate from cache so UI is never blank ──
+    const cachedList = (() => {
+      try {
+        const raw = localStorage.getItem(`ls_projects_cache_${user.uid}`);
+        return raw ? (JSON.parse(raw) as Project[]) : [];
+      } catch { return []; }
+    })();
+    if (cachedList.length > 0) {
+      setProjects(cachedList);
+      setIsProjectsLoading(false);
+      // Restore last active project from cache immediately
+      const cachedId = localStorage.getItem(`lastProject_${user.uid}`);
+      if (cachedId) {
+        const cachedProj = cachedList.find(p => p.id === cachedId);
+        if (cachedProj) {
+          setProject(cachedProj);
+          // Also restore cached chapters for instant display
+          const cachedChaps = loadCachedChapters(cachedId);
+          if (cachedChaps.length > 0) setChapters(cachedChaps);
+        }
+      }
+    }
+
     const q = query(
       collection(db, 'projects'), 
       where('ownerId', '==', user.uid)
@@ -338,45 +375,44 @@ export default function App() {
 
       setProjects(projectsList);
       setIsProjectsLoading(false);
+      setIsOfflineMode(false);
       localStorage.setItem(`ls_projects_cache_${user.uid}`, JSON.stringify(projectsList));
-      console.log('Project List Synced:', projectsList.length, 'projects found');
 
-      if (projectsList.length === 0 && !loading) {
-        return;
-      }
+      if (projectsList.length === 0 && !loading) return;
 
       // Select project only on initial load or if current is missing
       setProject(current => {
         const savedId = localStorage.getItem(`lastProject_${user.uid}`);
         
-        // If we have a real project, keep it unless it was deleted
         if (current.id && current.id !== 'default') {
           const stillExists = projectsList.find(p => p.id === current.id);
           if (stillExists) return current;
         }
-
-        // Try saved ID from localStorage
         if (savedId) {
           const found = projectsList.find(p => p.id === savedId);
           if (found) return found;
         }
-
-        // Fallback to first in list OR create one if authenticated
-        if (projectsList.length === 0) {
-          return INITIAL_PROJECT;
-        }
+        if (projectsList.length === 0) return INITIAL_PROJECT;
         return projectsList[0];
       });
 
-    // After setting project, if we are still on default but have a user, trigger creation
-      // Handled by dedicated useEffect below
     }, (err) => {
       setIsProjectsLoading(false);
-      try {
-        handleFirestoreError(err, OperationType.GET, 'projects');
-      } catch (e) {
-        console.error("Projects sync failure:", e);
-        // Silenced notification per user request
+      handleFirestoreError(err, OperationType.GET, 'projects');
+      // ── Offline recovery: load from cache and show banner ──
+      const cached = (() => {
+        try {
+          const raw = localStorage.getItem(`ls_projects_cache_${user.uid}`);
+          return raw ? (JSON.parse(raw) as Project[]) : [];
+        } catch { return []; }
+      })();
+      if (cached.length > 0) {
+        setProjects(cached);
+        setIsOfflineMode(true);
+        addNotification('⚠️ Cloud sync failed. Showing locally cached projects — your work is safe.', 'error');
+      } else {
+        setIsOfflineMode(true);
+        addNotification('⚠️ Cannot reach cloud storage. No local cache found. Please check your connection.', 'error');
       }
     });
 
@@ -399,27 +435,25 @@ export default function App() {
   const createNewProject = async (title: string = 'Untitled Narrative') => {
     if (!user) return;
     const newId = `project_${crypto.randomUUID()}`;
-    const projectRef = doc(db, 'projects', newId);
-    const path = `projects/${newId}`;
-    try {
-      const newProjectData: Project = { 
-        ...INITIAL_PROJECT,
-        title,
-        id: newId,
-        ownerId: user.uid,
-        createdAt: Date.now(),
-        lastModified: Date.now(),
-        updatedAt: serverTimestamp() as any
-      };
-      
-      // Update localStorage immediately to prevent sync races
-      localStorage.setItem(`lastProject_${user.uid}`, newId);
-      
-      await setDoc(projectRef, newProjectData);
-      setProject(newProjectData);
-      setCurrentView('dashboard');
-      // Suppressed per user request: addNotification('New project created successfully.', 'success');
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
+    const newProjectData: Project = {
+      ...INITIAL_PROJECT,
+      title,
+      id: newId,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      lastModified: Date.now(),
+      updatedAt: serverTimestamp() as any
+    };
+
+    // ── Local-first: update state + cache BEFORE awaiting Firestore ──
+    setProject(newProjectData);
+    setProjects(prev => [newProjectData, ...prev]);
+    setCurrentView('dashboard');
+
+    const result = await persistCreateProject(user.uid, newProjectData);
+    if (!result.ok && 'error' in result) {
+      addNotification(`\u26a0\ufe0f New project saved locally but cloud sync failed: ${result.error}`, 'error');
+    }
   };
 
   // Auto-create initial project if none exist
@@ -470,14 +504,26 @@ export default function App() {
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/plotNodes`));
     
     const unsubChapters = onSnapshot(collection(db, 'projects', projectId, 'chapters'), (snap) => {
-      const chapterList = snap.docs.map(d => d.data() as Chapter).sort((a, b) => a.order - b.order);
+      const cloudChapters = snap.docs.map(d => d.data() as Chapter).sort((a, b) => a.order - b.order);
+      // Merge with local hardsaves: if a local hardsave is newer, prefer it
+      const chapterList = mergeChaptersWithLocalHardsaves(cloudChapters);
       setChapters(chapterList);
-      
-      // Update local hardsave cache for each chapter
+      // Update hardsave cache and chapter registry
       chapterList.forEach(c => {
-        localStorage.setItem(`ls_hardsave_${c.id}`, c.content);
+        localStorage.setItem(`ls_hardsave_${c.id}`, c.content ?? '');
       });
-    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/chapters`));
+      try {
+        localStorage.setItem(`ls_chapters_${projectId}`, JSON.stringify(chapterList));
+      } catch { /* quota */ }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `projects/${projectId}/chapters`);
+      // Fall back to cached chapters
+      const cached = loadCachedChapters(projectId);
+      if (cached.length > 0) {
+        setChapters(cached);
+        addNotification('\u26a0\ufe0f Chapter sync failed \u2014 showing locally cached chapters.', 'error');
+      }
+    });
     
     const unsubResearch = onSnapshot(collection(db, 'projects', projectId, 'research'), (snap) => {
       setResearch(snap.docs.map(d => d.data() as ResearchNote).sort((a, b) => b.updatedAt - a.updatedAt));
@@ -588,44 +634,23 @@ export default function App() {
   const saveToCloud = async () => {
     if (!user || !project.id || project.id === 'default') return;
     setIsSaving(true);
-    const path = `projects/${project.id}`;
-    try {
-      const projectRef = doc(db, 'projects', project.id);
-      
-      // Explicitly pick only fields allowed by firestore.rules to avoid Permission Denied
-      // Filter out undefined values
-      const allowedFields: any = {
-        title: project.title || 'Untitled',
-        type: project.type,
-        maturity: project.maturity,
-        genre: project.genre || '',
-        premise: project.premise || '',
-        tone: project.tone || 'Cinematic',
-        ownerId: project.ownerId || user.uid,
-        collaborators: project.collaborators || [],
-        lastModified: Date.now(),
-        stats: project.stats || {},
-        critiques: project.critiques || {},
-        id: project.id,
-        targetPrize: project.targetPrize || '',
-        prizeAssessments: project.prizeAssessments || [],
-        isPublic: project.isPublic || false,
-        publicId: project.publicId || '',
-        targetWordCount: project.targetWordCount || 0,
-        updatedAt: serverTimestamp()
-      };
+    setSaveStatus('saving');
 
-      if (project.publishing) allowedFields.publishing = project.publishing;
-      if (project.primaryProvider) allowedFields.primaryProvider = project.primaryProvider;
-      if (project.draftStage !== undefined) allowedFields.draftStage = project.draftStage;
-      if (project.draftPassHistory !== undefined) allowedFields.draftPassHistory = project.draftPassHistory;
-      if (project.cutMode !== undefined) allowedFields.cutMode = project.cutMode;
+    const result = await persistSaveProject(user.uid, project);
 
-      await updateDoc(projectRef, allowedFields);
-      setTimeout(() => setIsSaving(false), 1000);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
-      setIsSaving(false);
+    setIsSaving(false);
+    if (result.ok) {
+      setSaveStatus('saved');
+      addNotification('\u2713 Project saved successfully.', 'success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } else if ('error' in result) {
+      setSaveStatus('error');
+      if (result.fromCache) {
+        addNotification(`\u26a0\ufe0f Saved locally \u2014 cloud sync failed: ${result.error}`, 'error');
+      } else {
+        addNotification(`\u2717 Save failed: ${result.error}`, 'error');
+      }
+      setTimeout(() => setSaveStatus('idle'), 5000);
     }
   };
 
@@ -828,15 +853,10 @@ export default function App() {
   };
   const upsertChapter = async (chap: Chapter) => {
     if (!user) return;
-    const path = `projects/${project.id}/chapters/${chap.id}`;
-    try {
-      await setDoc(doc(db, 'projects', project.id, 'chapters', chap.id), {
-        ...chap,
-        projectId: project.id,
-        ownerId: user.uid,
-        updatedAt: Date.now()
-      });
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
+    const result = await persistUpsertChapter(user.uid, project.id, chap);
+    if (!result.ok && 'error' in result && !result.fromCache) {
+      addNotification(`\u26a0\ufe0f Chapter saved locally \u2014 cloud sync failed: ${result.error}`, 'error');
+    }
   };
   const upsertSourceMaterial = async (source: SourceMaterial) => {
     if (!user) return;
@@ -872,41 +892,12 @@ export default function App() {
 
   const upsertChapterBatch = async (chapList: Chapter[]) => {
     if (!user || !project.id || project.id === 'default') return;
-    const { writeBatch } = await import('firebase/firestore');
-    
-    // Deletion of orphans: find IDs in current state that are NOT in the new list
-    const newIds = new Set(chapList.map(c => c.id));
-    const orphans = chapters.filter(c => !newIds.has(c.id));
-
-    if (orphans.length > 0) {
-      console.log(`Cloud Sync: Purging ${orphans.length} orphaned chapters.`);
-      const deleteBatch = writeBatch(db);
-      orphans.forEach(o => {
-        deleteBatch.delete(doc(db, 'projects', project.id, 'chapters', o.id));
-      });
-      await deleteBatch.commit();
-    }
-
-    // Split into chunks of 100 for insertion/update
-    const chunkSize = 100;
-    for (let i = 0; i < chapList.length; i += chunkSize) {
-      const chunk = chapList.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-      
-      chunk.forEach(chap => {
-        const chapRef = doc(db, 'projects', project.id, 'chapters', chap.id);
-        batch.set(chapRef, { 
-          ...chap, 
-          projectId: project.id,
-          ownerId: user.uid,
-          updatedAt: Date.now() 
-        });
-      });
-
-      try {
-        await batch.commit();
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/chapters/BATCH_${i}`);
+    const result = await persistUpsertChapterBatch(user.uid, project.id, chapList, chapters);
+    if (!result.ok && 'error' in result) {
+      if (result.fromCache) {
+        addNotification(`\u26a0\ufe0f Chapters saved locally \u2014 cloud sync failed: ${result.error}`, 'error');
+      } else {
+        addNotification(`\u2717 Chapter batch save failed: ${result.error}`, 'error');
       }
     }
   };
@@ -1292,16 +1283,44 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-            {isSaving && (
-              <motion.div 
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="hidden md:flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full text-[9px] font-black text-brand-primary uppercase tracking-[0.1em]"
-              >
-                <div className="w-1 h-1 rounded-full bg-brand-primary animate-ping" />
-                Intelligence Synced
-              </motion.div>
-            )}
+            <AnimatePresence mode="wait">
+              {saveStatus === 'saving' && (
+                <motion.div key="saving"
+                  initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+                  className="hidden md:flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full text-[9px] font-black text-brand-primary uppercase tracking-[0.1em]"
+                >
+                  <div className="w-1 h-1 rounded-full bg-brand-primary animate-ping" />
+                  Saving...
+                </motion.div>
+              )}
+              {saveStatus === 'saved' && (
+                <motion.div key="saved"
+                  initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+                  className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full text-[9px] font-black text-green-400 uppercase tracking-[0.1em]"
+                >
+                  <div className="w-1 h-1 rounded-full bg-green-400" />
+                  Saved
+                </motion.div>
+              )}
+              {saveStatus === 'error' && (
+                <motion.div key="error"
+                  initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+                  className="hidden md:flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-[0.1em]"
+                >
+                  <div className="w-1 h-1 rounded-full bg-amber-400" />
+                  Local Only
+                </motion.div>
+              )}
+              {isOfflineMode && saveStatus === 'idle' && (
+                <motion.div key="offline"
+                  initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+                  className="hidden md:flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-[0.1em]"
+                >
+                  <div className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+                  Offline / Local Cache
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
           <div className="flex items-center gap-2 lg:gap-3 shrink-0">
              {isMobile && (
@@ -1574,13 +1593,15 @@ export default function App() {
                 initial={{ opacity: 0, x: 20, y: 0, scale: 0.9 }}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-                className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border min-w-[300px] backdrop-blur-xl ${
-                  n.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                  n.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border min-w-[300px] max-w-[420px] backdrop-blur-xl ${
+                  n.type === 'error' && n.message.startsWith('⚠') ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                  n.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                  n.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
                   'bg-brand-primary/10 border-brand-primary/20 text-brand-primary'
                 }`}
               >
                 <div className={`p-2 rounded-lg ${
+                  n.type === 'error' && n.message.startsWith('\u26a0') ? 'bg-amber-500/20' :
                   n.type === 'error' ? 'bg-red-500/20' :
                   n.type === 'success' ? 'bg-emerald-500/20' :
                   'bg-brand-primary/20'
