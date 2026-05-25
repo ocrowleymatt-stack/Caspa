@@ -68,8 +68,9 @@ async function callAI(options: {
   schema?: any;
   maxTokens?: number;
   providerOverride?: IntelligenceProvider;
+  useWebSearch?: boolean;
 }) {
-  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride } = options;
+  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride, useWebSearch = false } = options;
   
   const primary = providerOverride || globalPrimaryProvider;
   
@@ -420,7 +421,7 @@ export const AIService = {
     };
 
     const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
-    const data = safeParseJSON(text || "{}");
+    const data = safeParseJSON(text || "{}")
     return {
       name: (data.name && data.name !== 'Unknown' && data.name !== 'Unknown Character') ? data.name : `${concept.split(' ')[0] || 'Character'}_${Date.now().toString(36)}`,
       role: data.role || 'Supporting',
@@ -712,7 +713,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
        Use your search tool to find real-world high-fidelity references.
        
        Return JSON.` :
-      `Research Assistant for a ${type}. Topic: "${topic}". Context: ${context}. Return JSON with "sources" array.`;
+      `You are a research assistant for a ${type}.\nTopic: "${topic}"\nContext: ${context}\n\nGather current, verifiable sources and synthesize findings.\nReturn JSON with keys: title, content, category, tags, sources.\nFor sources, include concrete citations (publication or site names with URLs when available).`;
 
     const schema = {
       type: Type.OBJECT,
@@ -739,9 +740,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       prompt, 
       json: true, 
       schema, 
-      model: deep ? "gemini-2.5-pro-preview-05-06" : "gemini-2.0-flash",
-      // @ts-ignore - support passing useSearch hiddenly or through options
-      useSearch: deep 
+      model: deep ? "gemini-2.5-pro-preview-05-06" : "gemini-2.0-flash"
     });
 
     const data = safeParseJSON(text || "{}");
@@ -1037,7 +1036,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     };
 
     const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
-    const data = safeParseJSON(text || "[]", []);
+    const data = safeParseJSON(text || '[]', []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
 

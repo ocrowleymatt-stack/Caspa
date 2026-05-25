@@ -89,7 +89,6 @@ import { AIService } from './services/ai';
 import Dashboard from './components/Dashboard';
 import Brainstorm from './components/Brainstorm';
 import CharacterForge from './components/CharacterForge';
-import PlotArchitect from './components/PlotArchitect';
 import WritingStudio from './components/WritingStudio';
 import LibraryView from './components/Library';
 import IntelligenceLab from './components/IntelligenceLab';
@@ -101,6 +100,7 @@ import PrizeView from './components/PrizeView';
 import ReaderView from './components/ReaderView';
 import ReviewVault from './components/ReviewVault';
 import PinGate from './components/PinGate';
+import PlotArchitect from './components/PlotArchitect';
 import CourtBundleView from './components/CourtBundleView';
 
 const INITIAL_PROJECT: Project = {
@@ -953,7 +953,6 @@ export default function App() {
     },    {
       title: "3. Structure",
       items: [
-        { id: 'plot', label: 'Plot Architect', icon: GitBranch },
         { id: 'architect', label: 'Finish & Fix', icon: Construction },
       ]
     },
@@ -1466,6 +1465,10 @@ export default function App() {
                     plotNodes={plotNodes}
                     presence={presence}
                     updateProject={updateProject} 
+                    updatePlotNodes={async (nodes) => {
+                      setPlotNodes(nodes);
+                      await upsertPlotNodesBatch(nodes);
+                    }}
                     updateChapters={async (chapList) => {
                        setChapters(chapList);
                        await upsertChapterBatch(chapList);
@@ -1623,4 +1626,3 @@ export default function App() {
     </PinGate>
     );
 }
-

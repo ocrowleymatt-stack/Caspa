@@ -22,6 +22,7 @@ interface Props {
   plotNodes: PlotNode[];
   presence: Presence[];
   updateProject: (updates: Partial<Project>) => void;
+  updatePlotNodes: (nodes: PlotNode[]) => void;
   updateChapters: (chapters: Chapter[]) => void;
   setView: (view: ViewType) => void;
   upsertChapter?: (chapter: Chapter) => void;
@@ -37,6 +38,7 @@ export default function WritingStudio({
   plotNodes, 
   presence, 
   updateProject, 
+  updatePlotNodes,
   updateChapters, 
   setView,
   upsertChapter, 
@@ -54,6 +56,7 @@ export default function WritingStudio({
   const [isWriting, setIsWriting] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [isCritiquing, setIsCritiquing] = useState(false);
+  const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [isAnalyzingProse, setIsAnalyzingProse] = useState(false);
   const [isCheckingTurn, setIsCheckingTurn] = useState(false);
   const [sceneTurnResult, setSceneTurnResult] = useState<{ turned: boolean; score: number; reasoning: string; missing: string } | null>(null);
@@ -578,6 +581,64 @@ export default function WritingStudio({
       onError?.(err.message || 'Narrative Sync Analysis failed.');
     } finally {
       setIsCritiquing(false);
+    }
+  };
+
+  const handleOrchestrate = async () => {
+    setIsOrchestrating(true);
+    setShowCritique(true);
+    try {
+      const generatedNodes = await AIService.outlinePlotNodes(project, chapters);
+      if (!generatedNodes.length) throw new Error('No plot nodes were generated.');
+      updatePlotNodes(generatedNodes);
+
+      const reconciled = await AIService.reconcileChapters(project, generatedNodes, chapters);
+      const synchronizedChapters: Chapter[] = reconciled.map((item, index) => {
+        const existing = chapters.find((c: Chapter) => c.title === item.title);
+        return {
+          id: existing?.id || crypto.randomUUID(),
+          title: item.title,
+          summary: item.summary,
+          content: existing?.content || '',
+          order: index,
+          plotNodeIds: item.plotNodeIds,
+          tags: existing?.tags || ['reconciled'],
+          updatedAt: Date.now()
+        };
+      });
+      updateChapters(synchronizedChapters);
+
+      const targetChapter = synchronizedChapters.find(c => !c.content.trim()) || synchronizedChapters[0];
+      if (targetChapter) {
+        const earlierContent = synchronizedChapters
+          .filter(c => c.order < targetChapter.order)
+          .map(c => c.content)
+          .join('\n\n')
+          .slice(-3000);
+        const activeNodes = generatedNodes.filter(n => targetChapter.plotNodeIds?.includes(n.id));
+        const content = await AIService.writeDraft(
+          targetChapter.title,
+          targetChapter.summary,
+          earlierContent,
+          project.type,
+          activeNodes,
+          project.research || [],
+          project.maturity,
+          project.sourceMaterials || []
+        );
+        const draftedChapter = { ...targetChapter, content: (targetChapter.content + '\n\n' + content).trim(), updatedAt: Date.now() };
+        updateChapters(synchronizedChapters.map(c => c.id === draftedChapter.id ? draftedChapter : c));
+        if (upsertChapter) upsertChapter(draftedChapter);
+        setSelectedChapterId(draftedChapter.id);
+      }
+
+      const continuity = await AIService.analyzeContinuity(generatedNodes, synchronizedChapters);
+      setCritiqueText(continuity);
+    } catch (err: any) {
+      console.error(err);
+      onError?.(err.message || 'Unified orchestration failed.');
+    } finally {
+      setIsOrchestrating(false);
     }
   };
 
@@ -1214,6 +1275,26 @@ export default function WritingStudio({
                   </div>
 
                   <div className="h-6 w-px bg-border-subtle shrink-0 hidden lg:block" />
+
+                  <button
+                    onClick={handleOrchestrate}
+                    disabled={isOrchestrating}
+                    className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
+                      isOrchestrating ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
+                    }`}
+                  >
+                    {isOrchestrating ? (
+                      <>
+                        <Activity size={12} className="animate-pulse" />
+                        Orchestrating...
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={12} className="fill-slate-900" />
+                        Architect + Draft + Sync
+                      </>
+                    )}
+                  </button>
 
                   <motion.button 
                     whileHover={{ scale: 1.02 }}
