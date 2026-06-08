@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { GitBranch, Plus, Zap, Trash2, Map, MoveVertical, AlertCircle, Clock, Activity } from 'lucide-react';
 import { Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType } from '../types';
@@ -6,6 +7,7 @@ import { Reorder, AnimatePresence, motion } from 'motion/react';
 import Markdown from 'react-markdown';
 
 interface Props {
+  key?: React.Key;
   project: Project;
   plotNodes: PlotNode[];
   chapters: Chapter[];
@@ -18,6 +20,7 @@ interface Props {
 }
 
 interface NodeItemProps {
+  key?: React.Key;
   node: PlotNode;
   index: number;
   totalLength: number;

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, ChevronLeft, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type, Flame, Save, Library, AlertTriangle, CircleSlash, Sparkles, RefreshCcw, AlertCircle, ChevronUp, ChevronDown, Fingerprint } from 'lucide-react';
 import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique, ViewType, ExternalReview, Character } from '../types';
 import { AIService } from '../services/ai';
@@ -18,6 +18,7 @@ import { Repeat } from 'lucide-react';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 interface Props {
+  key?: React.Key;
   project: Project;
   plotNodes: PlotNode[];
   presence: Presence[];
@@ -677,7 +678,7 @@ export default function WritingStudio({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []) as File[];
     if (files.length === 0) return;
 
     for (const file of files) {

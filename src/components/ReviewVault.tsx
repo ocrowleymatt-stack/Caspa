@@ -9,6 +9,7 @@ import { Project, ExternalReview } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
+  key?: React.Key;
   project: Project;
   reviews: ExternalReview[];
   onUpsert: (review: ExternalReview) => void;

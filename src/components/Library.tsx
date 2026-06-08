@@ -1,3 +1,4 @@
+import React from 'react';
 import { motion } from 'motion/react';
 import { 
   Book, 
@@ -13,6 +14,7 @@ import { Project } from '../types';
 import { useState } from 'react';
 
 interface LibraryProps {
+  key?: React.Key;
   projects: Project[];
   onSelectProject: (project: Project) => void;
   onCreateProject: () => void;
@@ -107,7 +109,7 @@ export default function Library({
   );
 }
 
-function ProjectCard({ proj, onSelect, onDelete, isArchived }: { proj: Project, onSelect: (p: Project) => void, onDelete: (id: string) => void, isArchived?: boolean }) {
+function ProjectCard({ proj, onSelect, onDelete, isArchived }: { key?: React.Key; proj: Project, onSelect: (p: Project) => void, onDelete: (id: string) => void, isArchived?: boolean }) {
   return (
     <motion.div 
       layout

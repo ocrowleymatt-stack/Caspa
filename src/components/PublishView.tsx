@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { generateEpub } from '../lib/epubExport';
 
 interface Props {
+  key?: React.Key;
   project: Project;
   chapters: Chapter[];
   updateProject: (updates: Partial<Project>) => Promise<void>;

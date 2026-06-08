@@ -5,6 +5,7 @@ import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
+  key?: React.Key;
   project: Project;
   chapters: Chapter[];
   updateProject: (updates: Partial<Project>) => void;

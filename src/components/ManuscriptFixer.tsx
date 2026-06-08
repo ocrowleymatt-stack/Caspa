@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 
 interface Props {
+  key?: React.Key;
   project: Project;
   chapters: Chapter[];
   research: ResearchNote[];

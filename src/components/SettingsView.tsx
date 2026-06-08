@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GENRES, TONES, MATURITY_LEVELS, PROJECT_TYPES } from '../constants';
 
 interface Props {
+  key?: React.Key;
   project: Project;
   updateProject: (updates: Partial<Project>) => void;
   deleteProject: () => void;

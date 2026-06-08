@@ -10,6 +10,7 @@
  *  - Editable sections, drag-to-reorder, AI narrative generation, and Markdown download
  */
 
+import React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Network, FileText, Download, RefreshCw, Plus, Trash2, GripVertical,
@@ -72,6 +73,7 @@ interface BundleSection {
 type DocumentFormat = 'court_bundle' | 'evidence_manual' | 'witness_statement' | 'custom';
 
 interface Props {
+  key?: React.Key;
   project: Project;
   chapters: Chapter[];
   research: ResearchNote[];
@@ -603,6 +605,7 @@ Research notes: ${research.length} notes${graphSummary}`;
 // ── Section Editor sub-component ──────────────────────────────────────────────
 
 interface SectionEditorProps {
+  key?: React.Key;
   section: BundleSection;
   staticContent: string;
   onGenerate: () => void;
