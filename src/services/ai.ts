@@ -88,13 +88,13 @@ async function callAI(options: {
           result = await callGemini(options);
           break;
         case 'claude':
-          result = await callClaude(prompt, json);
+          result = await callClaude(prompt, json, maxTokens);
           break;
         case 'openai':
-          result = await callOpenAI(prompt, json);
+          result = await callOpenAI(prompt, json, maxTokens);
           break;
         case 'grok':
-          result = await callXAI(prompt, json);
+          result = await callXAI(prompt, json, maxTokens);
           break;
       }
       
@@ -150,7 +150,7 @@ async function callGemini(options: {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
 }
 
-async function callOpenAI(prompt: string, json = false) {
+async function callOpenAI(prompt: string, json = false, maxTokens?: number) {
   if (!OPENAI_API_KEY) return null;
 
   try {
@@ -166,7 +166,8 @@ async function callOpenAI(prompt: string, json = false) {
           { role: "system", content: "You are an elite narrative architect and world-class author." },
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
         ],
-        ...(json ? { response_format: { type: "json_object" } } : {})
+        ...(json ? { response_format: { type: "json_object" } } : {}),
+        ...(maxTokens ? { max_tokens: maxTokens } : {})
       })
     });
 
@@ -184,7 +185,7 @@ async function callOpenAI(prompt: string, json = false) {
   }
 }
 
-async function callClaude(prompt: string, json = false) {
+async function callClaude(prompt: string, json = false, maxTokens?: number) {
   if (!CLAUDE_API_KEY) return null;
 
   try {
@@ -198,7 +199,7 @@ async function callClaude(prompt: string, json = false) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
+        max_tokens: maxTokens || 16000,
         messages: [
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
         ],
@@ -228,7 +229,7 @@ async function callClaude(prompt: string, json = false) {
   }
 }
 
-async function callXAI(prompt: string, json = false) {
+async function callXAI(prompt: string, json = false, maxTokens?: number) {
   if (!XAI_API_KEY) return null;
   
   try {
@@ -254,7 +255,8 @@ async function callXAI(prompt: string, json = false) {
         ],
         temperature: 0.8,
         stream: false,
-        ...(json ? { response_format: { type: "json_object" } } : {})
+        ...(json ? { response_format: { type: "json_object" } } : {}),
+        ...(maxTokens ? { max_tokens: maxTokens } : {})
       })
     });
 
@@ -643,16 +645,20 @@ Based ONLY on the provided text and strictly following any structural plans foun
       ? Math.round((projectTargetWords * passPercent) / effectiveChapterCount)
       : Math.round((50000 * passPercent) / effectiveChapterCount);
 
-    const targetContext = isPlanDriven
-      ? `DRAFT STAGE: ${passLabel}
-PLAN-DRIVEN DRAFTING: Follow the CRITICAL AUTHOR DIRECTIVES below. Still respect the pass stage — do not write beyond ${passLabel} depth.`
-      : `DRAFT STAGE: ${passLabel}
-PROJECT SCALE: ${(projectTargetWords || 50000).toLocaleString()} words total across ${effectiveChapterCount} chapters.
+    // Word target block is always included — plan-driven drafts still need a hard target
+    const wordTargetBlock = `PROJECT SCALE: ${(projectTargetWords || 50000).toLocaleString()} words total across ${effectiveChapterCount} chapters.
 STRICT WORD TARGET FOR THIS CHAPTER: ${perChapterTarget!.toLocaleString()} words.
 HARD WORD LIMIT: Do NOT exceed ${Math.round(perChapterTarget! * 1.03).toLocaleString()} words (3% tolerance).
 Do NOT write below ${Math.round(perChapterTarget! * 0.90).toLocaleString()} words (90% floor).
 ${passInstr}
 STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% manuscript depth. Writing beyond this depth is a failure. The manuscript will be expanded in later passes.`;
+
+    const targetContext = isPlanDriven
+      ? `DRAFT STAGE: ${passLabel}
+PLAN-DRIVEN DRAFTING: Follow the CRITICAL AUTHOR DIRECTIVES below. Still respect the pass stage — do not write beyond ${passLabel} depth.
+${wordTargetBlock}`
+      : `DRAFT STAGE: ${passLabel}
+${wordTargetBlock}`;
 
     const researchContext = research.length > 0 
       ? `\nRESEARCH ARCHIVE (INTEGRATE THESE SENSORY DETAILS):\n${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('\n')}`
@@ -700,7 +706,9 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       - CHARACTER NAMES IN PROSE: Character names are stored in the library for reference only. In prose, use a character's name only when the narrative naturally calls for it. Characters may be referred to by role, pronoun, relationship, or description throughout. Never force a name into prose as a rule.
     `;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    // Compute a generous maxTokens budget: ~1.4 tokens per word, plus 20% headroom
+    const maxTokensBudget = Math.ceil(perChapterTarget * 1.4 * 1.2);
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06", maxTokens: maxTokensBudget });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType, deep = false): Promise<ResearchNote> {
@@ -1182,15 +1190,15 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
 
     const draftStageInfo = draftStage ? `
     DRAFT STAGE: Pass ${currentPass} of 4 (${Math.round(passPercent * 100)}% target depth).
-    PER-CHAPTER TARGET: ~${perChapterTarget.toLocaleString()} words.
     ` : "";
 
-    const targetContext = projectTargetWords 
-      ? `\nPROJECT TARGET SCALE: ~${projectTargetWords.toLocaleString()} words total. 
-         STRICT DEPTH DIRECTIVE: For this pass, prioritize a density level of ~${perChapterTarget.toLocaleString()} words.
-         ${draftStageInfo}
-         Maintain depth and pacing accordingly.`
-      : draftStageInfo ? `\n${draftStageInfo}` : "";
+    const targetContext = `
+PROJECT TARGET SCALE: ${(projectTargetWords || 50000).toLocaleString()} words total across ${totalChapters} chapters.
+STRICT WORD TARGET FOR THIS CHAPTER: ${perChapterTarget.toLocaleString()} words.
+HARD WORD LIMIT: Do NOT exceed ${Math.round(perChapterTarget * 1.03).toLocaleString()} words (3% tolerance).
+Do NOT write below ${Math.round(perChapterTarget * 0.90).toLocaleString()} words (90% floor).
+WORD COUNT IS LAW: Output must land within 3% of the STRICT WORD TARGET. Too long = failure. Too short = failure.
+${draftStageInfo}`;
 
     const cutModeDirective = cutMode ? `
       CRITICAL CUT & COMPRESS DIRECTIVE:
@@ -1250,7 +1258,9 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       - Find the "winding" of the scene—where the power shifts or the secret leaks.
       - Return ONLY the enhanced text. No preamble.`;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    // Compute a generous maxTokens budget: ~1.4 tokens per word, plus 20% headroom
+    const deepSimmerMaxTokens = Math.ceil(perChapterTarget * 1.4 * 1.2);
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06", maxTokens: deepSimmerMaxTokens });
   },
 
   async assessPrizeWorthiness(project: Project, chapters: Chapter[]): Promise<PrizeAssessment[]> {

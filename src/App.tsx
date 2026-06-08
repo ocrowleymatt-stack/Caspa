@@ -116,6 +116,12 @@ const INITIAL_PROJECT: Project = {
   sourceMaterials: [],
   lastModified: Date.now(),
   createdAt: Date.now(),
+  // Safe defaults: new projects start at Pass 1 with an 80k word target.
+  // Without these, writeDraft falls back to a 50k target and draftStage=undefined
+  // which forces every chapter to be written at 10% depth (skeletal only).
+  draftStage: 1,
+  targetWordCount: 80000,
+  cutMode: false,
   stats: {
     narrativeStreak: 0,
     totalWords: 0,

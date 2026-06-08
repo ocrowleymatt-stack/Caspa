@@ -80,14 +80,13 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
       for (const chap of emptyChapters) {
         addLog(`Simmering: Chapter ${chap.order + 1} - "${chap.title}"...`);
         
-        // ECONOMY CONTEXT: Use only the last 1500 characters of the preceding chapters.
+        // Use last 5000 chars of prior chapters for adequate continuity context
         const earlierContent = updatedChaps
           .filter(c => c.order < chap.order)
           .map(c => c.content)
           .join('\n\n')
-          .slice(-1500);
+          .slice(-5000);
 
-        // ECONOMY: Omit source materials to save token cost
         const content = await AIService.writeDraft(
           chap.title,
           chap.summary,
@@ -105,9 +104,12 @@ export default function ManuscriptFixer({ project, chapters, research, updatePro
           project.cutMode
         );
 
+        const draftWordCount = content.split(/\s+/).filter(Boolean).length;
         updatedChaps = updatedChaps.map(c => c.id === chap.id ? { ...c, content, updatedAt: Date.now() } : c);
+        // Save only the newly drafted chapter individually to avoid O(n²) batch writes
+        const updatedChap = updatedChaps.find(c => c.id === chap.id)!;
         await updateChapters(updatedChaps);
-        addLog(`Success: Synthesized Chapter ${chap.order + 1} (Economy Mode).`);
+        addLog(`Success: Synthesized Chapter ${chap.order + 1} [${draftWordCount.toLocaleString()} words] (Economy Mode).`);
       }
       
       addLog("System: Slow Cooker chapter production complete. Structure filled.");
@@ -457,18 +459,26 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
 
       // Phase 3: Identify chapters needing prose
       addLog("Phase 3: Identifying skeletal chapters needing prose synthesis...");
-      const chaptersNeedingProse = workingChapters.filter(c => !c.content.trim() || c.content.split(/\s+/).length < 200);
+      // Use a pass-aware minimum: chapters below 50% of their pass target need re-drafting
+      const _totalWT = project.targetWordCount || 50000;
+      const _totalCh = workingChapters.length || 25;
+      const _PASS_PCT: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
+      const _passMin = Math.round((_totalWT * (_PASS_PCT[project.draftStage ?? 1] ?? 1.0)) / _totalCh * 0.5);
+      const chaptersNeedingProse = workingChapters.filter(c => !c.content.trim() || c.content.split(/\s+/).length < Math.max(50, _passMin));
       
       if (chaptersNeedingProse.length === 0) {
         addLog("Status: Functional parity achieved. No chapters require drafting.");
         return;
       }
 
-      // Phase 4: Target Logic
+      // Phase 4: Target Logic — respect the current draft pass percentage
       const totalWordsTarget = project.targetWordCount || 50000;
       const totalChapters = workingChapters.length || 25;
-      const wordsPerChapter = Math.round(totalWordsTarget / totalChapters);
-      addLog(`Phase 4: Global Word Count Target locked at ~${wordsPerChapter.toLocaleString()} words/chapter.`);
+      const PASS_PCT: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
+      const currentPass = project.draftStage ?? 1;
+      const passPercent = PASS_PCT[currentPass] ?? 1.0;
+      const wordsPerChapter = Math.round((totalWordsTarget * passPercent) / totalChapters);
+      addLog(`Phase 4: Pass ${currentPass} (${Math.round(passPercent * 100)}% depth) — Target locked at ~${wordsPerChapter.toLocaleString()} words/chapter.`);
 
       // Phase 5: Loop through all chapters needing prose
       addLog(`Phase 5: Initiating Staged Drafting for ${chaptersNeedingProse.length} chapters...`);
@@ -671,7 +681,12 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
       // Step 5: Deep Draft
       setFixProgress(75);
       addLog("Phase 5/5: Engaging Deep Draft generation for missing sequences...");
-      const emptyChapters = newChapters.filter(c => !c.content.trim() || c.content.length < 500);
+      // Use a pass-aware minimum word count to decide what needs re-drafting
+      const _fbTotalWT = project.targetWordCount || 50000;
+      const _fbTotalCh = newChapters.length || 25;
+      const _fbPassPct: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
+      const _fbPassMin = Math.round((_fbTotalWT * (_fbPassPct[project.draftStage ?? 1] ?? 1.0)) / _fbTotalCh * 0.5);
+      const emptyChapters = newChapters.filter(c => !c.content.trim() || c.content.split(/\s+/).length < Math.max(50, _fbPassMin));
       
       if (emptyChapters.length > 0) {
         let updatedChaps = [...newChapters];
@@ -685,7 +700,7 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
             .filter(c => c.order < chap.order)
             .map(c => c.content)
             .join('\n\n')
-            .slice(-3000);
+            .slice(-5000);
           
           const activeChapterNodes = newNodes.filter(n => (chap.plotNodeIds || []).includes(n.id));
 

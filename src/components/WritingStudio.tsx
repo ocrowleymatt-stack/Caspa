@@ -624,7 +624,13 @@ export default function WritingStudio({
           activeNodes,
           project.research || [],
           project.maturity,
-          project.sourceMaterials || []
+          project.sourceMaterials || [],
+          [], // directives
+          project.targetWordCount,
+          project.externalReviews || [],
+          project.draftStage,
+          synchronizedChapters.length,
+          project.cutMode
         );
         const draftedChapter = { ...targetChapter, content: (targetChapter.content + '\n\n' + content).trim(), updatedAt: Date.now() };
         updateChapters(synchronizedChapters.map(c => c.id === draftedChapter.id ? draftedChapter : c));
@@ -768,8 +774,14 @@ export default function WritingStudio({
 
   const isOverWordLimit = useMemo(() => {
     if (!project.targetWordCount || selectedChapter?.isPlan) return false;
-    return wordCount > (project.targetWordCount || 0) * 1.03;
-  }, [wordCount, project.targetWordCount, selectedChapter?.isPlan]);
+    // Compare against per-chapter target (not the full project target)
+    const effectiveChapterCount = Math.max(1, chapters.length);
+    const effectivePass = (project.draftStage ?? 1);
+    const PASS_PERCENTAGES: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
+    const passPercent = PASS_PERCENTAGES[effectivePass] ?? 1.0;
+    const perChapterTarget = Math.round((project.targetWordCount * passPercent) / effectiveChapterCount);
+    return wordCount > perChapterTarget * 1.03;
+  }, [wordCount, project.targetWordCount, project.draftStage, chapters.length, selectedChapter?.isPlan]);
 
   const recenter = () => {
     setIsFocusMode(false);
@@ -1189,6 +1201,14 @@ export default function WritingStudio({
                         {wordCount.toLocaleString()} Words
                         {isOverWordLimit && <span className="ml-1 text-[7px] text-red-500 tracking-tighter">(LIMIT EXCEEDED)</span>}
                       </span>
+                      {project.targetWordCount && !selectedChapter?.isPlan && (() => {
+                        const ep = (project.draftStage ?? 1);
+                        const PP: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
+                        const pct = PP[ep] ?? 1.0;
+                        const chTarget = Math.round((project.targetWordCount * pct) / Math.max(1, chapters.length));
+                        const pctDone = Math.min(100, Math.round((wordCount / chTarget) * 100));
+                        return <span className="text-[7px] text-text-secondary/50 tabular-nums">Pass {ep} target: {chTarget.toLocaleString()} ({pctDone}%)</span>;
+                      })()}
                     </div>
                     <div className="flex flex-col border-l border-border-subtle pl-4 md:pl-6">
                       <span className="text-[8px] md:text-[9px] font-black text-text-secondary uppercase leading-none tracking-widest opacity-40 mb-1">Latency</span>
