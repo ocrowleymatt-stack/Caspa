@@ -806,7 +806,7 @@ export default function WritingStudio({
 
   return (
     <div 
-      className={`h-full flex flex-col lg:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`}
+      className={`h-full flex flex-col md:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`}
       style={{ minHeight: 0 }}
     >
       {/* Sidebar - Chapter Navigation & Sources */}
@@ -814,10 +814,10 @@ export default function WritingStudio({
         {!isFocusMode && isLeftRailOpen && (
           <motion.aside 
             initial={{ width: 0, opacity: 0, x: -50 }}
-            animate={{ width: isMobile ? '100vw' : '200px', opacity: 1, x: 0 }}
+            animate={{ width: isMobile ? '100vw' : '200px', opacity: 1, x: 0, position: isMobile ? "fixed" : "relative" }}
             exit={{ width: 0, opacity: 0, x: -50 }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className={`border-r border-border-subtle bg-surface-card flex flex-col z-30 h-full relative overflow-hidden shrink-0 no-print ${isMobile ? 'fixed inset-0 shadow-[0_0_100px_rgba(0,0,0,0.8)]' : 'relative'}`}
+            className={`border-r border-border-subtle bg-surface-card flex flex-col z-30 overflow-hidden shrink-0 no-print ${isMobile ? 'fixed inset-0 shadow-[0_0_100px_rgba(0,0,0,0.8)] h-full' : 'relative h-full'}`}
           >
             <div className="absolute top-4 right-4 z-40">
               <button 
@@ -1137,7 +1137,7 @@ export default function WritingStudio({
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={() => setIsLeftRailOpen(true)}
-            className="fixed left-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 bg-brand-dark border-y border-r border-border-subtle rounded-r-xl flex items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
+            className="hidden md:flex fixed left-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 bg-brand-dark border-y border-r border-border-subtle rounded-r-xl items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
             title="Restore Navigation"
           >
             <ChevronRight size={14} className="group-hover:scale-125 transition-transform" />
@@ -1149,7 +1149,7 @@ export default function WritingStudio({
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={() => setIsRightRailOpen(true)}
-            className="fixed right-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 bg-brand-dark border-y border-l border-border-subtle rounded-l-xl flex items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
+            className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 bg-brand-dark border-y border-l border-border-subtle rounded-l-xl items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
             title="Restore Ops Rail"
           >
             <ChevronLeft size={14} className="group-hover:scale-125 transition-transform" />
@@ -1166,15 +1166,42 @@ export default function WritingStudio({
               className="flex-1 flex flex-col overflow-hidden"
               style={{ minHeight: 0 }}
             >
-              {/* Internal Editor Header */}
+              {/* Mobile Chapter Selector Bar */}
+              {isMobile && !isFocusMode && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-surface-card border-b border-border-subtle overflow-x-auto no-print flex-none">
+                  <button
+                    onClick={() => setIsLeftRailOpen(true)}
+                    className="flex-none flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-muted rounded-lg text-xs font-semibold text-text-secondary hover:text-brand-primary border border-border-subtle"
+                  >
+                    <BookOpen size={13} />
+                    <span>Chapters</span>
+                  </button>
+                  <div className="flex gap-1.5 overflow-x-auto">
+                    {chapters.map((ch: Chapter, idx: number) => (
+                      <button
+                        key={ch.id}
+                        onClick={() => setSelectedChapterId(ch.id)}
+                        className={`flex-none px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                          ch.id === selectedChapterId
+                            ? 'bg-brand-primary/20 border-brand-primary text-brand-primary'
+                            : 'bg-surface-muted border-border-subtle text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {idx + 1}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+        {/* Internal Editor Header */}
               <div className={`h-12 studio-header border-b border-border-subtle flex items-center justify-between px-3 md:px-4 bg-surface-card/80 backdrop-blur-xl shadow-sm flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-2`}>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {!isFocusMode && (
+                  {!isFocusMode && !isMobile && (
                     <button 
-                      onClick={() => setIsSidebarVisible(!isSidebarVisible)}
+                      onClick={() => setIsLeftRailOpen(!isLeftRailOpen)}
                       className="p-2.5 hover:bg-white/5 text-text-secondary hover:text-brand-primary rounded-xl border border-transparent hover:border-border-subtle transition-all active:scale-95"
                     >
-                      <ChevronRight size={20} className={isSidebarVisible ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                      <ChevronRight size={20} className={isLeftRailOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
                     </button>
                   )}
                   <div className="flex flex-col gap-1">
@@ -1368,7 +1395,7 @@ export default function WritingStudio({
                 style={{ minHeight: 0 }}
               >
                 <div 
-                  className={`flex-1 flex flex-col writing-scroll ${isFocusMode ? 'p-4 md:p-6 lg:px-10 lg:py-6' : 'p-4 md:p-6 lg:px-8 xl:px-12 lg:py-8'} overflow-y-auto overscroll-contain w-full custom-scrollbar relative transition-all duration-500 pb-24`}
+                  className={`flex-1 flex flex-col writing-scroll ${isFocusMode ? 'p-3 md:p-6 lg:px-10 lg:py-6' : 'p-3 md:p-6 lg:px-8 xl:px-12 lg:py-8'} overflow-y-auto overscroll-contain w-full custom-scrollbar relative transition-all duration-500 ${isMobile ? 'pb-32' : 'pb-24'}`}
                   style={{ minHeight: 0 }}
                 >
                    <div className="w-full max-w-[80ch] mx-auto flex flex-col items-center">
