@@ -42,6 +42,7 @@ export interface Chapter {
   updatedAt: number;
   ownerId?: string; // Added for relational security rules
   directives?: string[]; // Directives for next redrafting session
+  illustrationUrl?: string; // URL for chapter-specific illustration
 }
 
 export interface ResearchNote {
@@ -110,7 +111,7 @@ export interface PrizeAssessment {
   targetWordCount?: number;
 }
 
-export type IntelligenceProvider = 'gemini' | 'claude' | 'openai' | 'grok';
+export type IntelligenceProvider = 'gemini' | 'claude' | 'openai' | 'grok' | 'venice';
 
 export interface PublishingConfig {
   trimSize: '5x8' | '5.5x8.5' | '6x9' | '8.27x11.69'; // Common KDP sizes
@@ -123,6 +124,15 @@ export interface PublishingConfig {
     accentColor: string;
     isOverlayHidden?: boolean;
     aiPrompt?: string;
+    showWraparound?: boolean;
+    textShadow?: boolean;
+  };
+  layoutTheme?: {
+    style: 'standard' | 'coursebook' | 'manual' | 'magazine' | 'technical';
+    colorMode: 'bw' | 'color';
+    showIllustrations: boolean;
+    showTextBoxes: boolean;
+    includeIndex: boolean;
   };
   authorName?: string;
   subtitle?: string;
@@ -184,6 +194,12 @@ export interface Project {
   draftStage?: 1 | 2 | 3 | 4;
   draftPassHistory?: { pass: number; completedAt: number; wordCountAtCompletion: number }[];
   cutMode?: boolean;
+  autoDrafting?: {
+    isDrafting: boolean;
+    currentChapterId: string | null;
+    status: 'idle' | 'drafting' | 'reviewing' | 'completed';
+    lastError?: string;
+  };
 }
 
-export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'publishing' | 'reviews' | 'library' | 'bundle';
+export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'reviews' | 'library' | 'scalpel' | 'autodraft';

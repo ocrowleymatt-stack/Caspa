@@ -9,7 +9,6 @@ import { Project, ExternalReview } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
-  key?: React.Key;
   project: Project;
   reviews: ExternalReview[];
   onUpsert: (review: ExternalReview) => void;
@@ -98,7 +97,7 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                           value={newReview.source}
                           onChange={(e) => setNewReview({ ...newReview, source: e.target.value })}
                           placeholder="e.g. Literary Agent, Beta Reader..."
-                          className="w-full bg-surface-card border border-border-subtle rounded-xl px-4 py-3 text-xs font-bold text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
+                          className="w-full ethereal-panel border border-border-subtle rounded-xl px-4 py-3 text-xs font-bold text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
                         />
                       </div>
                       <div className="space-y-2">
@@ -108,7 +107,7 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                           value={newReview.score}
                           onChange={(e) => setNewReview({ ...newReview, score: parseInt(e.target.value) })}
                           placeholder="0-100"
-                          className="w-full bg-surface-card border border-border-subtle rounded-xl px-4 py-3 text-xs font-bold text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
+                          className="w-full ethereal-panel border border-border-subtle rounded-xl px-4 py-3 text-xs font-bold text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all"
                         />
                       </div>
                    </div>
@@ -118,7 +117,7 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                         value={newReview.content}
                         onChange={(e) => setNewReview({ ...newReview, content: e.target.value })}
                         placeholder="Paste the review or notes here..."
-                        className="w-full h-32 bg-surface-card border border-border-subtle rounded-xl px-4 py-3 text-xs font-medium text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all resize-none italic leading-relaxed"
+                        className="w-full h-32 ethereal-panel border border-border-subtle rounded-xl px-4 py-3 text-xs font-medium text-text-primary outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all resize-none italic leading-relaxed"
                       />
                    </div>
                    <div className="flex justify-end gap-3">
@@ -146,7 +145,7 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.1 }}
                 layout
-                className={`group bg-surface-card border rounded-[2rem] p-8 shadow-sm hover:shadow-2xl transition-all relative overflow-hidden ${r.isImplemented ? 'border-emerald-500/20 bg-brand-dark/50 opacity-60' : 'border-border-subtle hover:border-brand-primary/30'}`}
+                className={`group ethereal-panel border rounded-[2rem] p-8 shadow-sm hover:shadow-2xl transition-all relative overflow-hidden ${r.isImplemented ? 'border-emerald-500/20 bg-brand-dark/50 opacity-60' : 'border-border-subtle hover:border-brand-primary/30'}`}
               >
                 <div className="flex items-start justify-between mb-6 relative z-10">
                   <div className="flex items-center gap-4">
@@ -193,7 +192,7 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                 </div>
               </motion.div>
             )) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-20 border-2 border-dashed border-border-subtle rounded-[3rem] text-text-secondary bg-surface-card shadow-inner">
+              <div className="h-full flex flex-col items-center justify-center text-center p-20 border-2 border-dashed border-border-subtle rounded-[3rem] text-text-secondary ethereal-panel shadow-inner">
                 <Clipboard size={64} strokeWidth={0.5} className="opacity-10 mb-6" />
                 <div>
                   <p className="text-xl font-black text-text-primary font-serif italic mb-2 tracking-tight">Vault Empty</p>
@@ -228,16 +227,16 @@ export default function ReviewVault({ project, reviews, onUpsert, onDelete }: Pr
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${reviews.length > 0 ? (reviews.filter(r=>r.isImplemented).length / reviews.length) * 100 : 0}%` }}
-                    className="h-full bg-brand-primary shadow-[0_0_15px_rgba(59,130,246,0.6)]"
+                    className="h-full bg-brand-primary shadow-[0_0_15px_rgba(168,85,247,0.6)]"
                     transition={{ type: "spring", bounce: 0, duration: 1 }}
                   />
                 </div>
               </div>
            </section>
 
-           <section className="bg-surface-card border border-border-subtle rounded-[2.5rem] p-8 shadow-xl">
+           <section className="ethereal-panel border border-border-subtle rounded-[2.5rem] p-8 shadow-xl">
              <div className="flex items-center gap-2 mb-6">
-               <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+               <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-[0_0_8px_rgba(168,85,247,0.5)]" />
                <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-50">Consolidated Notes</h4>
              </div>
              <div className="space-y-2">

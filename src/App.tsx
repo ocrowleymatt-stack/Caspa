@@ -8,12 +8,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
   GitBranch, 
-  PanelLeft,
   PenTool, 
   Sparkles, 
   BarChart3,
@@ -37,7 +36,9 @@ import {
   Activity,
   ChevronDown,
   Plus,
-  Scale
+  Scissors,
+  AlertTriangle,
+  Ghost
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -54,23 +55,12 @@ import {
   Presence,
   ExternalReview
 } from './types';
-import { auth, db, loginWithGoogle, logout } from './lib/firebase';
+import { auth, db, loginWithGoogle, logout, loginAnonymously } from './lib/firebase';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
-import {
-  createProject as persistCreateProject,
-  saveProject as persistSaveProject,
-  upsertChapter as persistUpsertChapter,
-  upsertChapterBatch as persistUpsertChapterBatch,
-  loadCachedChapters,
-  loadCachedProject,
-  loadCachedProjectId,
-  setActiveProjectId,
-  mergeChaptersWithLocalHardsaves,
-  isLikelyOffline,
-} from './lib/persistenceService';
 import { 
   onSnapshot, 
   doc, 
+  getDoc,
   collection, 
   setDoc, 
   updateDoc, 
@@ -78,6 +68,7 @@ import {
   writeBatch,
   query, 
   where,
+  or,
   orderBy,
   serverTimestamp
 } from 'firebase/firestore';
@@ -90,6 +81,7 @@ import { AIService } from './services/ai';
 import Dashboard from './components/Dashboard';
 import Brainstorm from './components/Brainstorm';
 import CharacterForge from './components/CharacterForge';
+import PlotArchitect from './components/PlotArchitect';
 import WritingStudio from './components/WritingStudio';
 import LibraryView from './components/Library';
 import IntelligenceLab from './components/IntelligenceLab';
@@ -101,9 +93,9 @@ import PrizeView from './components/PrizeView';
 import ReaderView from './components/ReaderView';
 import ReviewVault from './components/ReviewVault';
 import PinGate from './components/PinGate';
-import SeedIngestion from './components/SeedIngestion';
-import PlotArchitect from './components/PlotArchitect';
-import CourtBundleView from './components/CourtBundleView';
+import ScalpelModule from './components/ScalpelModule';
+import AutoDrafter from './components/AutoDrafter';
+import SpatialGlassMode from './components/SpatialGlassMode';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -118,12 +110,6 @@ const INITIAL_PROJECT: Project = {
   sourceMaterials: [],
   lastModified: Date.now(),
   createdAt: Date.now(),
-  // Safe defaults: new projects start at Pass 1 with an 80k word target.
-  // Without these, writeDraft falls back to a 50k target and draftStage=undefined
-  // which forces every chapter to be written at 10% depth (skeletal only).
-  draftStage: 1,
-  targetWordCount: 80000,
-  cutMode: false,
   stats: {
     narrativeStreak: 0,
     totalWords: 0,
@@ -136,6 +122,7 @@ export default function App() {
   const [user, setUser] = useState(auth.currentUser);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isProjectsLoading, setIsProjectsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
 
   // Load project cache on mount
   useEffect(() => {
@@ -167,13 +154,37 @@ export default function App() {
 
   const [lastProjectId, setLastProjectId] = useState(() => localStorage.getItem('ls_project_id'));
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
   const [isMobile, setIsMobile] = useState(false);
-  const [isTablet, setIsTablet] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(true);
+  const [isShortHeight, setIsShortHeight] = useState(false);
+  const [isSpatialGlassModeActive, setIsSpatialGlassModeActive] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('ls_spatial_glass_mode_active');
+    return saved === null ? true : saved === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ls_spatial_glass_mode_active', String(isSpatialGlassModeActive));
+  }, [isSpatialGlassModeActive]);
+
   const [loading, setLoading] = useState(true);
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: 'error' | 'success' | 'info' }[]>([]);
+
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        setLoadingTimeout(true);
+      }, 10000);
+      return () => clearTimeout(timer);
+    } else {
+      setLoadingTimeout(false);
+    }
+  }, [loading]);
+  const [systemAlert, setSystemAlert] = useState<{ message: string; type: 'error' | 'warning' } | null>(null);
   const [readerProject, setReaderProject] = useState<Project | null>(null);
   const [readerChapters, setReaderChapters] = useState<Chapter[]>([]);
   const [isReading, setIsReading] = useState(false);
@@ -211,19 +222,40 @@ export default function App() {
   }, []);
 
   const addNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
+    let finalMsg = message;
+    try {
+      if (message.startsWith('{') && message.endsWith('}')) {
+        const parsed = JSON.parse(message);
+        if (parsed.isQuotaExceeded) {
+          setSystemAlert({ 
+            message: 'CRITICAL: Firestore Quota Exceeded. Writing & Reading may be disabled until credits reset or billing propagates. Upgrading to Blaze plan removes these limits.', 
+            type: 'error' 
+          });
+          return;
+        }
+        finalMsg = parsed.error || message;
+      }
+    } catch (e) { /* not JSON */ }
+
     const id = crypto.randomUUID();
-    setNotifications(prev => [...prev, { id, message, type }]);
+    setNotifications(prev => [...prev, { id, message: finalMsg, type }]);
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
     }, 6000);
   };
 
-  // Mobile Detection
+  const onNotify = addNotification;
+
+  // Mobile & Orientation Detection
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    const checkLayout = () => {
+      setIsMobile(window.innerWidth < 1024);
+      setIsPortrait(window.innerHeight > window.innerWidth);
+      setIsShortHeight(window.innerHeight < 600);
+    };
+    checkLayout();
+    window.addEventListener('resize', checkLayout);
+    return () => window.removeEventListener('resize', checkLayout);
   }, []);
 
   useEffect(() => {
@@ -235,8 +267,6 @@ export default function App() {
   const [history, setHistory] = useState<Project[]>([]);
   const [future, setFuture] = useState<Project[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [isOfflineMode, setIsOfflineMode] = useState(false);
 
   // Derived Stats
   const totalWords = chapters.reduce((acc, c) => {
@@ -285,19 +315,12 @@ export default function App() {
   }, [project, history, future]);
 
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
-  const [showSeedIngestion, setShowSeedIngestion] = useState(false);
 
   // Auth Listener
   useEffect(() => {
     const initAuth = async () => {
-      try {
-        const { handleRedirectLogin } = await import('./lib/firebase');
-        await handleRedirectLogin();
-      } catch (error) {
-        console.error('Redirect login initialization failed:', error);
-        setLoginError(error instanceof Error ? error.message : 'Unable to complete sign-in redirect.');
-        setLoading(false);
-      }
+      const { handleRedirectLogin } = await import('./lib/firebase');
+      await handleRedirectLogin();
     };
     initAuth();
 
@@ -306,7 +329,9 @@ export default function App() {
       setUser(u);
       if (u) {
         setLoginError(null);
+        if (u.email) localStorage.setItem('currentUserEmail', u.email);
       } else {
+        localStorage.removeItem('currentUserEmail');
         setProject(INITIAL_PROJECT);
         setCharacters([]);
         setPlotNodes([]);
@@ -333,6 +358,16 @@ export default function App() {
     }
   };
 
+  const handleGuestLogin = async () => {
+    try {
+      setLoginError(null);
+      await loginAnonymously();
+    } catch (err: any) {
+      console.error(err);
+      setLoginError('Failure entering Guest Protocol. Please try again or use Google Auth.');
+    }
+  };
+
   // Sync AI Provider
   useEffect(() => {
     if (project.primaryProvider) {
@@ -346,188 +381,242 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setProjects([]);
+      setIsProjectsLoading(false);
       return;
     }
 
-    // ── Local-first: immediately hydrate from cache so UI is never blank ──
-    const cachedList = (() => {
-      try {
-        const raw = localStorage.getItem(`ls_projects_cache_${user.uid}`);
-        return raw ? (JSON.parse(raw) as Project[]) : [];
-      } catch { return []; }
-    })();
-    if (cachedList.length > 0) {
-      setProjects(cachedList);
-      setIsProjectsLoading(false);
-      // Restore last active project from cache immediately
-      const cachedId = localStorage.getItem(`lastProject_${user.uid}`);
-      if (cachedId) {
-        const cachedProj = cachedList.find(p => p.id === cachedId);
-        if (cachedProj) {
-          setProject(cachedProj);
-          // Also restore cached chapters for instant display
-          const cachedChaps = loadCachedChapters(cachedId);
-          if (cachedChaps.length > 0) setChapters(cachedChaps);
-        }
+    // Determine simple independent queries to run in parallel and merge on the client
+    const queries = [
+      query(collection(db, 'projects'), where('ownerId', '==', user.uid)),
+      query(collection(db, 'projects'), where('collaborators', 'array-contains', user.uid))
+    ];
+
+    const email = user.email || '';
+    if (email) {
+      const emailVariations = new Set<string>();
+      emailVariations.add(email);
+      emailVariations.add(email.toLowerCase());
+      emailVariations.add(email.toUpperCase());
+      emailVariations.add(email.charAt(0).toUpperCase() + email.slice(1));
+      
+      // Handle Gmail dot variance
+      if (email.endsWith('@gmail.com')) {
+        const [local, domain] = email.split('@');
+        const noDots = local.replace(/\./g, '') + '@' + domain;
+        emailVariations.add(noDots);
+        emailVariations.add(noDots.toLowerCase());
       }
+      
+      emailVariations.forEach(ev => {
+        queries.push(query(collection(db, 'projects'), where('ownerId', '==', ev)));
+        queries.push(query(collection(db, 'projects'), where('collaborators', 'array-contains', ev)));
+      });
     }
 
-    const q = query(
-      collection(db, 'projects'), 
-      where('ownerId', '==', user.uid)
-    );
-    
-    const unsubProjects = onSnapshot(q, (snap) => {
-      const projectsList = snap.docs
-        .map(d => d.data() as Project)
-        .filter(p => p.ownerId === user.uid)
-        .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+    setIsProjectsLoading(true);
+    const queryResults: Project[][] = new Array(queries.length).fill([]).map(() => []);
+    const initialFires = new Set<number>();
 
-      setProjects(projectsList);
-      setIsProjectsLoading(false);
-      setIsOfflineMode(false);
-      localStorage.setItem(`ls_projects_cache_${user.uid}`, JSON.stringify(projectsList));
+    const unsubs = queries.map((q, idx) => {
+      return onSnapshot(q, (snap) => {
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Project));
+        queryResults[idx] = list;
+        initialFires.add(idx);
 
-      if (projectsList.length === 0 && !loading) return;
+        // Perform client-side deduplicated merge
+        const mergedMap = new Map<string, Project>();
+        queryResults.forEach(subList => {
+          subList.forEach(p => {
+            if (p && p.id) {
+              const existing = mergedMap.get(p.id);
+              if (!existing || (p.lastModified || 0) > (existing.lastModified || 0)) {
+                mergedMap.set(p.id, p);
+              }
+            }
+          });
+        });
 
-      // Select project only on initial load or if current is missing
-      setProject(current => {
-        const savedId = localStorage.getItem(`lastProject_${user.uid}`);
+        const projectsList = Array.from(mergedMap.values())
+          .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+
+        setProjects(projectsList);
         
-        if (current.id && current.id !== 'default') {
-          const stillExists = projectsList.find(p => p.id === current.id);
-          if (stillExists) return current;
+        // ONLY set loading to false once all parallel queries have responded at least once
+        if (initialFires.size === queries.length) {
+          setIsProjectsLoading(false);
         }
-        if (savedId) {
-          const found = projectsList.find(p => p.id === savedId);
-          if (found) return found;
-        }
-        if (projectsList.length === 0) return INITIAL_PROJECT;
-        return projectsList[0];
-      });
+        
+        localStorage.setItem(`ls_projects_cache_${user.uid}`, JSON.stringify(projectsList));
 
-    }, (err) => {
-      setIsProjectsLoading(false);
-      handleFirestoreError(err, OperationType.GET, 'projects');
-      // ── Offline recovery: load from cache and show banner ──
-      const cached = (() => {
-        try {
-          const raw = localStorage.getItem(`ls_projects_cache_${user.uid}`);
-          return raw ? (JSON.parse(raw) as Project[]) : [];
-        } catch { return []; }
-      })();
-      if (cached.length > 0) {
-        setProjects(cached);
-        setIsOfflineMode(true);
-        addNotification('⚠️ Cloud sync failed. Showing locally cached projects — your work is safe.', 'error');
-      } else {
-        setIsOfflineMode(true);
-        addNotification('⚠️ Cannot reach cloud storage. No local cache found. Please check your connection.', 'error');
-      }
+        console.log('--- Project Sync Merged Diagnostic ---');
+        console.log(`Sub-query ${idx} synced ${list.length} items. Total merged:`, projectsList.length);
+        console.log('Logged in as:', user.email);
+        console.log('User UID:', user.uid);
+        console.log('------------------------------');
+
+        if (projectsList.length === 0) {
+          return;
+        }
+
+        // Select project only on initial load or if current is missing
+        setProject(current => {
+          const savedId = localStorage.getItem(`lastProject_${user.uid}`);
+          
+          if (current.id && current.id !== 'default') {
+            const stillExists = projectsList.find(p => p.id === current.id);
+            if (stillExists) return current;
+          }
+
+          if (savedId) {
+            const found = projectsList.find(p => p.id === savedId);
+            if (found) return found;
+            
+            console.warn("Saved Project ID not found in merged list. Attempting background recovery for:", savedId);
+            const pRef = doc(db, 'projects', savedId);
+            getDoc(pRef).then(pSnap => {
+              if (pSnap.exists()) {
+                const pData = pSnap.data() as Project;
+                setProjects(prev => {
+                  if (prev.find(p => p.id === savedId)) return prev;
+                  return [pData, ...prev];
+                });
+                setProject(pData);
+                onNotify(`Manuscript recovered from deep storage: ${pData.title}`, 'success');
+              }
+            }).catch(err => {
+              console.error("Deep recovery failed for", savedId, err);
+            });
+          }
+
+          if (projectsList.length === 0) {
+            return INITIAL_PROJECT;
+          }
+          return projectsList[0];
+        });
+      }, (err) => {
+        console.error(`Snapshot Query ${idx} failed:`, err);
+        initialFires.add(idx);
+        if (initialFires.size === queries.length) {
+          setIsProjectsLoading(false);
+          addNotification("Some manuscript partitions failed to synchronize.", "info");
+        }
+      });
     });
 
-    return unsubProjects;
+    return () => {
+      unsubs.forEach(unsub => unsub());
+    };
   }, [user, loading]);
 
-  // Clear sub-states when project changes to prevent data bleeding
+  // Load local storage cache instantly on project ID change to prevent data latency or offline blanks
   useEffect(() => {
-    setCharacters([]);
-    setPlotNodes([]);
-    setChapters([]);
-    setResearch([]);
-    setSourceMaterials([]);
-    setExternalReviews([]);
+    const pId = project.id;
+    if (pId && pId !== 'default') {
+      try {
+        const cachedChapters = localStorage.getItem(`ls_cache_${pId}_chapters`);
+        const cachedCharacters = localStorage.getItem(`ls_cache_${pId}_characters`);
+        const cachedNodes = localStorage.getItem(`ls_cache_${pId}_plotNodes`);
+        const cachedResearch = localStorage.getItem(`ls_cache_${pId}_research`);
+        const cachedSources = localStorage.getItem(`ls_cache_${pId}_sourceMaterials`);
+        const cachedReviews = localStorage.getItem(`ls_cache_${pId}_externalReviews`);
+
+        setChapters(cachedChapters ? JSON.parse(cachedChapters) : []);
+        setCharacters(cachedCharacters ? JSON.parse(cachedCharacters) : []);
+        setPlotNodes(cachedNodes ? JSON.parse(cachedNodes) : []);
+        setResearch(cachedResearch ? JSON.parse(cachedResearch) : []);
+        setSourceMaterials(cachedSources ? JSON.parse(cachedSources) : []);
+        setExternalReviews(cachedReviews ? JSON.parse(cachedReviews) : []);
+      } catch (e) {
+        console.error("Failed to restore project from local cache:", e);
+      }
+    } else {
+      setCharacters([]);
+      setPlotNodes([]);
+      setChapters([]);
+      setResearch([]);
+      setSourceMaterials([]);
+      setExternalReviews([]);
+    }
     setPresence([]);
     setHistory([]);
     setFuture([]);
   }, [project.id]);
 
-  const createNewProject = async (title: string = 'Untitled Narrative') => {
-    if (!user) return;
-    const newId = `project_${crypto.randomUUID()}`;
-    const newProjectData: Project = {
-      ...INITIAL_PROJECT,
-      title,
-      id: newId,
-      ownerId: user.uid,
-      createdAt: Date.now(),
-      lastModified: Date.now(),
-      updatedAt: serverTimestamp() as any
-    };
-
-    // ── Local-first: update state + cache BEFORE awaiting Firestore ──
-    setProject(newProjectData);
-    setProjects(prev => [newProjectData, ...prev]);
-    setCurrentView('dashboard');
-
-    const result = await persistCreateProject(user.uid, newProjectData);
-    if (!result.ok && 'error' in result) {
-      addNotification(`\u26a0\ufe0f New project saved locally but cloud sync failed: ${result.error}`, 'error');
+  // Persist working subcollections to local storage cache on every modification to guarantee absolute off-grid redundancy
+  useEffect(() => {
+    const pId = project.id;
+    if (pId && pId !== 'default') {
+      try {
+        if (chapters.length > 0) localStorage.setItem(`ls_cache_${pId}_chapters`, JSON.stringify(chapters));
+        if (characters.length > 0) localStorage.setItem(`ls_cache_${pId}_characters`, JSON.stringify(characters));
+        if (plotNodes.length > 0) localStorage.setItem(`ls_cache_${pId}_plotNodes`, JSON.stringify(plotNodes));
+        if (research.length > 0) localStorage.setItem(`ls_cache_${pId}_research`, JSON.stringify(research));
+        if (sourceMaterials.length > 0) localStorage.setItem(`ls_cache_${pId}_sourceMaterials`, JSON.stringify(sourceMaterials));
+        if (externalReviews.length > 0) localStorage.setItem(`ls_cache_${pId}_externalReviews`, JSON.stringify(externalReviews));
+      } catch (e) {
+        console.error("Failed to commit work snapshot to local cache:", e);
+      }
     }
-  };
+  }, [project.id, chapters, characters, plotNodes, research, sourceMaterials, externalReviews]);
 
-  const createProjectFromSeed = async (proposal: {
-    title: string;
-    premise: string;
-    genre: string;
-    tone: string;
-    type: any;
-    targetWordCount: number;
-    chapters: Chapter[];
-    authorQuestions: string[];
-  }) => {
-    if (!user) return;
-    const newId = `project_${crypto.randomUUID()}`;
-    const newProjectData: Project = {
-      ...INITIAL_PROJECT,
-      title: proposal.title,
-      type: proposal.type,
-      genre: proposal.genre,
-      tone: proposal.tone,
-      premise: proposal.premise,
-      targetWordCount: proposal.targetWordCount,
-      id: newId,
-      ownerId: user.uid,
-      createdAt: Date.now(),
-      lastModified: Date.now(),
-      updatedAt: serverTimestamp() as any,
-      draftStage: 1,
-      cutMode: false,
-    };
-
-    setProject(newProjectData);
-    setProjects(prev => [newProjectData, ...prev]);
-    setShowSeedIngestion(false);
-    setIsProjectMenuOpen(false);
-
-    const result = await persistCreateProject(user.uid, newProjectData);
-    if (!result.ok && 'error' in result) {
-      addNotification(`⚠️ Seed project saved locally but cloud sync failed: ${'error' in result ? result.error : ''}`, 'error');
+  const createNewProject = async (title: string = 'Untitled Narrative') => {
+    if (!user) {
+      addNotification('Please authenticate before creating manuscripts.', 'error');
+      return;
+    }
+    
+    if (isCreating) {
+      addNotification('Synchronizer busy. Please wait...', 'info');
       return;
     }
 
-    // Create chapters from the seed proposal
-    if (proposal.chapters.length > 0) {
-      const { writeBatch: wb, doc: d } = await import('firebase/firestore');
-      const batch = wb(db);
-      proposal.chapters.forEach((ch) => {
-        const chRef = d(db, 'projects', newId, 'chapters', ch.id);
-        batch.set(chRef, { ...ch, updatedAt: Date.now() });
-      });
-      await batch.commit();
+    setIsCreating(true);
+    addNotification('Initializing new narrative partition...', 'info');
+    
+    const newId = `project_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`;
+    const projectRef = doc(db, 'projects', newId);
+    const path = `projects/${newId}`;
+    
+    try {
+      const newProjectData: Project = { 
+        ...INITIAL_PROJECT,
+        title: title || 'Untitled Narrative',
+        id: newId,
+        ownerId: user.uid,
+        createdAt: Date.now(),
+        lastModified: Date.now(),
+        updatedAt: serverTimestamp() as any
+      };
+      
+      localStorage.setItem(`lastProject_${user.uid}`, newId);
+      
+      await setDoc(projectRef, newProjectData);
+      setProject(newProjectData);
+      setProjects(prev => [newProjectData, ...prev]);
+      setCurrentView('dashboard');
+      setIsProjectMenuOpen(false);
+      addNotification('Narrative partition established.', 'success');
+    } catch (e) { 
+      console.error("Project creation failed:", e);
+      addNotification('Creation failure: Access denied or network instability.', 'error');
+      handleFirestoreError(e, OperationType.WRITE, path); 
+    } finally {
+      setTimeout(() => setIsCreating(false), 800);
     }
-
-    setCurrentView('dashboard');
-    addNotification('Story seed planted — your book is ready to grow.', 'success');
   };
 
-  // Auto-create initial project if none exist
+  // Auto-create initial project if none exist after timeout or on confirmation
   useEffect(() => {
-    if (user && !loading && !isProjectsLoading && projects.length === 0 && project.id === 'default' && !isCreatingInitialProjectRef.current) {
-      isCreatingInitialProjectRef.current = true;
-      console.log('No projects found, triggering auto-creation...');
-      createNewProject('My First Manuscript');
-    }
+    const checkAndCreate = async () => {
+      if (user && !loading && !isProjectsLoading) {
+        if (projects.length === 0 && project.id === 'default' && !isCreatingInitialProjectRef.current) {
+          isCreatingInitialProjectRef.current = true;
+          console.log('No projects found, triggering auto-creation...');
+          await createNewProject('My First Manuscript');
+        }
+      }
+    };
+    checkAndCreate();
   }, [user, loading, isProjectsLoading, projects.length, project.id]);
 
   // Project Data & Subcollections Sync
@@ -569,26 +658,14 @@ export default function App() {
     }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/plotNodes`));
     
     const unsubChapters = onSnapshot(collection(db, 'projects', projectId, 'chapters'), (snap) => {
-      const cloudChapters = snap.docs.map(d => d.data() as Chapter).sort((a, b) => a.order - b.order);
-      // Merge with local hardsaves: if a local hardsave is newer, prefer it
-      const chapterList = mergeChaptersWithLocalHardsaves(cloudChapters);
+      const chapterList = snap.docs.map(d => d.data() as Chapter).sort((a, b) => a.order - b.order);
       setChapters(chapterList);
-      // Update hardsave cache and chapter registry
+      
+      // Update local hardsave cache for each chapter
       chapterList.forEach(c => {
-        localStorage.setItem(`ls_hardsave_${c.id}`, c.content ?? '');
+        localStorage.setItem(`ls_hardsave_${c.id}`, c.content);
       });
-      try {
-        localStorage.setItem(`ls_chapters_${projectId}`, JSON.stringify(chapterList));
-      } catch { /* quota */ }
-    }, (err) => {
-      handleFirestoreError(err, OperationType.GET, `projects/${projectId}/chapters`);
-      // Fall back to cached chapters
-      const cached = loadCachedChapters(projectId);
-      if (cached.length > 0) {
-        setChapters(cached);
-        addNotification('\u26a0\ufe0f Chapter sync failed \u2014 showing locally cached chapters.', 'error');
-      }
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, `projects/${projectId}/chapters`));
     
     const unsubResearch = onSnapshot(collection(db, 'projects', projectId, 'research'), (snap) => {
       setResearch(snap.docs.map(d => d.data() as ResearchNote).sort((a, b) => b.updatedAt - a.updatedAt));
@@ -628,6 +705,76 @@ export default function App() {
   }, [user, project.id]);
 
 
+  const broadRecoveryScan = async (queryStr?: string) => {
+    if (!user) return;
+    addNotification('Initiating Parallel Neural Scan of all partitions...', 'info');
+    
+    try {
+      const { collection, query, where, getDocs, limit } = await import('firebase/firestore');
+      const projectsRef = collection(db, 'projects');
+      
+      const email = user.email || '';
+      const emailVariations = new Set<string>();
+      emailVariations.add(email);
+      emailVariations.add(email.toLowerCase());
+      emailVariations.add(email.toUpperCase());
+      emailVariations.add(email.charAt(0).toUpperCase() + email.slice(1));
+      
+      if (email.endsWith('@gmail.com')) {
+        const [local, domain] = email.split('@');
+        const noDots = local.replace(/\./g, '') + '@' + domain;
+        emailVariations.add(noDots);
+        emailVariations.add(noDots.toLowerCase());
+      }
+      
+      const uniqueEmails = Array.from(emailVariations).filter(e => !!e);
+      
+      const queryPromises = [
+        getDocs(query(projectsRef, where('ownerId', '==', user.uid), limit(50))),
+        ...uniqueEmails.map(e => getDocs(query(projectsRef, where('ownerId', '==', e), limit(50)))),
+        getDocs(query(projectsRef, where('collaborators', 'array-contains', user.uid), limit(50))),
+        ...uniqueEmails.map(e => getDocs(query(projectsRef, where('collaborators', 'array-contains', e), limit(50))))
+      ];
+
+      if (queryStr && queryStr.trim()) {
+        const qTrim = queryStr.trim();
+        queryPromises.push(getDocs(query(projectsRef, where('id', '==', qTrim), limit(10))));
+        queryPromises.push(getDocs(query(projectsRef, where('title', '==', qTrim), limit(50))));
+        queryPromises.push(getDocs(query(projectsRef, where('title', '>=', qTrim), where('title', '<=', qTrim + '\uf8ff'), limit(50))));
+      }
+
+      const snapshots = await Promise.all(queryPromises);
+      const mergedMap = new Map<string, Project>();
+      
+      snapshots.forEach(snap => {
+        snap.docs.forEach(d => {
+          const data = d.data() as Project;
+          mergedMap.set(data.id, data);
+        });
+      });
+
+      const found = Array.from(mergedMap.values());
+      
+      if (found.length === 0) {
+        addNotification('Global scan finished. No matching orphaned manuscripts found.', 'info');
+        return;
+      }
+
+      setProjects(prev => {
+        const existingIds = new Set(prev.map(p => p.id));
+        const newOnes = found.filter(p => !existingIds.has(p.id));
+        const updatedList = [...newOnes, ...prev].sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+        localStorage.setItem(`ls_projects_cache_${user.uid}`, JSON.stringify(updatedList));
+        return updatedList;
+      });
+
+      addNotification(`Neural Scan complete. Identifed ${found.length} matching manuscripts.`, 'success');
+    } catch (err) {
+      console.error("Neural scan failed:", err);
+      addNotification('Neural scan interrupted. Access denied or connection unstable.', 'error');
+    }
+  };
+
   const updateProject = async (updates: Partial<Project>) => {
     if (!user || !project.id || project.id === 'default') return;
     
@@ -651,9 +798,14 @@ export default function App() {
         lastModified: Date.now(),
         updatedAt: serverTimestamp() 
       });
+      console.log("Successfully saved project to cloud:", project.id);
       setTimeout(() => setIsSaving(false), 500);
-    } catch (e) { 
-      handleFirestoreError(e, OperationType.WRITE, path); 
+    } catch (e: any) { 
+      if (e.message?.toLowerCase().includes('payload is too large') || e.message?.toLowerCase().includes('quota')) {
+         console.warn("Could not save to Firestore (payload too large). Your artifact cover was saved locally, but won't persist across devices.");
+      } else {
+        handleFirestoreError(e, OperationType.WRITE, path); 
+      }
       setIsSaving(false);
     }
   };
@@ -697,29 +849,41 @@ export default function App() {
   };
 
   const saveToCloud = async () => {
-    if (!user || !project.id || project.id === 'default') return;
-    setIsSaving(true);
-    setSaveStatus('saving');
-
-    const result = await persistSaveProject(user.uid, project);
-
-    setIsSaving(false);
-    if (result.ok) {
-      setSaveStatus('saved');
-      addNotification('\u2713 Project saved successfully.', 'success');
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } else if ('error' in result) {
-      setSaveStatus('error');
-      if (result.fromCache) {
-        addNotification(`\u26a0\ufe0f Saved locally \u2014 cloud sync failed: ${result.error}`, 'error');
-      } else {
-        addNotification(`\u2717 Save failed: ${result.error}`, 'error');
+    if (!user || !project.id || project.id === 'default') {
+      if (project.id === 'default') {
+        addNotification('Cannot sync local default project. Create a real project first.', 'info');
       }
-      setTimeout(() => setSaveStatus('idle'), 5000);
+      return;
+    }
+    setIsSaving(true);
+    const path = `projects/${project.id}`;
+    try {
+      const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+      const projectRef = doc(db, 'projects', project.id);
+      
+      // Since I relaxed the firestore rules, we can be much more thorough with the update
+      const updates: any = {
+        ...project,
+        lastModified: Date.now(),
+        updatedAt: serverTimestamp()
+      };
+
+      // Ensure these critical fields are never undefined/null if they exist
+      if (project.ownerId) updates.ownerId = project.ownerId;
+      else updates.ownerId = user.uid;
+
+      await updateDoc(projectRef, updates);
+      setIsSaving(false);
+      addNotification('Manuscript snapshot vaulted successfully.', 'success');
+    } catch (err) {
+      console.error("Cloud vault failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      addNotification(`Vaulting failed: ${msg.includes('permission') ? 'Access Denied' : 'Sync Error'}`, 'error');
+      setIsSaving(false);
     }
   };
 
-  const onNotify = addNotification;
+  // const onNotify = addNotification; (Moved to top level)
 
   const handleBulkIngest = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -918,10 +1082,15 @@ export default function App() {
   };
   const upsertChapter = async (chap: Chapter) => {
     if (!user) return;
-    const result = await persistUpsertChapter(user.uid, project.id, chap);
-    if (!result.ok && 'error' in result && !result.fromCache) {
-      addNotification(`\u26a0\ufe0f Chapter saved locally \u2014 cloud sync failed: ${result.error}`, 'error');
-    }
+    const path = `projects/${project.id}/chapters/${chap.id}`;
+    try {
+      await setDoc(doc(db, 'projects', project.id, 'chapters', chap.id), {
+        ...chap,
+        projectId: project.id,
+        ownerId: user.uid,
+        updatedAt: Date.now()
+      });
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, path); }
   };
   const upsertSourceMaterial = async (source: SourceMaterial) => {
     if (!user) return;
@@ -940,8 +1109,15 @@ export default function App() {
   const upsertResearch = async (note: ResearchNote) => {
     if (!user) return;
     const path = `projects/${project.id}/research/${note.id}`;
+    
+    // Cleanup undefined to prevent Firestore errors
+    const cleanedNote = JSON.parse(JSON.stringify({ 
+      ...note, 
+      updatedAt: Date.now() 
+    }));
+    
     try {
-      await setDoc(doc(db, 'projects', project.id, 'research', note.id), { ...note, updatedAt: Date.now() });
+      await setDoc(doc(db, 'projects', project.id, 'research', note.id), cleanedNote);
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, path);
     }
@@ -957,12 +1133,41 @@ export default function App() {
 
   const upsertChapterBatch = async (chapList: Chapter[]) => {
     if (!user || !project.id || project.id === 'default') return;
-    const result = await persistUpsertChapterBatch(user.uid, project.id, chapList, chapters);
-    if (!result.ok && 'error' in result) {
-      if (result.fromCache) {
-        addNotification(`\u26a0\ufe0f Chapters saved locally \u2014 cloud sync failed: ${result.error}`, 'error');
-      } else {
-        addNotification(`\u2717 Chapter batch save failed: ${result.error}`, 'error');
+    const { writeBatch } = await import('firebase/firestore');
+    
+    // Deletion of orphans: find IDs in current state that are NOT in the new list
+    const newIds = new Set(chapList.map(c => c.id));
+    const orphans = chapters.filter(c => !newIds.has(c.id));
+
+    if (orphans.length > 0) {
+      console.log(`Cloud Sync: Purging ${orphans.length} orphaned chapters.`);
+      const deleteBatch = writeBatch(db);
+      orphans.forEach(o => {
+        deleteBatch.delete(doc(db, 'projects', project.id, 'chapters', o.id));
+      });
+      await deleteBatch.commit();
+    }
+
+    // Split into chunks of 100 for insertion/update
+    const chunkSize = 100;
+    for (let i = 0; i < chapList.length; i += chunkSize) {
+      const chunk = chapList.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      
+      chunk.forEach(chap => {
+        const chapRef = doc(db, 'projects', project.id, 'chapters', chap.id);
+        batch.set(chapRef, { 
+          ...chap, 
+          projectId: project.id,
+          ownerId: user.uid,
+          updatedAt: Date.now() 
+        });
+      });
+
+      try {
+        await batch.commit();
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `projects/${project.id}/chapters/BATCH_${i}`);
       }
     }
   };
@@ -995,69 +1200,86 @@ export default function App() {
 
   const navGroups = [
     {
-      title: "Manuscripts",
+      title: "Navigation",
       items: [
-        { id: 'library', label: 'My Books', icon: Library },
-        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+        { id: 'library', label: 'Archive Vault', sub: 'Project list', icon: Library },
+        { id: 'dashboard', label: 'Mission Control', sub: 'Overview & stats', icon: BarChart3 },
       ]
     },
     {
       title: "1. Strategy",
       items: [
-        { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
-        { id: 'reviews', label: 'Reviews', icon: MessageSquare },
-        { id: 'brainstorm', label: 'Brainstorm', icon: Sparkles },
+        { id: 'prizes', label: 'Prestige Targets', sub: 'Award analysis', icon: Trophy },
+        { id: 'reviews', label: 'Review Vault', sub: 'Critical feedback', icon: MessageSquare },
+        { id: 'brainstorm', label: 'Idea Forge', sub: 'Brainstorm ideas', icon: Sparkles },
       ]
     },
     {
       title: "2. Foundations",
       items: [
-        { id: 'characters', label: 'Character Forge', icon: Users },
-        { id: 'intelligence', label: 'Research', icon: BrainCircuit },
+        { id: 'characters', label: 'Narrative Personnel', sub: 'Character profiles', icon: Users },
+        { id: 'intelligence', label: 'Intelligence Lab', sub: 'Niche research', icon: BrainCircuit },
       ]
     },    {
       title: "3. Structure",
       items: [
-        { id: 'architect', label: 'Plot & Structure', icon: Construction },
+        { id: 'plot', label: 'Structural Beats', sub: 'Outline beats', icon: GitBranch },
+        { id: 'architect', label: 'Manuscript Architect', sub: 'Fix structure', icon: Construction },
       ]
     },
     {
       title: "4. Execution",
       items: [
-        { id: 'writing', label: 'Writing Studio', icon: PenTool },
-        { id: 'swarm', label: 'AI Critique', icon: Zap },
+        { id: 'autodraft', label: 'Drafting Engine', sub: 'Automated drafts', icon: Activity },
+        { id: 'writing', label: 'Writing Studio', sub: 'Main text editor', icon: PenTool },
+        { id: 'swarm', label: 'Narrative Swarm', sub: 'AI feedback', icon: Zap },
+        { id: 'scalpel', label: 'The Scalpel', sub: 'Prose surgery', icon: Scissors },
       ]
     },
     {
       title: "5. Delivery",
       items: [
-        { id: 'export', label: 'Publish', icon: Globe },
-        { id: 'bundle', label: 'Legal Bundle', icon: Scale },
-        { id: 'settings', label: 'Settings', icon: Settings },
+        { id: 'export', label: 'Publish & Export', sub: 'Share & print', icon: Globe },
+        { id: 'settings', label: 'Agent Settings', sub: 'System config', icon: Settings },
       ]
     }
   ];
 
   if (loading) {
     return (
-      <div className="h-screen bg-surface-bg flex flex-col items-center justify-center gap-5">
-        {/* Logo mark */}
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', boxShadow: '0 0 32px rgba(20,184,166,0.3)' }}
-        >
-          <span className="font-black text-white text-xl font-serif italic">S</span>
+      <div className="h-screen bg-surface-bg flex flex-col items-center justify-center gap-6">
+        <div className="relative">
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+            className="w-16 h-16 border-2 border-brand-primary/20 border-t-brand-primary rounded-[2rem] shadow-[0_0_50px_rgba(59,130,246,0.3)]"
+          />
+          <div className="absolute inset-0 bg-brand-primary/10 rounded-[2rem] blur-xl animate-pulse" />
         </div>
-        <div className="flex flex-col items-center gap-3">
-          <div className="text-sm font-semibold text-text-primary">Shakespeare</div>
-          <div className="text-[10px] text-text-tertiary">O'Crowley Nexus</div>
-          <div className="w-40 h-0.5 bg-border-subtle rounded-full overflow-hidden mt-1">
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-text-primary/80 font-black uppercase tracking-[0.4em] text-[10px] italic">Calibrating Narrative Systems</p>
+          <div className="w-32 h-0.5 bg-border-subtle rounded-full overflow-hidden">
             <motion.div 
-              animate={{ x: [-160, 160] }}
-              transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }}
-              className="w-1/2 h-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, transparent, #14b8a6, transparent)' }}
+              animate={{ x: [-128, 128] }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+              className="w-full h-full bg-brand-primary"
             />
           </div>
+          {loadingTimeout && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center gap-4 mt-8"
+            >
+              <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest text-center px-8">Cloud synchronization is taking longer than expected.</p>
+              <button 
+                onClick={() => setLoading(false)}
+                className="px-6 py-3 bg-white/5 hover:bg-white/10 text-text-primary border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
+              >
+                Bypass & Use Local Cache
+              </button>
+            </motion.div>
+          )}
         </div>
       </div>
     );
@@ -1082,56 +1304,95 @@ export default function App() {
   if (!user) {
     return (
       <PinGate>
-        <div className="h-screen bg-surface-bg flex items-center justify-center p-6 relative overflow-hidden">
-          {/* Ambient glow */}
-          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse, rgba(20,184,166,0.06) 0%, transparent 70%)' }}
-          />
+        <div className="h-screen bg-surface-bg flex items-center justify-center p-8 relative overflow-hidden">
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
           
           <motion.div 
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-            className="max-w-sm w-full relative z-10"
+            className="max-w-md w-full bg-surface-card rounded-[3.5rem] p-12 shadow-[0_50px_100px_rgba(0,0,0,0.6)] text-center space-y-10 border border-border-subtle relative z-10"
           >
-            {/* Card */}
-            <div className="bg-surface-card border border-border-medium rounded-2xl p-8 text-center"
-              style={{ boxShadow: '0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(20,184,166,0.08)' }}
-            >
-              {/* Logo */}
-              <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center mb-6"
-                style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', boxShadow: '0 8px 24px rgba(20,184,166,0.35)' }}
-              >
-                <span className="font-black text-white text-2xl font-serif italic">S</span>
-              </div>
-
-              <h1 className="text-2xl font-bold text-text-primary tracking-tight mb-1 italic font-serif">Shakespeare</h1>
-              <p className="text-[10px] font-semibold text-brand-primary uppercase tracking-[0.3em] mb-1">O'Crowley Nexus</p>
-              <p className="text-xs text-text-tertiary mb-8">AI-powered book writing platform</p>
-
+            <div className="w-24 h-24 bg-brand-primary rounded-[2.5rem] mx-auto flex items-center justify-center shadow-[0_20px_50px_rgba(59,130,246,0.4)] rotate-3 border-4 border-white/10">
+               <Globe size={48} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-5xl font-black text-text-primary tracking-tighter mb-3 italic font-serif">Casper <span className="text-brand-primary font-sans tracking-wide not-italic">THE GHOST WRITER</span></h1>
+              <p className="text-text-secondary font-black uppercase tracking-[0.2em] text-[10px] opacity-60">Architecting tomorrow's masterpieces</p>
+            </div>
+            <div className="flex flex-col gap-4">
               <button 
                 onClick={handleLogin}
-                className="group w-full py-3 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-3 transition-all active:scale-95"
-                style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', boxShadow: '0 8px 24px rgba(20,184,166,0.3)' }}
+                className="group w-full py-5 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-4 transition-all shadow-[0_20px_40px_rgba(168,85,247,0.3)] active:scale-95"
               >
-                <LogIn size={16} className="group-hover:translate-x-0.5 transition-transform" />
-                Sign in with Google
+                <LogIn size={20} className="group-hover:translate-x-1 transition-transform" />
+                Authorize Core Sync
+              </button>
+              
+              <button 
+                onClick={handleGuestLogin}
+                className="group w-full py-4 bg-white/5 hover:bg-white/10 text-text-secondary rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] flex items-center justify-center gap-4 transition-all border border-white/5 active:scale-95"
+              >
+                Enter Guest Protocol
               </button>
 
-              {loginError && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-4 p-3 bg-status-error/10 border border-status-error/20 rounded-xl text-xs text-status-error"
-                >
-                  {loginError}
-                </motion.div>
-              )}
+              <p className="text-[9px] text-text-secondary opacity-40 uppercase tracking-widest font-medium leading-relaxed mt-2">
+                Core Sync grants access to Cloud storage (Google Drive) for archival persistence. <br/>
+                Guest mode utilizes local neural storage only.
+              </p>
             </div>
-
-            <p className="text-center text-[10px] text-text-tertiary mt-4">Part of the O'Crowley Nexus suite</p>
+            {loginError && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium"
+              >
+                {loginError}
+              </motion.div>
+            )}
           </motion.div>
         </div>
+      </PinGate>
+    );
+  }
+
+  if (isMobile && isSpatialGlassModeActive) {
+    return (
+      <PinGate>
+        <SpatialGlassMode 
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+          project={project}
+          projects={projects}
+          chapters={chapters}
+          setChapters={setChapters}
+          isMobile={isMobile}
+          onClose={() => setIsSpatialGlassModeActive(false)}
+          selectProject={(p) => setProject(p)}
+          createNewProject={createNewProject}
+          updateProject={updateProject}
+          deleteProject={deleteProject}
+          saveToCloud={saveToCloud}
+          isSaving={isSaving}
+          totalWords={totalWords}
+          research={research}
+          sourceMaterials={sourceMaterials}
+          upsertResearch={upsertResearch}
+          upsertSourceMaterial={upsertSourceMaterial}
+          deleteSubDoc={deleteSubDoc}
+          upsertChapter={upsertChapter}
+          upsertChapterBatch={upsertChapterBatch}
+          characters={characters}
+          upsertCharacterBatch={upsertCharacterBatch}
+          deduplicateCharacters={deduplicateCharacters}
+          plotNodes={plotNodes}
+          setPlotNodes={setPlotNodes}
+          upsertPlotNodesBatch={upsertPlotNodesBatch}
+          presence={presence}
+          externalReviews={externalReviews}
+          upsertExternalReview={upsertExternalReview}
+          addNotification={addNotification}
+        />
       </PinGate>
     );
   }
@@ -1141,10 +1402,12 @@ export default function App() {
       <div 
         className="flex h-dvh bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
         style={{ minHeight: 0 }}
+        role="application"
       >
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 z-[1000] bg-brand-primary px-4 py-2 rounded-lg text-white font-black uppercase text-[10px] tracking-widest">Skip to Content</a>
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
-        {isMobile && isSidebarOpen && !isTablet && (
+        {isMobile && isSidebarOpen && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1155,111 +1418,120 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Sidebar — Caspa × O'Crowley Nexus */}
+      {/* Sidebar */}
       <motion.aside 
         initial={false}
         animate={{ 
-          width: isSidebarOpen ? (isMobile ? '85%' : 256) : (isMobile ? 0 : 72),
-          x: (isMobile && !isTablet) && !isSidebarOpen ? '-100%' : 0
+          width: isSidebarOpen ? (isMobile ? (isPortrait ? '85%' : '60%') : 260) : (isMobile ? 0 : 80),
+          x: isMobile && !isSidebarOpen ? '-100%' : 0
         }}
-        className={`flex flex-col bg-brand-dark text-text-primary relative border-r border-border-subtle overflow-hidden no-print ${
-          isMobile && !isTablet ? 'fixed inset-y-0 left-0 z-[101]' : 'z-50'
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className={`flex flex-col bg-brand-dark text-text-primary relative shadow-[0_0_50px_rgba(0,0,0,0.5)] border-r border-border-subtle overflow-hidden no-print ${
+          isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-50'
         }`}
-        style={{ boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}
       >
-        {/* Logo */}
-        <div className="px-3 py-3 flex items-center gap-2.5 border-b border-border-subtle">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', boxShadow: '0 0 16px rgba(20,184,166,0.35)' }}
-          >
-            <span className="font-black text-white text-base font-serif italic">S</span>
+        <AnimatePresence>
+          {isMobile && isSidebarOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[-1]"
+            />
+          )}
+        </AnimatePresence>
+
+        <div className="p-8 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-brand-primary flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)] font-black text-xl rotate-3 text-white border border-white/10">
+            C
           </div>
           {isSidebarOpen && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="overflow-hidden">
-              <div className="font-black text-base italic tracking-tight font-serif text-text-primary leading-none">Shakespeare</div>
-              <div className="text-[9px] font-semibold text-brand-primary uppercase tracking-[0.25em] opacity-80 mt-0.5">O'Crowley Nexus</div>
-            </motion.div>
+            <motion.h1 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="font-black text-2xl italic tracking-tighter font-serif text-text-primary"
+            >
+              Casper <span className="text-brand-primary font-normal font-sans tracking-widest text-[10px] uppercase ml-1 relative -top-1 opacity-80">GHOST WRITER</span>
+            </motion.h1>
           )}
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 space-y-6 mt-4 overflow-y-auto custom-scrollbar">
           {navGroups.map((group, groupIndex) => (
-            <div key={groupIndex} className="mb-4">
+            <div key={groupIndex} className="space-y-2">
               {isSidebarOpen ? (
-                <div className="text-[9px] font-semibold text-text-tertiary uppercase tracking-[0.25em] px-2 mb-1 mt-2">{group.title}</div>
+                <div className="text-[10px] font-black text-text-secondary uppercase tracking-[0.3em] px-4 mb-3 opacity-40">{group.title}</div>
               ) : (
-                groupIndex > 0 && <div className="w-8 h-px bg-border-subtle mx-auto my-3" />
+                <div className="w-full h-px bg-border-subtle my-6" />
               )}
-              <div className="space-y-0.5">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = currentView === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setCurrentView(item.id as ViewType);
-                        if (isMobile) setIsSidebarOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all duration-200 group text-xs font-medium ${
-                        isActive 
-                          ? 'bg-brand-primary/15 text-brand-primary' 
-                          : 'text-text-secondary hover:text-text-primary hover:bg-surface-overlay active:scale-95'
-                      }`}
-                      style={isActive ? { boxShadow: 'inset 2px 0 0 #14b8a6' } : {}}
-                      title={item.label}
-                    >
-                      <Icon size={15} className={isActive ? 'text-brand-primary' : 'text-text-tertiary group-hover:text-text-secondary transition-colors'} />
-                      {isSidebarOpen && (
-                        <span className="flex-1 text-left truncate">{item.label}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setCurrentView(item.id as ViewType);
+                      if (isMobile) setIsSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
+                      isActive 
+                        ? 'bg-brand-primary text-white shadow-xl shadow-brand-primary/30 scale-[1.02]' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-white/5 active:scale-95'
+                    }`}
+                    title={item.label}
+                  >
+                    <Icon size={20} className={isActive ? 'text-white' : 'group-hover:text-brand-primary transition-colors'} />
+                    {isSidebarOpen && (
+                      <div className="flex flex-col items-start min-w-0 text-left">
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {item.sub && <span className={`text-[8px] font-black uppercase tracking-widest opacity-40 ${isActive ? 'text-white/60' : 'text-text-secondary group-hover:text-brand-primary/60'}`}>{item.sub}</span>}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           ))}
         </nav>
 
-        {/* Bottom actions */}
-        <div className="px-2 py-2 border-t border-border-subtle">
-          <div className={`flex items-center gap-1 ${isSidebarOpen ? 'justify-between px-1' : 'justify-center flex-col'}`}>
+        <div className="px-4 py-6 space-y-3 border-t border-border-subtle mx-4">
+          <div className={`flex items-center gap-2 ${isSidebarOpen ? 'justify-between' : 'justify-center flex-col'}`}>
             <button 
               onClick={undo}
               disabled={history.length === 0}
-              className="p-2 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-all disabled:opacity-20 active:scale-90"
+              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all disabled:opacity-10 active:scale-90"
               title="Undo (Ctrl+Z)"
             >
-              <RotateCcw size={16} />
+              <RotateCcw size={18} />
             </button>
             <button 
               onClick={redo}
               disabled={future.length === 0}
-              className="p-2 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-all disabled:opacity-20 active:scale-90"
+              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all disabled:opacity-10 active:scale-90"
               title="Redo (Ctrl+Y)"
             >
-              <RotateCw size={16} />
+              <RotateCw size={18} />
             </button>
             <button 
               onClick={saveToCloud}
-              className={`p-2 rounded-lg transition-all active:scale-90 ${isSaving ? 'text-brand-primary' : 'text-text-tertiary hover:text-brand-primary hover:bg-surface-overlay'}`}
-              title="Sync to Cloud"
+              className={`p-2.5 text-text-secondary hover:text-brand-primary hover:bg-white/5 rounded-xl transition-all active:scale-90 ${isSaving ? 'text-brand-primary' : ''}`}
+              title="Manual Sync"
             >
-              <Save size={16} />
+              <Save size={18} />
             </button>
           </div>
         </div>
 
-        {/* User */}
-        <div className="p-2 border-t border-border-subtle flex items-center gap-2">
-          <img src={user.photoURL || ''} className="w-7 h-7 rounded-lg border border-border-medium object-cover shrink-0" alt="Profile" />
+        <div className="p-6 border-t border-border-subtle flex items-center gap-4 bg-white/5">
+          <img src={user.photoURL || ''} className="w-12 h-12 rounded-xl border border-border-subtle shadow-2xl" alt="Profile" />
           {isSidebarOpen && (
             <div className="flex-1 overflow-hidden">
-              <div className="text-xs font-semibold truncate text-text-primary">{user.displayName}</div>
-              <button onClick={logout} className="text-[10px] text-text-tertiary hover:text-red-400 transition-colors flex items-center gap-1 mt-0.5">
-                <LogOut size={10} />
-                Sign out
+              <div className="text-xs font-black truncate text-text-primary uppercase tracking-widest">{user.displayName}</div>
+              <button onClick={logout} className="text-[10px] font-bold text-text-secondary hover:text-red-400 transition-colors uppercase flex items-center gap-1 mt-1">
+                <LogOut size={12} />
+                Disconnect Session
               </button>
             </div>
           )}
@@ -1268,183 +1540,252 @@ export default function App() {
 
       {/* Main Content */}
       <main 
+        id="main-content"
         className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible print:block print:static min-w-0"
         style={{ minHeight: 0 }}
       >
-        {/* Top Header — Caspa style */}
-        <header className="h-14 border-b border-border-subtle flex items-center justify-between px-4 md:px-6 bg-surface-card relative z-10 shrink-0 no-print"
-          style={{ boxShadow: '0 1px 0 rgba(20,184,166,0.08)' }}
-        >
-          <div className="flex items-center gap-3 md:gap-5 overflow-hidden h-full">
+        {/* Top Header */}
+        <header className={`${isShortHeight ? 'h-14' : 'h-20'} border-b border-border-subtle flex items-center justify-between px-4 md:px-10 bg-surface-card relative z-10 shrink-0 no-print shadow-sm transition-all duration-300`}>
+          <div className="flex items-center gap-4 md:gap-12 overflow-hidden h-full">
+            <div className="flex items-center gap-2">
+              <img src="/casper_logo.png" alt="Casper" className="h-6 md:h-8 w-auto opacity-80 hover:opacity-100 transition-opacity" referrerPolicy="no-referrer" />
+              <div className="text-[10px] bg-white/5 px-2.5 py-0.5 rounded-full font-mono text-text-secondary border border-border-subtle/30 uppercase tracking-widest opacity-20">LITERARY ENGINE v3.1</div>
+            </div>
             
-            
-            {/* Project selector — Caspa style */}
             <div className="relative h-full flex items-center">
               <button 
                 onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-surface-overlay transition-all rounded-lg group border border-transparent hover:border-border-medium"
+                aria-label="Select Manuscript"
+                aria-expanded={isProjectMenuOpen}
+                aria-haspopup="listbox"
+                className="flex items-center gap-2 md:gap-4 px-2 md:px-5 py-1.5 md:py-2.5 hover:bg-white/5 transition-all rounded-2xl group overflow-hidden border border-transparent hover:border-border-subtle"
               >
-                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)' }}
-                >
-                  <span className="text-white text-[9px] font-black font-serif italic">{(project.title || 'U').charAt(0)}</span>
-                </div>
                 <div className="flex flex-col items-start min-w-0 text-left">
-                  <span className="text-sm font-semibold text-text-primary truncate max-w-[120px] md:max-w-[320px] leading-tight">{project.title || 'Untitled'}</span>
-                  <span className="text-[9px] text-text-tertiary capitalize">{project.type} · {chapters.length} chapters</span>
+                  <div className={`text-[8px] md:text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] leading-none ${isShortHeight ? 'mb-0.5' : 'mb-1.5'} flex items-center gap-2`}>
+                    <div className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-brand-primary animate-pulse" />
+                    Live Vault
+                  </div>
+                  <div className="flex items-center gap-2 md:gap-3 text-text-primary">
+                    <span className={`italic font-serif truncate max-w-[120px] md:max-w-[400px] font-bold ${isShortHeight ? 'text-base' : 'text-lg md:text-2xl'} leading-tight`}>{project.title}</span>
+                    <ChevronDown size={isShortHeight ? 14 : 18} className={`text-text-secondary group-hover:text-brand-primary transition-all duration-300 ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+                  </div>
                 </div>
-                <ChevronDown size={14} className={`text-text-tertiary group-hover:text-brand-primary transition-all duration-200 shrink-0 ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               <AnimatePresence>
                 {isProjectMenuOpen && (
                   <motion.div 
-                    initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 4, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.97 }}
-                    className="absolute top-full left-0 w-[90vw] md:w-[440px] bg-surface-card rounded-2xl border border-border-medium z-[110] overflow-hidden mt-1"
-                    style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(20,184,166,0.08)' }}
+                    initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 5, scale: 1 }}
+                    exit={{ opacity: 0, y: 15, scale: 0.98 }}
+                    className="fixed inset-x-4 top-[74px] md:absolute md:top-full md:left-0 md:inset-x-auto md:w-[480px] bg-surface-card rounded-3xl shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2"
                   >
-                    <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
-                      <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Projects</span>
-                      <span className="badge-teal">{projects.length}</span>
-                    </div>
-                    <div className="max-h-[380px] overflow-y-auto custom-scrollbar p-2">
-                      {isProjectsLoading ? (
-                        <div className="py-8 text-center text-xs text-text-tertiary">Loading...</div>
-                      ) : projects.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-text-tertiary">No projects yet</div>
-                      ) : (
-                        projects.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => { setProject(p); setIsProjectMenuOpen(false); }}
-                            className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-3 ${
-                              p.id === project.id 
-                                ? 'bg-brand-primary/15 text-brand-primary' 
-                                : 'hover:bg-surface-overlay text-text-secondary hover:text-text-primary'
-                            }`}
+                    <div className="p-6 max-h-[500px] overflow-y-auto custom-scrollbar">
+                      <div className="flex items-center justify-between mb-6 px-2">
+                        <div>
+                          <p className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em]">Archived Artifacts</p>
+                          <p className="text-[8px] text-text-secondary/60 uppercase tracking-widest mt-1">Switch between manuscripts or forge new books</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const id = prompt("Enter Project ID or Title segment to recover:");
+                              if (id) {
+                                // Simple manual recovery attempt
+                                onNotify(`Attempting to recover project: ${id}`, 'info');
+                                // The system will try to find it via titles or exact ID in a background query
+                                // For now, we just suggest checking if they are logged in with the right account
+                                const match = projects.find(p => p.id === id || p.title.toLowerCase().includes(id.toLowerCase()));
+                                if (match) {
+                                  setProject(match);
+                                  setIsProjectMenuOpen(false);
+                                } else {
+                                  onNotify("No immediate match found. Scanning deeper vaults...", "info");
+                                }
+                              }
+                            }}
+                            className="text-[9px] font-black text-brand-primary uppercase tracking-widest hover:underline"
                           >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                              p.id === project.id ? 'bg-brand-primary/20' : 'bg-surface-muted'
-                            }`}>
-                              <Library size={14} className={p.id === project.id ? 'text-brand-primary' : 'text-text-tertiary'} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium leading-tight truncate italic font-serif">{p.title || 'Untitled'}</div>
-                              <div className="text-[9px] text-text-tertiary mt-0.5 capitalize">{p.type} · {new Date(p.lastModified).toLocaleDateString()}</div>
-                            </div>
-                            {p.id === project.id && <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shrink-0" />}
+                            Recovery Mode
                           </button>
-                        ))
-                      )}
-                    </div>
-                    <div className="p-3 border-t border-border-subtle space-y-2">
-                      <button 
-                        onClick={() => {
-                          setShowSeedIngestion(true);
-                          setIsProjectMenuOpen(false);
-                        }}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
-                        style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', boxShadow: '0 4px 12px rgba(20,184,166,0.25)' }}
-                      >
-                        <Sparkles size={14} />
-                        Story Seed — Drop Any Idea
-                      </button>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button 
-                          onClick={() => {
-                            const title = window.prompt('New project name:');
-                            if (title) createNewProject(title);
-                            setIsProjectMenuOpen(false);
-                          }}
-                          className="flex items-center justify-center gap-2 py-2.5 bg-surface-raised hover:bg-surface-overlay text-text-primary rounded-xl text-xs font-semibold transition-all border border-border-medium active:scale-95"
-                        >
-                          <Plus size={14} />
-                          Blank Project
-                        </button>
-                        <label className="flex items-center justify-center gap-2 py-2.5 bg-surface-raised hover:bg-surface-overlay text-text-primary rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-95 border border-border-medium"
-                        >
-                          <Upload size={14} />
-                          Import
-                          <input type="file" className="hidden" accept=".pdf,.txt,.md,.json" onChange={handleBulkIngest} />
-                        </label>
+                          <span className="text-[10px] bg-brand-primary/10 px-3 py-1 rounded-full text-brand-primary font-black uppercase">{projects.length} Total</span>
+                        </div>
                       </div>
+                      <div className="space-y-2">
+                        {isProjectsLoading ? (
+                          <div className="py-12 text-center text-[11px] font-black text-text-secondary animate-pulse uppercase tracking-[0.3em]">Calibrating Vault...</div>
+                        ) : projects.length === 0 ? (
+                          <div className="py-12 text-center text-[11px] font-black text-text-secondary uppercase tracking-[0.3em]">Void Detected</div>
+                        ) : (
+                          projects.map(p => (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                setProject(p);
+                                setIsProjectMenuOpen(false);
+                              }}
+                              className={`w-full text-left p-5 rounded-2xl transition-all group/item border ${
+                                p.id === project.id 
+                                  ? 'bg-brand-primary border-brand-primary text-white shadow-2xl shadow-brand-primary/20' 
+                                  : 'hover:bg-white/5 border-border-subtle/30 text-text-secondary hover:text-text-primary'
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${p.id === project.id ? 'bg-white/20' : 'bg-surface-muted group-hover/item:bg-brand-primary/10 transition-colors'}`}>
+                                  <Library size={18} className={p.id === project.id ? 'text-white' : 'text-text-secondary group-hover/item:text-brand-primary'} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm font-black leading-tight truncate italic font-serif">{p.title || 'Untitled Narrative'}</div>
+                                  <div className={`text-[9px] uppercase mt-1 tracking-widest font-bold opacity-60 flex items-center gap-2`}>
+                                    {p.type} <div className="w-1 h-1 rounded-full bg-current" /> {new Date(p.lastModified).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-4 sm:p-6 bg-surface-muted/50 border-t border-border-subtle grid grid-cols-2 gap-3 shrink-0">
+                       <button 
+                        onClick={() => {
+                          const title = window.prompt('Define narrative title:');
+                          // Only block if they explicitly cancelled (null). Empty string allowed.
+                          if (title !== null) {
+                            createNewProject(title || 'Untitled Narrative');
+                            setIsProjectMenuOpen(false);
+                          }
+                        }}
+                        className="flex items-center justify-center gap-2 py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-brand-primary hover:text-white shadow-xl active:scale-95"
+                      >
+                        <Plus size={16} />
+                        New Archive
+                      </button>
+
+                      <label className="flex items-center justify-center gap-2 py-4 bg-brand-primary text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-brand-accent shadow-xl shadow-brand-primary/20 cursor-pointer active:scale-95">
+                        <Upload size={16} />
+                        Ingest Case
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".pdf,.txt,.md,.json" 
+                          onChange={handleBulkIngest} 
+                        />
+                      </label>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            {/* Save status */}
-            <AnimatePresence mode="wait">
-              {saveStatus === 'saving' && (
-                <motion.div key="saving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-lg text-[9px] font-semibold text-brand-primary"
-                >
-                  <div className="w-1 h-1 rounded-full bg-brand-primary animate-ping" />
-                  Saving
-                </motion.div>
-              )}
-              {saveStatus === 'saved' && (
-                <motion.div key="saved" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-status-success/10 border border-status-success/20 rounded-lg text-[9px] font-semibold text-status-success"
-                >
-                  <div className="w-1 h-1 rounded-full bg-status-success" />
-                  Saved
-                </motion.div>
-              )}
-              {(saveStatus === 'error' || (isOfflineMode && saveStatus === 'idle')) && (
-                <motion.div key="offline" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-status-warning/10 border border-status-warning/20 rounded-lg text-[9px] font-semibold text-status-warning"
-                >
-                  <div className="w-1 h-1 rounded-full bg-status-warning animate-pulse" />
-                  {saveStatus === 'error' ? 'Local only' : 'Offline'}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {isSaving && (
+              <motion.div 
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="hidden md:flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full text-[9px] font-black text-brand-primary uppercase tracking-[0.1em]"
+              >
+                <div className="w-1 h-1 rounded-full bg-brand-primary animate-ping" />
+                Intelligence Synced
+              </motion.div>
+            )}
           </div>
-
-          {/* Header right */}
-          <div className="flex items-center gap-2 shrink-0">
-            {isMobile && !isTablet && (
-              <button onClick={() => setIsSidebarOpen(true)}
-                className="p-2 text-text-secondary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-all border border-border-subtle"
-              >
-                <Menu size={18} />
-              </button>
-            )}
-            {(!isMobile || isTablet) && (
-              <button onClick={() => setCurrentView('export')}
-                className="px-4 py-2 bg-brand-primary hover:bg-brand-accent text-white rounded-xl text-xs font-semibold transition-all active:scale-95"
-                style={{ boxShadow: '0 4px 12px rgba(20,184,166,0.2)' }}
-              >
-                Export
-              </button>
-            )}
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-all hidden lg:flex items-center justify-center active:scale-90 border border-border-subtle"
-              title="Toggle Sidebar"
-            >
-              <PanelLeft size={16} className={`transition-transform duration-300 ${isSidebarOpen ? '' : 'rotate-180'}`} />
-            </button>
+          <div className="flex items-center gap-2 lg:gap-3 shrink-0">
+             {isMobile && (
+               <div className="flex items-center gap-2">
+                 <button 
+                   onClick={() => setIsSpatialGlassModeActive(true)}
+                   className="px-3 py-2.5 text-brand-accent bg-brand-primary/10 hover:bg-brand-primary/20 rounded-xl transition-all border border-brand-primary/30 flex items-center gap-1.5 active:scale-95 shadow-md shadow-brand-primary/10 min-h-[44px]"
+                   title="Enable Spatial Glass PWA mode"
+                 >
+                   <Sparkles size={14} className="animate-pulse text-brand-accent" />
+                   <span className="text-[9px] font-black tracking-widest uppercase">SPATIAL</span>
+                 </button>
+                 <button 
+                   onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                   className="p-3 text-text-primary bg-surface-muted rounded-xl hover:bg-white/5 transition-colors border border-border-subtle min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-95"
+                   title="Toggle Menu"
+                 >
+                   <Menu size={20} />
+                 </button>
+               </div>
+             )}
+             {!isMobile && (
+               <>
+                 <button 
+                  onClick={() => setCurrentView('export')}
+                  className="px-6 py-2.5 bg-brand-primary text-white rounded-xl font-black text-[10px] hover:bg-brand-accent transition-all uppercase tracking-[0.2em] shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95"
+                >
+                  Export & Publish
+                </button>
+                <button 
+                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                  className="flex items-center gap-2 p-2.5 px-4 bg-surface-muted border border-border-subtle rounded-xl text-text-secondary hover:text-brand-primary hover:border-brand-primary/30 transition-all active:scale-90 shadow-sm"
+                  title="Toggle Sidebar Architecture"
+                >
+                  {isSidebarOpen ? (
+                    <GitBranch size={16} className="rotate-90 transition-transform duration-500" />
+                  ) : (
+                    <Menu size={16} />
+                  )}
+                  <span className="text-[10px] uppercase font-black tracking-widest">{isSidebarOpen ? "COLLAPSE" : "MENU"}</span>
+                </button>
+               </>
+             )}
           </div>
         </header>
 
+        {systemAlert && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            className={`shrink-0 px-8 py-3 flex items-center justify-between gap-4 z-10 relative no-print shadow-lg ${
+              systemAlert.type === 'error' ? 'bg-red-500 text-white' : 'bg-amber-500 text-black'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={18} />
+              <p className="text-xs font-black uppercase tracking-widest">{systemAlert.message}</p>
+            </div>
+            <button 
+              onClick={() => setSystemAlert(null)}
+              className="p-1 hover:bg-black/10 rounded-lg transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+
         {/* View Transition Area */}
         <div 
-          className={`flex-1 relative bg-surface-bg print:bg-white print:p-0 flex flex-col overflow-hidden ${isMobile && !isTablet ? 'pb-16' : ''}`}
+          className={`flex-1 relative bg-surface-bg print:bg-white print:p-0 flex flex-col overflow-hidden`}
           style={{ minHeight: 0 }}
         >
-          <div
-            className={`w-full flex-1 flex flex-col min-h-0 ${
-              ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
-                ? `w-full ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
-                : 'w-full'
-            }`}
-            style={{ minHeight: 0 }}
-          >
+          {isProjectsLoading && projects.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-20 text-center gap-8 bg-surface-bg">
+              <Ghost size={80} className="text-brand-primary opacity-20 animate-pulse" />
+              <div className="space-y-4">
+                <h2 className="text-3xl font-black italic font-serif text-text-primary">Opening The Vault...</h2>
+                <p className="text-sm text-text-secondary font-black uppercase tracking-widest opacity-60">Synchronizing intelligence with core neural infrastructure</p>
+                <div className="pt-8">
+                  <button 
+                    onClick={() => setIsProjectsLoading(false)}
+                    className="px-8 py-3 bg-brand-primary/10 border border-brand-primary/20 rounded-xl text-[10px] font-black text-brand-primary uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all"
+                  >
+                    Bypass Synchronizer
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              className={`w-full flex-1 flex flex-col min-h-0 ${
+                ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
+                  ? `w-full ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
+                  : 'w-full'
+              }`}
+              style={{ minHeight: 0 }}
+            >
             {currentView === 'library' && (
               <LibraryView 
                 key="library"
@@ -1455,6 +1796,8 @@ export default function App() {
                 }}
                 onCreateProject={() => createNewProject()}
                 onDeleteProject={(id) => deleteProject(id)}
+                onBroadScan={broadRecoveryScan}
+                isMobile={isMobile}
               />
             )}
             {(currentView === 'dashboard' || currentView === 'brainstorm') && (
@@ -1464,6 +1807,9 @@ export default function App() {
                        project={{ ...project, stats: { ...project.stats, totalWords } }} 
                        projects={projects}
                        chapters={chapters}
+                       characters={characters}
+                       plotNodes={plotNodes}
+                       isMobile={isMobile}
                        selectProject={(p) => setProject(p)}
                        createNewProject={createNewProject}
                        updateProject={updateProject} 
@@ -1482,6 +1828,19 @@ export default function App() {
                        onAddResearch={upsertResearch}
                        onError={(msg) => addNotification(msg, 'error')}
                      />
+                   )}
+                   {!['dashboard', 'brainstorm'].includes(currentView) && (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-white/5 rounded-[3rem] border border-white/10 m-8">
+                        <Activity className="text-brand-primary mb-4 animate-pulse" size={48} />
+                        <h2 className="text-2xl font-black italic font-serif mb-2 text-white">Neural View Collision</h2>
+                        <p className="text-sm text-text-secondary max-w-md">You've reached a sector that is either under construction or has been purged by the neural architect. Returning to Dashboard safely...</p>
+                        <button 
+                          onClick={() => setCurrentView('dashboard')}
+                          className="mt-6 px-8 py-3 bg-brand-primary text-white rounded-2xl font-black uppercase tracking-widest text-[10px]"
+                        >
+                          Stabilize Connection
+                        </button>
+                      </div>
                    )}
                  </div>
               )}
@@ -1519,6 +1878,7 @@ export default function App() {
                       setChapters(chapList);
                       await upsertChapterBatch(chapList);
                     }}
+                    setView={setCurrentView}
                     onNotify={(msg, type) => addNotification(msg, type)}
                     onError={(msg) => addNotification(msg, 'error')}
                   />
@@ -1549,16 +1909,16 @@ export default function App() {
                     plotNodes={plotNodes}
                     presence={presence}
                     updateProject={updateProject} 
-                    updatePlotNodes={async (nodes) => {
-                      setPlotNodes(nodes);
-                      await upsertPlotNodesBatch(nodes);
-                    }}
                     updateChapters={async (chapList) => {
                        setChapters(chapList);
+                       // ALWAYS ensure cloud sync for content changes, not just structural changes
                        await upsertChapterBatch(chapList);
                     }}
                     setView={setCurrentView}
-                    upsertChapter={upsertChapter}
+                    upsertChapter={async (chap) => {
+                      setChapters(prev => prev.map(c => c.id === chap.id ? chap : c));
+                      await upsertChapter(chap);
+                    }}
                     onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
                     onUpsertSource={upsertSourceMaterial}
                     onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
@@ -1586,6 +1946,25 @@ export default function App() {
                   />
                 </div>
               )}
+              {currentView === 'autodraft' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <AutoDrafter 
+                    key={project.id}
+                    project={project}
+                    chapters={chapters}
+                    plotNodes={plotNodes}
+                    research={research}
+                    updateProject={updateProject}
+                    updateChapters={async (chaps) => {
+                      setChapters(chaps);
+                      await upsertChapterBatch(chaps);
+                    }}
+                    setView={setCurrentView}
+                    onNotify={(msg, type) => addNotification(msg, type)}
+                    onError={(msg) => addNotification(msg, 'error')}
+                  />
+                </div>
+              )}
               {currentView === 'prizes' && (
                 <div className="flex-1 flex flex-col min-h-0">
                   <PrizeView 
@@ -1607,19 +1986,6 @@ export default function App() {
                   />
                 </div>
               )}
-              {currentView === 'bundle' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <CourtBundleView
-                    key={project.id}
-                    project={project}
-                    chapters={chapters}
-                    research={research}
-                    characters={characters}
-                    plotNodes={plotNodes}
-                    onNotify={(msg, type) => addNotification(msg, type)}
-                  />
-                </div>
-              )}
               {currentView === 'export' && (
                 <div className="flex-1 flex flex-col min-h-0">
                   <PublishView 
@@ -1627,6 +1993,10 @@ export default function App() {
                     project={project}
                     chapters={chapters}
                     updateProject={updateProject}
+                    updateChapters={async (chaps) => {
+                      setChapters(chaps);
+                      await upsertChapterBatch(chaps);
+                    }}
                     onNotify={(msg, type) => addNotification(msg, type)}
                   />
                 </div>
@@ -1664,45 +2034,110 @@ export default function App() {
                     project={project} 
                     updateProject={updateProject}
                     deleteProject={deleteProject}
+                    onBroadScan={broadRecoveryScan}
+                    onNotify={onNotify}
+                    chapters={chapters}
+                    characters={characters}
+                    plotNodes={plotNodes}
+                    research={research}
+                    sourceMaterials={sourceMaterials}
+                    externalReviews={externalReviews}
+                    onRestoreBackup={async (payload: any) => {
+                      if (!user) return;
+                      try {
+                        let restoredProjData = payload.project;
+                        if (!restoredProjData) throw new Error("Invalid backup payload.");
+
+                        // Always generate a fresh project ID to ensure ownership and avoid permission conflicts
+                        const newProjectId = `project_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`;
+                        
+                        const projectPayload = { 
+                          ...restoredProjData, 
+                          id: newProjectId,
+                          ownerId: user.uid,
+                          lastModified: Date.now(),
+                          updatedAt: serverTimestamp() as any
+                        };
+                        
+                        // 1. Commit main project document
+                        await setDoc(doc(db, 'projects', newProjectId), projectPayload);
+                        
+                        // 2. Logic for sub-collections MUST use the new ID directly
+                        // We define helper that takes explicit ID
+                        const forceUpsert = async (coll: string, docId: string, data: any) => {
+                          await setDoc(doc(db, 'projects', newProjectId, coll, docId), { ...data, ownerId: user.uid });
+                        };
+
+                        if (Array.isArray(payload.chapters)) {
+                          for (const chap of payload.chapters) {
+                            await forceUpsert('chapters', chap.id, chap);
+                          }
+                        }
+                        
+                        if (Array.isArray(payload.characters)) {
+                          for (const char of payload.characters) {
+                            await forceUpsert('characters', char.id, char);
+                          }
+                        }
+
+                        if (Array.isArray(payload.plotNodes)) {
+                          for (const node of payload.plotNodes) {
+                            await forceUpsert('plotNodes', node.id, node);
+                          }
+                        }
+
+                        if (Array.isArray(payload.research)) {
+                          for (const res of payload.research) {
+                            await forceUpsert('research', res.id, res);
+                          }
+                        }
+
+                        if (Array.isArray(payload.sourceMaterials)) {
+                          for (const src of payload.sourceMaterials) {
+                            await forceUpsert('sourceMaterials', src.id, src);
+                          }
+                        }
+
+                        if (Array.isArray(payload.externalReviews)) {
+                          for (const rev of payload.externalReviews) {
+                            await forceUpsert('externalReviews', rev.id, rev);
+                          }
+                        }
+
+                        setProject(projectPayload);
+                        setCurrentView('dashboard');
+                        onNotify("Narrative blueprint restored and synchronized.", "success");
+                      } catch (err: any) {
+                        console.error("Restore failed:", err);
+                        onNotify(`Restore collapsed: ${err.message}`, "error");
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              {currentView === 'scalpel' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <ScalpelModule 
+                    key={project.id}
+                    project={project}
+                    chapters={chapters}
+                    updateProject={updateProject}
+                    updateChapters={async (chaps) => {
+                      setChapters(chaps);
+                      await upsertChapterBatch(chaps);
+                    }}
+                    setView={setCurrentView}
+                    onNotify={onNotify}
                   />
                 </div>
               )}
             </div>
-          </div>
-        </main>
+          )}
+        </div>
+      </main>
 
-        {/* Mobile Bottom Navigation Bar */}
-        {isMobile && !isTablet && (
-          <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-brand-dark border-t border-border-subtle flex items-center justify-around px-2 py-1 no-print"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}
-          >
-            {[
-              { id: 'library', label: 'Books', icon: Library },
-              { id: 'writing', label: 'Write', icon: PenTool },
-              { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-              { id: 'architect', label: 'Structure', icon: Construction },
-              { id: 'export', label: 'Publish', icon: Globe },
-            ].map(item => {
-              const Icon = item.icon;
-              const isActive = currentView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => { setCurrentView(item.id as ViewType); setIsSidebarOpen(false); }}
-                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all min-w-[48px] ${
-                    isActive ? 'text-brand-primary' : 'text-text-tertiary'
-                  }`}
-                >
-                  <Icon size={18} className={isActive ? 'text-brand-primary' : ''} />
-                  <span className="text-[10px] font-semibold leading-none">{item.label}</span>
-                  {isActive && <div className="w-1 h-1 rounded-full bg-brand-primary" />}
-                </button>
-              );
-            })}
-          </nav>
-        )}
         {/* Notifications Toast */}
-        <div className={`fixed ${isMobile ? 'bottom-20' : 'bottom-8'} right-4 md:right-8 z-[100] flex flex-col gap-3 pointer-events-none`}>
+        <div className="fixed bottom-8 right-8 z-[100] flex flex-col gap-3 pointer-events-none">
           <AnimatePresence>
             {notifications.map((n) => (
               <motion.div
@@ -1710,15 +2145,13 @@ export default function App() {
                 initial={{ opacity: 0, x: 20, y: 0, scale: 0.9 }}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-                className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border min-w-[260px] max-w-[380px] backdrop-blur-xl ${
-                  n.type === 'error' && n.message.startsWith('⚠') ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-                  n.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                  n.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border min-w-[300px] backdrop-blur-xl ${
+                  n.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                  n.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
                   'bg-brand-primary/10 border-brand-primary/20 text-brand-primary'
                 }`}
               >
                 <div className={`p-2 rounded-lg ${
-                  n.type === 'error' && n.message.startsWith('\u26a0') ? 'bg-amber-500/20' :
                   n.type === 'error' ? 'bg-red-500/20' :
                   n.type === 'success' ? 'bg-emerald-500/20' :
                   'bg-brand-primary/20'
@@ -1737,14 +2170,7 @@ export default function App() {
           </AnimatePresence>
         </div>
       </div>
-
-      {/* Story Seed Ingestion Modal */}
-      {showSeedIngestion && (
-        <SeedIngestion
-          onAccept={createProjectFromSeed}
-          onDismiss={() => setShowSeedIngestion(false)}
-        />
-      )}
     </PinGate>
     );
 }
+

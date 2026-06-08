@@ -5,7 +5,6 @@ import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
-  key?: React.Key;
   project: Project;
   chapters: Chapter[];
   updateProject: (updates: Partial<Project>) => void;
@@ -39,20 +38,20 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
       <div className="max-w-6xl mx-auto py-12 px-6">
       <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-full mb-4">
-            <Trophy size={14} className="text-amber-600" />
-            <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Prestige Analysis</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full mb-4">
+            <Trophy size={14} className="text-brand-primary" />
+            <span className="text-[10px] font-black text-brand-primary uppercase tracking-widest">Mandatory Prestige Vectors</span>
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight italic font-serif">Prize Worthiness</h1>
-          <p className="text-slate-500 max-w-xl font-medium mt-2">
-            Real-time assessment of your manuscript's eligibility for major literary and cinematic honors. Aim high.
+          <h1 className="text-4xl font-black text-text-primary tracking-tight italic font-serif">Acclaim & Recognition</h1>
+          <p className="text-text-secondary max-w-xl font-medium mt-2">
+            I do not labor in obscurity. If I am to synthesize a masterpiece, we must target specific acclaim, honors, or supreme academic distinctions. Select our objective.
           </p>
         </div>
         
         <button 
           onClick={runAssessment}
           disabled={loading}
-          className="px-8 py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl flex items-center gap-3 disabled:opacity-50"
+          className="px-8 py-3 btn-nexus-primary rounded-xl font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-3 disabled:opacity-50"
         >
           {loading ? (
             <motion.div 
@@ -61,8 +60,8 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
             >
               <Loader2 size={16} />
             </motion.div>
-          ) : <Sparkles size={16} className="text-amber-400" />}
-          Run Real-time Audit
+          ) : <Sparkles size={16} className="text-white" />}
+          Demand Appraisal
         </button>
       </header>
 
@@ -70,9 +69,9 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-12 bg-gradient-to-br from-amber-500 to-orange-600 rounded-[2rem] p-1 shadow-2xl"
+          className="mb-12 bg-brand-primary/30 rounded-[2rem] p-1 shadow-2xl"
         >
-          <div className="bg-white rounded-[1.8rem] p-8 md:p-12 relative overflow-hidden">
+          <div className="bg-brand-dark rounded-[1.8rem] p-8 md:p-12 relative overflow-hidden border border-border-subtle">
             <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
               <Target size={200} />
             </div>
@@ -84,8 +83,8 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
                     <Target className="text-amber-600" size={20} />
                    </div>
                    <div>
-                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Target Honor</h2>
-                    <h3 className="text-2xl font-black text-slate-900 italic font-serif">{project.targetPrize}</h3>
+                    <h2 className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em]">Target Honor</h2>
+                    <h3 className="text-2xl font-black text-text-primary italic font-serif">{project.targetPrize}</h3>
                    </div>
                 </div>
 
@@ -96,7 +95,7 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
                     </h4>
                     <ul className="space-y-3">
                       {targetPrizeData.pros.map((p, i) => (
-                        <li key={i} className="text-xs font-medium text-slate-600 flex gap-2">
+                        <li key={i} className="text-xs font-medium text-text-secondary flex gap-2">
                           <span className="text-emerald-500">•</span> {p}
                         </li>
                       ))}
@@ -108,7 +107,7 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
                     </h4>
                     <ul className="space-y-3">
                       {targetPrizeData.cons.map((c, i) => (
-                        <li key={i} className="text-xs font-medium text-slate-600 flex gap-2">
+                        <li key={i} className="text-xs font-medium text-text-secondary flex gap-2">
                           <span className="text-red-400">•</span> {c}
                         </li>
                       ))}
@@ -117,7 +116,7 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
                 </div>
               </div>
 
-              <div className="w-full md:w-64 flex flex-col items-center bg-slate-50 rounded-3xl p-8 border border-slate-100">
+              <div className="w-full md:w-64 flex flex-col items-center bg-surface-muted rounded-3xl p-8 border border-border-subtle">
                 <div className="relative w-32 h-32 mb-4">
                   <svg className="w-full h-full transform -rotate-90">
                     <circle
@@ -127,7 +126,7 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
                       stroke="currentColor"
                       strokeWidth="8"
                       fill="transparent"
-                      className="text-slate-200"
+                      className="text-white/5"
                     />
                     <circle
                       cx="64"
@@ -143,21 +142,21 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
                     />
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-2xl font-black text-slate-900">{targetPrizeData.eligibilityScore}%</span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase">Match</span>
+                    <span className="text-2xl font-black text-text-primary">{targetPrizeData.eligibilityScore}%</span>
+                    <span className="text-[8px] font-bold text-text-secondary uppercase">Match</span>
                   </div>
                 </div>
-                <p className="text-[10px] font-bold text-slate-500 text-center uppercase tracking-widest leading-relaxed">
+                <p className="text-[10px] font-bold text-text-secondary text-center uppercase tracking-widest leading-relaxed">
                   Calculated worthiness based on current manuscript density
                 </p>
               </div>
             </div>
 
-            <div className="mt-12 pt-8 border-t border-slate-100 bg-amber-50 -mx-8 -mb-8 px-8 py-8">
-               <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-2">
+            <div className="mt-12 pt-8 border-t border-border-subtle bg-amber-500/10 -mx-8 -mb-8 px-8 py-8">
+               <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                 <Sparkles size={14} /> Judge's Recommendation
                </h4>
-               <p className="text-sm font-medium text-slate-700 leading-relaxed italic font-serif">
+               <p className="text-sm font-medium text-text-primary leading-relaxed italic font-serif">
                 "{targetPrizeData.recommendation}"
                </p>
             </div>
@@ -174,35 +173,35 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
             transition={{ delay: i * 0.05 }}
             className={`group p-6 rounded-3xl border transition-all ${
               project.targetPrize === a.prizeName 
-              ? 'bg-slate-900 border-slate-900 shadow-xl' 
-              : 'bg-white border-slate-100 hover:border-slate-200 shadow-sm'
+              ? 'bg-brand-primary border-brand-primary shadow-xl shadow-brand-primary/20' 
+              : 'bg-surface-card border-border-subtle hover:border-brand-primary shadow-sm'
             }`}
           >
             <div className="flex justify-between items-start mb-6">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                project.targetPrize === a.prizeName ? 'bg-amber-500' : 'bg-slate-50'
+                project.targetPrize === a.prizeName ? 'bg-white/20' : 'bg-surface-muted'
               }`}>
-                <Award size={20} className={project.targetPrize === a.prizeName ? 'text-white' : 'text-slate-400'} />
+                <Award size={20} className={project.targetPrize === a.prizeName ? 'text-white' : 'text-text-secondary'} />
               </div>
               <div className="text-right">
                 <div className={`text-xl font-black italic font-serif ${
-                  project.targetPrize === a.prizeName ? 'text-white' : 'text-slate-900'
+                  project.targetPrize === a.prizeName ? 'text-white' : 'text-text-primary'
                 }`}>{a.eligibilityScore}%</div>
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Worthiness</div>
+                <div className="text-[9px] font-bold text-text-secondary uppercase tracking-widest">Worthiness</div>
               </div>
             </div>
 
             <h3 className={`text-sm font-black uppercase tracking-tight mb-4 ${
-              project.targetPrize === a.prizeName ? 'text-white' : 'text-slate-900'
+              project.targetPrize === a.prizeName ? 'text-white' : 'text-text-primary'
             }`}>
               {a.prizeName}
             </h3>
 
             <div className="space-y-2 mb-8">
               {a.pros.slice(0, 2).map((p, idx) => (
-                <div key={idx} className="flex gap-2 text-[10px] font-medium text-slate-500">
+                <div key={idx} className="flex gap-2 text-[10px] font-medium text-text-secondary">
                   <TrendingUp size={12} className="text-emerald-500 flex-shrink-0" />
-                  <span className={project.targetPrize === a.prizeName ? 'text-slate-400' : ''}>{p}</span>
+                  <span className={project.targetPrize === a.prizeName ? 'text-white/80' : ''}>{p}</span>
                 </div>
               ))}
             </div>
@@ -212,7 +211,7 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
               className={`w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
                 project.targetPrize === a.prizeName
                 ? 'bg-white/10 text-white cursor-default'
-                : 'bg-slate-50 text-slate-600 hover:bg-slate-900 hover:text-white'
+                : 'bg-surface-muted text-text-secondary hover:bg-brand-primary hover:text-white'
               }`}
             >
               {project.targetPrize === a.prizeName ? (
@@ -225,10 +224,10 @@ export default function PrizeView({ project, chapters, updateProject }: Props) {
         ))}
         
         {assessments.length === 0 && !loading && (
-          <div className="col-span-full py-24 text-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
-            <Trophy size={48} className="mx-auto text-slate-200 mb-4" />
-            <h3 className="text-lg font-black text-slate-400 italic font-serif">No Assessments Active</h3>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto mt-2">
+          <div className="col-span-full py-24 text-center bg-surface-muted rounded-[3rem] border-2 border-dashed border-border-subtle">
+            <Trophy size={48} className="mx-auto text-text-secondary/20 mb-4" />
+            <h3 className="text-lg font-black text-text-secondary italic font-serif">No Assessments Active</h3>
+            <p className="text-xs text-text-secondary/60 max-w-xs mx-auto mt-2">
               Run a real-time audit to see how your manuscript stacks up against the world's most prestigious awards.
             </p>
           </div>

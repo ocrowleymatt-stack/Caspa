@@ -1,11 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithRedirect, getRedirectResult, signInAnonymously } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './firestoreUtils';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 export const auth = getAuth(app);
 
 // FORCED FIX: Explicitly nullify tenantId to escape the invalid-tenant-id error loop
@@ -25,6 +25,23 @@ if ((auth as any).tenantId) {
 // }
 
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+
+// In-memory access token cache for Google APIs as required by Workspace Integration skill
+let cachedAccessToken: string | null = null;
+
+export const setCachedAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+  if (token) {
+    localStorage.setItem('ls_gdrive_connected', 'true');
+  } else {
+    localStorage.removeItem('ls_gdrive_connected');
+  }
+};
+
+export const getCachedAccessToken = (): string | null => {
+  return cachedAccessToken;
+};
 
 // Connection test as required by instructions
 async function testConnection() {
@@ -51,6 +68,11 @@ export async function loginWithGoogle() {
     
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setCachedAccessToken(credential.accessToken);
+        console.log('Access token successfully retrieved and cached from popup.');
+      }
       return await handleUserSync(result.user);
     } catch (popupError: any) {
       if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-interactive-request') {
@@ -70,6 +92,11 @@ export async function handleRedirectLogin() {
   try {
     const result = await getRedirectResult(auth);
     if (result) {
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setCachedAccessToken(credential.accessToken);
+        console.log('Access token successfully retrieved and cached from redirect result.');
+      }
       return await handleUserSync(result.user);
     }
     return null;
@@ -115,4 +142,14 @@ async function handleUserSync(user: any) {
 
 export async function logout() {
   await signOut(auth);
+}
+
+export async function loginAnonymously() {
+  try {
+    const result = await signInAnonymously(auth);
+    return result.user;
+  } catch (error) {
+    console.error('Anonymous sign in error:', error);
+    throw error;
+  }
 }

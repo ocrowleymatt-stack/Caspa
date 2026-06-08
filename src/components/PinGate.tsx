@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PenTool, Delete, ShieldCheck } from 'lucide-react';
+import { Ghost, Delete, ShieldCheck } from 'lucide-react';
 
 interface Props {
   children: React.ReactNode;
@@ -53,19 +53,21 @@ export default function PinGate({ children }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[999] bg-gray-950 flex flex-col items-center justify-center font-sans">
+    <div className="fixed inset-0 z-[999] bg-surface-bg/90 backdrop-blur-3xl flex flex-col items-center justify-center font-sans">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="flex flex-col items-center max-w-xs w-full"
       >
-        {/* Logo */}
-        <div className="mb-8 p-4 bg-brand-primary/10 rounded-3xl">
-          <PenTool size={48} className="text-brand-primary" />
+        <div className="mb-10 relative">
+          <div className="absolute inset-0 bg-brand-primary opacity-20 blur-2xl rounded-full" />
+          <div className="p-6 ethereal-panel rounded-full relative z-10 shadow-[0_0_50px_rgba(168,85,247,0.4)]">
+            <Ghost size={56} className="text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
+          </div>
         </div>
 
-        <h1 className="text-2xl font-black text-white mb-2 tracking-tight italic font-serif">Shakespeare</h1>
-        <p className="text-sm text-gray-500 mb-12 font-medium tracking-wide">Enter PIN to continue</p>
+        <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 mb-2 tracking-widest uppercase text-center font-sans drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">Casper<br/>The Ghost Writer</h1>
+        <p className="text-[10px] text-brand-accent uppercase tracking-[0.4em] mb-12 font-bold text-center">Writing the stories of the <br/> digital afterlife</p>
 
         {/* PIN Indicators */}
         <div className="flex gap-4 mb-16">

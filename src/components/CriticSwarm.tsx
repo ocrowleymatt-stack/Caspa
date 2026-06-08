@@ -5,7 +5,6 @@ import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
-  key?: React.Key;
   projectType: ProjectType;
   maturity: MaturityLevel;
   chapters: Chapter[];
@@ -133,11 +132,11 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
 
   return (
     <div className="h-full flex flex-col gap-8" style={{ minHeight: 0 }}>
-      <header className="flex items-center justify-between bg-surface-card p-6 rounded-[2.5rem] border border-border-subtle shadow-2xl relative overflow-hidden group">
+      <header className="flex items-center justify-between ethereal-panel p-6 rounded-[2.5rem] border border-border-subtle shadow-2xl relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
         <div className="flex items-center gap-6 relative z-10">
           <div className="w-14 h-14 bg-brand-dark rounded-2xl flex items-center justify-center text-brand-primary shadow-2xl border border-border-subtle group-hover:scale-110 transition-transform">
-            <Zap size={28} className="fill-brand-primary shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
+            <Zap size={28} className="fill-brand-primary shadow-[0_0_15px_rgba(168,85,247,0.5)]" />
           </div>
           <div>
             <h2 className="text-3xl font-black tracking-tight text-text-primary mb-1 italic font-serif">Critic Swarm</h2>
@@ -184,7 +183,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.3 }}
                 layout
-                className={`bg-surface-card border rounded-[2.5rem] p-8 shadow-sm hover:shadow-2xl transition-all relative overflow-hidden group ${
+                className={`ethereal-panel border rounded-[2.5rem] p-8 shadow-sm hover:shadow-2xl transition-all relative overflow-hidden group ${
                   c.severity === 'critical' ? 'border-red-500/30 bg-brand-dark/30' : 'border-border-subtle hover:border-brand-primary/30'
                 }`}
               >
@@ -265,7 +264,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                     <div className="text-[8px] font-black text-brand-primary/40 uppercase tracking-widest">Protocol Sync: Enabled</div>
                   </div>
                   {c.suggestions.map((s, idx) => (
-                    <div key={idx} className="flex gap-4 items-start p-4 rounded-2xl bg-surface-card border border-transparent hover:border-border-subtle group/item transition-all">
+                    <div key={idx} className="flex gap-4 items-start p-4 rounded-2xl ethereal-panel border border-transparent hover:border-border-subtle group/item transition-all">
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-black transition-all shadow-lg ${
                         s.accepted ? 'bg-emerald-500 text-white scale-110 rotate-12 shadow-emerald-500/20' : 
                         s.rejected ? 'bg-red-500 text-white scale-110 -rotate-12 shadow-red-500/20' :
@@ -307,7 +306,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                 </div>
               </motion.div>
             )) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-20 border-2 border-dashed border-border-subtle rounded-[4rem] text-text-secondary bg-surface-card shadow-inner relative group overflow-hidden">
+              <div className="h-full flex flex-col items-center justify-center text-center p-20 border-2 border-dashed border-border-subtle rounded-[4rem] text-text-secondary ethereal-panel shadow-inner relative group overflow-hidden">
                 <div className="absolute inset-0 bg-brand-primary rounded-full blur-[150px] opacity-0 group-hover:opacity-5 transition-opacity duration-1000" />
                 <Bug size={100} strokeWidth={0.5} className="text-text-secondary opacity-10 mb-8 relative z-10" />
                 <div className="relative z-10 max-w-xs space-y-4">
@@ -327,7 +326,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
            
            <header className="relative">
               <div className="flex items-center gap-4 mb-3">
-                <div className="w-2 h-2 rounded-full bg-brand-primary shadow-[0_0_10px_rgba(59,130,246,0.5)] animate-pulse" />
+                <div className="w-2 h-2 rounded-full bg-brand-primary shadow-[0_0_10px_rgba(168,85,247,0.5)] animate-pulse" />
                 <h3 className="text-xl font-black italic font-serif tracking-tight">Critical Intelligence</h3>
               </div>
               <p className="text-[10px] text-text-secondary font-black uppercase tracking-[0.4em] opacity-40">Active Multi-Agent Sync</p>
@@ -338,7 +337,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-8 bg-brand-primary text-white rounded-[2.5rem] shadow-2xl shadow-brand-primary/20 relative overflow-hidden group/alert"
+                  className="p-8 btn-nexus-primary rounded-[2.5rem] shadow-2xl shadow-brand-primary/20 relative overflow-hidden group/alert"
                 >
                   <div className="absolute top-0 right-0 p-6 opacity-10 group-hover/alert:scale-110 transition-transform">
                     <CheckCircle size={60} />
@@ -360,7 +359,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                 </motion.div>
               )}
 
-              <div className="p-8 bg-surface-card border border-border-subtle rounded-[2rem] hover:border-brand-primary/20 transition-colors shadow-lg group/box">
+              <div className="p-8 ethereal-panel border border-border-subtle rounded-[2rem] hover:border-brand-primary/20 transition-colors shadow-lg group/box">
                 <p className="text-[9px] font-black text-text-secondary uppercase tracking-[0.4em] opacity-30 mb-4 group-hover/box:opacity-60 transition-opacity">Swarm Consensus</p>
                 <p className="text-base font-medium text-text-primary leading-[1.8] italic font-serif border-l-2 border-brand-primary/10 pl-6 group-hover/box:border-brand-primary transition-all">
                   {localCritiques.length > 0 
@@ -382,7 +381,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                         <motion.div 
                           initial={{ width: 0 }}
                           animate={{ width: loading ? '100%' : '65%' }}
-                          className={`h-full transition-all duration-1000 ${loading ? 'bg-brand-primary shadow-[0_0_10px_rgba(59,130,246,0.6)]' : 'bg-text-secondary opacity-20'}`} 
+                          className={`h-full transition-all duration-1000 ${loading ? 'bg-brand-primary shadow-[0_0_10px_rgba(168,85,247,0.6)]' : 'bg-text-secondary opacity-20'}`} 
                         />
                       </div>
                    </div>

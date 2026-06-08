@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { PenTool, Plus, Zap, MessageSquare, BookOpen, Trash2, ChevronRight, ChevronLeft, FileText, Tag, Users, Upload, X, ArrowRight, Search, Filter, Activity, Maximize2, Minimize2, Type, Flame, Save, Library, AlertTriangle, CircleSlash, Sparkles, RefreshCcw, AlertCircle, ChevronUp, ChevronDown, Fingerprint } from 'lucide-react';
 import { SourceMaterial, Project, Chapter, PlotNode, Presence, Critique, ViewType, ExternalReview, Character } from '../types';
 import { AIService } from '../services/ai';
@@ -12,18 +12,16 @@ import * as pdfjsLib from 'pdfjs-dist';
 import Markdown from 'react-markdown';
 import Fuse from 'fuse.js';
 import { calculateSimilarity, detectEchoes, findRedundantChapters } from '../lib/narrativeUtils';
-import { Repeat } from 'lucide-react';
+import { Repeat, Menu, Settings, Wind, FileWarning, Eye } from 'lucide-react';
 
 // Initialize PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 interface Props {
-  key?: React.Key;
   project: Project;
   plotNodes: PlotNode[];
   presence: Presence[];
   updateProject: (updates: Partial<Project>) => void;
-  updatePlotNodes: (nodes: PlotNode[]) => void;
   updateChapters: (chapters: Chapter[]) => void;
   setView: (view: ViewType) => void;
   upsertChapter?: (chapter: Chapter) => void;
@@ -39,7 +37,6 @@ export default function WritingStudio({
   plotNodes, 
   presence, 
   updateProject, 
-  updatePlotNodes,
   updateChapters, 
   setView,
   upsertChapter, 
@@ -57,21 +54,20 @@ export default function WritingStudio({
   const [isWriting, setIsWriting] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [isCritiquing, setIsCritiquing] = useState(false);
-  const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [isAnalyzingProse, setIsAnalyzingProse] = useState(false);
   const [isCheckingTurn, setIsCheckingTurn] = useState(false);
+  const [writingStatus, setWritingStatus] = useState<string>('');
   const [sceneTurnResult, setSceneTurnResult] = useState<{ turned: boolean; score: number; reasoning: string; missing: string } | null>(null);
   const [proseViolations, setProseViolations] = useState<{ type: string; message: string; severity: 'low' | 'medium' | 'high' }[]>([]);
   const [showProsePanel, setShowProsePanel] = useState(false);
   const [showNodePicker, setShowNodePicker] = useState(false);
   const [viewingSourceId, setViewingSourceId] = useState<string | null>(null);
-  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
-  const [archiveFilter, setArchiveFilter] = useState<'All' | 'Manuscript' | 'Research' | 'AI Compilation'>('All');
+  const [archiveFilter, setArchiveFilter] = useState<'All' | 'Manuscript' | 'Research' | 'Source' | 'AI Compilation'>('All');
   const [isSaving, setIsSaving] = useState(false);
-  const [isLeftRailOpen, setIsLeftRailOpen] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 : true);
-  const [isRightRailOpen, setIsRightRailOpen] = useState(false);
+  const [isLeftRailOpen, setIsLeftRailOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 1180 : true);
+  const [isRightRailOpen, setIsRightRailOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 1180 : true);
   const [lastSaved, setLastSaved] = useState<number>(Date.now());
   const [isScanningChars, setIsScanningChars] = useState(false);
   const dirtyRef = useRef<boolean>(false);
@@ -81,7 +77,8 @@ export default function WritingStudio({
   const typeMap: Record<string, string> = {
     'Manuscript': 'ARCHIVE',
     'AI Compilation': 'SYNTHESIS',
-    'Research': 'INTEL'
+    'Research': 'INTEL',
+    'Source': 'SOURCE'
   };
 
   // Background Character Extraction (Auto-Absorb)
@@ -126,7 +123,7 @@ export default function WritingStudio({
     const raw = [
       ...(project.sourceMaterials || []).map(s => ({
         ...s,
-        displayType: (s.name || "").startsWith('[MANUSCRIPT]') ? 'Manuscript' : ((s.name || "").startsWith('[RESEARCH]') ? 'Research' : 'Research')
+        displayType: (s.name || "").startsWith('[MANUSCRIPT]') ? 'Manuscript' : ((s.name || "").startsWith('[RESEARCH]') ? 'Research' : 'Source')
       })),
       ...(project.research || []).map((r: any) => ({
         id: r.id,
@@ -154,18 +151,14 @@ export default function WritingStudio({
   }, [project.sourceMaterials, project.research, archiveSearchTerm, archiveFilter]);
   const viewingSource = allSources.find(s => s.id === viewingSourceId);
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'editor' | 'outline' | 'ops' | 'critiques'>('editor');
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => setIsMobile(window.innerWidth < 1180);
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
-
-  useEffect(() => {
-    if (isMobile) setIsSidebarVisible(false);
-    else setIsSidebarVisible(true);
-  }, [isMobile]);
 
   const addChapter = () => {
     const newChapter: Chapter = {
@@ -280,11 +273,19 @@ export default function WritingStudio({
     
     setIsSaving(true);
     try {
-      await updateChapterRef.current(selectedChapterId, { 
+      const updates = { 
         title: localTitle, 
         summary: localSummary, 
         content: localContent 
-      });
+      };
+      
+      updateChapterRef.current(selectedChapterId, updates);
+      
+      const existing = chapters.find((c: Chapter) => c.id === selectedChapterId);
+      if (existing && upsertChapter) {
+        await upsertChapter({ ...existing, ...updates });
+      }
+      
       setLastSaved(Date.now());
       // On successful save, the cloud matches our local state
       localStorage.setItem(`ls_hardsave_${selectedChapterId}`, localContent);
@@ -361,7 +362,7 @@ export default function WritingStudio({
     if (id === selectedChapterId) return;
     await flushSave();
     setSelectedChapterId(id);
-    if (isMobile) setIsSidebarVisible(false);
+    if (isMobile) setIsLeftRailOpen(false);
   };
 
   const deleteChapter = (id: string) => {
@@ -393,6 +394,11 @@ export default function WritingStudio({
     if (!selectedChapter || !localContent.trim()) return;
     setIsRefining(true);
     setIsPendingAiSync(true);
+    setWritingStatus('Initializing Deep Simmer...');
+    const statusTimer = setTimeout(() => setWritingStatus('Reviewing plot vectors...'), 4000);
+    const statusTimer2 = setTimeout(() => setWritingStatus('Calculating narrative flow...'), 9000);
+    const statusTimer3 = setTimeout(() => setWritingStatus('Synthesizing surgical refinement...'), 15000);
+    
     try {
       const earlierContent = (chapters || [])
         .filter((c: Chapter) => c.order < selectedChapter.order)
@@ -423,6 +429,10 @@ export default function WritingStudio({
       onError?.(err.message || 'Deep Simmer failed.');
     } finally {
       setIsRefining(false);
+      setWritingStatus('');
+      clearTimeout(statusTimer);
+      clearTimeout(statusTimer2);
+      clearTimeout(statusTimer3);
       setTimeout(() => setIsPendingAiSync(false), 2000);
     }
   };
@@ -431,6 +441,11 @@ export default function WritingStudio({
     if (!selectedChapter) return;
     setIsWriting(true);
     setIsPendingAiSync(true);
+    setWritingStatus('Waking Composition Core...');
+    const statusTimer = setTimeout(() => setWritingStatus('Absorbing earlier context...'), 3500);
+    const statusTimer2 = setTimeout(() => setWritingStatus('Projecting narrative arc...'), 8000);
+    const statusTimer3 = setTimeout(() => setWritingStatus('Weaving final prose...'), 14000);
+
     try {
       const earlierContent = chapters
         .filter((c: Chapter) => c.order < selectedChapter.order)
@@ -465,6 +480,10 @@ export default function WritingStudio({
       onError?.(err.message || 'Composition Core failed to initialize.');
     } finally {
       setIsWriting(false);
+      setWritingStatus('');
+      clearTimeout(statusTimer);
+      clearTimeout(statusTimer2);
+      clearTimeout(statusTimer3);
       setTimeout(() => setIsPendingAiSync(false), 2000);
     }
   };
@@ -493,6 +512,9 @@ export default function WritingStudio({
 
     setProseViolations([...echoViolations]);
     setShowProsePanel(true);
+    if (isMobile) {
+      setMobileTab('editor');
+    }
 
     // 2. AI ANALYSIS
     setIsAnalyzingProse(true);
@@ -540,6 +562,9 @@ export default function WritingStudio({
     }
     setIsCheckingTurn(true);
     setShowProsePanel(true);
+    if (isMobile) {
+      setMobileTab('editor');
+    }
     setSceneTurnResult(null);
     try {
       const result = await AIService.checkSceneTurn(localContent, project.externalReviews || []);
@@ -556,6 +581,9 @@ export default function WritingStudio({
     if (!selectedChapter?.content) return;
     setIsCritiquing(true);
     setShowCritique(true);
+    if (isMobile) {
+      setMobileTab('critiques');
+    }
     try {
       const results = await AIService.getSwarmCritique(
         selectedChapter.content, 
@@ -582,70 +610,6 @@ export default function WritingStudio({
       onError?.(err.message || 'Narrative Sync Analysis failed.');
     } finally {
       setIsCritiquing(false);
-    }
-  };
-
-  const handleOrchestrate = async () => {
-    setIsOrchestrating(true);
-    setShowCritique(true);
-    try {
-      const generatedNodes = await AIService.outlinePlotNodes(project, chapters);
-      if (!generatedNodes.length) throw new Error('No plot nodes were generated.');
-      updatePlotNodes(generatedNodes);
-
-      const reconciled = await AIService.reconcileChapters(project, generatedNodes, chapters);
-      const synchronizedChapters: Chapter[] = reconciled.map((item, index) => {
-        const existing = chapters.find((c: Chapter) => c.title === item.title);
-        return {
-          id: existing?.id || crypto.randomUUID(),
-          title: item.title,
-          summary: item.summary,
-          content: existing?.content || '',
-          order: index,
-          plotNodeIds: item.plotNodeIds,
-          tags: existing?.tags || ['reconciled'],
-          updatedAt: Date.now()
-        };
-      });
-      updateChapters(synchronizedChapters);
-
-      const targetChapter = synchronizedChapters.find(c => !c.content.trim()) || synchronizedChapters[0];
-      if (targetChapter) {
-        const earlierContent = synchronizedChapters
-          .filter(c => c.order < targetChapter.order)
-          .map(c => c.content)
-          .join('\n\n')
-          .slice(-3000);
-        const activeNodes = generatedNodes.filter(n => targetChapter.plotNodeIds?.includes(n.id));
-        const content = await AIService.writeDraft(
-          targetChapter.title,
-          targetChapter.summary,
-          earlierContent,
-          project.type,
-          activeNodes,
-          project.research || [],
-          project.maturity,
-          project.sourceMaterials || [],
-          [], // directives
-          project.targetWordCount,
-          project.externalReviews || [],
-          project.draftStage,
-          synchronizedChapters.length,
-          project.cutMode
-        );
-        const draftedChapter = { ...targetChapter, content: (targetChapter.content + '\n\n' + content).trim(), updatedAt: Date.now() };
-        updateChapters(synchronizedChapters.map(c => c.id === draftedChapter.id ? draftedChapter : c));
-        if (upsertChapter) upsertChapter(draftedChapter);
-        setSelectedChapterId(draftedChapter.id);
-      }
-
-      const continuity = await AIService.analyzeContinuity(generatedNodes, synchronizedChapters);
-      setCritiqueText(continuity);
-    } catch (err: any) {
-      console.error(err);
-      onError?.(err.message || 'Unified orchestration failed.');
-    } finally {
-      setIsOrchestrating(false);
     }
   };
 
@@ -678,7 +642,7 @@ export default function WritingStudio({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []) as File[];
+    const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
     for (const file of files) {
@@ -775,20 +739,13 @@ export default function WritingStudio({
 
   const isOverWordLimit = useMemo(() => {
     if (!project.targetWordCount || selectedChapter?.isPlan) return false;
-    // Compare against per-chapter target (not the full project target)
-    const effectiveChapterCount = Math.max(1, chapters.length);
-    const effectivePass = (project.draftStage ?? 1);
-    const PASS_PERCENTAGES: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
-    const passPercent = PASS_PERCENTAGES[effectivePass] ?? 1.0;
-    const perChapterTarget = Math.round((project.targetWordCount * passPercent) / effectiveChapterCount);
-    return wordCount > perChapterTarget * 1.03;
-  }, [wordCount, project.targetWordCount, project.draftStage, chapters.length, selectedChapter?.isPlan]);
+    return wordCount > (project.targetWordCount || 0) * 1.03;
+  }, [wordCount, project.targetWordCount, selectedChapter?.isPlan]);
 
   const recenter = () => {
     setIsFocusMode(false);
     setIsLeftRailOpen(true);
     setIsRightRailOpen(true);
-    setIsSidebarVisible(true);
     if (editorRef.current) {
       editorRef.current.scrollTo(0, 0);
     }
@@ -806,47 +763,98 @@ export default function WritingStudio({
 
   return (
     <div 
-      className={`h-full flex flex-col md:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`}
+      className={`h-full flex flex-col lg:flex-row gap-0 relative overflow-hidden transition-all duration-700 ${isFocusMode ? 'bg-black' : 'bg-surface-bg'}`}
       style={{ minHeight: 0 }}
     >
+      {/* Mobile Inline Switcher */}
+      {isMobile && !isFocusMode && (
+        <div className="flex border-b border-border-subtle bg-brand-dark/95 backdrop-blur-xl p-2 gap-1.5 sticky top-0 z-[60] shrink-0 w-full">
+          <button
+            onClick={() => setMobileTab('outline')}
+            className={`flex-1 py-3 px-1 rounded-xl text-[10px] font-black uppercase tracking-widest text-center transition-all min-h-[44px] flex items-center justify-center ${
+              mobileTab === 'outline' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20 scale-[1.02]' 
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+            }`}
+          >
+            Outline
+          </button>
+          <button
+            onClick={() => setMobileTab('editor')}
+            className={`flex-1 py-3 px-1 rounded-xl text-[10px] font-black uppercase tracking-widest text-center transition-all min-h-[44px] flex items-center justify-center ${
+              mobileTab === 'editor' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20 scale-[1.02]' 
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+            }`}
+          >
+            Draft
+          </button>
+          <button
+            onClick={() => setMobileTab('ops')}
+            className={`flex-1 py-3 px-1 rounded-xl text-[10px] font-black uppercase tracking-widest text-center transition-all min-h-[44px] flex items-center justify-center ${
+              mobileTab === 'ops' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20 scale-[1.02]' 
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+            }`}
+          >
+            AI Ops
+          </button>
+          <button
+            onClick={() => setMobileTab('critiques')}
+            className={`flex-1 py-3 px-1 rounded-xl text-[10px] font-black uppercase tracking-widest text-center transition-all min-h-[44px] flex items-center justify-center ${
+              mobileTab === 'critiques' 
+                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20 scale-[1.02]' 
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+            }`}
+          >
+            Critiques
+          </button>
+        </div>
+      )}
+
       {/* Sidebar - Chapter Navigation & Sources */}
       <AnimatePresence initial={false}>
-        {!isFocusMode && isLeftRailOpen && (
+        {!isFocusMode && (isMobile ? mobileTab === 'outline' : isLeftRailOpen) && (
           <motion.aside 
-            initial={{ width: 0, opacity: 0, x: -50 }}
-            animate={{ width: isMobile ? '100vw' : '200px', opacity: 1, x: 0, position: isMobile ? "fixed" : "relative" }}
-            exit={{ width: 0, opacity: 0, x: -50 }}
+            initial={isMobile ? { opacity: 0 } : { width: 0, opacity: 0, x: -50 }}
+            animate={{ width: isMobile ? '100%' : 'clamp(15rem, 21vw, 18rem)', opacity: 1, x: 0 }}
+            exit={isMobile ? { opacity: 0 } : { width: 0, opacity: 0, x: -50 }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className={`border-r border-border-subtle bg-surface-card flex flex-col z-30 overflow-hidden shrink-0 no-print ${isMobile ? 'fixed inset-0 shadow-[0_0_100px_rgba(0,0,0,0.8)] h-full' : 'relative h-full'}`}
+            className={`border-r border-border-subtle ethereal-panel flex flex-col z-30 h-full relative overflow-hidden shrink-0 no-print ${isMobile ? 'w-full h-full relative bg-brand-dark' : 'relative'}`}
           >
-            <div className="absolute top-4 right-4 z-40">
-              <button 
-                onClick={() => setIsLeftRailOpen(false)}
-                className="p-1 hover:bg-white/5 rounded-md text-text-secondary hover:text-brand-primary lg:flex hidden"
-                title="Collapse Sidebar"
-              >
-                <ChevronLeft size={16} />
-              </button>
-            </div>
+            <AnimatePresence>
+              {isMobile && !isMobile && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setIsLeftRailOpen(false)}
+                  className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[-1]"
+                />
+              )}
+            </AnimatePresence>
+            {!isMobile && (
+              <div className="absolute top-4 right-4 z-40">
+                <button 
+                  onClick={() => setIsLeftRailOpen(false)}
+                  className="p-3 sm:p-1 hover:bg-white/5 rounded-xl sm:rounded-md text-text-secondary hover:text-brand-primary flex items-center justify-center min-w-[36px] min-h-[36px]"
+                  title="Collapse Sidebar"
+                >
+                  <ChevronLeft size={20} className="sm:w-4 sm:h-4" />
+                </button>
+              </div>
+            )}
         {/* Manuscript Section */}
-        <div className="flex-none p-2 border-b border-border-subtle relative bg-surface-card shadow-sm">
-          {isMobile && (
-            <button 
-              onClick={() => setIsSidebarVisible(false)}
-              className="absolute top-6 right-6 p-2.5 text-text-secondary hover:text-text-primary bg-surface-muted rounded-xl transition-all md:hidden border border-border-subtle"
-            >
-              <X size={18} />
-            </button>
-          )}
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-black text-brand-primary uppercase tracking-[0.3em] flex items-center gap-3">
+        <div className="flex-none p-3 md:p-4 xl:p-6 border-b border-border-subtle relative ethereal-panel shadow-sm">
+          <div className="flex items-center justify-between mb-4 md:mb-6 pr-8">
+            <h3 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] flex items-center gap-3">
               <BookOpen size={16} />
               The Manuscript
             </h3>
             <div className="flex gap-2">
               <button 
                 onClick={() => toggleSection('foundations')}
-                className="p-1 px-2 text-[10px] font-semibold uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
+                className="p-1 px-2 text-[8px] font-black uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
                 title={collapsedSections.foundations ? 'Restore View' : 'Collapse Section'}
               >
                 {collapsedSections.foundations ? <ChevronDown size={10} /> : <ChevronUp size={10} />}
@@ -936,7 +944,7 @@ export default function WritingStudio({
               </label>
               <button 
                 onClick={addChapter}
-                className="p-2 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-lg transition-all border border-brand-primary/20 active:scale-95"
+                className="p-2.5 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-xl transition-all border border-brand-primary/20 active:scale-95"
                 title="Synthesize New Segment"
               >
                 <Plus size={18} />
@@ -949,7 +957,7 @@ export default function WritingStudio({
               <div key={chapter.id} className="group relative">
                 <button
                   onClick={() => handleChapterSelect(chapter.id)}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-3 border ${
+                  className={`w-full text-left px-5 py-4 rounded-2xl transition-all flex items-center gap-4 border ${
                     selectedChapterId === chapter.id 
                       ? 'bg-brand-primary border-brand-primary text-white shadow-xl shadow-brand-primary/20' 
                       : 'text-text-secondary hover:text-text-primary hover:bg-white/5 border-transparent hover:border-border-subtle'
@@ -958,7 +966,7 @@ export default function WritingStudio({
                   <span className={`text-[9px] font-black uppercase tracking-tighter tabular-nums ${selectedChapterId === chapter.id ? 'opacity-50' : 'text-brand-primary/50'}`}>
                     ID:{(chapter.order + 1).toString().padStart(2, '0')}
                   </span>
-                  <span className="text-xs font-bold truncate flex-1 italic font-serif">{chapter.title}</span>
+                  <span className="text-sm font-black truncate flex-1 italic font-serif">{chapter.title}</span>
                 </button>
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-all bg-surface-muted/95 backdrop-blur-xl border border-border-subtle rounded-xl p-1 shadow-2xl">
                   <button 
@@ -983,16 +991,16 @@ export default function WritingStudio({
         </div>
 
         {/* Source Ingestion Section */}
-        <div className="p-3 xl:p-4 flex-1 flex flex-col gap-3 overflow-hidden bg-surface-muted/30">
+        <div className="p-4 xl:p-6 flex-1 flex flex-col gap-4 overflow-hidden bg-surface-muted/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h3 className="text-xs font-black text-text-secondary uppercase tracking-[0.3em] flex items-center gap-3">
+              <h3 className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] flex items-center gap-3">
                 <Library size={16} className="text-brand-primary" />
-                Intelligence Rail
+                Archive & Intel
               </h3>
               <button 
                 onClick={() => toggleSection('intel')}
-                className="p-1 px-2 text-[10px] font-semibold uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
+                className="p-1 px-2 text-[8px] font-black uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
                 title={collapsedSections.intel ? 'Restore View' : 'Collapse Section'}
               >
                 {collapsedSections.intel ? <ChevronDown size={10} /> : <ChevronUp size={10} />}
@@ -1016,19 +1024,19 @@ export default function WritingStudio({
                 placeholder="Fuzzy Vector Search..." 
                 value={archiveSearchTerm}
                 onChange={(e) => setArchiveSearchTerm(e.target.value)}
-                className="w-full bg-surface-card border border-border-subtle rounded-2xl py-3.5 pl-12 pr-6 text-xs font-black text-text-primary focus:border-brand-primary outline-none placeholder:text-text-secondary/30 transition-all shadow-inner"
+                className="w-full ethereal-panel border border-border-subtle rounded-2xl py-3.5 pl-12 pr-6 text-xs font-black text-text-primary focus:border-brand-primary outline-none placeholder:text-text-secondary/30 transition-all shadow-inner"
               />
             </div>
             
             <div className="flex flex-wrap gap-2">
-              {(['All', 'Manuscript', 'Research', 'AI Compilation'] as const).map((type) => (
+              {(['All', 'Manuscript', 'Research', 'Source', 'AI Compilation'] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => setArchiveFilter(type)}
                   className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${
                     archiveFilter === type 
                       ? 'bg-brand-primary border-brand-primary text-white shadow-lg' 
-                      : 'bg-surface-card text-text-secondary border-border-subtle hover:border-text-secondary/30'
+                      : 'ethereal-panel text-text-secondary border-border-subtle hover:border-text-secondary/30'
                   }`}
                 >
                   {type}
@@ -1045,9 +1053,9 @@ export default function WritingStudio({
                     key={source.id} 
                     onClick={() => {
                       setViewingSourceId(source.id);
-                      if (isMobile) setIsSidebarVisible(false);
+                      if (isMobile) setIsLeftRailOpen(false);
                     }}
-                    className="p-5 bg-surface-card rounded-2xl border border-border-subtle group relative cursor-pointer hover:border-brand-primary/50 transition-all shadow-lg active:scale-[0.98]"
+                    className="p-5 ethereal-panel rounded-2xl border border-border-subtle group relative cursor-pointer hover:border-brand-primary/50 transition-all shadow-lg active:scale-[0.98]"
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3 overflow-hidden">
@@ -1073,13 +1081,13 @@ export default function WritingStudio({
                     <p className="text-xs text-text-secondary font-medium line-clamp-2 italic font-serif leading-relaxed opacity-60">
                       {source.content.slice(0, 80)}...
                     </p>
-                    {(source as any).displayType !== 'AI Compilation' && (source as any).displayType !== 'Research' && (
+                    {(source as any).displayType !== 'AI Compilation' && (source as any).displayType !== 'Research' && (source as any).displayType !== 'Manuscript' && (
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           removeSource(source.id);
                         }}
-                        className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 p-2 text-text-secondary hover:text-red-500 transition-all bg-surface-card border border-border-subtle rounded-lg shadow-2xl"
+                        className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 p-2 text-text-secondary hover:text-red-500 transition-all ethereal-panel border border-border-subtle rounded-lg shadow-2xl"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -1104,7 +1112,7 @@ export default function WritingStudio({
 
         {/* Collaborative Presence */}
         {presence.length > 0 && (
-          <div className="p-4 xl:p-6 border-t border-border-subtle bg-surface-card">
+          <div className="p-4 xl:p-6 border-t border-border-subtle ethereal-panel">
             <div className="text-[10px] font-black text-text-secondary mb-4 uppercase tracking-[0.3em] flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
               Live Presence Matrix
@@ -1127,29 +1135,30 @@ export default function WritingStudio({
   </AnimatePresence>
 
   {/* Main Study Area */}
-  <div 
-    className="flex-1 flex flex-col bg-surface-bg relative z-0 min-w-0"
-    style={{ minHeight: 0 }}
-  >
+  {(!isMobile || mobileTab === 'editor') && (
+    <div 
+      className="flex-1 flex flex-col bg-surface-bg relative z-0 min-w-0"
+      style={{ minHeight: 0 }}
+    >
         {/* Toggle Buttons for Rails */}
-        {!isFocusMode && !isLeftRailOpen && (
+        {!isMobile && !isFocusMode && !isLeftRailOpen && (
           <motion.button 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={() => setIsLeftRailOpen(true)}
-            className="hidden md:flex fixed left-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 bg-brand-dark border-y border-r border-border-subtle rounded-r-xl items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 md:h-32 bg-brand-dark border-y border-r border-border-subtle rounded-r-xl flex items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
             title="Restore Navigation"
           >
             <ChevronRight size={14} className="group-hover:scale-125 transition-transform" />
           </motion.button>
         )}
 
-        {!isFocusMode && !isRightRailOpen && (
+        {!isMobile && !isFocusMode && !isRightRailOpen && (
           <motion.button 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={() => setIsRightRailOpen(true)}
-            className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 bg-brand-dark border-y border-l border-border-subtle rounded-l-xl items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-[55] w-6 h-24 md:h-32 bg-brand-dark border-y border-l border-border-subtle rounded-l-xl flex items-center justify-center text-text-secondary hover:text-brand-primary transition-all hover:w-8 group shadow-2xl"
             title="Restore Ops Rail"
           >
             <ChevronLeft size={14} className="group-hover:scale-125 transition-transform" />
@@ -1166,42 +1175,18 @@ export default function WritingStudio({
               className="flex-1 flex flex-col overflow-hidden"
               style={{ minHeight: 0 }}
             >
-              {/* Mobile Chapter Selector Bar */}
-              {isMobile && !isFocusMode && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-surface-card border-b border-border-subtle overflow-x-auto no-print flex-none">
-                  <button
-                    onClick={() => setIsLeftRailOpen(true)}
-                    className="flex-none flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-muted rounded-lg text-xs font-semibold text-text-secondary hover:text-brand-primary border border-border-subtle"
-                  >
-                    <BookOpen size={13} />
-                    <span>Chapters</span>
-                  </button>
-                  <div className="flex gap-1.5 overflow-x-auto">
-                    {chapters.map((ch: Chapter, idx: number) => (
-                      <button
-                        key={ch.id}
-                        onClick={() => setSelectedChapterId(ch.id)}
-                        className={`flex-none px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                          ch.id === selectedChapterId
-                            ? 'bg-brand-primary/20 border-brand-primary text-brand-primary'
-                            : 'bg-surface-muted border-border-subtle text-text-secondary hover:text-text-primary'
-                        }`}
-                      >
-                        {idx + 1}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-        {/* Internal Editor Header */}
-              <div className={`h-12 studio-header border-b border-border-subtle flex items-center justify-between px-3 md:px-4 bg-surface-card/80 backdrop-blur-xl shadow-sm flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-2`}>
-                <div className="flex items-center gap-1.5 shrink-0">
+              {/* Internal Editor Header */}
+              <div className={`h-auto min-h-16 studio-header border-b border-border-subtle flex flex-wrap items-center justify-between px-3 md:px-6 lg:px-8 py-3 ethereal-panel/80 backdrop-blur-xl shadow-2xl flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-4`}>
+                <div className="flex items-center gap-3 md:gap-8 shrink-0">
                   {!isFocusMode && !isMobile && (
                     <button 
                       onClick={() => setIsLeftRailOpen(!isLeftRailOpen)}
-                      className="p-2.5 hover:bg-white/5 text-text-secondary hover:text-brand-primary rounded-xl border border-transparent hover:border-border-subtle transition-all active:scale-95"
+                      className="p-2.5 hover:bg-white/5 text-text-secondary hover:text-brand-primary rounded-xl border border-transparent hover:border-border-subtle transition-all active:scale-95 flex items-center gap-2 group"
+                      title="Toggle Navigation Menu"
                     >
-                      <ChevronRight size={20} className={isLeftRailOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                      <Menu size={20} className={isLeftRailOpen ? 'text-brand-primary' : ''} />
+                      <span className="hidden sm:inline text-xs font-bold uppercase tracking-widest group-hover:text-brand-primary transition-colors">NAV</span>
+                      <ChevronRight size={14} className={isLeftRailOpen ? 'rotate-180 transition-transform opacity-50' : 'transition-transform opacity-50'} />
                     </button>
                   )}
                   <div className="flex flex-col gap-1">
@@ -1222,21 +1207,13 @@ export default function WritingStudio({
                       </span>
                     </div>
                   </div>
-                  <div className="hidden sm:flex items-center gap-2 md:gap-4 ml-2 border-l border-border-subtle pl-3">
+                  <div className="hidden sm:flex items-center gap-3 md:gap-6 ml-2 md:ml-4 border-l border-border-subtle pl-4 md:pl-6">
                     <div className="flex flex-col">
                       <span className="text-[8px] md:text-[9px] font-black text-text-secondary uppercase leading-none tracking-widest opacity-40 mb-1">Volume</span>
                       <span className={`text-[9px] md:text-[10px] font-black tabular-nums transition-colors ${isOverWordLimit ? 'text-red-500 animate-pulse' : 'text-brand-primary'}`}>
                         {wordCount.toLocaleString()} Words
                         {isOverWordLimit && <span className="ml-1 text-[7px] text-red-500 tracking-tighter">(LIMIT EXCEEDED)</span>}
                       </span>
-                      {project.targetWordCount && !selectedChapter?.isPlan && (() => {
-                        const ep = (project.draftStage ?? 1);
-                        const PP: Record<number, number> = { 1: 0.10, 2: 0.25, 3: 0.75, 4: 1.0 };
-                        const pct = PP[ep] ?? 1.0;
-                        const chTarget = Math.round((project.targetWordCount * pct) / Math.max(1, chapters.length));
-                        const pctDone = Math.min(100, Math.round((wordCount / chTarget) * 100));
-                        return <span className="text-[7px] text-text-secondary/50 tabular-nums">Pass {ep} target: {chTarget.toLocaleString()} ({pctDone}%)</span>;
-                      })()}
                     </div>
                     <div className="flex flex-col border-l border-border-subtle pl-4 md:pl-6">
                       <span className="text-[8px] md:text-[9px] font-black text-text-secondary uppercase leading-none tracking-widest opacity-40 mb-1">Latency</span>
@@ -1250,7 +1227,7 @@ export default function WritingStudio({
                     disabled={isSaving}
                     className={`flex items-center gap-2 md:gap-3 px-3 md:px-5 py-2 md:py-2.5 rounded-xl md:rounded-2xl text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all border active:scale-95 whitespace-nowrap ${
                       dirtyRef.current 
-                        ? 'bg-brand-primary border-brand-primary text-white shadow-[0_0_20px_rgba(59,130,246,0.4)]' 
+                        ? 'bg-brand-primary border-brand-primary text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]' 
                         : (isSaving ? 'bg-white/5 border-border-subtle text-brand-primary' : 'bg-surface-muted border-border-subtle text-text-secondary hover:text-text-primary hover:border-text-secondary/30')
                     }`}
                   >
@@ -1268,7 +1245,7 @@ export default function WritingStudio({
 
                   <button 
                     onClick={toggleFocus}
-                    className={`p-2 md:p-3 rounded-xl md:rounded-2xl transition-all shrink-0 border active:scale-95 ${isFocusMode ? 'bg-brand-primary text-white border-brand-primary' : 'bg-surface-muted border-border-subtle text-text-secondary hover:text-text-primary hover:border-text-secondary/30'}`}
+                    className={`p-2 md:p-3 rounded-xl md:rounded-2xl transition-all shrink-0 border active:scale-95 ${isFocusMode ? 'btn-nexus-primary border-brand-primary' : 'bg-surface-muted border-border-subtle text-text-secondary hover:text-text-primary hover:border-text-secondary/30'}`}
                     title="Toggle Void Focus"
                   >
                     {isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -1291,9 +1268,9 @@ export default function WritingStudio({
                           initial={{ opacity: 0, y: 15, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className="absolute right-0 top-full mt-4 w-72 bg-surface-card border border-border-subtle rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] z-[60] p-6 backdrop-blur-2xl"
+                          className="absolute right-0 top-full mt-4 w-72 ethereal-panel border border-border-subtle rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] z-[60] p-6 backdrop-blur-2xl"
                         >
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center justify-between mb-6">
                             <h4 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.3em]">Meta-Vector Scene</h4>
                             <Tag size={14} className="text-text-secondary opacity-30" />
                           </div>
@@ -1324,39 +1301,19 @@ export default function WritingStudio({
 
                   <div className="h-6 w-px bg-border-subtle shrink-0 hidden lg:block" />
 
-                  <button
-                    onClick={handleOrchestrate}
-                    disabled={isOrchestrating}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-medium transition-all uppercase tracking-[0.05em] shrink-0 ${
-                      isOrchestrating ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
-                    }`}
-                  >
-                    {isOrchestrating ? (
-                      <>
-                        <Activity size={12} className="animate-pulse" />
-                        Orchestrating...
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={12} className="fill-slate-900" />
-                        Architect + Draft + Sync
-                      </>
-                    )}
-                  </button>
-
                   <motion.button 
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleSmartWrite}
                     disabled={isWriting}
-                    className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 border rounded-lg text-xs font-semibold transition-all uppercase tracking-[0.05em] shrink-0 border-brand-primary/30 active:scale-95 ${
-                      isWriting ? 'bg-brand-primary text-white border-brand-primary shadow-2xl shadow-brand-primary/20' : 'bg-surface-muted hover:bg-brand-primary/10 text-brand-primary'
+                    className={`hidden sm:flex items-center gap-2 md:gap-3 px-4 md:px-6 py-2 md:py-2.5 border rounded-xl md:rounded-[1.25rem] text-[8px] md:text-[9px] font-black transition-all uppercase tracking-[0.1em] md:tracking-[0.2em] shrink-0 border-brand-primary/30 active:scale-95 ${
+                      isWriting ? 'btn-nexus-primary border-brand-primary shadow-2xl shadow-brand-primary/20' : 'bg-surface-muted hover:bg-brand-primary/10 text-brand-primary'
                     }`}
                   >
                     {isWriting ? (
                       <>
                         <Activity size={12} className="animate-pulse" />
-                        Writing...
+                        {writingStatus || 'Writing...'}
                       </>
                     ) : (
                       <>
@@ -1371,7 +1328,7 @@ export default function WritingStudio({
                     whileTap={{ scale: 0.98 }}
                     onClick={handleRefine}
                     disabled={isRefining || !selectedChapter.content.trim()}
-                    className={`hidden md:flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all uppercase tracking-[0.05em] shrink-0 active:scale-95 ${
+                    className={`hidden lg:flex items-center gap-3 px-6 py-2.5 rounded-[1.25rem] text-[9px] font-black transition-all shadow-2xl uppercase tracking-[0.2em] shrink-0 active:scale-95 ${
                       isRefining ? 'bg-orange-600 text-white' : 'bg-brand-dark hover:bg-black text-text-primary border border-border-subtle hover:border-brand-primary/50'
                     }`}
                     title="Deep Quality Refinement"
@@ -1379,7 +1336,7 @@ export default function WritingStudio({
                     {isRefining ? (
                       <>
                         <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Simmering...
+                        {writingStatus || 'Simmering...'}
                       </>
                     ) : (
                       <>
@@ -1395,12 +1352,12 @@ export default function WritingStudio({
                 style={{ minHeight: 0 }}
               >
                 <div 
-                  className={`flex-1 flex flex-col writing-scroll ${isFocusMode ? 'p-3 md:p-6 lg:px-10 lg:py-6' : 'p-3 md:p-6 lg:px-8 xl:px-12 lg:py-8'} overflow-y-auto overscroll-contain w-full custom-scrollbar relative transition-all duration-500 ${isMobile ? 'pb-32' : 'pb-24'}`}
+                  className={`flex-1 flex flex-col writing-scroll ${isFocusMode ? 'p-4 md:p-8 lg:px-14 lg:py-8' : 'p-4 md:p-8 lg:px-12 xl:px-20 2xl:px-32 lg:py-12 xl:py-16'} overflow-y-auto overscroll-contain w-full custom-scrollbar relative transition-all duration-500 pb-32`}
                   style={{ minHeight: 0 }}
                 >
                    <div className="w-full max-w-[80ch] mx-auto flex flex-col items-center">
                    {/* Summary Box */}
-                  <div className="max-w-[80ch] w-full mb-6 transition-all duration-300 bg-surface-card/40 p-3 md:p-4 rounded-xl border border-border-subtle hover:border-brand-primary/20 relative">
+                  <div className="max-w-[80ch] w-full mb-12 opacity-60 focus-within:opacity-100 transition-all duration-700 ethereal-panel/50 p-4 sm:p-6 md:p-10 rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] border border-border-subtle hover:border-brand-primary/20 relative">
                     {/* Prose Analysis Flyout */}
                     <AnimatePresence>
                       {showProsePanel && (
@@ -1408,9 +1365,9 @@ export default function WritingStudio({
                           initial={{ opacity: 0, x: 20 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: 20 }}
-                          className="absolute right-0 lg:left-[calc(100%+2rem)] top-full lg:top-0 w-full lg:w-80 bg-surface-card border border-border-subtle rounded-3xl shadow-3xl p-6 z-[90] mt-4 lg:mt-0"
+                          className="absolute right-0 lg:left-[calc(100%+2rem)] top-full lg:top-0 w-full lg:w-80 ethereal-panel border border-border-subtle rounded-3xl shadow-3xl p-6 z-[90] mt-4 lg:mt-0"
                         >
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center justify-between mb-6">
                             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-primary flex items-center gap-2">
                               {sceneTurnResult ? <Flame size={14} /> : <CircleSlash size={14} />}
                               {sceneTurnResult ? "Scene Reversal Meter" : "The Sludge Filter"}
@@ -1459,7 +1416,7 @@ export default function WritingStudio({
 
                               <button 
                                 onClick={handleCheckTurn}
-                                className="w-full py-4 bg-surface-muted hover:bg-surface-card border border-border-subtle rounded-2xl text-[10px] font-black uppercase tracking-widest text-text-primary transition-all flex items-center justify-center gap-2"
+                                className="w-full py-4 bg-surface-muted hover:ethereal-panel border border-border-subtle rounded-2xl text-[10px] font-black uppercase tracking-widest text-text-primary transition-all flex items-center justify-center gap-2"
                               >
                                 <RefreshCcw size={12} />
                                 Re-Scan Sequence
@@ -1491,15 +1448,15 @@ export default function WritingStudio({
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    <div className="flex items-center gap-2 text-xs font-semibold text-brand-primary mb-3 pl-1 font-sans">
+                    <div className="flex items-center gap-3 text-[10px] font-black text-brand-primary mb-6 uppercase tracking-[0.4em] pl-1 font-sans">
                       <FileText size={16} />
                       Chapter Architecture
                     </div>
                     <textarea 
                       value={localSummary}
                       onChange={(e) => setLocalSummary(e.target.value)}
-                      placeholder="Chapter notes, synopsis, or scene direction..."
-                      className="w-full bg-transparent border-t border-border-subtle/30 py-3 text-text-primary text-sm resize-none focus:ring-0 outline-none placeholder:text-text-secondary/20 leading-relaxed font-serif italic"
+                      placeholder="Define the primary intelligence vector for this sequence..."
+                      className="w-full bg-transparent border-t border-border-subtle/30 py-6 text-text-primary text-base md:text-lg resize-none focus:ring-0 outline-none placeholder:text-text-secondary/40 leading-relaxed font-serif italic"
                       rows={2}
                     />
                   </div>
@@ -1532,7 +1489,7 @@ export default function WritingStudio({
                             </button>
                             <button 
                               onClick={restoreDraft}
-                              className="px-6 py-2 bg-brand-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-brand-primary/20 transition-all active:scale-95"
+                              className="px-6 py-2 btn-nexus-primary rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-brand-primary/20 transition-all active:scale-95"
                             >
                               Restore Draft
                             </button>
@@ -1546,7 +1503,7 @@ export default function WritingStudio({
                       value={localContent}
                       onChange={(e) => setLocalContent(e.target.value)}
                       placeholder="Initialize narrative thread..."
-                      className="w-full h-auto min-h-[65dvh] bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/10 selection:bg-brand-primary/30"
+                      className="w-full h-auto min-h-[65dvh] bg-transparent border-none focus:ring-0 text-xl md:text-2xl text-text-primary leading-[1.8] resize-none outline-none font-serif placeholder:text-text-secondary/35 selection:bg-brand-primary/30 overflow-hidden"
                       spellCheck={true}
                     />
                   </div>
@@ -1556,49 +1513,62 @@ export default function WritingStudio({
 
                 {/* Right Rail - Analysis & Actions */}
                 <AnimatePresence>
-                  {!isFocusMode && isRightRailOpen && (
+                  {!isFocusMode && (isMobile ? mobileTab === 'ops' : isRightRailOpen) && (
                     <motion.div 
                       key="right-rail"
-                      initial={{ width: 0, opacity: 0 }}
-                      animate={{ width: isMobile ? '100vw' : '180px', opacity: 1 }}
-                      exit={{ width: 0, opacity: 0 }}
+                      initial={isMobile ? { opacity: 0 } : { width: 0, opacity: 0 }}
+                      animate={{ width: isMobile ? '100%' : 'clamp(13rem, 18vw, 15.5rem)', opacity: 1 }}
+                      exit={isMobile ? { opacity: 0 } : { width: 0, opacity: 0 }}
                       transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                      className={`h-full border-l border-border-subtle bg-surface-card flex flex-col z-30 shrink-0 relative overflow-hidden ${isMobile ? 'fixed inset-0 pt-20' : ''}`}
+                      className={`h-full border-l border-border-subtle ethereal-panel flex flex-col z-30 shrink-0 relative overflow-hidden ${isMobile ? 'w-full h-full relative border-none' : 'relative'}`}
                     >
-                      <div className="p-3 border-b border-border-subtle flex items-center justify-between">
-                        <span className="text-xs font-semibold text-brand-primary">Tools</span>
+                      <AnimatePresence>
+                        {isMobile && isRightRailOpen && (
+                          <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsRightRailOpen(false)}
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[-1]"
+                          />
+                        )}
+                      </AnimatePresence>
+                      <div className="p-4 md:p-6 lg:p-8 border-b border-border-subtle flex items-center justify-between shrink-0">
+                        <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em]">Strategic Ops</span>
                         <div className="flex items-center gap-4">
                           <Sparkles size={14} className="text-brand-primary animate-pulse" />
-                          <button 
-                            onClick={() => setIsRightRailOpen(false)}
-                            className="p-1 hover:bg-white/5 rounded-md text-text-secondary hover:text-brand-primary hidden lg:block"
-                            title="Collapse Ops Rail"
-                          >
-                            <ChevronRight size={16} />
-                          </button>
+                          {!isMobile && (
+                            <button 
+                              onClick={() => setIsRightRailOpen(false)}
+                              className="p-2.5 sm:p-1 hover:bg-white/5 rounded-xl sm:rounded-md text-text-secondary hover:text-brand-primary flex items-center justify-center min-w-[36px] min-h-[36px]"
+                              title="Collapse Ops Rail"
+                            >
+                              <ChevronRight size={20} className="sm:w-4 sm:h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 xl:p-5 space-y-4 xl:space-y-5">
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-4 xl:p-5 space-y-3 md:space-y-4 xl:space-y-5">
                         <button 
                           onClick={handleAnalyzeProse}
                           disabled={isAnalyzingProse}
-                          className={`w-full p-3 h-14 rounded-xl border transition-all active:scale-95 group shadow-sm relative flex flex-row items-center justify-start gap-3 bg-surface-muted/30 ${
+                          className={`w-full p-4 h-32 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
                             isAnalyzingProse ? 'animate-pulse border-brand-primary bg-brand-primary/5' : 'hover:border-brand-primary hover:bg-brand-primary/5'
                           }`}
                         >
-                          <CircleSlash size={16} className={isAnalyzingProse ? 'text-brand-primary' : 'text-text-secondary group-hover:text-brand-primary'} />
-                          <span className="text-xs font-semibold text-text-secondary group-hover:text-brand-primary">Sludge Filter</span>
+                          <CircleSlash size={32} className={isAnalyzingProse ? 'text-brand-primary' : 'text-text-secondary group-hover:text-brand-primary'} />
+                          <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary group-hover:text-brand-primary">The Sludge Filter</span>
                         </button>
 
                         <button 
                           onClick={handleCheckTurn}
                           disabled={isCheckingTurn}
-                          className={`w-full p-3 h-14 rounded-xl border transition-all active:scale-95 group shadow-sm relative flex flex-row items-center justify-start gap-3 bg-surface-muted/30 ${
+                          className={`w-full p-4 h-32 rounded-3xl border transition-all active:scale-95 group shadow-xl relative flex flex-col items-center justify-center gap-3 bg-surface-muted/30 ${
                             isCheckingTurn ? 'animate-pulse border-brand-primary bg-brand-primary/5' : 'hover:border-brand-primary hover:bg-brand-primary/5'
                           }`}
                         >
-                          <Flame size={16} className={isCheckingTurn ? 'text-brand-primary' : 'text-text-secondary group-hover:text-brand-primary'} />
-                          <span className="text-xs font-semibold text-text-secondary group-hover:text-brand-primary">Reversal Meter</span>
+                          <Flame size={32} className={isCheckingTurn ? 'text-brand-primary' : 'text-text-secondary group-hover:text-brand-primary'} />
+                          <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary group-hover:text-brand-primary">Reversal Meter</span>
                         </button>
 
                         <div className="h-px bg-border-subtle mx-4" />
@@ -1606,18 +1576,20 @@ export default function WritingStudio({
                         <button 
                           onClick={handleCritique}
                           disabled={isCritiquing}
-                          className="w-full p-3 h-14 bg-brand-dark border border-border-subtle text-text-secondary hover:text-brand-primary hover:border-brand-primary rounded-xl shadow-sm active:scale-95 transition-all group flex flex-row items-center justify-start gap-3"
+                          className="w-full p-4 bg-brand-dark border border-border-subtle text-text-secondary hover:text-brand-primary hover:border-brand-primary rounded-3xl shadow-xl active:scale-95 transition-all group flex flex-col items-center justify-center gap-3"
                         >
-                          <Users size={16} className={isCritiquing ? 'animate-pulse' : ''} />
-                          <span className="text-xs font-semibold">AI Critique</span>
+                          <Users size={32} className={isCritiquing ? 'animate-pulse' : ''} />
+                          <span className="text-[9px] font-black uppercase tracking-widest">Narrative Swarm</span>
                         </button>
 
-                        <button 
+                         <button 
                           onClick={() => {/* Deep Scan */}}
-                          className="w-full p-3 h-14 bg-brand-dark border border-border-subtle text-text-secondary hover:text-brand-primary hover:border-brand-primary rounded-xl shadow-sm active:scale-95 transition-all group flex flex-row items-center justify-start gap-3 opacity-30 cursor-not-allowed"
+                          className="w-full p-6 bg-brand-dark border border-border-subtle text-text-secondary hover:text-brand-primary hover:border-brand-primary rounded-3xl shadow-xl active:scale-95 transition-all group flex flex-col items-center justify-center gap-4 opacity-30 cursor-not-allowed"
+                          title="DNA Mapping - Architectural Analysis (Coming Soon)"
                         >
-                          <Fingerprint size={16} />
-                          <span className="text-xs font-semibold">DNA Mapping</span>
+                          <Fingerprint size={32} />
+                          <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary/50">DNA Mapping</span>
+                          <span className="text-[7px] font-black uppercase tracking-widest text-brand-primary/40 -mt-2">Coming Soon</span>
                         </button>
                       </div>
                     </motion.div>
@@ -1625,26 +1597,40 @@ export default function WritingStudio({
                 </AnimatePresence>
 
                 {/* Mobile Bottom Bar for Actions */}
-                <div className="lg:hidden fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-surface-card/90 backdrop-blur-xl border border-border-subtle p-1.5 rounded-2xl shadow-2xl z-[80]">
-                  <button onClick={recenter} className="p-3 text-text-secondary hover:text-brand-primary"><RefreshCcw size={20} /></button>
-                  <button onClick={handleAnalyzeProse} className="p-3 text-text-secondary hover:text-brand-primary"><CircleSlash size={20} /></button>
-                  <button onClick={handleCheckTurn} className="p-3 text-text-secondary hover:text-brand-primary"><Flame size={20} /></button>
-                  <button onClick={handleSmartWrite} className="p-4 bg-brand-primary text-white rounded-xl"><Zap size={20} /></button>
-                  <button onClick={handleRefine} className="p-3 text-text-secondary hover:text-brand-primary"><Flame size={20} /></button>
-                  <button onClick={handleCritique} className="p-3 text-text-secondary hover:text-brand-primary"><Users size={20} /></button>
-                </div>
+                {!isFocusMode && !isMobile && (
+                  <div className="lg:hidden fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 flex items-center gap-1.5 ethereal-panel/90 backdrop-blur-xl border border-border-subtle p-2 rounded-2xl shadow-2xl z-[80] max-w-[95vw] overflow-x-auto no-scrollbar">
+                    <button onClick={recenter} className="p-3.5 text-text-secondary hover:text-brand-primary min-w-[44px] min-h-[44px] flex items-center justify-center" title="Recenter workspace"><RefreshCcw size={20} /></button>
+                    <button onClick={handleAnalyzeProse} className="p-3.5 text-text-secondary hover:text-brand-primary min-w-[44px] min-h-[44px] flex items-center justify-center" title="Analyze Prose"><CircleSlash size={20} /></button>
+                    <button onClick={handleCheckTurn} className="p-3.5 text-text-secondary hover:text-brand-primary min-w-[44px] min-h-[44px] flex items-center justify-center" title="Check Scene Reversal"><Flame size={20} /></button>
+                    <button onClick={handleSmartWrite} className="p-4 btn-nexus-primary rounded-xl min-w-[48px] min-h-[48px] flex items-center justify-center" title="Compose with Casper"><Zap size={20} /></button>
+                    <button onClick={handleRefine} className="p-3.5 text-text-secondary hover:text-brand-primary min-w-[44px] min-h-[44px] flex items-center justify-center" title="Refine Prose"><Repeat size={20} /></button>
+                    <button onClick={handleCritique} className="p-3.5 text-text-secondary hover:text-brand-primary min-w-[44px] min-h-[44px] flex items-center justify-center" title="Show critiques"><Users size={20} /></button>
+                  </div>
+                )}
 
                 {/* Critique Sidebar */}
                 <AnimatePresence>
-                  {showCritique && (
+                  {(isMobile ? mobileTab === 'critiques' : showCritique) && (
                     <motion.div 
                       key="critique"
-                      initial={{ width: 0, opacity: 0 }}
-                      animate={{ width: isMobile ? '100vw' : 'clamp(20rem, 30vw, 26rem)', opacity: 1 }}
-                      exit={{ width: 0, opacity: 0 }}
-                      className={`border-l border-border-subtle bg-brand-dark flex flex-col overflow-hidden shadow-[-40px_0_100px_rgba(0,0,0,0.5)] h-full relative z-50 ${isMobile ? 'fixed inset-0 pt-20' : ''}`}
+                      initial={isMobile ? { opacity: 0 } : { width: 0, opacity: 0 }}
+                      animate={{ width: isMobile ? '100%' : 'clamp(20rem, 30vw, 26rem)', opacity: 1 }}
+                      exit={isMobile ? { opacity: 0 } : { width: 0, opacity: 0 }}
+                      transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                      className={`border-l border-border-subtle bg-brand-dark flex flex-col overflow-hidden h-full relative ${isMobile ? 'w-full h-full relative border-none z-30 shadow-none' : 'z-[150] shadow-[-40px_0_100px_rgba(0,0,0,0.5)]'}`}
                     >
-                      <div className="p-8 border-b border-border-subtle flex items-center justify-between bg-surface-card">
+                      <AnimatePresence>
+                        {isMobile && showCritique && (
+                          <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowCritique(false)}
+                            className="fixed inset-0 bg-black/70 backdrop-blur-md z-[-1]"
+                          />
+                        )}
+                      </AnimatePresence>
+                      <div className="p-8 border-b border-border-subtle flex items-center justify-between ethereal-panel">
                         <div className="flex flex-col">
                           <h3 className="text-[10px] font-black text-brand-primary flex items-center gap-3 uppercase tracking-[0.4em] mb-1">
                             <Zap size={16} className="fill-brand-primary" />
@@ -1653,7 +1639,7 @@ export default function WritingStudio({
                           <span className="text-[9px] font-black text-text-secondary opacity-40 uppercase tracking-widest">Spectral Deep Analysis</span>
                         </div>
                         <button 
-                          onClick={() => setShowCritique(false)} 
+                          onClick={() => { if (isMobile) { setMobileTab('editor'); } else { setShowCritique(false); } }} 
                           className="p-4 text-white transition-all bg-red-600 rounded-2xl border-2 border-red-500 shadow-[0_0_30px_rgba(220,38,38,0.4)] hover:bg-red-700 active:scale-90 group z-[100]"
                           title="Close Case Narrative"
                         >
@@ -1688,7 +1674,7 @@ export default function WritingStudio({
                                 </h4>
                                 <div className="space-y-4">
                                   {(project.critiques || {})[selectedChapter.id][0].suggestions.map((s: any, idx: number) => (
-                                    <div key={idx} className="flex gap-4 text-xs text-text-secondary bg-surface-card p-6 rounded-[2rem] border border-border-subtle group hover:border-brand-primary/50 transition-all shadow-xl">
+                                    <div key={idx} className="flex gap-4 text-xs text-text-secondary ethereal-panel p-6 rounded-[2rem] border border-border-subtle group hover:border-brand-primary/50 transition-all shadow-xl">
                                       <span className="font-black text-brand-primary text-base tabular-nums opacity-40 group-hover:opacity-100 transition-opacity">{(idx + 1).toString().padStart(2, '0')}</span>
                                       <p className="leading-relaxed font-medium">{s.text}</p>
                                     </div>
@@ -1696,7 +1682,7 @@ export default function WritingStudio({
                                 </div>
                                 <button 
                                   onClick={applySuggestionsToChapter}
-                                  className="w-full py-6 bg-brand-primary text-white rounded-[2.5rem] font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-accent transition-all shadow-[0_20px_50px_rgba(59,130,246,0.5)] mt-10 flex items-center justify-center gap-3 group active:scale-95"
+                                  className="w-full py-6 btn-nexus-primary rounded-[2.5rem] font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-accent transition-all shadow-[0_20px_50px_rgba(168,85,247,0.5)] mt-10 flex items-center justify-center gap-3 group active:scale-95"
                                 >
                                   <Zap size={18} className="text-white group-hover:rotate-12 transition-all fill-current" />
                                   Synthesize Refined Draft
@@ -1724,7 +1710,7 @@ export default function WritingStudio({
                 <div className="pt-10">
                   <button 
                     onClick={addChapter}
-                    className="px-10 py-5 bg-brand-primary text-white rounded-[2rem] font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-accent transition-all shadow-2xl active:scale-95 flex items-center gap-3 mx-auto"
+                    className="px-10 py-5 btn-nexus-primary rounded-[2rem] font-black text-[10px] uppercase tracking-[0.3em] hover:bg-brand-accent transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-3 mx-auto"
                   >
                     <Plus size={18} />
                     New Sequence
@@ -1735,6 +1721,7 @@ export default function WritingStudio({
           )}
         </AnimatePresence>
       </div>
+      )}
 
       {/* Source Viewer Modal */}
       <AnimatePresence>
@@ -1746,7 +1733,7 @@ export default function WritingStudio({
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="bg-brand-dark w-full max-w-5xl h-[85vh] rounded-[4rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.8)] flex flex-col border border-border-subtle"
             >
-              <div className="p-10 border-b border-border-subtle flex items-center justify-between bg-surface-card">
+              <div className="p-10 border-b border-border-subtle flex items-center justify-between ethereal-panel">
                 <div className="flex items-center gap-6">
                   <div className="w-14 h-14 bg-brand-primary/10 text-brand-primary rounded-2xl flex items-center justify-center border border-brand-primary/20">
                     <FileText size={28} />
@@ -1774,10 +1761,10 @@ export default function WritingStudio({
                   </div>
                 </div>
               </div>
-              <div className="p-10 bg-surface-card border-t border-border-subtle flex justify-end">
+              <div className="p-10 ethereal-panel border-t border-border-subtle flex justify-end">
                 <button 
                   onClick={() => setViewingSourceId(null)}
-                  className="px-12 py-5 bg-brand-primary text-white rounded-[2rem] font-black uppercase tracking-[0.3em] text-[10px] hover:bg-brand-accent transition-all shadow-[0_20px_50px_rgba(59,130,246,0.3)] active:scale-95"
+                  className="px-12 py-5 btn-nexus-primary rounded-[2rem] font-black uppercase tracking-[0.3em] text-[10px] hover:bg-brand-accent transition-all shadow-[0_20px_50px_rgba(168,85,247,0.3)] active:scale-95"
                 >
                   Terminate Connection
                 </button>

@@ -11,6 +11,7 @@ export enum OperationType {
 
 export interface FirestoreErrorInfo {
   error: string;
+  isQuotaExceeded: boolean;
   operationType: OperationType;
   path: string | null;
   authInfo: {
@@ -26,10 +27,16 @@ export interface FirestoreErrorInfo {
   }
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, shouldThrow = false) {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const auth = getAuth();
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const isQuotaExceeded = errorMessage.toLowerCase().includes('quota exceeded') || 
+                        errorMessage.toLowerCase().includes('resource exhausted') ||
+                        errorMessage.toLowerCase().includes('limit exceeded');
+                        
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
+    isQuotaExceeded,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -46,10 +53,5 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
   
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-
-  if (shouldThrow) {
-    throw new Error(JSON.stringify(errInfo));
-  }
-
-  return errInfo;
+  throw new Error(JSON.stringify(errInfo));
 }

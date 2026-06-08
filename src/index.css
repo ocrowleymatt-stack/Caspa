@@ -1,45 +1,23 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400;1,600&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400;1,600&family=Space+Grotesk:wght@300;400;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* ─── O'Crowley Nexus × Caspa Design System ─────────────────────────────────
-   Caspa DNA:  dark navy panels, teal/cyan accent, clean card grid, top nav
-   Nexus DNA:  literary serif headings, obsidian depth, precision typography
-   ─────────────────────────────────────────────────────────────────────────── */
-
 @theme {
-  --font-sans:  "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Cormorant Garamond", "Charter", "Georgia", serif;
-  --font-mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", "Charter", "Bitstream Charter", "Georgia", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* ── Brand ── */
-  --color-brand-primary:   #14b8a6;   /* Caspa teal */
-  --color-brand-accent:    #2dd4bf;   /* teal-400 hover */
-  --color-brand-glow:      #0d9488;   /* teal-600 deep */
-  --color-brand-dark:      #0f1923;   /* deepest navy */
-
-  /* ── Surfaces ── */
-  --color-surface-bg:      #0d1520;   /* deep navy bg */
-  --color-surface-card:    #131f2e;   /* card panel */
-  --color-surface-raised:  #192840;   /* elevated card */
-  --color-surface-muted:   #1e3048;   /* muted fill */
-  --color-surface-overlay: #243855;   /* hover overlay */
-
-  /* ── Borders ── */
-  --color-border-subtle:   #1e3048;   /* default border */
-  --color-border-medium:   #2a4060;   /* stronger border */
-  --color-border-brand:    #14b8a6;   /* teal border */
-
-  /* ── Text ── */
-  --color-text-primary:    #e8f4f8;   /* near-white with blue tint */
-  --color-text-secondary:  #7a9bb5;   /* muted blue-grey */
-  --color-text-tertiary:   #4d7a99;   /* very muted */
-
-  /* ── Status ── */
-  --color-status-success:  #10b981;
-  --color-status-warning:  #f59e0b;
-  --color-status-error:    #ef4444;
-  --color-status-info:     #3b82f6;
+  --color-brand-primary: #a855f7; /* Purple 500 */
+  --color-brand-accent: #d8b4fe; /* Purple 300 */
+  --color-brand-dark: #0f172a; 
+  
+  /* Cosmic Ghost Aesthetic */
+  --color-surface-bg: #090614; /* Deep void purple-black */
+  --color-surface-card: #140d24; /* Deep violet-gray */
+  --color-surface-muted: #1e1536; /* Muted violet */
+  --color-border-subtle: rgba(168, 85, 247, 0.15); /* Ghostly subtle border */
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #cbd5e1;
 }
 
 @layer base {
@@ -47,14 +25,24 @@
     height: 100dvh;
     height: -webkit-fill-available;
     margin: 0; padding: 0; overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     height: 100dvh;
     height: -webkit-fill-available;
     margin: 0; padding: 0; overflow: hidden;
     overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     @apply bg-surface-bg text-text-primary antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background-color: #05020a;
+    background-image: 
+      radial-gradient(circle at 10% 20%, rgba(168, 85, 247, 0.18), transparent 60%),
+      radial-gradient(circle at 90% 80%, rgba(192, 132, 252, 0.15), transparent 60%),
+      radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.05), transparent 50%),
+      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill-opacity='0.03' fill='%23a855f7' fill-rule='evenodd'/%3E%3C/svg%3E");
+    background-attachment: fixed;
   }
   #root {
     height: 100dvh;
@@ -62,121 +50,258 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    /* Maintain safe area horizontally to prevent content running into screen corners */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
-  * { -webkit-tap-highlight-color: transparent; }
+  * { 
+    -webkit-tap-highlight-color: transparent; 
+  }
+  
+  /* Prevent iOS Safari from auto-zooming on focus of fields with font-size < 16px */
+  @media screen and (max-width: 768px) {
+    input, textarea, select, [contenteditable="true"] {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Buttery kinetic momentum scrolling on scroll containers on Safari */
+  .overflow-y-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll, .custom-scrollbar {
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Standard touch target responsiveness and text selection prevention on interactive items */
+  button, select, a, [role="button"] {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+@layer components {
+  /* Nexus Ghost Buttons */
+  .btn-nexus-primary {
+    @apply relative inline-flex justify-center items-center font-bold uppercase tracking-widest text-white transition-all overflow-hidden rounded-2xl;
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.4) 0%, rgba(126, 34, 206, 0.4) 100%);
+    box-shadow: 0 0 20px 0 rgba(168, 85, 247, 0.4), inset 0 0 10px 0 rgba(216, 180, 254, 0.4);
+    border: 1px solid rgba(216, 180, 254, 0.5);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+  }
+  
+  .btn-nexus-primary:-moz-focusring,
+  .btn-nexus-primary:focus {
+    outline: none;
+  }
+
+  .btn-nexus-primary:hover:not(:disabled) {
+    box-shadow: 0 0 35px 5px rgba(168, 85, 247, 0.6), inset 0 0 15px 2px rgba(216, 180, 254, 0.6);
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.5) 0%, rgba(126, 34, 206, 0.5) 100%);
+    border-color: rgba(255, 255, 255, 0.8);
+    transform: translateY(-1px);
+  }
+  
+  .btn-nexus-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .btn-nexus-glass {
+    @apply relative inline-flex justify-center items-center font-bold uppercase tracking-widest text-[#e2e8f0] transition-all overflow-hidden rounded-2xl;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(168, 85, 247, 0.05), inset 0 0 20px 0 rgba(255, 255, 255, 0.02);
+  }
+
+  .btn-nexus-glass:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(168, 85, 247, 0.15), inset 0 0 20px 0 rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  .btn-nexus-danger {
+    @apply relative inline-flex justify-center items-center font-bold uppercase tracking-widest text-white transition-all overflow-hidden rounded-2xl;
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.4) 100%);
+    box-shadow: 0 0 20px 0 rgba(239, 68, 68, 0.4), inset 0 0 10px 0 rgba(252, 165, 165, 0.5);
+    border: 1px solid rgba(252, 165, 165, 0.5);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+  }
+
+  .btn-nexus-danger:hover:not(:disabled) {
+    box-shadow: 0 0 30px 4px rgba(239, 68, 68, 0.6), inset 0 0 15px 0 rgba(252, 165, 165, 0.8);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.5) 0%, rgba(185, 28, 28, 0.5) 100%);
+    transform: translateY(-1px);
+  }
+
+  /* Ethereal Glow Panels */
+  .ethereal-panel {
+    @apply bg-surface-card/80 backdrop-blur-xl border border-white/5;
+    box-shadow: 0 0 40px -10px rgba(168, 85, 247, 0.15), inset 0 0 20px -5px rgba(255, 255, 255, 0.02);
+  }
 }
 
 @layer utilities {
-  /* ── Scrollbars ── */
-  .custom-scrollbar::-webkit-scrollbar { @apply w-1.5 h-1.5; }
-  .custom-scrollbar::-webkit-scrollbar-track { @apply bg-transparent; }
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-400/50 rounded-full border-4 border-transparent bg-clip-padding hover:bg-slate-400/80;
+  }
+
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+  }
+
+  .shadow-soft {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+
+  .shadow-brand {
+    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .app-shell {
+    height: 100dvh;
+    @apply flex flex-col overflow-hidden;
+  }
+
+  .app-header {
+    @apply shrink-0 bg-surface-card border-b border-border-subtle z-50;
+  }
+  
+  .studio-header {
+    @apply shrink-0 sticky top-0 z-50;
+  }
+
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+
+  .writing-scroll {
+    scroll-padding-top: 100px;
+    scroll-behavior: smooth;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
     @apply bg-white/10 rounded-full hover:bg-brand-primary/40 transition-colors cursor-pointer;
   }
-  .custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(20, 184, 166, 0.2) transparent;
-  }
-  .no-scrollbar::-webkit-scrollbar { display: none; }
-  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-  /* ── Layout ── */
-  .app-shell { height: 100dvh; @apply flex flex-col overflow-hidden; }
-  .app-header { @apply shrink-0 bg-surface-card border-b border-border-subtle z-50; }
-  .studio-header { @apply shrink-0 sticky top-0 z-50; }
-  .scrollbar-gutter-stable { scrollbar-gutter: stable; }
-  .writing-scroll { scroll-padding-top: 100px; scroll-behavior: smooth; }
-
-  /* ── Caspa Card ── */
-  .caspa-card {
-    @apply bg-surface-card border border-border-subtle rounded-2xl;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px rgba(20,184,166,0.04);
-  }
-  .caspa-card-raised {
-    @apply bg-surface-raised border border-border-medium rounded-2xl;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 0 1px rgba(20,184,166,0.06);
-  }
-
-  /* ── Caspa Button ── */
-  .caspa-btn-primary {
-    @apply bg-brand-primary hover:bg-brand-accent text-white font-semibold rounded-xl px-4 py-2 text-sm transition-all active:scale-95;
-    box-shadow: 0 0 0 0 rgba(20,184,166,0);
-  }
-  .caspa-btn-primary:hover {
-    box-shadow: 0 4px 20px rgba(20,184,166,0.25);
-  }
-  .caspa-btn-ghost {
-    @apply text-text-secondary hover:text-text-primary hover:bg-surface-overlay rounded-xl px-3 py-2 text-sm transition-all active:scale-95;
-  }
-
-  /* ── Teal glow effects ── */
-  .shadow-teal { box-shadow: 0 0 20px rgba(20,184,166,0.15); }
-  .shadow-teal-lg { box-shadow: 0 10px 40px rgba(20,184,166,0.2); }
-  .ring-teal { box-shadow: 0 0 0 2px rgba(20,184,166,0.4); }
-
-  /* ── Status badges ── */
-  .badge-teal { @apply bg-brand-primary/15 text-brand-primary border border-brand-primary/25 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider; }
-  .badge-amber { @apply bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider; }
-  .badge-red   { @apply bg-red-500/15 text-red-400 border border-red-500/25 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider; }
-  .badge-blue  { @apply bg-blue-500/15 text-blue-400 border border-blue-500/25 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider; }
-
-  /* ── Progress bar ── */
-  .progress-teal {
-    @apply h-1.5 rounded-full bg-surface-muted overflow-hidden;
-  }
-  .progress-teal-fill {
-    @apply h-full bg-brand-primary rounded-full transition-all duration-500;
-    box-shadow: 0 0 8px rgba(20,184,166,0.5);
-  }
-
-  /* ── Sidebar compact ── */
   @media (max-width: 1440px) {
-    .sidebar-compact { @apply w-16 opacity-100; }
+    .sidebar-compact {
+      @apply w-16 opacity-100;
+    }
   }
 }
 
-/* ── Animations ── */
+/* Animations */
 @keyframes pulse-soft {
   0%, 100% { opacity: 0.2; }
   50% { opacity: 0.5; }
 }
-.animate-pulse-soft { animation: pulse-soft 4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
-@keyframes teal-shimmer {
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-.shimmer-teal {
-  background: linear-gradient(90deg, transparent 0%, rgba(20,184,166,0.1) 50%, transparent 100%);
-  background-size: 200% auto;
-  animation: teal-shimmer 2s linear infinite;
+.animate-pulse-soft {
+  animation: pulse-soft 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* ── Print ── */
 @layer base {
   @media print {
+    /* Hide non-printable elements */
     nav, button, .no-print, header, footer:not(.print-footer), aside, [role="navigation"], [role="banner"] {
       display: none !important;
     }
+
+    /* Force all flex parents to expand and overflow to show */
     html, body, #root, [class*="flex-"], main, [class*="overflow-"] {
-      height: auto !important; min-height: 0 !important; max-height: none !important;
-      overflow: visible !important; display: block !important; position: static !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+      display: block !important;
+      position: static !important;
     }
-    body { background: white !important; padding: 0 !important; margin: 0 !important; color: black !important; }
-    main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
-    @page { size: 8.5in 11in; margin: 1.25in; }
-    .lg\:col-span-12 { display: block !important; width: 100% !important; }
+
+    /* Reset background and layout for print */
+    body {
+      background: white !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      color: black !important;
+    }
+
+    main {
+       margin: 0 !important;
+       padding: 0 !important;
+       width: 100% !important;
+    }
+
+    /* Format pages for a book feel - standard trade size */
+    @page {
+      size: 8.5in 11in;
+      margin: 1.25in;
+    }
+
+    /* Print-specific overrides for the manuscript preview */
+    .lg\:col-span-12 {
+      display: block !important;
+      width: 100% !important;
+    }
+
     .prose {
-      max-width: none !important; font-size: 12pt !important; line-height: 1.6 !important;
-      color: black !important; font-family: var(--font-serif) !important;
-      widows: 3; orphans: 3; text-align: justify;
+      max-width: none !important;
+      font-size: 12pt !important;
+      line-height: 1.6 !important;
+      color: black !important;
+      font-family: var(--font-serif) !important;
+      widows: 3;
+      orphans: 3;
+      text-align: justify;
     }
-    h1, h2, h3 { page-break-after: avoid; }
-    .manuscript-page { page-break-after: always; display: block !important; margin: 0 !important; padding: 0 !important; }
-    .page-break { page-break-before: always; }
+
+    h1, h2, h3 {
+      page-break-after: avoid;
+    }
+
+    .manuscript-page {
+      page-break-after: always;
+      display: block !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
   }
 }
+
+/* Force legibility and consistent theme coloring on option tags in drop-down menus web-wide */
+select option {
+  background-color: #140d24 !important;
+  color: #cbd5e1 !important;
+}
+

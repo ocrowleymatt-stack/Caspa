@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'motion/react';
 import { 
   Book, 
@@ -14,18 +13,21 @@ import { Project } from '../types';
 import { useState } from 'react';
 
 interface LibraryProps {
-  key?: React.Key;
   projects: Project[];
   onSelectProject: (project: Project) => void;
   onCreateProject: () => void;
   onDeleteProject: (projectId: string) => void;
+  onBroadScan?: (q?: string) => Promise<void>;
+  isMobile?: boolean;
 }
 
 export default function Library({ 
   projects, 
   onSelectProject, 
   onCreateProject, 
-  onDeleteProject 
+  onDeleteProject,
+  onBroadScan,
+  isMobile
 }: LibraryProps) {
   const [filter, setFilter] = useState('');
 
@@ -45,17 +47,17 @@ export default function Library({
         <div>
           <div className="text-[10px] font-black text-brand-primary uppercase tracking-[0.5em] mb-4 flex items-center gap-3">
             <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
-            Intelligence Repository
+            Project Repository
           </div>
-          <h2 className="text-5xl md:text-7xl font-black text-text-primary tracking-tighter italic font-serif leading-none">The Vault</h2>
-          <p className="text-text-secondary font-medium mt-6 text-xl max-w-md leading-relaxed">Your portfolio of protected narrative intellectual assets and decrypted drafts.</p>
+          <h2 className="text-5xl md:text-7xl font-black text-text-primary tracking-tighter font-sans leading-none">Manuscript <span className="font-serif italic">Archive</span></h2>
+          <p className="text-text-secondary font-medium mt-6 text-xl max-w-md leading-relaxed">Manage your storytelling assets, drafts, and research intelligence in one secure vault.</p>
         </div>
         <button 
           onClick={onCreateProject}
-          className="bg-brand-primary text-white hover:bg-brand-accent px-10 py-6 rounded-3xl font-black text-xs uppercase tracking-[0.2em] flex items-center gap-4 shadow-[0_20px_50px_rgba(59,130,246,0.3)] transition-all hover:scale-105 active:scale-95 group"
+          className="btn-nexus-primary px-10 py-6 rounded-3xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-4 shadow-[0_20px_50px_rgba(168,85,247,0.3)] transition-all hover:scale-105 active:scale-95 group"
         >
           <Plus size={24} className="group-hover:rotate-90 transition-transform" />
-          Forge New Archive
+          Start New Project
         </button>
       </div>
 
@@ -63,21 +65,42 @@ export default function Library({
         <Search className="absolute left-8 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-brand-primary transition-all" size={24} />
         <input 
           type="text"
-          placeholder="Decrypt archive by title, genre, or narrative markers..."
+          placeholder="Search projects by title, genre, or keywords..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full bg-surface-card border border-border-subtle rounded-[2.5rem] py-8 pl-20 pr-10 focus:outline-none focus:border-brand-primary transition-all shadow-2xl text-text-primary font-medium text-xl placeholder:text-text-secondary/30 group-hover:border-text-secondary/30 no-print"
+          className="w-full ethereal-panel border border-border-subtle rounded-[2.5rem] py-8 pl-20 pr-10 focus:outline-none focus:border-brand-primary transition-all shadow-2xl text-text-primary font-medium text-xl placeholder:text-text-secondary/30 group-hover:border-text-secondary/30 no-print"
         />
       </div>
 
       {filteredProjects.length === 0 ? (
-        <div className="bg-surface-card border border-dashed border-border-subtle rounded-[4rem] p-32 text-center relative group overflow-hidden">
+        <div className="ethereal-panel border border-dashed border-border-subtle rounded-[4rem] p-16 md:p-32 text-center relative group overflow-hidden">
           <div className="absolute inset-0 bg-brand-primary rounded-full blur-[150px] opacity-5 group-hover:opacity-10 transition-opacity" />
-          <div className="w-28 h-28 bg-brand-primary/10 rounded-full flex items-center justify-center mx-auto mb-10 relative z-10">
-            <Book size={56} className="text-brand-primary opacity-30" />
+          <div className="w-20 h-20 md:w-28 md:h-28 bg-brand-primary/10 rounded-full flex items-center justify-center mx-auto mb-10 relative z-10 transition-all group-hover:scale-110 group-hover:rotate-12 group-hover:bg-brand-primary/20">
+            <Book size={isMobile ? 40 : 56} className="text-brand-primary opacity-30" />
           </div>
-          <p className="font-black text-text-primary uppercase tracking-[0.4em] text-lg relative z-10 italic">Intelligence Void Detected</p>
-          <p className="text-text-secondary mt-4 max-w-xs mx-auto relative z-10 opacity-60">Authorize a new narrative ingestion sequence to begin populating this terminal.</p>
+          <p className="font-black text-text-primary uppercase tracking-[0.4em] text-lg relative z-10 italic">No Manuscripts Detected</p>
+          <div className="space-y-6 mt-8 relative z-10 max-w-lg mx-auto">
+            <p className="text-text-secondary opacity-60 text-base leading-relaxed">No synchronized drafts found for this identity partition. If you have legacy manuscripts, they may be vaulted under an alternate account Variation.</p>
+            
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={() => {
+                  if (onBroadScan) onBroadScan();
+                }}
+                className="w-full py-5 bg-brand-primary/10 border border-brand-primary/20 hover:bg-brand-primary hover:text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.4em] transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"
+              >
+                <Search size={16} />
+                Initiate Global Neural Recovery
+              </button>
+              
+              <div className="bg-brand-dark/50 py-4 px-8 rounded-2xl border border-border-subtle flex flex-col gap-2">
+                <span className="text-[9px] font-black text-brand-primary uppercase tracking-[0.3em] opacity-60">Active Access Signature:</span>
+                <span className="text-xs font-mono font-bold text-text-primary tracking-tight truncate">
+                  {localStorage.getItem('currentUserEmail') || 'Syncing Identity...'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-16">
@@ -109,14 +132,14 @@ export default function Library({
   );
 }
 
-function ProjectCard({ proj, onSelect, onDelete, isArchived }: { key?: React.Key; proj: Project, onSelect: (p: Project) => void, onDelete: (id: string) => void, isArchived?: boolean }) {
+function ProjectCard({ proj, onSelect, onDelete, isArchived }: { proj: Project, onSelect: (p: Project) => void, onDelete: (id: string) => void, isArchived?: boolean }) {
   return (
     <motion.div 
       layout
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -12 }}
-      className={`bg-surface-card rounded-[3rem] border border-border-subtle p-10 shadow-2xl transition-all group relative overflow-hidden flex flex-col h-full hover:border-brand-primary/50 hover:shadow-brand-primary/5 active:scale-[0.98] ${isArchived ? 'opacity-70 hover:opacity-100' : ''}`}
+      className={`ethereal-panel rounded-[3rem] border border-border-subtle p-10 shadow-2xl transition-all group relative overflow-hidden flex flex-col h-full hover:border-brand-primary/50 hover:shadow-brand-primary/5 active:scale-[0.98] ${isArchived ? 'opacity-70 hover:opacity-100' : ''}`}
     >
       <div className="absolute top-0 right-0 p-10">
          <button 
@@ -140,7 +163,7 @@ function ProjectCard({ proj, onSelect, onDelete, isArchived }: { key?: React.Key
 
       <div className="space-y-6 mb-auto">
         <h3 className="text-3xl font-black text-text-primary group-hover:text-brand-primary transition-colors italic font-serif leading-tight">
-          {proj.title || 'Untitled Cryptograph'}
+          {proj.title || 'Untitled Project'}
         </h3>
         <div className="flex flex-wrap items-center gap-3">
           <span className="px-5 py-2 bg-brand-dark rounded-xl text-[10px] font-black text-text-secondary uppercase tracking-[0.2em] border border-border-subtle group-hover:border-brand-primary/30 transition-colors">
@@ -163,9 +186,9 @@ function ProjectCard({ proj, onSelect, onDelete, isArchived }: { key?: React.Key
         </div>
         <button 
           onClick={() => onSelect(proj)}
-          className="bg-brand-primary text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-brand-accent transition-all shadow-xl active:scale-95 shadow-brand-primary/20"
+          className="btn-nexus-primary px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-brand-accent transition-all shadow-xl active:scale-95 shadow-brand-primary/20"
         >
-          Enter Studio
+          Open Project
           <ExternalLink size={14} />
         </button>
       </div>

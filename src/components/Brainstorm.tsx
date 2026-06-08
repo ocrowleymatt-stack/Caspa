@@ -96,11 +96,11 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
       style={{ minHeight: 0 }}
     >
       <div className="max-w-7xl mx-auto py-6 md:py-12 md:px-2 flex flex-col gap-10">
-      <header className="flex flex-col md:flex-row items-center justify-between gap-8 bg-surface-card p-10 rounded-[3.5rem] border border-border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.4)] relative overflow-hidden group">
+      <header className="flex flex-col md:flex-row items-center justify-between gap-8 ethereal-panel p-10 rounded-[3.5rem] border border-border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.4)] relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
         <div className="text-center md:text-left relative z-10">
           <div className="flex items-center gap-4 mb-2 justify-center md:justify-start">
-             <div className="w-2.5 h-2.5 rounded-full bg-brand-primary shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-pulse" />
+             <div className="w-2.5 h-2.5 rounded-full bg-brand-primary shadow-[0_0_15px_rgba(168,85,247,0.5)] animate-pulse" />
              <h2 className="text-3xl md:text-5xl font-black tracking-tight text-text-primary italic font-serif">Inspiration Engine</h2>
           </div>
           <p className="text-[10px] md:text-[11px] text-text-secondary font-black uppercase tracking-[0.5em] opacity-40">Expand narrative branches with distributed high-level intelligence</p>
@@ -129,7 +129,7 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
             <div className="flex flex-col gap-6 relative z-10">
               <div className="flex items-center justify-between">
                 <h3 className="text-[10px] font-black text-brand-primary flex items-center gap-3 uppercase tracking-[0.4em] font-sans">
-                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.4)]" />
                   Improvement Strategy
                 </h3>
                 <span className="text-[8px] font-black text-text-secondary opacity-30 uppercase tracking-widest">Select Narrative Vector</span>
@@ -142,7 +142,7 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
                     className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-[10px] font-black transition-all border uppercase tracking-widest active:scale-95 group/btn ${
                       improvementGoal === g.value 
                         ? 'bg-brand-primary border-brand-primary text-white shadow-2xl shadow-brand-primary/20' 
-                        : 'bg-surface-card border-border-subtle text-text-secondary hover:border-text-secondary/40 hover:text-text-primary'
+                        : 'ethereal-panel border-border-subtle text-text-secondary hover:border-text-secondary/40 hover:text-text-primary'
                     }`}
                   >
                     <span className={`${improvementGoal === g.value ? 'text-white' : 'text-brand-primary group-hover/btn:scale-110 transition-transform'}`}>
@@ -169,7 +169,7 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
                   value={localPremise}
                   onChange={(e) => setLocalPremise(e.target.value)}
                   placeholder="Describe the specific scene, character dilemma, or narrative block you want to expand..."
-                  className="w-full h-full min-h-[300px] bg-surface-card border border-border-subtle rounded-[3rem] p-10 text-text-primary focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary focus:bg-surface-muted/30 resize-none transition-all outline-none leading-[1.8] text-xl font-serif italic shadow-inner placeholder:opacity-20 scrollbar-hide"
+                  className="w-full h-full min-h-[300px] ethereal-panel border border-border-subtle rounded-[3rem] p-10 text-text-primary focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary focus:bg-surface-muted/30 resize-none transition-all outline-none leading-[1.8] text-xl font-serif italic shadow-inner placeholder:opacity-20 scrollbar-hide"
                 />
                 <div className="absolute bottom-8 right-8 p-4 bg-brand-dark rounded-2xl border border-border-subtle opacity-0 group-hover/textarea:opacity-100 transition-opacity">
                    <BrainCircuit size={20} className="text-brand-primary/40" />
@@ -196,7 +196,7 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
         </div>
 
         {/* Right: Results */}
-        <div className="p-12 bg-surface-card border border-border-subtle rounded-[4rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.3)] flex flex-col relative group/results">
+        <div className="p-12 ethereal-panel border border-border-subtle rounded-[4rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.3)] flex flex-col relative group/results">
           <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover/results:opacity-[0.02] transition-opacity duration-1000" />
           
           <div className="flex items-center justify-between mb-10 relative z-10">

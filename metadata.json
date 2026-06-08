@@ -1,6 +1,6 @@
 {
-  "name": "NovelWrite Pro",
+  "name": "Casper The Ghost Writer",
   "description": "An elite AI-powered narrative architecture and writing studio. v2.53 includes hardened ingestion engines and manual structural bypass options.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API", "MAJOR_CAPABILITY_WORKSPACE_INTEGRATION"]
 }

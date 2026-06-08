@@ -75,7 +75,7 @@ export default function ReaderView({ project, chapters, onBack, isLoggedIn }: Pr
 
         <footer className="mt-32 pt-12 border-t border-stone-200 text-center pb-20">
           <div className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-4">Finis</div>
-          <p className="text-stone-500 italic">Built with NovelWrite Pro</p>
+          <p className="text-stone-500 italic">Built with Casper The Ghost Writer</p>
         </footer>
       </div>
     </div>

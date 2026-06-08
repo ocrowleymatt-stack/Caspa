@@ -10,7 +10,6 @@ import { AIService } from '../services/ai';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Props {
-  key?: React.Key;
   project: Project;
   research: ResearchNote[];
   chapters?: Chapter[];
@@ -129,13 +128,13 @@ export default function CharacterForge({ project, research, chapters = [], updat
 
   return (
     <div 
-      className="h-full overflow-y-auto custom-scrollbar px-4 pb-10"
+      className="h-full flex flex-col min-h-0 px-4 pb-10"
       style={{ minHeight: 0 }}
     >
-      <div className="max-w-7xl mx-auto py-6 md:py-12 md:px-2 flex flex-col md:flex-row gap-10">
+      <div className="flex-1 min-h-0 max-w-7xl w-full mx-auto py-4 md:py-12 md:px-2 flex flex-col lg:flex-row gap-6 md:gap-10">
       {/* Left List */}
-      <div className="w-full md:w-[400px] flex flex-col gap-8 shrink-0 md:pr-10">
-        <header className="text-center md:text-left bg-surface-card p-8 rounded-[2.5rem] border border-border-subtle shadow-2xl">
+      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col gap-6 md:gap-8 shrink-0 lg:pr-10 lg:overflow-y-auto lg:custom-scrollbar">
+        <header className="text-center md:text-left ethereal-panel p-8 rounded-[2.5rem] border border-border-subtle shadow-2xl">
           <div className="flex items-center gap-3 mb-2 justify-center md:justify-start">
              <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
              <h2 className="text-2xl md:text-3xl font-black tracking-tight text-text-primary italic font-serif">Character Forge</h2>
@@ -147,7 +146,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
           <button 
             onClick={handleExtract}
             disabled={extracting || !chapters.some(c => c.content)}
-            className="w-full py-5 bg-brand-primary text-white rounded-2xl disabled:opacity-30 transition-all shadow-[0_15px_40px_rgba(59,130,246,0.3)] flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] active:scale-95"
+            className="w-full py-5 btn-nexus-primary rounded-2xl disabled:opacity-30 transition-all shadow-[0_15px_40px_rgba(168,85,247,0.3)] flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] active:scale-95"
           >
             {extracting ? (
               <Activity size={16} className="animate-spin" />
@@ -178,7 +177,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
                 value={newCharConcept}
                 onChange={(e) => setNewCharConcept(e.target.value)}
                 placeholder="Core Profile Concept..."
-                className="w-full bg-surface-card border border-border-subtle rounded-2xl px-6 py-4 text-sm text-text-primary focus:ring-1 focus:ring-brand-primary focus:border-brand-primary transition-all outline-none shadow-inner placeholder:italic placeholder:text-text-secondary/20 font-serif"
+                className="w-full ethereal-panel border border-border-subtle rounded-2xl px-6 py-4 text-sm text-text-primary focus:ring-1 focus:ring-brand-primary focus:border-brand-primary transition-all outline-none shadow-inner placeholder:italic placeholder:text-text-secondary/20 font-serif"
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20">
                 <Shield size={16} className="text-text-secondary" />
@@ -188,7 +187,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
               value={archetype}
               onChange={(e) => setArchetype(e.target.value)}
               placeholder="Operational Archetype (Optional)"
-              className="w-full bg-surface-card border border-border-subtle rounded-2xl px-6 py-3 text-xs text-text-primary focus:ring-1 focus:ring-brand-primary focus:border-brand-primary transition-all outline-none shadow-inner placeholder:italic placeholder:text-text-secondary/20 font-serif"
+              className="w-full ethereal-panel border border-border-subtle rounded-2xl px-6 py-3 text-xs text-text-primary focus:ring-1 focus:ring-brand-primary focus:border-brand-primary transition-all outline-none shadow-inner placeholder:italic placeholder:text-text-secondary/20 font-serif"
             />
             <button 
               onClick={handleGenerate}
@@ -210,8 +209,8 @@ export default function CharacterForge({ project, research, chapters = [], updat
                 onClick={() => setSelectedChar(char)}
                 className={`w-full group p-5 rounded-[1.5rem] border transition-all duration-300 flex items-center justify-between ${
                   selectedChar?.id === char.id 
-                    ? 'bg-brand-primary border-brand-primary text-white shadow-[0_15px_30px_rgba(59,130,246,0.3)]' 
-                    : 'bg-surface-card border-border-subtle text-text-secondary hover:border-text-secondary/30'
+                    ? 'bg-brand-primary border-brand-primary text-white shadow-[0_15px_30px_rgba(168,85,247,0.3)]' 
+                    : 'ethereal-panel border-border-subtle text-text-secondary hover:border-text-secondary/30'
                 }`}
               >
                 <div className="flex items-center gap-4">
@@ -247,7 +246,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
       </div>
 
       {/* Right Detail */}
-      <div className="flex-1 bg-brand-dark border border-border-subtle rounded-[4rem] overflow-hidden flex flex-col shadow-2xl relative">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-brand-dark border border-border-subtle rounded-[4rem] flex flex-col shadow-2xl relative">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] grayscale pointer-events-none" />
         <AnimatePresence mode="wait">
           {selectedChar ? (
@@ -261,7 +260,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
               <header className="flex flex-col md:flex-row items-center md:items-start justify-between gap-8 border-b border-border-subtle pb-12">
                 <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
                   <div className="relative group/avatar">
-                    <div className="w-32 h-32 md:w-48 md:h-48 bg-surface-card rounded-[3rem] border border-border-subtle overflow-hidden flex items-center justify-center shadow-2xl">
+                    <div className="w-32 h-32 md:w-48 md:h-48 ethereal-panel rounded-[3rem] border border-border-subtle overflow-hidden flex items-center justify-center shadow-2xl">
                       {selectedChar.avatarUrl ? (
                         <img 
                           src={selectedChar.avatarUrl} 
@@ -276,10 +275,10 @@ export default function CharacterForge({ project, research, chapters = [], updat
                     <button 
                       onClick={handleGeneratePortrait}
                       disabled={isGeneratingPortrait}
-                      className="absolute -bottom-4 -right-4 p-4 bg-brand-primary text-white rounded-2xl shadow-xl shadow-brand-primary/40 hover:scale-110 active:scale-95 transition-all z-20 group/btn"
+                      className="absolute -bottom-4 -right-4 p-4 btn-nexus-primary rounded-2xl shadow-xl shadow-brand-primary/40 hover:scale-110 active:scale-95 transition-all z-20 group/btn"
                     >
                       {isGeneratingPortrait ? <Activity size={20} className="animate-spin" /> : <Camera size={20} />}
-                      <span className="absolute left-full ml-4 whitespace-nowrap bg-surface-card border border-border-subtle text-text-primary px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest opacity-0 group-hover/btn:opacity-100 transition-all pointer-events-none shadow-2xl">
+                      <span className="absolute left-full ml-4 whitespace-nowrap ethereal-panel border border-border-subtle text-text-primary px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest opacity-0 group-hover/btn:opacity-100 transition-all pointer-events-none shadow-2xl">
                         Synthesize Visual DNA
                       </span>
                     </button>
@@ -293,7 +292,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
                          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-primary ">{selectedChar.role}</span>
                       </div>
                       {selectedChar.archetype && (
-                         <div className="flex items-center gap-3 px-5 py-2 bg-surface-card border border-border-subtle rounded-2xl">
+                         <div className="flex items-center gap-3 px-5 py-2 ethereal-panel border border-border-subtle rounded-2xl">
                             <UserCircle size={16} className="text-text-secondary opacity-40" />
                             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-text-secondary">{selectedChar.archetype}</span>
                          </div>
@@ -303,7 +302,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
                 </div>
                 <div className="flex flex-wrap gap-2 max-w-[400px] justify-center md:justify-end">
                   {(selectedChar.traits || []).slice(0, 5).map(trait => (
-                    <span key={trait} className="px-4 py-2 bg-surface-card border border-border-subtle rounded-xl text-[9px] font-black text-text-secondary uppercase tracking-[0.2em] shadow-lg">{trait}</span>
+                    <span key={trait} className="px-4 py-2 ethereal-panel border border-border-subtle rounded-xl text-[9px] font-black text-text-secondary uppercase tracking-[0.2em] shadow-lg">{trait}</span>
                   ))}
                 </div>
               </header>
@@ -319,7 +318,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
                       {selectedChar.backstory}
                     </p>
                     {selectedChar.physicalDescription && (
-                      <div className="mt-8 p-6 bg-surface-card border border-border-subtle rounded-[2rem] shadow-inner">
+                      <div className="mt-8 p-6 ethereal-panel border border-border-subtle rounded-[2rem] shadow-inner">
                          <p className="text-[8px] font-black uppercase tracking-widest text-text-secondary mb-3 opacity-50">Biometric Physical Trace</p>
                          <p className="text-sm text-text-primary/80 leading-relaxed italic font-serif">"{selectedChar.physicalDescription}"</p>
                       </div>
@@ -365,7 +364,7 @@ export default function CharacterForge({ project, research, chapters = [], updat
                       Synchronicity & Momentum
                     </h4>
                     <div className="space-y-6">
-                      <div className="p-8 bg-surface-card border border-border-subtle rounded-[2.5rem] shadow-2xl relative group">
+                      <div className="p-8 ethereal-panel border border-border-subtle rounded-[2.5rem] shadow-2xl relative group">
                         <div className="absolute top-4 right-4 opacity-5 group-hover:opacity-10 transition-opacity">
                           <Target size={40} className="text-indigo-500" />
                         </div>

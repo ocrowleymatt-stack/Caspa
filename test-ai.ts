@@ -1,18 +1,13 @@
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
+import { AIService } from './src/services/ai.js';
+import dotenv from 'dotenv';
 dotenv.config();
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-async function run() {
+async function test() {
   try {
-    const res = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: "hello"
-    });
-    console.log("SUCCESS:", res.text);
+    const res = await AIService.compileResearch("Mars Rovers", "Mars colonisation", "novel", true);
+    console.log(res);
   } catch (e) {
-    console.log("ERROR:", e.message);
+    console.error("ERROR", e);
   }
 }
-run();
+test();

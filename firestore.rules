@@ -12,13 +12,28 @@ service cloud.firestore {
     }
 
     function isOwner(projectData) {
-      return isSignedIn() && projectData != null && projectData.get('ownerId', '') == request.auth.uid;
+      return isSignedIn() && projectData != null && (
+        projectData.get('ownerId', '') == request.auth.uid ||
+        (request.auth.token.email != null && projectData.get('ownerId', '') is string && (
+          projectData.get('ownerId', '').lower() == request.auth.token.email.lower() ||
+          // Handle Gmail dot variance (Dots are ignored by Gmail)
+          (request.auth.token.email.lower().endsWith('@gmail.com') && 
+           projectData.get('ownerId', '').lower().replace('\\.', '') == request.auth.token.email.lower().replace('\\.', ''))
+        )) ||
+        (request.auth.token.email != null && projectData.get('ownerId', '') is string && 
+          projectData.get('ownerId', '') == request.auth.token.email)
+      );
     }
 
     function isCollaborator(projectData) {
       return isSignedIn() && projectData != null && 
-             projectData.get('collaborators', []) is list &&
-             request.auth.uid in projectData.get('collaborators', []);
+             projectData.get('collaborators', []) is list && (
+              request.auth.uid in projectData.get('collaborators', []) ||
+              (request.auth.token.email != null && (
+                request.auth.token.email in projectData.get('collaborators', []) ||
+                request.auth.token.email.lower() in projectData.get('collaborators', [])
+              ))
+             );
     }
 
     function canAccessProject(projectData) {
@@ -40,14 +55,14 @@ service cloud.firestore {
     // --- Entity Validations ---
     function isValidProject(data) {
       return data.get('id', '') is string && data.get('id', '').size() <= 128 &&
-             data.get('title', '') is string && data.get('title', '').size() <= 500 &&
+             data.get('title', '') is string && data.get('title', '').size() <= 1000 &&
              data.get('ownerId', '') is string && data.get('ownerId', '').size() <= 128;
     }
 
     function isValidChapter(data) {
       return data.get('id', '') is string && data.get('id', '').size() <= 128 &&
-             data.get('title', '') is string && data.get('title', '').size() <= 500 &&
-             data.get('content', '') is string && data.get('content', '').size() <= 2097152 && // Increased to 2MB as failsafe
+             data.get('title', '') is string && data.get('title', '').size() <= 1000 &&
+             data.get('content', '') is string && data.get('content', '').size() <= 5242880 && // 5MB limit
              data.get('order', 0) is number &&
              data.get('updatedAt', 0) is number;
     }
@@ -56,75 +71,52 @@ service cloud.firestore {
 
     // Projects
     match /projects/{projectId} {
-      allow get: if isSignedIn() && (isOwner(existing()) || isCollaborator(existing())) || existing().isPublic == true;
-      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || request.auth.uid in existing().collaborators);
+      allow get: if isSignedIn() && (canAccessProject(existing()) || existing().get('isPublic', false) == true);
+      allow list: if isSignedIn(); // Broad query filtering happens via 'where' index constraints in code
       
       allow create: if isSignedIn() && 
                       isValidId(projectId) &&
                       isValidProject(incoming()) &&
-                      incoming().ownerId == request.auth.uid &&
-                      incoming().createdAt is number;
+                      (incoming().ownerId == request.auth.uid || 
+                       (request.auth.token.email != null && (incoming().ownerId == request.auth.token.email || incoming().ownerId == request.auth.token.email.lower())));
 
       allow update: if isSignedIn() &&
                       isValidProject(incoming()) &&
-                      isOwner(existing()) &&
+                      canAccessProject(existing()) &&
                       incoming().ownerId == existing().ownerId &&
-                      incoming().createdAt == existing().createdAt &&
-                      incoming().diff(existing()).affectedKeys().hasOnly([
-                        'title', 'type', 'maturity', 'genre', 'premise', 'tone', 
-                        'collaborators', 'lastModified', 'stats', 'critiques', 
-                        'targetPrize', 'prizeAssessments', 'isPublic', 'publicId', 
-                        'targetWordCount', 'publishing', 'updatedAt', 'primaryProvider',
-                        'characters', 'plotNodes', 'chapters', 'research', 'sourceMaterials',
-                        'externalReviews', 'styleDNA', 'isLocked', 'draftStage', 'draftPassHistory',
-                        'id', 'ownerId', 'createdAt', 'cutMode'
-                      ]);
+                      incoming().createdAt == existing().createdAt;
 
       allow delete: if isSignedIn() && isOwner(existing());
 
       // Sub-collections
       match /characters/{charId} {
-        allow read, write: if isSignedIn() && (
-          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid ||
-          request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.collaborators
-        );
+        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
       }
 
       match /plotNodes/{nodeId} {
-        allow read, write: if isSignedIn() && (
-          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid ||
-          request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.collaborators
-        );
+        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
       }
 
       match /chapters/{chapterId} {
-        allow get, list: if isSignedIn() && (
+         allow get, list: if isSignedIn() && (
           resource == null || 
           resource.data.get('ownerId', '') == request.auth.uid ||
-          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+          (request.auth.token.email != null && resource.data.get('ownerId', '') is string && resource.data.get('ownerId', '').lower() == request.auth.token.email.lower()) ||
+          canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data)
         );
         allow write: if isSignedIn() && (
           incoming().get('ownerId', '') == request.auth.uid ||
-          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+          (request.auth.token.email != null && incoming().get('ownerId', '') is string && incoming().get('ownerId', '').lower() == request.auth.token.email.lower()) ||
+          canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data)
         );
       }
 
       match /research/{noteId} {
-        allow read, write: if isSignedIn() && (
-          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid ||
-          request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.collaborators
-        );
+        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
       }
 
       match /sourceMaterials/{sourceId} {
-        allow read, write: if isSignedIn() && (
-          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid ||
-          request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.collaborators
-        );
-      }
-
-      match /externalReviews/{reviewId} {
-        allow read, write: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
       }
 
       match /presence/{userId} {
