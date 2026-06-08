@@ -64,7 +64,7 @@ export default function PinGate({ children }: Props) {
           <PenTool size={48} className="text-brand-primary" />
         </div>
 
-        <h1 className="text-2xl font-black text-white mb-2 tracking-tight italic font-serif">NovelWrite Pro</h1>
+        <h1 className="text-2xl font-black text-white mb-2 tracking-tight italic font-serif">Shakespeare</h1>
         <p className="text-sm text-gray-500 mb-12 font-medium tracking-wide">Enter PIN to continue</p>
 
         {/* PIN Indicators */}

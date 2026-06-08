@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
   GitBranch, 
+  PanelLeft,
   PenTool, 
   Sparkles, 
   BarChart3,
@@ -168,6 +169,7 @@ export default function App() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
   
@@ -995,42 +997,42 @@ export default function App() {
     {
       title: "Manuscripts",
       items: [
-        { id: 'library', label: 'Universal Vault', icon: Library },
-        { id: 'dashboard', label: 'Narrative Pulse', icon: BarChart3 },
+        { id: 'library', label: 'My Books', icon: Library },
+        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
       ]
     },
     {
       title: "1. Strategy",
       items: [
         { id: 'prizes', label: 'Prize Cabinet', icon: Trophy },
-        { id: 'reviews', label: 'Critical Vault', icon: MessageSquare },
-        { id: 'brainstorm', label: 'AI Spark', icon: Sparkles },
+        { id: 'reviews', label: 'Reviews', icon: MessageSquare },
+        { id: 'brainstorm', label: 'Brainstorm', icon: Sparkles },
       ]
     },
     {
       title: "2. Foundations",
       items: [
         { id: 'characters', label: 'Character Forge', icon: Users },
-        { id: 'intelligence', label: 'Intelligence Lab', icon: BrainCircuit },
+        { id: 'intelligence', label: 'Research', icon: BrainCircuit },
       ]
     },    {
       title: "3. Structure",
       items: [
-        { id: 'architect', label: 'Finish & Fix', icon: Construction },
+        { id: 'architect', label: 'Plot & Structure', icon: Construction },
       ]
     },
     {
       title: "4. Execution",
       items: [
         { id: 'writing', label: 'Writing Studio', icon: PenTool },
-        { id: 'swarm', label: 'Critic Swarm', icon: Zap },
+        { id: 'swarm', label: 'AI Critique', icon: Zap },
       ]
     },
     {
       title: "5. Delivery",
       items: [
-        { id: 'export', label: 'Export & Publish', icon: Globe },
-        { id: 'bundle', label: 'Evidence Bundle', icon: Scale },
+        { id: 'export', label: 'Publish', icon: Globe },
+        { id: 'bundle', label: 'Legal Bundle', icon: Scale },
         { id: 'settings', label: 'Settings', icon: Settings },
       ]
     }
@@ -1142,7 +1144,7 @@ export default function App() {
       >
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
-        {isMobile && isSidebarOpen && (
+        {isMobile && isSidebarOpen && !isTablet && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1158,10 +1160,10 @@ export default function App() {
         initial={false}
         animate={{ 
           width: isSidebarOpen ? (isMobile ? '85%' : 256) : (isMobile ? 0 : 72),
-          x: isMobile && !isSidebarOpen ? '-100%' : 0
+          x: (isMobile && !isTablet) && !isSidebarOpen ? '-100%' : 0
         }}
         className={`flex flex-col bg-brand-dark text-text-primary relative border-r border-border-subtle overflow-hidden no-print ${
-          isMobile ? 'fixed inset-y-0 left-0 z-[101]' : 'z-50'
+          isMobile && !isTablet ? 'fixed inset-y-0 left-0 z-[101]' : 'z-50'
         }`}
         style={{ boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}
       >
@@ -1200,7 +1202,7 @@ export default function App() {
                         setCurrentView(item.id as ViewType);
                         if (isMobile) setIsSidebarOpen(false);
                       }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-[11px] font-semibold ${
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-xs font-semibold ${
                         isActive 
                           ? 'bg-brand-primary/15 text-brand-primary' 
                           : 'text-text-secondary hover:text-text-primary hover:bg-surface-overlay active:scale-95'
@@ -1208,7 +1210,7 @@ export default function App() {
                       style={isActive ? { boxShadow: 'inset 2px 0 0 #14b8a6' } : {}}
                       title={item.label}
                     >
-                      <Icon size={17} className={isActive ? 'text-brand-primary' : 'text-text-tertiary group-hover:text-text-secondary transition-colors'} />
+                      <Icon size={20} className={isActive ? 'text-brand-primary' : 'text-text-tertiary group-hover:text-text-secondary transition-colors'} />
                       {isSidebarOpen && (
                         <span className="flex-1 text-left truncate">{item.label}</span>
                       )}
@@ -1274,7 +1276,7 @@ export default function App() {
           style={{ boxShadow: '0 1px 0 rgba(20,184,166,0.08)' }}
         >
           <div className="flex items-center gap-3 md:gap-5 overflow-hidden h-full">
-            {!isMobile && <div className="text-[9px] font-mono text-text-tertiary border border-border-subtle/40 px-2 py-0.5 rounded-md opacity-60">v2.5.5</div>}
+            
             
             {/* Project selector — Caspa style */}
             <div className="relative h-full flex items-center">
@@ -1405,14 +1407,14 @@ export default function App() {
 
           {/* Header right */}
           <div className="flex items-center gap-2 shrink-0">
-            {isMobile && (
+            {isMobile && !isTablet && (
               <button onClick={() => setIsSidebarOpen(true)}
                 className="p-2 text-text-secondary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-all border border-border-subtle"
               >
                 <Menu size={18} />
               </button>
             )}
-            {!isMobile && (
+            {(!isMobile || isTablet) && (
               <button onClick={() => setCurrentView('export')}
                 className="px-4 py-2 bg-brand-primary hover:bg-brand-accent text-white rounded-xl text-xs font-semibold transition-all active:scale-95"
                 style={{ boxShadow: '0 4px 12px rgba(20,184,166,0.2)' }}
@@ -1425,14 +1427,14 @@ export default function App() {
               className="p-2 text-text-tertiary hover:text-text-primary hover:bg-surface-overlay rounded-lg transition-all hidden lg:flex items-center justify-center active:scale-90 border border-border-subtle"
               title="Toggle Sidebar"
             >
-              <GitBranch size={16} className={isSidebarOpen ? 'rotate-90 transition-transform duration-300' : 'transition-transform duration-300'} />
+              <PanelLeft size={16} className={`transition-transform duration-300 ${isSidebarOpen ? '' : 'rotate-180'}`} />
             </button>
           </div>
         </header>
 
         {/* View Transition Area */}
         <div 
-          className={`flex-1 relative bg-surface-bg print:bg-white print:p-0 flex flex-col overflow-hidden`}
+          className={`flex-1 relative bg-surface-bg print:bg-white print:p-0 flex flex-col overflow-hidden ${isMobile && !isTablet ? 'pb-16' : ''}`}
           style={{ minHeight: 0 }}
         >
           <div
@@ -1669,8 +1671,38 @@ export default function App() {
           </div>
         </main>
 
+        {/* Mobile Bottom Navigation Bar */}
+        {isMobile && !isTablet && (
+          <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-brand-dark border-t border-border-subtle flex items-center justify-around px-2 py-1 no-print"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}
+          >
+            {[
+              { id: 'library', label: 'Books', icon: Library },
+              { id: 'writing', label: 'Write', icon: PenTool },
+              { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+              { id: 'architect', label: 'Structure', icon: Construction },
+              { id: 'export', label: 'Publish', icon: Globe },
+            ].map(item => {
+              const Icon = item.icon;
+              const isActive = currentView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => { setCurrentView(item.id as ViewType); setIsSidebarOpen(false); }}
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all min-w-[52px] ${
+                    isActive ? 'text-brand-primary' : 'text-text-tertiary'
+                  }`}
+                >
+                  <Icon size={22} className={isActive ? 'text-brand-primary' : ''} />
+                  <span className="text-[10px] font-semibold leading-none">{item.label}</span>
+                  {isActive && <div className="w-1 h-1 rounded-full bg-brand-primary" />}
+                </button>
+              );
+            })}
+          </nav>
+        )}
         {/* Notifications Toast */}
-        <div className="fixed bottom-8 right-8 z-[100] flex flex-col gap-3 pointer-events-none">
+        <div className={`fixed ${isMobile ? 'bottom-20' : 'bottom-8'} right-4 md:right-8 z-[100] flex flex-col gap-3 pointer-events-none`}>
           <AnimatePresence>
             {notifications.map((n) => (
               <motion.div

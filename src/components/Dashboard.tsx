@@ -70,9 +70,9 @@ export default function Dashboard({
   }, [localTitle, project.title]);
 
   const stats = [
-    { label: 'Personnel Profiles', value: project.characters?.length || 0, icon: Users, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'characters' },
-    { label: 'Narrative Vectors', value: project.plotNodes?.length || 0, icon: GitBranch, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'plot' },
-    { label: 'Coded Segments', value: project.chapters?.length || 0, icon: BookOpen, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'writing' },
+    { label: 'Characters', value: project.characters?.length || 0, icon: Users, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'characters' },
+    { label: 'Plot Nodes', value: project.plotNodes?.length || 0, icon: GitBranch, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'plot' },
+    { label: 'Chapters', value: project.chapters?.length || 0, icon: BookOpen, color: 'text-brand-primary', bgColor: 'bg-brand-primary/10', view: 'writing' },
     { 
       label: project.targetWordCount ? `${Math.round(((project.stats?.totalWords || 0) / project.targetWordCount) * 100)}% Synchronized` : 'Target Offline', 
       value: project.stats?.totalWords || 0, 
@@ -235,7 +235,7 @@ export default function Dashboard({
             </div>
             <div className="min-w-0 w-full">
               <div className="text-xl font-bold text-text-primary leading-none mb-1 tabular-nums">{stat.value.toLocaleString()}</div>
-              <div className="text-[10px] text-text-tertiary leading-none truncate">{stat.label}</div>
+              <div className="text-xs text-text-tertiary leading-none truncate">{stat.label}</div>
             </div>
           </motion.button>
         ))}

@@ -839,14 +839,14 @@ export default function WritingStudio({
             </button>
           )}
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] flex items-center gap-3">
+            <h3 className="text-xs font-black text-brand-primary uppercase tracking-[0.3em] flex items-center gap-3">
               <BookOpen size={16} />
               The Manuscript
             </h3>
             <div className="flex gap-2">
               <button 
                 onClick={() => toggleSection('foundations')}
-                className="p-1 px-2 text-[8px] font-black uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
+                className="p-1 px-2 text-[10px] font-semibold uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
                 title={collapsedSections.foundations ? 'Restore View' : 'Collapse Section'}
               >
                 {collapsedSections.foundations ? <ChevronDown size={10} /> : <ChevronUp size={10} />}
@@ -986,13 +986,13 @@ export default function WritingStudio({
         <div className="p-4 xl:p-6 flex-1 flex flex-col gap-4 overflow-hidden bg-surface-muted/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h3 className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] flex items-center gap-3">
+              <h3 className="text-xs font-black text-text-secondary uppercase tracking-[0.3em] flex items-center gap-3">
                 <Library size={16} className="text-brand-primary" />
                 Intelligence Rail
               </h3>
               <button 
                 onClick={() => toggleSection('intel')}
-                className="p-1 px-2 text-[8px] font-black uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
+                className="p-1 px-2 text-[10px] font-semibold uppercase text-brand-primary/40 hover:text-brand-primary transition-colors border border-brand-primary/10 hover:border-brand-primary/30 rounded-lg flex items-center gap-2"
                 title={collapsedSections.intel ? 'Restore View' : 'Collapse Section'}
               >
                 {collapsedSections.intel ? <ChevronDown size={10} /> : <ChevronUp size={10} />}
@@ -1300,7 +1300,7 @@ export default function WritingStudio({
                   <button
                     onClick={handleOrchestrate}
                     disabled={isOrchestrating}
-                    className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-[10px] font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
+                    className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-xs font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
                       isOrchestrating ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
                     }`}
                   >
@@ -1322,7 +1322,7 @@ export default function WritingStudio({
                     whileTap={{ scale: 0.98 }}
                     onClick={handleSmartWrite}
                     disabled={isWriting}
-                    className={`hidden sm:flex items-center gap-2 md:gap-3 px-4 md:px-6 py-2 md:py-2.5 border rounded-xl md:rounded-[1.25rem] text-[8px] md:text-[9px] font-black transition-all uppercase tracking-[0.1em] md:tracking-[0.2em] shrink-0 border-brand-primary/30 active:scale-95 ${
+                    className={`flex items-center gap-2 md:gap-3 px-4 md:px-6 py-2 md:py-2.5 border rounded-xl md:rounded-[1.25rem] text-xs font-black transition-all uppercase tracking-[0.1em] md:tracking-[0.2em] shrink-0 border-brand-primary/30 active:scale-95 ${
                       isWriting ? 'bg-brand-primary text-white border-brand-primary shadow-2xl shadow-brand-primary/20' : 'bg-surface-muted hover:bg-brand-primary/10 text-brand-primary'
                     }`}
                   >
@@ -1344,7 +1344,7 @@ export default function WritingStudio({
                     whileTap={{ scale: 0.98 }}
                     onClick={handleRefine}
                     disabled={isRefining || !selectedChapter.content.trim()}
-                    className={`hidden lg:flex items-center gap-3 px-6 py-2.5 rounded-[1.25rem] text-[9px] font-black transition-all shadow-2xl uppercase tracking-[0.2em] shrink-0 active:scale-95 ${
+                    className={`hidden md:flex items-center gap-3 px-6 py-2.5 rounded-[1.25rem] text-xs font-black transition-all shadow-2xl uppercase tracking-[0.2em] shrink-0 active:scale-95 ${
                       isRefining ? 'bg-orange-600 text-white' : 'bg-brand-dark hover:bg-black text-text-primary border border-border-subtle hover:border-brand-primary/50'
                     }`}
                     title="Deep Quality Refinement"
