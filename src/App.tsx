@@ -1168,8 +1168,8 @@ export default function App() {
         style={{ boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}
       >
         {/* Logo */}
-        <div className="px-4 py-5 flex items-center gap-3 border-b border-border-subtle">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+        <div className="px-3 py-3 flex items-center gap-2.5 border-b border-border-subtle">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
             style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', boxShadow: '0 0 16px rgba(20,184,166,0.35)' }}
           >
             <span className="font-black text-white text-base font-serif italic">S</span>
@@ -1183,11 +1183,11 @@ export default function App() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
           {navGroups.map((group, groupIndex) => (
             <div key={groupIndex} className="mb-4">
               {isSidebarOpen ? (
-                <div className="text-[9px] font-bold text-text-tertiary uppercase tracking-[0.3em] px-3 mb-2">{group.title}</div>
+                <div className="text-[9px] font-semibold text-text-tertiary uppercase tracking-[0.25em] px-2 mb-1 mt-2">{group.title}</div>
               ) : (
                 groupIndex > 0 && <div className="w-8 h-px bg-border-subtle mx-auto my-3" />
               )}
@@ -1202,7 +1202,7 @@ export default function App() {
                         setCurrentView(item.id as ViewType);
                         if (isMobile) setIsSidebarOpen(false);
                       }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-xs font-semibold ${
+                      className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all duration-200 group text-xs font-medium ${
                         isActive 
                           ? 'bg-brand-primary/15 text-brand-primary' 
                           : 'text-text-secondary hover:text-text-primary hover:bg-surface-overlay active:scale-95'
@@ -1210,7 +1210,7 @@ export default function App() {
                       style={isActive ? { boxShadow: 'inset 2px 0 0 #14b8a6' } : {}}
                       title={item.label}
                     >
-                      <Icon size={20} className={isActive ? 'text-brand-primary' : 'text-text-tertiary group-hover:text-text-secondary transition-colors'} />
+                      <Icon size={15} className={isActive ? 'text-brand-primary' : 'text-text-tertiary group-hover:text-text-secondary transition-colors'} />
                       {isSidebarOpen && (
                         <span className="flex-1 text-left truncate">{item.label}</span>
                       )}
@@ -1223,7 +1223,7 @@ export default function App() {
         </nav>
 
         {/* Bottom actions */}
-        <div className="px-2 py-3 border-t border-border-subtle">
+        <div className="px-2 py-2 border-t border-border-subtle">
           <div className={`flex items-center gap-1 ${isSidebarOpen ? 'justify-between px-1' : 'justify-center flex-col'}`}>
             <button 
               onClick={undo}
@@ -1252,8 +1252,8 @@ export default function App() {
         </div>
 
         {/* User */}
-        <div className="p-3 border-t border-border-subtle flex items-center gap-3">
-          <img src={user.photoURL || ''} className="w-9 h-9 rounded-xl border border-border-medium object-cover shrink-0" alt="Profile" />
+        <div className="p-2 border-t border-border-subtle flex items-center gap-2">
+          <img src={user.photoURL || ''} className="w-7 h-7 rounded-lg border border-border-medium object-cover shrink-0" alt="Profile" />
           {isSidebarOpen && (
             <div className="flex-1 overflow-hidden">
               <div className="text-xs font-semibold truncate text-text-primary">{user.displayName}</div>
@@ -1282,9 +1282,9 @@ export default function App() {
             <div className="relative h-full flex items-center">
               <button 
                 onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface-overlay transition-all rounded-xl group border border-transparent hover:border-border-medium"
+                className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-surface-overlay transition-all rounded-lg group border border-transparent hover:border-border-medium"
               >
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
                   style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)' }}
                 >
                   <span className="text-white text-[9px] font-black font-serif italic">{(project.title || 'U').charAt(0)}</span>
@@ -1689,11 +1689,11 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => { setCurrentView(item.id as ViewType); setIsSidebarOpen(false); }}
-                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all min-w-[52px] ${
+                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all min-w-[48px] ${
                     isActive ? 'text-brand-primary' : 'text-text-tertiary'
                   }`}
                 >
-                  <Icon size={22} className={isActive ? 'text-brand-primary' : ''} />
+                  <Icon size={18} className={isActive ? 'text-brand-primary' : ''} />
                   <span className="text-[10px] font-semibold leading-none">{item.label}</span>
                   {isActive && <div className="w-1 h-1 rounded-full bg-brand-primary" />}
                 </button>
@@ -1710,7 +1710,7 @@ export default function App() {
                 initial={{ opacity: 0, x: 20, y: 0, scale: 0.9 }}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-                className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border min-w-[300px] max-w-[420px] backdrop-blur-xl ${
+                className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border min-w-[260px] max-w-[380px] backdrop-blur-xl ${
                   n.type === 'error' && n.message.startsWith('⚠') ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
                   n.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
                   n.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :

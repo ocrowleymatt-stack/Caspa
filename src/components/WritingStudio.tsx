@@ -829,7 +829,7 @@ export default function WritingStudio({
               </button>
             </div>
         {/* Manuscript Section */}
-        <div className="flex-none p-4 xl:p-6 border-b border-border-subtle relative bg-surface-card shadow-sm">
+        <div className="flex-none p-3 xl:p-4 border-b border-border-subtle relative bg-surface-card shadow-sm">
           {isMobile && (
             <button 
               onClick={() => setIsSidebarVisible(false)}
@@ -936,7 +936,7 @@ export default function WritingStudio({
               </label>
               <button 
                 onClick={addChapter}
-                className="p-2.5 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-xl transition-all border border-brand-primary/20 active:scale-95"
+                className="p-2 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-lg transition-all border border-brand-primary/20 active:scale-95"
                 title="Synthesize New Segment"
               >
                 <Plus size={18} />
@@ -949,7 +949,7 @@ export default function WritingStudio({
               <div key={chapter.id} className="group relative">
                 <button
                   onClick={() => handleChapterSelect(chapter.id)}
-                  className={`w-full text-left px-5 py-4 rounded-2xl transition-all flex items-center gap-4 border ${
+                  className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-3 border ${
                     selectedChapterId === chapter.id 
                       ? 'bg-brand-primary border-brand-primary text-white shadow-xl shadow-brand-primary/20' 
                       : 'text-text-secondary hover:text-text-primary hover:bg-white/5 border-transparent hover:border-border-subtle'
@@ -958,7 +958,7 @@ export default function WritingStudio({
                   <span className={`text-[9px] font-black uppercase tracking-tighter tabular-nums ${selectedChapterId === chapter.id ? 'opacity-50' : 'text-brand-primary/50'}`}>
                     ID:{(chapter.order + 1).toString().padStart(2, '0')}
                   </span>
-                  <span className="text-sm font-black truncate flex-1 italic font-serif">{chapter.title}</span>
+                  <span className="text-xs font-bold truncate flex-1 italic font-serif">{chapter.title}</span>
                 </button>
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-all bg-surface-muted/95 backdrop-blur-xl border border-border-subtle rounded-xl p-1 shadow-2xl">
                   <button 
@@ -983,7 +983,7 @@ export default function WritingStudio({
         </div>
 
         {/* Source Ingestion Section */}
-        <div className="p-4 xl:p-6 flex-1 flex flex-col gap-4 overflow-hidden bg-surface-muted/30">
+        <div className="p-3 xl:p-4 flex-1 flex flex-col gap-3 overflow-hidden bg-surface-muted/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <h3 className="text-xs font-black text-text-secondary uppercase tracking-[0.3em] flex items-center gap-3">
@@ -1168,7 +1168,7 @@ export default function WritingStudio({
             >
               {/* Internal Editor Header */}
               <div className={`h-auto min-h-16 studio-header border-b border-border-subtle flex flex-wrap items-center justify-between px-3 md:px-6 lg:px-8 py-3 bg-surface-card/80 backdrop-blur-xl shadow-2xl flex-none transition-all ${isFocusMode ? 'opacity-10 hover:opacity-100' : ''} no-print overflow-hidden gap-4`}>
-                <div className="flex items-center gap-3 md:gap-8 shrink-0">
+                <div className="flex items-center gap-2 md:gap-4 shrink-0">
                   {!isFocusMode && (
                     <button 
                       onClick={() => setIsSidebarVisible(!isSidebarVisible)}
@@ -1300,7 +1300,7 @@ export default function WritingStudio({
                   <button
                     onClick={handleOrchestrate}
                     disabled={isOrchestrating}
-                    className={`flex items-center gap-2 px-3 md:px-4 py-2 border rounded-full text-xs font-bold transition-all uppercase tracking-[0.15em] shrink-0 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-medium transition-all uppercase tracking-[0.05em] shrink-0 ${
                       isOrchestrating ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-900'
                     }`}
                   >
@@ -1322,7 +1322,7 @@ export default function WritingStudio({
                     whileTap={{ scale: 0.98 }}
                     onClick={handleSmartWrite}
                     disabled={isWriting}
-                    className={`flex items-center gap-2 md:gap-3 px-4 md:px-6 py-2 md:py-2.5 border rounded-xl md:rounded-[1.25rem] text-xs font-black transition-all uppercase tracking-[0.1em] md:tracking-[0.2em] shrink-0 border-brand-primary/30 active:scale-95 ${
+                    className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 border rounded-lg text-xs font-semibold transition-all uppercase tracking-[0.05em] shrink-0 border-brand-primary/30 active:scale-95 ${
                       isWriting ? 'bg-brand-primary text-white border-brand-primary shadow-2xl shadow-brand-primary/20' : 'bg-surface-muted hover:bg-brand-primary/10 text-brand-primary'
                     }`}
                   >
@@ -1344,7 +1344,7 @@ export default function WritingStudio({
                     whileTap={{ scale: 0.98 }}
                     onClick={handleRefine}
                     disabled={isRefining || !selectedChapter.content.trim()}
-                    className={`hidden md:flex items-center gap-3 px-6 py-2.5 rounded-[1.25rem] text-xs font-black transition-all shadow-2xl uppercase tracking-[0.2em] shrink-0 active:scale-95 ${
+                    className={`hidden md:flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all uppercase tracking-[0.05em] shrink-0 active:scale-95 ${
                       isRefining ? 'bg-orange-600 text-white' : 'bg-brand-dark hover:bg-black text-text-primary border border-border-subtle hover:border-brand-primary/50'
                     }`}
                     title="Deep Quality Refinement"

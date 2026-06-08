@@ -125,7 +125,7 @@ export default function Dashboard({
       )}
 
       {/* Dashboard Header — Caspa style */}
-      <header className="flex flex-col gap-4 border-b border-border-subtle pb-6">
+      <header className="flex flex-col gap-3 border-b border-border-subtle pb-4">
         {/* Title row */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -219,7 +219,7 @@ export default function Dashboard({
       </header>
 
       {/* Stats Grid — Caspa card style */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {stats.map((stat, i) => (
           <motion.button
             key={stat.label}
@@ -227,11 +227,11 @@ export default function Dashboard({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.06, duration: 0.3 }}
             onClick={() => setView(stat.view as ViewType)}
-            className="p-4 bg-surface-card border border-border-subtle rounded-2xl flex flex-col items-start gap-3 hover:border-brand-primary/40 transition-all group text-left active:scale-[0.98]"
+            className="p-3 bg-surface-card border border-border-subtle rounded-xl flex flex-col items-start gap-2 hover:border-brand-primary/40 transition-all group text-left active:scale-[0.98]"
             style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
           >
             <div className="w-8 h-8 rounded-xl bg-brand-primary/10 flex items-center justify-center group-hover:bg-brand-primary/20 transition-colors">
-              <stat.icon size={15} className="text-brand-primary" />
+              <stat.icon size={13} className="text-brand-primary" />
             </div>
             <div className="min-w-0 w-full">
               <div className="text-xl font-bold text-text-primary leading-none mb-1 tabular-nums">{stat.value.toLocaleString()}</div>
