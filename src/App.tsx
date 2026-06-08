@@ -100,6 +100,7 @@ import PrizeView from './components/PrizeView';
 import ReaderView from './components/ReaderView';
 import ReviewVault from './components/ReviewVault';
 import PinGate from './components/PinGate';
+import SeedIngestion from './components/SeedIngestion';
 import PlotArchitect from './components/PlotArchitect';
 import CourtBundleView from './components/CourtBundleView';
 
@@ -282,6 +283,7 @@ export default function App() {
   }, [project, history, future]);
 
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [showSeedIngestion, setShowSeedIngestion] = useState(false);
 
   // Auth Listener
   useEffect(() => {
@@ -460,6 +462,61 @@ export default function App() {
     if (!result.ok && 'error' in result) {
       addNotification(`\u26a0\ufe0f New project saved locally but cloud sync failed: ${result.error}`, 'error');
     }
+  };
+
+  const createProjectFromSeed = async (proposal: {
+    title: string;
+    premise: string;
+    genre: string;
+    tone: string;
+    type: any;
+    targetWordCount: number;
+    chapters: Chapter[];
+    authorQuestions: string[];
+  }) => {
+    if (!user) return;
+    const newId = `project_${crypto.randomUUID()}`;
+    const newProjectData: Project = {
+      ...INITIAL_PROJECT,
+      title: proposal.title,
+      type: proposal.type,
+      genre: proposal.genre,
+      tone: proposal.tone,
+      premise: proposal.premise,
+      targetWordCount: proposal.targetWordCount,
+      id: newId,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      lastModified: Date.now(),
+      updatedAt: serverTimestamp() as any,
+      draftStage: 1,
+      cutMode: false,
+    };
+
+    setProject(newProjectData);
+    setProjects(prev => [newProjectData, ...prev]);
+    setShowSeedIngestion(false);
+    setIsProjectMenuOpen(false);
+
+    const result = await persistCreateProject(user.uid, newProjectData);
+    if (!result.ok && 'error' in result) {
+      addNotification(`⚠️ Seed project saved locally but cloud sync failed: ${'error' in result ? result.error : ''}`, 'error');
+      return;
+    }
+
+    // Create chapters from the seed proposal
+    if (proposal.chapters.length > 0) {
+      const { writeBatch: wb, doc: d } = await import('firebase/firestore');
+      const batch = wb(db);
+      proposal.chapters.forEach((ch) => {
+        const chRef = d(db, 'projects', newId, 'chapters', ch.id);
+        batch.set(chRef, { ...ch, updatedAt: Date.now() });
+      });
+      await batch.commit();
+    }
+
+    setCurrentView('dashboard');
+    addNotification('Story seed planted — your book is ready to grow.', 'success');
   };
 
   // Auto-create initial project if none exist
@@ -1280,25 +1337,37 @@ export default function App() {
                         ))
                       )}
                     </div>
-                    <div className="p-3 border-t border-border-subtle grid grid-cols-2 gap-2">
+                    <div className="p-3 border-t border-border-subtle space-y-2">
                       <button 
                         onClick={() => {
-                          const title = window.prompt('New project name:');
-                          if (title) createNewProject(title);
+                          setShowSeedIngestion(true);
                           setIsProjectMenuOpen(false);
                         }}
-                        className="flex items-center justify-center gap-2 py-2.5 bg-surface-raised hover:bg-surface-overlay text-text-primary rounded-xl text-xs font-semibold transition-all border border-border-medium active:scale-95"
+                        className="w-full flex items-center justify-center gap-2 py-2.5 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+                        style={{ background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', boxShadow: '0 4px 12px rgba(20,184,166,0.25)' }}
                       >
-                        <Plus size={14} />
-                        New Project
+                        <Sparkles size={14} />
+                        Story Seed — Drop Any Idea
                       </button>
-                      <label className="flex items-center justify-center gap-2 py-2.5 bg-brand-primary hover:bg-brand-accent text-white rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-95"
-                        style={{ boxShadow: '0 4px 12px rgba(20,184,166,0.25)' }}
-                      >
-                        <Upload size={14} />
-                        Import
-                        <input type="file" className="hidden" accept=".pdf,.txt,.md,.json" onChange={handleBulkIngest} />
-                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button 
+                          onClick={() => {
+                            const title = window.prompt('New project name:');
+                            if (title) createNewProject(title);
+                            setIsProjectMenuOpen(false);
+                          }}
+                          className="flex items-center justify-center gap-2 py-2.5 bg-surface-raised hover:bg-surface-overlay text-text-primary rounded-xl text-xs font-semibold transition-all border border-border-medium active:scale-95"
+                        >
+                          <Plus size={14} />
+                          Blank Project
+                        </button>
+                        <label className="flex items-center justify-center gap-2 py-2.5 bg-surface-raised hover:bg-surface-overlay text-text-primary rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-95 border border-border-medium"
+                        >
+                          <Upload size={14} />
+                          Import
+                          <input type="file" className="hidden" accept=".pdf,.txt,.md,.json" onChange={handleBulkIngest} />
+                        </label>
+                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -1636,6 +1705,14 @@ export default function App() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Story Seed Ingestion Modal */}
+      {showSeedIngestion && (
+        <SeedIngestion
+          onAccept={createProjectFromSeed}
+          onDismiss={() => setShowSeedIngestion(false)}
+        />
+      )}
     </PinGate>
     );
 }

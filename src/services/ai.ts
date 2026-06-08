@@ -1439,6 +1439,293 @@ ${draftStageInfo}`;
     return safeParseJSON(response || "{}");
   },
 
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SEED INGESTION: Any raw input → collaborative story proposal
+  // ─────────────────────────────────────────────────────────────────────────────
+  async seedToStory(rawSeed: string, seedType: 'text' | 'image_ocr' | 'voice_transcript' | 'url' = 'text'): Promise<{
+    title: string;
+    premise: string;
+    genre: string;
+    tone: string;
+    type: ProjectType;
+    targetWordCount: number;
+    logline: string;
+    centralWound: string;
+    suggestedChapters: { title: string; summary: string }[];
+    suggestedCharacters: { name: string; role: string; backstory: string }[];
+    authorQuestions: string[];
+    prizeTarget: string;
+  }> {
+    const prompt = `
+YOU ARE A WORLD-CLASS LITERARY EDITOR AND STORY ARCHITECT.
+
+A raw seed has been provided. Your job is to find the STORY INSIDE IT — the hidden wound, the dramatic engine, the human truth — and propose a full literary project from it.
+
+SEED TYPE: ${seedType}
+RAW SEED:
+${rawSeed.slice(0, 8000)}
+
+CRITICAL PHILOSOPHY:
+- Every seed contains a story. A receipt on the floor contains a life. A voice note contains a confession. Find it.
+- The ambition is ALWAYS literary prize quality. Think Booker, Pulitzer, Costa.
+- Do NOT produce a generic plot. Find the SPECIFIC, STRANGE, HUMAN truth in this seed.
+- The story should feel inevitable once you see it — but surprising when proposed.
+- Suggest 5 AUTHOR QUESTIONS that will unlock the story further. These pull the author INTO the process.
+
+Return JSON with:
+- title: A working title (evocative, not generic)
+- premise: 2-3 sentences. The dramatic engine. What is at stake and why it matters.
+- genre: The primary genre
+- tone: The tonal register (e.g. "Dry wit, melancholic undertow, Carver-esque restraint")
+- type: One of: novel|screenplay|stageplay|radioplay|legal|academic|experimental|coursebook|subject_bible|cookbook|illustrated
+- targetWordCount: Appropriate word count for the type and ambition
+- logline: One sentence. The hook.
+- centralWound: The hidden wound at the heart of the story.
+- suggestedChapters: Array of 10-20 chapters with title and summary
+- suggestedCharacters: Array of 3-6 characters with name, role, backstory
+- authorQuestions: Array of 5 questions to ask the author to deepen the story
+- prizeTarget: Which literary prize this could realistically target and why
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        premise: { type: Type.STRING },
+        genre: { type: Type.STRING },
+        tone: { type: Type.STRING },
+        type: { type: Type.STRING },
+        targetWordCount: { type: Type.NUMBER },
+        logline: { type: Type.STRING },
+        centralWound: { type: Type.STRING },
+        suggestedChapters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, summary: { type: Type.STRING } }, required: ['title', 'summary'] } },
+        suggestedCharacters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, role: { type: Type.STRING }, backstory: { type: Type.STRING } }, required: ['name', 'role', 'backstory'] } },
+        authorQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+        prizeTarget: { type: Type.STRING }
+      },
+      required: ['title', 'premise', 'genre', 'tone', 'type', 'targetWordCount', 'logline', 'centralWound', 'suggestedChapters', 'suggestedCharacters', 'authorQuestions', 'prizeTarget']
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const data = safeParseJSON(response || '{}');
+    return {
+      title: data.title || 'Untitled',
+      premise: data.premise || '',
+      genre: data.genre || 'Literary Fiction',
+      tone: data.tone || 'Measured, precise',
+      type: (data.type as ProjectType) || 'novel',
+      targetWordCount: data.targetWordCount || 80000,
+      logline: data.logline || '',
+      centralWound: data.centralWound || '',
+      suggestedChapters: Array.isArray(data.suggestedChapters) ? data.suggestedChapters : [],
+      suggestedCharacters: Array.isArray(data.suggestedCharacters) ? data.suggestedCharacters : [],
+      authorQuestions: Array.isArray(data.authorQuestions) ? data.authorQuestions : [],
+      prizeTarget: data.prizeTarget || ''
+    };
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // BOOK COMPLETION CHECK: Detect when the manuscript is genuinely finished
+  // ─────────────────────────────────────────────────────────────────────────────
+  async checkBookCompletion(project: Project, chapters: Chapter[]): Promise<{
+    isComplete: boolean;
+    completionScore: number;
+    verdict: string;
+    missingElements: string[];
+    nextAction: string;
+    readyForScalpel: boolean;
+  }> {
+    const totalWords = chapters.reduce((acc, c) => acc + (c.content?.split(/\s+/).filter((t: string) => t.length > 0).length || 0), 0);
+    const targetWords = project.targetWordCount || 80000;
+    const wordProgress = totalWords / targetWords;
+    const draftStage = project.draftStage || 1;
+    const emptyChapters = chapters.filter(c => !c.content || c.content.trim().length < 100).length;
+
+    const prompt = `
+YOU ARE A SENIOR LITERARY EDITOR assessing whether a manuscript is genuinely complete.
+
+PROJECT: "${project.title}" (${project.type}, ${project.genre})
+DRAFT STAGE: Pass ${draftStage} of 4
+WORD COUNT: ${totalWords.toLocaleString()} of ${targetWords.toLocaleString()} target (${Math.round(wordProgress * 100)}%)
+EMPTY/STUB CHAPTERS: ${emptyChapters} of ${chapters.length}
+CHAPTER SUMMARIES:
+${chapters.slice(0, 30).map((c: Chapter, i: number) => `${i + 1}. ${c.title}: ${(c.summary || c.content?.slice(0, 100) || 'EMPTY').slice(0, 120)}`).join('\n')}
+
+ASSESS:
+1. Is the narrative arc complete? (Beginning, middle, end — all present?)
+2. Is the word count within 10% of target?
+3. Are there stub/empty chapters?
+4. Is the draft stage at 4 (final polish)?
+5. Does the story feel resolved?
+
+Return JSON:
+- isComplete: boolean (true only if genuinely ready for scalpel/publish)
+- completionScore: 0-100
+- verdict: One sentence. Honest. Direct.
+- missingElements: Array of what is still missing
+- nextAction: What the author should do next
+- readyForScalpel: boolean (true if complete enough for Mrs. Parry's cut)
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        isComplete: { type: Type.BOOLEAN },
+        completionScore: { type: Type.NUMBER },
+        verdict: { type: Type.STRING },
+        missingElements: { type: Type.ARRAY, items: { type: Type.STRING } },
+        nextAction: { type: Type.STRING },
+        readyForScalpel: { type: Type.BOOLEAN }
+      },
+      required: ['isComplete', 'completionScore', 'verdict', 'missingElements', 'nextAction', 'readyForScalpel']
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.0-flash' });
+    const data = safeParseJSON(response || '{}');
+    return {
+      isComplete: data.isComplete || false,
+      completionScore: data.completionScore || 0,
+      verdict: data.verdict || 'Assessment incomplete.',
+      missingElements: Array.isArray(data.missingElements) ? data.missingElements : [],
+      nextAction: data.nextAction || 'Continue drafting.',
+      readyForScalpel: data.readyForScalpel || false
+    };
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // NON-FICTION LAYOUT INTELLIGENCE: Auto-design coursebook/cookbook/academic layouts
+  // ─────────────────────────────────────────────────────────────────────────────
+  async generateNonFictionLayout(project: Project, chapters: Chapter[]): Promise<{
+    layoutType: string;
+    interiorElements: { type: string; label: string; placement: string; description: string }[];
+    chapterTemplate: string;
+    suggestedImageSlots: { chapterIndex: number; description: string; aspectRatio: string }[];
+    suggestedDiagramSlots: { chapterIndex: number; description: string; type: string }[];
+    notesConfig: { hasMarginNotes: boolean; hasEndNotes: boolean; hasExercises: boolean; hasKeyTerms: boolean; hasSummaryBoxes: boolean };
+    kdpInteriorType: 'black_white' | 'color';
+  }> {
+    const typeLayoutMap: Record<string, string> = {
+      coursebook: 'Academic Coursebook (exercises, key terms, summary boxes, notes pages)',
+      cookbook: 'Illustrated Cookbook (full-bleed images, ingredient lists, method steps, tips sidebars)',
+      academic: 'Academic Monograph (footnotes, bibliography, figures, tables)',
+      illustrated: 'Illustrated Book (image-led, captions, minimal text blocks)',
+      subject_bible: 'Reference Bible (index, cross-references, definition boxes, diagrams)'
+    };
+
+    const layoutType = typeLayoutMap[project.type] || 'Standard Non-Fiction (chapter-led, clean typography)';
+
+    const prompt = `
+YOU ARE A PROFESSIONAL BOOK INTERIOR DESIGNER specialising in non-fiction.
+
+PROJECT: "${project.title}" (${project.type})
+LAYOUT TYPE: ${layoutType}
+CHAPTERS:
+${chapters.slice(0, 20).map((c: Chapter, i: number) => `${i + 1}. ${c.title}: ${(c.summary || '').slice(0, 150)}`).join('\n')}
+
+DESIGN THIS BOOK'S INTERIOR. For each chapter, identify:
+1. What interior elements are needed (exercises, notes pages, key terms, summary boxes, image slots, diagram slots)
+2. Where images and diagrams should be placed
+3. Whether the book needs color or B&W interior for KDP
+4. A chapter template in Markdown that shows the layout structure
+
+Return JSON:
+- layoutType: string describing the layout
+- interiorElements: array of { type, label, placement, description }
+- chapterTemplate: A Markdown template showing the chapter structure with [IMAGE], [DIAGRAM], [NOTES_PAGE], [EXERCISE], [KEY_TERMS], [SUMMARY_BOX] placeholders
+- suggestedImageSlots: array of { chapterIndex, description, aspectRatio }
+- suggestedDiagramSlots: array of { chapterIndex, description, type }
+- notesConfig: { hasMarginNotes, hasEndNotes, hasExercises, hasKeyTerms, hasSummaryBoxes }
+- kdpInteriorType: 'black_white' or 'color'
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        layoutType: { type: Type.STRING },
+        interiorElements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, label: { type: Type.STRING }, placement: { type: Type.STRING }, description: { type: Type.STRING } }, required: ['type', 'label', 'placement', 'description'] } },
+        chapterTemplate: { type: Type.STRING },
+        suggestedImageSlots: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { chapterIndex: { type: Type.NUMBER }, description: { type: Type.STRING }, aspectRatio: { type: Type.STRING } }, required: ['chapterIndex', 'description', 'aspectRatio'] } },
+        suggestedDiagramSlots: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { chapterIndex: { type: Type.NUMBER }, description: { type: Type.STRING }, type: { type: Type.STRING } }, required: ['chapterIndex', 'description', 'type'] } },
+        notesConfig: { type: Type.OBJECT, properties: { hasMarginNotes: { type: Type.BOOLEAN }, hasEndNotes: { type: Type.BOOLEAN }, hasExercises: { type: Type.BOOLEAN }, hasKeyTerms: { type: Type.BOOLEAN }, hasSummaryBoxes: { type: Type.BOOLEAN } }, required: ['hasMarginNotes', 'hasEndNotes', 'hasExercises', 'hasKeyTerms', 'hasSummaryBoxes'] },
+        kdpInteriorType: { type: Type.STRING }
+      },
+      required: ['layoutType', 'interiorElements', 'chapterTemplate', 'suggestedImageSlots', 'suggestedDiagramSlots', 'notesConfig', 'kdpInteriorType']
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const data = safeParseJSON(response || '{}');
+    return {
+      layoutType: data.layoutType || layoutType,
+      interiorElements: Array.isArray(data.interiorElements) ? data.interiorElements : [],
+      chapterTemplate: data.chapterTemplate || '',
+      suggestedImageSlots: Array.isArray(data.suggestedImageSlots) ? data.suggestedImageSlots : [],
+      suggestedDiagramSlots: Array.isArray(data.suggestedDiagramSlots) ? data.suggestedDiagramSlots : [],
+      notesConfig: data.notesConfig || { hasMarginNotes: false, hasEndNotes: false, hasExercises: false, hasKeyTerms: false, hasSummaryBoxes: false },
+      kdpInteriorType: data.kdpInteriorType || 'black_white'
+    };
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // COVER GENERATION: Best-in-class AI cover using OpenAI gpt-image-1
+  // ─────────────────────────────────────────────────────────────────────────────
+  async generateBookCover(project: Project): Promise<string> {
+    // First, craft a world-class cover prompt using narrative intelligence
+    const promptCraftPrompt = `
+YOU ARE A WORLD-CLASS BOOK COVER ART DIRECTOR. Your covers win awards. They sell books.
+
+PROJECT: "${project.title}"
+TYPE: ${project.type}
+GENRE: ${project.genre}
+PREMISE: ${(project.premise || '').slice(0, 500)}
+TONE: ${project.tone || ''}
+STYLE DNA: ${JSON.stringify(project.styleDNA || {})}
+
+Craft a BOOK COVER IMAGE GENERATION PROMPT that:
+1. Captures the EMOTIONAL CORE of the book — not a literal scene, but the feeling
+2. Uses a SPECIFIC, EVOCATIVE visual metaphor
+3. Specifies: composition, lighting, colour palette, mood, photographic/illustrative style
+4. Is suitable for a ${project.type} cover that could win a design award
+5. Does NOT include text, titles, or author names (those are overlaid separately)
+6. Is 150-200 words maximum
+
+Return ONLY the image generation prompt. No preamble. No explanation.`;
+
+    const coverPrompt = await callAI({ prompt: promptCraftPrompt, model: 'gemini-2.5-pro-preview-05-06' });
+
+    // Generate the cover image using OpenAI gpt-image-1
+    const openaiKey = OPENAI_API_KEY;
+    if (!openaiKey) {
+      throw new Error('OpenAI API key not configured for cover generation.');
+    }
+
+    const imageResponse = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-image-1',
+        prompt: (coverPrompt || '').trim().slice(0, 1000),
+        n: 1,
+        size: '1024x1536',
+        quality: 'high',
+        output_format: 'b64_json'
+      })
+    });
+
+    if (!imageResponse.ok) {
+      const errText = await imageResponse.text();
+      throw new Error(`Cover generation failed: ${errText}`);
+    }
+
+    const imageData = await imageResponse.json();
+    const b64 = imageData?.data?.[0]?.b64_json;
+    if (!b64) throw new Error('No image data returned from cover generation.');
+    return `data:image/png;base64,${b64}`;
+  },
+
   async ripUpAndRestart(project: Project, chapters: Chapter[], research: ResearchNote[]): Promise<{ plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] }> {
     const prompt = `
       EXECUTE PROTOCOL: RIP UP AND RESTART.

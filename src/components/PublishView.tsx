@@ -36,6 +36,7 @@ const DEFAULT_CONFIG: PublishingConfig = {
 export default function PublishView({ project, chapters, updateProject, onNotify }: Props) {
   const [activeTab, setActiveTab] = useState<'export' | 'designer' | 'kdp' | 'preview' | 'transmute'>('export');
   const [isPublishing, setIsPublishing] = useState(false);
+  const [nonFictionLayout, setNonFictionLayout] = useState<any>(null);
   
   const config = project.publishing || DEFAULT_CONFIG;
 
@@ -449,47 +450,84 @@ export default function PublishView({ project, chapters, updateProject, onNotify
                       onClick={async () => {
                         setIsPublishing(true);
                         try {
-                          onNotify('Refining AI Design Prompt...', 'info');
-                          const refinedPrompt = await AIService.generateCoverPrompt(
-                            project, 
-                            config.authorName || 'Anonymous', 
-                            config.subtitle || '', 
-                            config.coverTheme.aiPrompt || 'A striking book cover'
-                          );
-                          
-                          onNotify('Synthesizing Visual Artifact...', 'info');
-                          // Simulation: using the refined prompt to "seed" a search or just use high quality placeholder
-                          // In a production environment, we'd pass refinedPrompt to DALL-E 3
-                          const seed = Math.floor(Math.random() * 1000000);
-                          const url = `https://picsum.photos/seed/${seed}/600/900`;
-                          
+                          onNotify('Crafting cover concept with narrative intelligence...', 'info');
+                          const imageDataUrl = await AIService.generateBookCover(project);
                           updateConfig({ 
                             coverTheme: { 
                               ...config.coverTheme, 
-                              imageUrl: url, 
-                              isOverlayHidden: true, // Hide overlay since text is "in the AI image"
-                              aiPrompt: refinedPrompt 
+                              imageUrl: imageDataUrl, 
+                              isOverlayHidden: false
                             } 
                           });
-                          onNotify('Cover Artifact successfully generated.', 'success');
-                        } catch (e) {
-                          onNotify('AI Cover Service is currently congested.', 'error');
+                          onNotify('Cover generated — best-in-class AI artwork applied.', 'success');
+                        } catch (e: any) {
+                          onNotify(`Cover generation failed: ${e.message || 'Unknown error'}`, 'error');
                         } finally {
                           setIsPublishing(false);
                         }
                       }}
                       disabled={isPublishing}
-                      className="w-full flex items-center justify-center gap-3 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-200 transition-all active:scale-95 disabled:opacity-50"
+                      className="w-full flex items-center justify-center gap-3 py-4 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-primary/20 transition-all active:scale-95 disabled:opacity-50"
                     >
                       {isPublishing ? (
                         <RefreshCcw size={14} className="animate-spin" />
                       ) : (
-                        <RefreshCcw size={14} />
+                        <Sparkles size={14} />
                       )}
-                      {isPublishing ? 'Synthesizing...' : 'Generate AI Cover Artifact'}
+                      {isPublishing ? 'Generating best-in-class cover...' : 'Generate AI Cover (gpt-image-1)'}
                     </button>
                   </div>
                 </section>
+
+                {/* Non-fiction layout intelligence */}
+                {['coursebook', 'cookbook', 'academic', 'illustrated', 'subject_bible'].includes(project.type) && (
+                  <section className="p-6 bg-surface-raised border border-border-medium rounded-2xl">
+                    <h3 className="text-xs font-black text-brand-primary uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <BookOpen size={14} /> Non-Fiction Layout Intelligence
+                    </h3>
+                    <p className="text-[10px] text-text-secondary mb-4 leading-relaxed">
+                      Analyse your content and auto-design the interior layout — notes pages, exercise blocks, image slots, diagram placeholders, and KDP interior type recommendation.
+                    </p>
+                    {nonFictionLayout && (
+                      <div className="mb-4 p-3 bg-brand-primary/10 border border-brand-primary/20 rounded-xl space-y-2">
+                        <p className="text-[10px] font-bold text-brand-primary">{nonFictionLayout.layoutType}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {nonFictionLayout.notesConfig.hasExercises && <span className="badge-teal">Exercises</span>}
+                          {nonFictionLayout.notesConfig.hasKeyTerms && <span className="badge-teal">Key Terms</span>}
+                          {nonFictionLayout.notesConfig.hasSummaryBoxes && <span className="badge-teal">Summary Boxes</span>}
+                          {nonFictionLayout.notesConfig.hasMarginNotes && <span className="badge-teal">Margin Notes</span>}
+                          {nonFictionLayout.notesConfig.hasEndNotes && <span className="badge-teal">End Notes</span>}
+                          <span className={`badge-${nonFictionLayout.kdpInteriorType === 'color' ? 'amber' : 'blue'}`}>
+                            KDP: {nonFictionLayout.kdpInteriorType === 'color' ? 'Colour Interior' : 'B&W Interior'}
+                          </span>
+                        </div>
+                        {nonFictionLayout.suggestedImageSlots.length > 0 && (
+                          <p className="text-[9px] text-text-tertiary">{nonFictionLayout.suggestedImageSlots.length} image slots · {nonFictionLayout.suggestedDiagramSlots.length} diagram slots proposed</p>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={async () => {
+                        setIsPublishing(true);
+                        try {
+                          onNotify('Analysing content for layout design...', 'info');
+                          const layout = await AIService.generateNonFictionLayout(project, chapters);
+                          setNonFictionLayout(layout);
+                          onNotify('Layout design complete — see recommendations above.', 'success');
+                        } catch (e: any) {
+                          onNotify(`Layout analysis failed: ${e.message}`, 'error');
+                        } finally {
+                          setIsPublishing(false);
+                        }
+                      }}
+                      disabled={isPublishing}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-primary/15 border border-brand-primary/30 text-brand-primary rounded-xl text-[10px] font-bold hover:bg-brand-primary/25 transition-all disabled:opacity-50"
+                    >
+                      {isPublishing ? <RefreshCcw size={12} className="animate-spin" /> : <BookOpen size={12} />}
+                      {isPublishing ? 'Analysing...' : 'Design Interior Layout'}
+                    </button>
+                  </section>
+                )}
 
                 <section>
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
