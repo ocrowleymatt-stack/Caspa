@@ -43,85 +43,113 @@ export default function DraftStagePanel({ project, chapters, updateProject }: Pr
     setConfirming(false);
   };
 
+  const passColors = ['', 'text-text-tertiary', 'text-blue-400', 'text-violet-400', 'text-amber-400'];
+  const passBars = ['', 'bg-text-tertiary', 'bg-blue-400', 'bg-violet-400', 'bg-amber-400'];
+
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm overflow-hidden">
-      <div className={`bg-gradient-to-r ${cfg.color} px-4 py-3 flex items-center gap-3`}>
-        <Layers size={16} className="text-white/80 shrink-0" />
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-border-subtle bg-surface-card overflow-hidden"
+      style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
+    >
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-3">
+        <div className="w-7 h-7 rounded-lg bg-brand-primary/10 flex items-center justify-center">
+          <Layers size={13} className="text-brand-primary" />
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-white/60 uppercase tracking-widest">Draft Stage</p>
-          <p className="text-sm font-bold text-white truncate">{cfg.label} — {Math.round(cfg.pct * 100)}% Target</p>
+          <p className="text-xs font-semibold text-text-primary">{cfg.label}</p>
+          <p className="text-[10px] text-text-tertiary">{cfg.description}</p>
         </div>
-        <span className="text-xs font-mono text-white/60 shrink-0">Pass {currentPass}/4</span>
+        <span className="badge-teal">Pass {currentPass}/4</span>
       </div>
-      <div className="px-4 pt-3 pb-1">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-white/50">Progress toward pass target</span>
-          <span className={`text-xs font-mono font-semibold ${cfg.accent}`}>{totalWords.toLocaleString()} / {totalTarget.toLocaleString()} words</span>
+
+      {/* Progress */}
+      <div className="px-4 py-3 border-b border-border-subtle">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] text-text-tertiary">Pass target progress</span>
+          <span className={`text-[10px] font-semibold font-mono ${passColors[currentPass]}`}>
+            {totalWords.toLocaleString()} / {totalTarget.toLocaleString()}
+          </span>
         </div>
-        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-          <motion.div className={`h-full rounded-full ${cfg.bar}`} initial={{ width: 0 }} animate={{ width: `${Math.round(progress * 100)}%` }} transition={{ duration: 0.6, ease: 'easeOut' }} />
+        <div className="h-1.5 rounded-full bg-surface-muted overflow-hidden">
+          <motion.div
+            className={`h-full rounded-full ${passBars[currentPass]}`}
+            style={currentPass === 1 ? { background: '#14b8a6' } : {}}
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.round(progress * 100)}%` }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          />
         </div>
-        <p className="text-xs text-white/40 mt-1">{Math.round(progress * 100)}% complete</p>
+        <div className="mt-1.5 flex justify-between text-[9px] text-text-tertiary">
+          <span className="flex items-center gap-1"><Target size={9} />{perChapterTarget.toLocaleString()} words/chapter</span>
+          <span>{Math.round(progress * 100)}% complete</span>
+          <span className="flex items-center gap-1"><BookOpen size={9} />{(project.targetWordCount ?? 80000).toLocaleString()} total</span>
+        </div>
       </div>
-      <div className="px-4 py-2">
-        <p className="text-xs text-white/50 leading-relaxed">{cfg.description}</p>
-        <div className="mt-2 flex items-center gap-2 text-xs text-white/40"><Target size={11} /><span>~{perChapterTarget.toLocaleString()} words per chapter this pass</span></div>
-        <div className="mt-1 flex items-center gap-2 text-xs text-white/40"><BookOpen size={11} /><span>Full manuscript target: {(project.targetWordCount ?? 80000).toLocaleString()} words</span></div>
-      </div>
+
+      {/* Pass history */}
       {(project.draftPassHistory ?? []).length > 0 && (
-        <div className="px-4 pb-2">
-          <p className="text-xs text-white/30 uppercase tracking-widest mb-1">Completed Passes</p>
-          <div className="flex flex-wrap gap-1">
+        <div className="px-4 py-2 border-b border-border-subtle">
+          <p className="text-[9px] text-text-tertiary uppercase tracking-wider mb-1.5">Completed</p>
+          <div className="flex flex-wrap gap-1.5">
             {(project.draftPassHistory ?? []).map(h => (
-              <span key={h.pass} className="inline-flex items-center gap-1 text-xs bg-white/5 border border-white/10 rounded px-2 py-0.5">
-                <CheckCircle2 size={10} className="text-green-400" />Pass {h.pass} — {h.wordCountAtCompletion.toLocaleString()} words
+              <span key={h.pass} className="inline-flex items-center gap-1 text-[10px] bg-status-success/10 border border-status-success/20 text-status-success rounded-lg px-2 py-0.5">
+                <CheckCircle2 size={9} />Pass {h.pass} — {h.wordCountAtCompletion.toLocaleString()}w
               </span>
             ))}
           </div>
         </div>
       )}
-      <div className="px-4 pb-4 space-y-3">
+
+      {/* Controls */}
+      <div className="px-4 py-3 space-y-2">
+        {/* Cut mode toggle */}
         <button 
           onClick={() => updateProject({ cutMode: !project.cutMode })}
-          className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border transition-all ${
             project.cutMode 
-              ? 'bg-red-500/10 border-red-500/30 text-red-500' 
-              : 'bg-white/5 border-white/10 text-white/40 hover:border-white/20 hover:text-white/60'
+              ? 'bg-status-error/10 border-status-error/30 text-status-error' 
+              : 'bg-surface-raised border-border-subtle text-text-tertiary hover:border-border-medium hover:text-text-secondary'
           }`}
         >
-          <div className="flex items-center gap-3 text-left">
-            <div className={`p-1.5 rounded-lg ${project.cutMode ? 'bg-red-500/20' : 'bg-white/5'}`}>
-              <Scissors size={14} className={project.cutMode ? 'text-red-500' : 'text-white/40'} />
-            </div>
+          <div className="flex items-center gap-2 text-left">
+            <Scissors size={12} />
             <div>
-              <p className="text-xs font-bold leading-tight">Cut & Compress Mode</p>
-              <p className="text-[10px] opacity-70 leading-tight">
-                {project.cutMode ? 'All AI redraft operations will actively cut and compress.' : 'Standard AI expansion enabled.'}
-              </p>
+              <p className="text-[10px] font-semibold leading-tight">Cut & Compress Mode</p>
+              <p className="text-[9px] opacity-70">{project.cutMode ? 'Active — AI will cut and compress' : 'Off — standard expansion'}</p>
             </div>
           </div>
-          <div className={`w-8 h-4 rounded-full relative transition-colors ${project.cutMode ? 'bg-red-500' : 'bg-white/20'}`}>
-            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${project.cutMode ? 'right-0.5' : 'left-0.5'}`} />
+          <div className={`w-7 h-3.5 rounded-full relative transition-colors shrink-0 ${
+            project.cutMode ? 'bg-status-error' : 'bg-border-medium'
+          }`}>
+            <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${
+              project.cutMode ? 'right-0.5' : 'left-0.5'
+            }`} />
           </div>
         </button>
 
+        {/* Advance pass */}
         {currentPass < 4 && (
-          <div>
-            {!confirming ? (
-              <button onClick={() => setConfirming(true)} className="w-full flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-lg border border-white/15 text-white/60 hover:text-white hover:border-white/30 hover:bg-white/5 transition-all">
-                <ChevronRight size={13} />Advance to Pass {currentPass + 1} ({Math.round(PASS_CONFIG[currentPass].pct * 100)}% target)
+          !confirming ? (
+            <button onClick={() => setConfirming(true)}
+              className="w-full flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-xl border border-border-medium text-text-secondary hover:text-brand-primary hover:border-brand-primary/40 hover:bg-brand-primary/5 transition-all"
+            >
+              <ChevronRight size={13} />Advance to Pass {currentPass + 1} ({Math.round(PASS_CONFIG[currentPass].pct * 100)}% target)
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={handleAdvance}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-xl bg-brand-primary/15 border border-brand-primary/40 text-brand-primary hover:bg-brand-primary/25 transition-all"
+              >
+                <RefreshCw size={12} />Confirm Advance
               </button>
-            ) : (
-              <div className="flex gap-2">
-                <button onClick={handleAdvance} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/15 transition-all"><RefreshCw size={12} />Confirm Advance</button>
-                <button onClick={() => setConfirming(false)} className="px-3 text-xs text-white/40 hover:text-white/70 transition-colors">Cancel</button>
-              </div>
-            )}
-          </div>
+              <button onClick={() => setConfirming(false)} className="px-3 text-xs text-text-tertiary hover:text-text-secondary transition-colors">Cancel</button>
+            </div>
+          )
         )}
         {currentPass === 4 && (
-          <div className="flex items-center gap-2 text-xs text-amber-300/70 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-            <CheckCircle2 size={13} />Final pass — manuscript complete when target is reached.
+          <div className="flex items-center gap-2 text-[10px] text-status-warning bg-status-warning/10 border border-status-warning/20 rounded-xl px-3 py-2">
+            <CheckCircle2 size={12} />Final pass — manuscript complete when target is reached.
           </div>
         )}
       </div>
