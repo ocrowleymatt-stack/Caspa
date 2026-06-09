@@ -9,6 +9,7 @@ export default defineConfig(({mode}) => {
   // We resolve whichever is available so the bundle always has a real key.
   const geminiKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
   return {
+    base: '/Shakespeare-/',
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(geminiKey),
