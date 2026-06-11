@@ -60,7 +60,7 @@ service cloud.firestore {
       allow get: if (resource.data != null && resource.data.get('isPublic', false) == true) ||
                     (isSignedIn() && canAccessProject(resource.data));
       
-      // Query/list returns matching documents based on ownerId (UID or email) and collaborators (UID or email).
+      // FIXED: Query/list now accepts both UID and email as ownerId
       allow list: if isSignedIn() && (
         resource.data.get('ownerId', '') == request.auth.uid ||
         (request.auth.token.email != null && resource.data.get('ownerId', '') == request.auth.token.email) ||
