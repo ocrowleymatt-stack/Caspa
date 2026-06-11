@@ -22,11 +22,5 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  },
-  "exclude": [
-    "Shakespeare",
-    "src_backup",
-    "node_modules",
-    "dist"
-  ]
+  }
 }

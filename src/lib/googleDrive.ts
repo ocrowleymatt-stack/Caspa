@@ -1,7 +1,14 @@
 import { getCachedAccessToken } from './firebase';
+import { Project } from '../types';
+
+export interface DriveBackupFile {
+  id: string;
+  name: string;
+  modifiedTime: string;
+}
 
 export interface BackupPayload {
-  project: any;
+  project: Project;
   chapters: any[];
   characters: any[];
   plotNodes: any[];
@@ -11,165 +18,145 @@ export interface BackupPayload {
   backupDate: string;
 }
 
-export interface DriveBackupFile {
-  id: string;
-  name: string;
-  modifiedTime: string;
-  size?: string;
+/**
+ * Helper to get the access token from memory cache. Urgently throws if not connected.
+ */
+function getRequiredToken(): string {
+  const token = getCachedAccessToken();
+  if (!token) {
+    throw new Error('Google Drive access token is not available. Please authenticate.');
+  }
+  return token;
 }
 
 /**
- * Lists available manuscript backups on Google Drive.
+ * Lists all active backup files with 'Caspa_Restore_' prefix from Google Drive.
  */
 export async function listDriveBackups(): Promise<DriveBackupFile[]> {
-  const token = getCachedAccessToken();
-  if (!token) throw new Error("Google Drive access token not cached. Please reconnect through identity portal.");
+  const token = getRequiredToken();
+  const query = "name contains 'Caspa_Restore_' and trashed = false";
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,modifiedTime)&spaces=drive&orderBy=modifiedTime+desc`;
 
-  const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains 'Casper_Restore_' and mimeType = 'application/json' and trashed = false&fields=files(id, name, modifiedTime, size)&orderBy=modifiedTime desc`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`
     }
-  );
+  });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(`Failed to query Google Drive: ${err.error?.message || response.statusText}`);
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to list Google Drive backups: ${res.statusText} (${errorText})`);
   }
 
-  const data = await response.json();
+  const data = await res.json();
   return data.files || [];
 }
 
 /**
- * Downloads and parses backup file content from Google Drive.
+ * Uploads (or updates) a manuscript backup JSON file on Google Drive.
  */
-export async function downloadDriveBackup(fileId: string): Promise<BackupPayload> {
-  const token = getCachedAccessToken();
-  if (!token) throw new Error("Google Drive access token not cached. Please reconnect.");
+export async function uploadDriveBackup(projectTitle: string, projectId: string, payload: BackupPayload): Promise<any> {
+  const token = getRequiredToken();
+  const cleanTitle = projectTitle.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'Untitled';
+  const targetFileName = `Caspa_Restore_${cleanTitle}.json`;
 
-  const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+  // 1. Search if the file already exists
+  const searchQuery = `name = '${targetFileName}' and trashed = false`;
+  const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id)`;
+
+  const searchRes = await fetch(searchUrl, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`
     }
-  );
+  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to download backup: ${response.statusText}`);
+  let existingFileId: string | null = null;
+  if (searchRes.ok) {
+    const searchData = await searchRes.json();
+    if (searchData.files && searchData.files.length > 0) {
+      existingFileId = searchData.files[0].id;
+    }
   }
 
-  return await response.json();
+  if (existingFileId) {
+    // 2a. Update content of existing file
+    console.log(`Updating existing backup file ID: ${existingFileId}`);
+    const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=media`;
+    
+    const updateRes = await fetch(updateUrl, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!updateRes.ok) {
+      const errorText = await updateRes.text();
+      throw new Error(`Failed to update existing backup: ${updateRes.statusText} (${errorText})`);
+    }
+
+    return await updateRes.json();
+  } else {
+    // 2b. Create new file with metadata & content via multipart upload
+    console.log(`Creating new backup file: ${targetFileName}`);
+    const uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+    const boundary = '3d0fbe_caspa_upload_boundary';
+
+    const metadata = {
+      name: targetFileName,
+      mimeType: 'application/json',
+      description: `Caspa backup for narrative project: ${projectTitle}`
+    };
+
+    const multipartBody = 
+      `\r\n--${boundary}\r\n` +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) +
+      `\r\n--${boundary}\r\n` +
+      'Content-Type: application/json\r\n\r\n' +
+      JSON.stringify(payload) +
+      `\r\n--${boundary}--`;
+
+    const createRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`
+      },
+      body: multipartBody
+    });
+
+    if (!createRes.ok) {
+      const errorText = await createRes.text();
+      throw new Error(`Failed to create backup file: ${createRes.statusText} (${errorText})`);
+    }
+
+    return await createRes.json();
+  }
 }
 
 /**
- * Backs up current manuscript workspace to Google Drive.
+ * Downloads and parses backup file content from Google Drive by ID.
  */
-export async function uploadDriveBackup(projectName: string, projectId: string, payload: BackupPayload): Promise<string> {
-  const token = getCachedAccessToken();
-  if (!token) throw new Error("Google Drive access token not cached. Please reconnect through recovery settings.");
+export async function downloadDriveBackup(fileId: string): Promise<any> {
+  const token = getRequiredToken();
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
 
-  const filename = `Casper_Restore_${projectId}.json`;
-  
-  // 1. Check if backup file already exists
-  const listResponse = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name = '${filename}' and trashed = false&fields=files(id)`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`
     }
-  );
+  });
 
-  if (!listResponse.ok) {
-    throw new Error(`Google Drive pre-scan failed: ${listResponse.statusText}`);
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to fetch file content from Google Drive: ${res.statusText} (${errorText})`);
   }
 
-  const listData = await listResponse.json();
-  const existingFile = listData.files?.[0];
-
-  let fileId = existingFile?.id;
-
-  if (fileId) {
-    // Overwrite existing content
-    const updateResponse = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-      {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      }
-    );
-
-    if (!updateResponse.ok) {
-      throw new Error(`Failed to overwrite backup on Google Drive: ${updateResponse.statusText}`);
-    }
-    
-    // Also update modified time and description
-    await fetch(
-       `https://www.googleapis.com/drive/v3/files/${fileId}`,
-       {
-         method: 'PATCH',
-         headers: {
-           Authorization: `Bearer ${token}`,
-           'Content-Type': 'application/json'
-         },
-         body: JSON.stringify({
-           description: `Manuscript Backup: "${projectName}" [Automated Safe Guard]`
-         })
-       }
-     );
-
-  } else {
-    // Create new file
-    // Step A: Create metadata
-    const createMetaResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: filename,
-          mimeType: 'application/json',
-          description: `Manuscript Backup: "${projectName}" [Automated Safe Guard]`
-        })
-      }
-    );
-
-    if (!createMetaResponse.ok) {
-      throw new Error(`Failed to create backup slot on Google Drive: ${createMetaResponse.statusText}`);
-    }
-
-    const metaData = await createMetaResponse.json();
-    fileId = metaData.id;
-
-    // Step B: Write content
-    const writeResponse = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-      {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      }
-    );
-
-    if (!writeResponse.ok) {
-      throw new Error(`Failed write bytes to backup on Google Drive: ${writeResponse.statusText}`);
-    }
-  }
-
-  return fileId;
+  return await res.json();
 }

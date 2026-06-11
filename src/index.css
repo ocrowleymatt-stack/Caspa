@@ -7,17 +7,16 @@
   --font-serif: "Cormorant Garamond", "Charter", "Bitstream Charter", "Georgia", serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-brand-primary: #a855f7; /* Purple 500 */
-  --color-brand-accent: #d8b4fe; /* Purple 300 */
-  --color-brand-dark: #0f172a; 
+  --color-brand-primary: #d4af37; /* Soft Gold */
+  --color-brand-accent: #e2c057; /* Light Gold */
+  --color-brand-dark: #27210e; /* Deep Gold Shadow */
   
-  /* Cosmic Ghost Aesthetic */
-  --color-surface-bg: #090614; /* Deep void purple-black */
-  --color-surface-card: #140d24; /* Deep violet-gray */
-  --color-surface-muted: #1e1536; /* Muted violet */
-  --color-border-subtle: rgba(168, 85, 247, 0.15); /* Ghostly subtle border */
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #cbd5e1;
+  --color-surface-bg: #141618; /* Warm Charcoal */
+  --color-surface-card: #1c1f24; /* Muted Graphite */
+  --color-surface-muted: #252a30; /* Medium Graphite */
+  --color-border-subtle: rgba(212, 175, 55, 0.08); /* Soft Gold Border Whisper */
+  --color-text-primary: #f3f0e8; /* Ivory Text */
+  --color-text-secondary: #a0a4ab; /* Muted Graphite/Ivory mix */
 }
 
 @layer base {
@@ -36,13 +35,7 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     @apply bg-surface-bg text-text-primary antialiased;
-    background-color: #05020a;
-    background-image: 
-      radial-gradient(circle at 10% 20%, rgba(168, 85, 247, 0.18), transparent 60%),
-      radial-gradient(circle at 90% 80%, rgba(192, 132, 252, 0.15), transparent 60%),
-      radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.05), transparent 50%),
-      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill-opacity='0.03' fill='%23a855f7' fill-rule='evenodd'/%3E%3C/svg%3E");
-    background-attachment: fixed;
+    background-color: var(--color-surface-bg);
   }
   #root {
     height: 100dvh;
@@ -79,13 +72,9 @@
 }
 
 @layer components {
-  /* Nexus Ghost Buttons */
+  /* Caspa Buttons */
   .btn-nexus-primary {
-    @apply relative inline-flex justify-center items-center font-bold uppercase tracking-widest text-white transition-all overflow-hidden rounded-2xl;
-    background: linear-gradient(180deg, rgba(168, 85, 247, 0.4) 0%, rgba(126, 34, 206, 0.4) 100%);
-    box-shadow: 0 0 20px 0 rgba(168, 85, 247, 0.4), inset 0 0 10px 0 rgba(216, 180, 254, 0.4);
-    border: 1px solid rgba(216, 180, 254, 0.5);
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    @apply relative inline-flex justify-center items-center font-semibold transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs text-surface-bg bg-brand-primary tracking-wide;
   }
   
   .btn-nexus-primary:-moz-focusring,
@@ -94,51 +83,34 @@
   }
 
   .btn-nexus-primary:hover:not(:disabled) {
-    box-shadow: 0 0 35px 5px rgba(168, 85, 247, 0.6), inset 0 0 15px 2px rgba(216, 180, 254, 0.6);
-    background: linear-gradient(180deg, rgba(168, 85, 247, 0.5) 0%, rgba(126, 34, 206, 0.5) 100%);
-    border-color: rgba(255, 255, 255, 0.8);
-    transform: translateY(-1px);
+    @apply bg-brand-accent transform -translate-y-[0.5px];
+    box-shadow: 0 2px 8px rgba(45, 212, 191, 0.15);
   }
   
   .btn-nexus-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    box-shadow: none;
+    @apply opacity-50 cursor-not-allowed;
   }
 
   .btn-nexus-glass {
-    @apply relative inline-flex justify-center items-center font-bold uppercase tracking-widest text-[#e2e8f0] transition-all overflow-hidden rounded-2xl;
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px 0 rgba(168, 85, 247, 0.05), inset 0 0 20px 0 rgba(255, 255, 255, 0.02);
+    @apply relative inline-flex justify-center items-center font-medium text-text-primary transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs bg-transparent border border-border-subtle tracking-wide;
   }
 
   .btn-nexus-glass:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.3);
-    box-shadow: 0 8px 32px 0 rgba(168, 85, 247, 0.15), inset 0 0 20px 0 rgba(255, 255, 255, 0.1);
-    color: white;
+    @apply bg-surface-muted border-white/20 text-brand-primary;
   }
 
   .btn-nexus-danger {
-    @apply relative inline-flex justify-center items-center font-bold uppercase tracking-widest text-white transition-all overflow-hidden rounded-2xl;
-    background: linear-gradient(180deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.4) 100%);
-    box-shadow: 0 0 20px 0 rgba(239, 68, 68, 0.4), inset 0 0 10px 0 rgba(252, 165, 165, 0.5);
-    border: 1px solid rgba(252, 165, 165, 0.5);
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    @apply relative inline-flex justify-center items-center font-semibold text-white transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs bg-red-500 tracking-wide;
   }
 
   .btn-nexus-danger:hover:not(:disabled) {
-    box-shadow: 0 0 30px 4px rgba(239, 68, 68, 0.6), inset 0 0 15px 0 rgba(252, 165, 165, 0.8);
-    background: linear-gradient(180deg, rgba(239, 68, 68, 0.5) 0%, rgba(185, 28, 28, 0.5) 100%);
-    transform: translateY(-1px);
+    @apply bg-red-600;
   }
 
-  /* Ethereal Glow Panels */
+  /* Clean Solid Panels */
   .ethereal-panel {
-    @apply bg-surface-card/80 backdrop-blur-xl border border-white/5;
-    box-shadow: 0 0 40px -10px rgba(168, 85, 247, 0.15), inset 0 0 20px -5px rgba(255, 255, 255, 0.02);
+    @apply bg-surface-card border border-border-subtle rounded-xl;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   }
 }
 
@@ -301,7 +273,7 @@
 
 /* Force legibility and consistent theme coloring on option tags in drop-down menus web-wide */
 select option {
-  background-color: #140d24 !important;
-  color: #cbd5e1 !important;
+  background-color: var(--color-surface-card) !important;
+  color: var(--color-text-primary) !important;
 }
 

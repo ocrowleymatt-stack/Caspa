@@ -16,6 +16,7 @@ export interface Character {
   archetype?: string;
   avatarUrl?: string;
   physicalDescription?: string;
+  relationships?: { characterId: string; type: string; tension?: number }[];
   updatedAt: number;
 }
 
@@ -43,6 +44,9 @@ export interface Chapter {
   ownerId?: string; // Added for relational security rules
   directives?: string[]; // Directives for next redrafting session
   illustrationUrl?: string; // URL for chapter-specific illustration
+  status?: 'skeleton' | 'outline' | 'draft' | 'completed';
+  wordCount?: number;
+  sceneTurnGoal?: string;
 }
 
 export interface ResearchNote {
@@ -202,4 +206,4 @@ export interface Project {
   };
 }
 
-export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'reviews' | 'library' | 'scalpel' | 'autodraft';
+export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'reviews' | 'library' | 'scalpel' | 'autodraft' | 'discover' | 'design' | 'write' | 'memory' | 'publish' | 'upload';

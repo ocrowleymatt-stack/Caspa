@@ -9,11 +9,13 @@ import {
   MoreVertical,
   BookOpen
 } from 'lucide-react';
-import { Project } from '../types';
+import { Project, SourceMaterial } from '../types';
 import { useState } from 'react';
 
 interface LibraryProps {
   projects: Project[];
+  activeProject?: Project;
+  sourceMaterials?: SourceMaterial[];
   onSelectProject: (project: Project) => void;
   onCreateProject: () => void;
   onDeleteProject: (projectId: string) => void;
@@ -23,6 +25,8 @@ interface LibraryProps {
 
 export default function Library({ 
   projects, 
+  activeProject,
+  sourceMaterials,
   onSelectProject, 
   onCreateProject, 
   onDeleteProject,
@@ -42,158 +46,170 @@ export default function Library({
       className="h-full overflow-y-auto custom-scrollbar bg-surface-bg transition-colors duration-500 pb-32"
       style={{ minHeight: 0 }}
     >
-      <div className="p-8 md:p-16 max-w-7xl mx-auto space-y-12">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-10 border-b border-border-subtle pb-16">
+      <div className="p-4 md:p-4 max-w-7xl mx-auto space-y-2">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-2 border-b border-border-subtle pb-4">
         <div>
-          <div className="text-[10px] font-black text-brand-primary uppercase tracking-[0.5em] mb-4 flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
-            Project Repository
-          </div>
-          <h2 className="text-5xl md:text-7xl font-black text-text-primary tracking-tighter font-sans leading-none">Manuscript <span className="font-serif italic">Archive</span></h2>
-          <p className="text-text-secondary font-medium mt-6 text-xl max-w-md leading-relaxed">Manage your storytelling assets, drafts, and research intelligence in one secure vault.</p>
+          <h2 className="text-[11px] font-medium font-semibold text-text-primary tracking-tight">
+            Good morning{localStorage.getItem('currentUserEmail') ? `, ${localStorage.getItem('currentUserEmail')?.split('@')[0]}` : ''}
+          </h2>
+          <p className="text-teal-500 font-medium mt-1 text-xs flex items-center gap-1.5">
+            You have {filteredProjects.length} active project{filteredProjects.length !== 1 ? 's' : ''}
+          </p>
         </div>
         <button 
           onClick={onCreateProject}
-          className="btn-nexus-primary px-10 py-6 rounded-3xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-4 shadow-[0_20px_50px_rgba(168,85,247,0.3)] transition-all hover:scale-105 active:scale-95 group"
+          className="btn-nexus-glass px-2 py-1.5 rounded font-medium text-xs transition-all hover:scale-105 active:scale-95 group flex items-center gap-2 border-brand-primary/30 hover:border-brand-primary"
         >
-          <Plus size={24} className="group-hover:rotate-90 transition-transform" />
-          Start New Project
+          New Project <Plus size={14} />
         </button>
       </div>
 
-      <div className="relative group max-w-2xl">
-        <Search className="absolute left-8 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-brand-primary transition-all" size={24} />
+      <div className="relative group max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={14} />
         <input 
           type="text"
-          placeholder="Search projects by title, genre, or keywords..."
+          placeholder="Search projects or clients..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="w-full ethereal-panel border border-border-subtle rounded-[2.5rem] py-8 pl-20 pr-10 focus:outline-none focus:border-brand-primary transition-all shadow-2xl text-text-primary font-medium text-xl placeholder:text-text-secondary/30 group-hover:border-text-secondary/30 no-print"
+          className="w-full bg-surface-card border border-border-subtle rounded py-1.5 pl-9 pr-3 focus:outline-none focus:border-brand-primary transition-all text-[11px] text-text-primary placeholder:text-text-secondary/50 no-print"
         />
       </div>
 
       {filteredProjects.length === 0 ? (
-        <div className="ethereal-panel border border-dashed border-border-subtle rounded-[4rem] p-16 md:p-32 text-center relative group overflow-hidden">
-          <div className="absolute inset-0 bg-brand-primary rounded-full blur-[150px] opacity-5 group-hover:opacity-10 transition-opacity" />
-          <div className="w-20 h-20 md:w-28 md:h-28 bg-brand-primary/10 rounded-full flex items-center justify-center mx-auto mb-10 relative z-10 transition-all group-hover:scale-110 group-hover:rotate-12 group-hover:bg-brand-primary/20">
-            <Book size={isMobile ? 40 : 56} className="text-brand-primary opacity-30" />
+        <div className="bg-surface-card border border-dashed border-border-subtle rounded p-4 md:p-4 text-center relative group overflow-hidden">
+          <div className="w-12 h-12 md:w-16 md:h-16 bg-brand-primary/10 rounded-full flex items-center justify-center mx-auto mb-1.5 relative z-10">
+            <Book size={24} className="text-brand-primary opacity-50" />
           </div>
-          <p className="font-black text-text-primary uppercase tracking-[0.4em] text-lg relative z-10 italic">No Manuscripts Detected</p>
-          <div className="space-y-6 mt-8 relative z-10 max-w-lg mx-auto">
-            <p className="text-text-secondary opacity-60 text-base leading-relaxed">No synchronized drafts found for this identity partition. If you have legacy manuscripts, they may be vaulted under an alternate account Variation.</p>
+          <p className="font-semibold text-text-primary text-[11px] relative z-10">No projects found</p>
+          <div className="space-y-1.5 mt-3 relative z-10 max-w-lg mx-auto">
+            <p className="text-text-secondary opacity-80 text-xs">Create a new project to get started with Caspa.</p>
             
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5 items-center">
               <button 
                 onClick={() => {
                   if (onBroadScan) onBroadScan();
                 }}
-                className="w-full py-5 bg-brand-primary/10 border border-brand-primary/20 hover:bg-brand-primary hover:text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.4em] transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"
+                className="w-full max-w-xs py-2 bg-surface-muted hover:bg-white/5 rounded font-medium text-xs transition-all flex items-center justify-center gap-2"
               >
-                <Search size={16} />
-                Initiate Global Neural Recovery
+                <Search size={14} />
+                Global Recovery Scan
               </button>
-              
-              <div className="bg-brand-dark/50 py-4 px-8 rounded-2xl border border-border-subtle flex flex-col gap-2">
-                <span className="text-[9px] font-black text-brand-primary uppercase tracking-[0.3em] opacity-60">Active Access Signature:</span>
-                <span className="text-xs font-mono font-bold text-text-primary tracking-tight truncate">
-                  {localStorage.getItem('currentUserEmail') || 'Syncing Identity...'}
-                </span>
-              </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="space-y-16">
-          {/* Active / Recent Projects */}
+        <div className="space-y-2">
           <section>
-            <h3 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] mb-8 px-8">Active Transmissions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-              {filteredProjects.slice(0, 3).map((proj) => (
+            <h3 className="text-xs font-semibold text-text-primary mb-1.5">Recent Projects</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+              {filteredProjects.map((proj) => (
                 <ProjectCard key={proj.id} proj={proj} onSelect={onSelectProject} onDelete={onDeleteProject} />
               ))}
             </div>
           </section>
-
-          {/* All Other Projects */}
-          {filteredProjects.length > 3 && (
-            <section className="pt-16 border-t border-border-subtle/50">
-              <h3 className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] mb-8 px-8 opacity-40">Archived Repositories</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                {filteredProjects.slice(3).map((proj) => (
-                  <ProjectCard key={proj.id} proj={proj} onSelect={onSelectProject} onDelete={onDeleteProject} isArchived />
-                ))}
-              </div>
-            </section>
-          )}
         </div>
+      )}
+
+      {activeProject && activeProject.id !== 'default' && (
+        <section className="mt-8 pt-6 border-t border-border-subtle/50">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
+              Project Reference Ingests ({sourceMaterials?.length || 0})
+            </h3>
+            <span className="text-[10px] text-[#90939a] uppercase tracking-widest font-mono select-none">
+              Active Project Context: <span className="text-text-primary italic font-serif font-semibold">{activeProject.title}</span>
+            </span>
+          </div>
+          
+          {(!sourceMaterials || sourceMaterials.length === 0) ? (
+            <div className="bg-surface-card/40 border border-dashed border-border-subtle rounded p-6 text-center">
+              <p className="text-xs text-text-secondary italic">No reference documents or background briefs ingested for this project yet.</p>
+              <p className="text-[10px] text-[#90939a] mt-1">Go to "Evidence & Uploads" section to upload folders, background PDFs, or raw text reference archives.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {sourceMaterials.map((source) => (
+                <div 
+                  key={source.id}
+                  className="bg-surface-card p-4 rounded border border-border-subtle hover:border-brand-primary/30 transition-all flex flex-col justify-between group"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="text-xs font-semibold text-text-primary truncate max-w-[80%]" title={source.name}>
+                        {source.name}
+                      </span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-brand-primary font-mono select-none uppercase">
+                        {source.type.includes('pdf') ? 'PDF' : 'TXT'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#90939a] line-clamp-3 font-serif italic mb-4 leading-relaxed">
+                      {source.content || 'Empty source'}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border-subtle/50 pt-2 text-[10px] text-text-secondary">
+                    <span>Synced {new Date(source.updatedAt || Date.now()).toLocaleDateString()}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-wider">{(source.content?.length || 0).toLocaleString()} chars</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
       </div>
     </div>
   );
 }
 
-function ProjectCard({ proj, onSelect, onDelete, isArchived }: { proj: Project, onSelect: (p: Project) => void, onDelete: (id: string) => void, isArchived?: boolean }) {
+function ProjectCard({ proj, onSelect, onDelete }: { proj: Project, onSelect: (p: Project) => void, onDelete: (id: string) => void }) {
   return (
     <motion.div 
       layout
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -12 }}
-      className={`ethereal-panel rounded-[3rem] border border-border-subtle p-10 shadow-2xl transition-all group relative overflow-hidden flex flex-col h-full hover:border-brand-primary/50 hover:shadow-brand-primary/5 active:scale-[0.98] ${isArchived ? 'opacity-70 hover:opacity-100' : ''}`}
+      whileHover={{ y: -4 }}
+      className={`bg-surface-card rounded border border-border-subtle p-4 transition-all group relative flex flex-col h-full hover:border-brand-primary/50 hover:shadow-lg active:scale-[0.98]`}
     >
-      <div className="absolute top-0 right-0 p-10">
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
          <button 
           onClick={(e) => {
             e.stopPropagation();
-            if(confirm("Permanently purge this manuscript? This cannot be undone.")) {
+            if(confirm("Permanently delete this project?")) {
               onDelete(proj.id);
             }
           }}
-          className="p-4 text-text-secondary/20 hover:text-red-500 transition-all hover:bg-red-500/10 rounded-2xl"
+          className="p-2 text-text-secondary hover:text-red-500 transition-colors rounded"
         >
-          <Trash2 size={24} />
+          <Trash2 size={16} />
         </button>
       </div>
 
-      <div className="mb-10">
-        <div className={`w-18 h-18 rounded-[1.5rem] flex items-center justify-center group-hover:bg-brand-primary group-hover:scale-110 transition-all duration-700 shadow-inner ${isArchived ? 'bg-surface-muted' : 'bg-brand-dark'}`}>
-          <BookOpen className="text-text-secondary group-hover:text-white transition-colors" size={32} />
+      <div className="mb-2 flex items-start justify-between">
+        <div className={`w-12 h-12 rounded flex items-center justify-center bg-brand-primary/10`}>
+          <BookOpen className="text-brand-primary" size={20} />
         </div>
       </div>
 
-      <div className="space-y-6 mb-auto">
-        <h3 className="text-3xl font-black text-text-primary group-hover:text-brand-primary transition-colors italic font-serif leading-tight">
+      <div className="space-y-3 mb-auto">
+        <h3 className="text-[11px] font-medium font-medium text-text-primary leading-tight">
           {proj.title || 'Untitled Project'}
         </h3>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="px-5 py-2 bg-brand-dark rounded-xl text-[10px] font-black text-text-secondary uppercase tracking-[0.2em] border border-border-subtle group-hover:border-brand-primary/30 transition-colors">
-            {proj.genre || 'Classified Genre'}
-          </span>
-          <div className="w-1.5 h-1.5 rounded-full bg-border-subtle" />
-          <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.3em] opacity-80 group-hover:opacity-100 transition-opacity">
-            {proj.type}
-          </span>
-        </div>
+        <p className="text-xs text-text-secondary font-medium">
+          {proj.targetWordCount ? `${(proj.stats?.totalWords || 0).toLocaleString()} / ${proj.targetWordCount.toLocaleString()} words` : `${(proj.stats?.totalWords || 0).toLocaleString()} words`}
+        </p>
       </div>
 
-      <div className="mt-12 flex items-center justify-between border-t border-border-subtle/30 pt-8">
+      <div className="mt-8 flex items-center justify-between border-t border-border-subtle pt-4">
         <div className="flex flex-col">
-           <span className="text-[8px] font-black text-text-secondary uppercase tracking-widest opacity-40 mb-1">Last Synchronization</span>
-           <div className="flex items-center gap-2 text-[10px] text-text-secondary font-black uppercase tracking-widest">
-            <Calendar size={14} className="text-brand-primary" />
-            <span>{new Date(proj.lastModified).toLocaleDateString()}</span>
-          </div>
+           <span className="text-xs text-text-secondary mb-0.5">Last edited</span>
+           <span className="text-xs text-text-primary font-medium">{new Date(proj.lastModified).toLocaleDateString()}</span>
         </div>
         <button 
           onClick={() => onSelect(proj)}
-          className="btn-nexus-primary px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-brand-accent transition-all shadow-xl active:scale-95 shadow-brand-primary/20"
+          className="px-2 py-2 bg-brand-primary/10 text-brand-primary rounded font-medium text-xs flex items-center gap-2 hover:bg-brand-primary hover:text-white transition-all shadow-sm"
         >
-          Open Project
-          <ExternalLink size={14} />
+          Open
         </button>
       </div>
-
-      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-brand-primary/0 group-hover:bg-brand-primary/30 transition-all duration-700 blur-[2px]" />
     </motion.div>
   );
 }

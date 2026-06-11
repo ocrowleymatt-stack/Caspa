@@ -44,16 +44,16 @@ export default function DraftStagePanel({ project, chapters, updateProject }: Pr
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm overflow-hidden">
-      <div className={`bg-gradient-to-r ${cfg.color} px-4 py-3 flex items-center gap-3`}>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-md border border-white/10 bg-white/5 backdrop-blur-sm overflow-hidden">
+      <div className={`bg-gradient-to-r ${cfg.color} px-2 py-3 flex items-center gap-1.5`}>
         <Layers size={16} className="text-white/80 shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-white/60 uppercase tracking-widest">Draft Stage</p>
-          <p className="text-sm font-bold text-white truncate">{cfg.label} — {Math.round(cfg.pct * 100)}% Target</p>
+          <p className="text-[11px] font-medium text-white truncate">{cfg.label} — {Math.round(cfg.pct * 100)}% Target</p>
         </div>
         <span className="text-xs font-mono text-white/60 shrink-0">Pass {currentPass}/4</span>
       </div>
-      <div className="px-4 pt-3 pb-1">
+      <div className="px-2 pt-3 pb-1">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs text-white/50">Progress toward pass target</span>
           <span className={`text-xs font-mono font-semibold ${cfg.accent}`}>{totalWords.toLocaleString()} / {totalTarget.toLocaleString()} words</span>
@@ -63,13 +63,13 @@ export default function DraftStagePanel({ project, chapters, updateProject }: Pr
         </div>
         <p className="text-xs text-white/40 mt-1">{Math.round(progress * 100)}% complete</p>
       </div>
-      <div className="px-4 py-2">
+      <div className="px-2 py-2">
         <p className="text-xs text-white/50 leading-relaxed">{cfg.description}</p>
         <div className="mt-2 flex items-center gap-2 text-xs text-white/40"><Target size={11} /><span>~{perChapterTarget.toLocaleString()} words per chapter this pass</span></div>
         <div className="mt-1 flex items-center gap-2 text-xs text-white/40"><BookOpen size={11} /><span>Full manuscript target: {(project.targetWordCount ?? 80000).toLocaleString()} words</span></div>
       </div>
       {(project.draftPassHistory ?? []).length > 0 && (
-        <div className="px-4 pb-2">
+        <div className="px-2 pb-2">
           <p className="text-xs text-white/30 uppercase tracking-widest mb-1">Completed Passes</p>
           <div className="flex flex-wrap gap-1">
             {(project.draftPassHistory ?? []).map(h => (
@@ -80,22 +80,22 @@ export default function DraftStagePanel({ project, chapters, updateProject }: Pr
           </div>
         </div>
       )}
-      <div className="px-4 pb-4 space-y-3">
+      <div className="px-2 pb-4 space-y-3">
         <button 
           onClick={() => updateProject({ cutMode: !project.cutMode })}
-          className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+          className={`w-full flex items-center justify-between p-3 rounded-md border transition-all ${
             project.cutMode 
               ? 'bg-red-500/10 border-red-500/30 text-red-500' 
               : 'bg-white/5 border-white/10 text-white/40 hover:border-white/20 hover:text-white/60'
           }`}
         >
-          <div className="flex items-center gap-3 text-left">
-            <div className={`p-1.5 rounded-lg ${project.cutMode ? 'bg-red-500/20' : 'bg-white/5'}`}>
+          <div className="flex items-center gap-1.5 text-left">
+            <div className={`p-1.5 rounded ${project.cutMode ? 'bg-red-500/20' : 'bg-white/5'}`}>
               <Scissors size={14} className={project.cutMode ? 'text-red-500' : 'text-white/40'} />
             </div>
             <div>
-              <p className="text-xs font-bold leading-tight">Cut & Compress Mode</p>
-              <p className="text-[10px] opacity-70 leading-tight">
+              <p className="text-xs font-medium leading-tight">Cut & Compress Mode</p>
+              <p className="text-xs opacity-70 leading-tight">
                 {project.cutMode ? 'All AI redraft operations will actively cut and compress.' : 'Standard AI expansion enabled.'}
               </p>
             </div>
@@ -108,19 +108,19 @@ export default function DraftStagePanel({ project, chapters, updateProject }: Pr
         {currentPass < 4 && (
           <div>
             {!confirming ? (
-              <button onClick={() => setConfirming(true)} className="w-full flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-lg border border-white/15 text-white/60 hover:text-white hover:border-white/30 hover:bg-white/5 transition-all">
+              <button onClick={() => setConfirming(true)} className="w-full flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/30 hover:bg-white/5 transition-all">
                 <ChevronRight size={13} />Advance to Pass {currentPass + 1} ({Math.round(PASS_CONFIG[currentPass].pct * 100)}% target)
               </button>
             ) : (
               <div className="flex gap-2">
-                <button onClick={handleAdvance} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/15 transition-all"><RefreshCw size={12} />Confirm Advance</button>
+                <button onClick={handleAdvance} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded bg-white/10 border border-white/20 text-white hover:bg-white/15 transition-all"><RefreshCw size={12} />Confirm Advance</button>
                 <button onClick={() => setConfirming(false)} className="px-3 text-xs text-white/40 hover:text-white/70 transition-colors">Cancel</button>
               </div>
             )}
           </div>
         )}
         {currentPass === 4 && (
-          <div className="flex items-center gap-2 text-xs text-amber-300/70 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2 text-xs text-amber-300/70 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
             <CheckCircle2 size={13} />Final pass — manuscript complete when target is reached.
           </div>
         )}

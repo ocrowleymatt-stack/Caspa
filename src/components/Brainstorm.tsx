@@ -92,54 +92,54 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
 
   return (
     <div 
-      className="h-full overflow-y-auto custom-scrollbar px-4 pb-32"
+      className="h-full overflow-y-auto custom-scrollbar px-2 pb-32"
       style={{ minHeight: 0 }}
     >
-      <div className="max-w-7xl mx-auto py-6 md:py-12 md:px-2 flex flex-col gap-10">
-      <header className="flex flex-col md:flex-row items-center justify-between gap-8 ethereal-panel p-10 rounded-[3.5rem] border border-border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.4)] relative overflow-hidden group">
+      <div className="max-w-7xl mx-auto py-3 md:py-1 md:px-2 flex flex-col gap-1.5">
+      <header className="flex flex-col md:flex-row items-center justify-between gap-2 ethereal-panel p-3 rounded-md border border-border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.4)] relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
         <div className="text-center md:text-left relative z-10">
-          <div className="flex items-center gap-4 mb-2 justify-center md:justify-start">
+          <div className="flex items-center gap-2 mb-2 justify-center md:justify-start">
              <div className="w-2.5 h-2.5 rounded-full bg-brand-primary shadow-[0_0_15px_rgba(168,85,247,0.5)] animate-pulse" />
-             <h2 className="text-3xl md:text-5xl font-black tracking-tight text-text-primary italic font-serif">Inspiration Engine</h2>
+             <h2 className="text-xs font-semibold md:text-xs font-semibold font-semibold tracking-tight text-text-primary italic font-serif">Inspiration Engine</h2>
           </div>
-          <p className="text-[10px] md:text-[11px] text-text-secondary font-black uppercase tracking-[0.5em] opacity-40">Expand narrative branches with distributed high-level intelligence</p>
+          <p className="text-xs md:text-xs text-text-secondary font-semibold uppercase tracking-widest opacity-40">Expand narrative branches with distributed high-level intelligence</p>
         </div>
         <div className="relative z-10">
-           <div className="p-4 bg-brand-dark/50 rounded-2xl border border-border-subtle flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-brand-primary/10 flex items-center justify-center text-brand-primary">
+           <div className="p-4 bg-brand-dark/50 rounded border border-border-subtle flex items-center gap-2">
+              <div className="w-10 h-10 rounded-md bg-brand-primary/10 flex items-center justify-center text-brand-primary">
                  <BrainCircuit size={20} />
               </div>
               <div className="flex flex-col">
-                <span className="text-[9px] font-black text-text-secondary uppercase tracking-widest opacity-40">Neural Status</span>
-                <span className="text-[10px] font-black text-brand-primary uppercase tracking-widest">Systems Synchronized</span>
+                <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-widest opacity-40">Neural Status</span>
+                <span className="text-xs font-semibold text-brand-primary uppercase tracking-widest">Systems Synchronized</span>
               </div>
            </div>
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-12 pb-12">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-1.5 pb-12">
         {/* Left: Input */}
-        <div className="space-y-8 flex flex-col min-h-[400px]">
-          <div className="p-10 bg-brand-dark border border-border-subtle rounded-[4rem] space-y-10 flex-1 flex flex-col shadow-[0_50px_100px_rgba(0,0,0,0.5)] group relative">
-            <div className="absolute top-0 right-0 p-12 opacity-[0.02] pointer-events-none group-hover:opacity-[0.05] transition-opacity duration-1000">
+        <div className="space-y-3 flex flex-col min-h-[400px]">
+          <div className="p-3 bg-brand-dark border border-border-subtle rounded space-y-3 flex-1 flex flex-col shadow-[0_50px_100px_rgba(0,0,0,0.5)] group relative">
+            <div className="absolute top-0 right-0 p-3 opacity-[0.02] pointer-events-none group-hover:opacity-[0.05] transition-opacity duration-1000">
               <Target size={200} />
             </div>
 
-            <div className="flex flex-col gap-6 relative z-10">
+            <div className="flex flex-col gap-1.5 relative z-10">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-black text-brand-primary flex items-center gap-3 uppercase tracking-[0.4em] font-sans">
+                <h3 className="text-xs font-semibold text-brand-primary flex items-center gap-1.5 uppercase tracking-widest font-sans">
                   <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse shadow-[0_0_8px_rgba(168,85,247,0.4)]" />
                   Improvement Strategy
                 </h3>
-                <span className="text-[8px] font-black text-text-secondary opacity-30 uppercase tracking-widest">Select Narrative Vector</span>
+                <span className="text-[10px] font-semibold text-text-secondary opacity-30 uppercase tracking-widest">Select Narrative Vector</span>
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-1.5">
                 {goals.map((g) => (
                   <button
                     key={g.value}
                     onClick={() => setImprovementGoal(g.value)}
-                    className={`flex items-center gap-3 px-5 py-3 rounded-2xl text-[10px] font-black transition-all border uppercase tracking-widest active:scale-95 group/btn ${
+                    className={`flex items-center gap-1.5 px-2 py-3 rounded text-xs font-semibold transition-all border uppercase tracking-widest active:scale-95 group/btn ${
                       improvementGoal === g.value 
                         ? 'bg-brand-primary border-brand-primary text-white shadow-2xl shadow-brand-primary/20' 
                         : 'ethereal-panel border-border-subtle text-text-secondary hover:border-text-secondary/40 hover:text-text-primary'
@@ -154,13 +154,13 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col gap-6 relative z-10">
+            <div className="flex-1 flex flex-col gap-1.5 relative z-10">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-black text-brand-primary flex items-center gap-3 uppercase tracking-[0.4em] font-sans">
+                <h3 className="text-xs font-semibold text-brand-primary flex items-center gap-1.5 uppercase tracking-widest font-sans">
                   <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
                   Context Analysis
                 </h3>
-                <p className="text-[8px] font-black text-text-secondary leading-relaxed uppercase tracking-[0.3em] opacity-40">
+                <p className="text-[10px] font-semibold text-text-secondary leading-relaxed uppercase tracking-wider opacity-40">
                   Input Narrative Spark
                 </p>
               </div>
@@ -169,9 +169,9 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
                   value={localPremise}
                   onChange={(e) => setLocalPremise(e.target.value)}
                   placeholder="Describe the specific scene, character dilemma, or narrative block you want to expand..."
-                  className="w-full h-full min-h-[300px] ethereal-panel border border-border-subtle rounded-[3rem] p-10 text-text-primary focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary focus:bg-surface-muted/30 resize-none transition-all outline-none leading-[1.8] text-xl font-serif italic shadow-inner placeholder:opacity-20 scrollbar-hide"
+                  className="w-full h-full min-h-[300px] ethereal-panel border border-border-subtle rounded-md p-3 text-text-primary focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary focus:bg-surface-muted/30 resize-none transition-all outline-none leading-[1.8] text-xs font-semibold font-serif italic shadow-inner placeholder:opacity-20 scrollbar-hide"
                 />
-                <div className="absolute bottom-8 right-8 p-4 bg-brand-dark rounded-2xl border border-border-subtle opacity-0 group-hover/textarea:opacity-100 transition-opacity">
+                <div className="absolute bottom-8 right-8 p-4 bg-brand-dark rounded border border-border-subtle opacity-0 group-hover/textarea:opacity-100 transition-opacity">
                    <BrainCircuit size={20} className="text-brand-primary/40" />
                 </div>
               </div>
@@ -180,7 +180,7 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
             <button 
               onClick={handleBrainstorm}
               disabled={loading || !project.premise}
-              className="w-full py-8 bg-brand-primary hover:bg-brand-accent disabled:opacity-30 text-white font-black rounded-[2.5rem] transition-all shadow-2xl shadow-brand-primary/30 flex items-center justify-center gap-4 uppercase tracking-[0.4em] text-[10px] active:scale-95 group/submit relative overflow-hidden"
+              className="w-full py-3 bg-brand-primary hover:bg-brand-accent disabled:opacity-30 text-white font-semibold rounded-md transition-all shadow-2xl shadow-brand-primary/30 flex items-center justify-center gap-2 uppercase tracking-widest text-xs active:scale-95 group/submit relative overflow-hidden"
             >
               <div className="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover/submit:translate-x-[100%] transition-transform duration-1000 ease-in-out" />
               {loading ? (
@@ -196,11 +196,11 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
         </div>
 
         {/* Right: Results */}
-        <div className="p-12 ethereal-panel border border-border-subtle rounded-[4rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.3)] flex flex-col relative group/results">
+        <div className="p-3 ethereal-panel border border-border-subtle rounded overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.3)] flex flex-col relative group/results">
           <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover/results:opacity-[0.02] transition-opacity duration-1000" />
           
           <div className="flex items-center justify-between mb-10 relative z-10">
-            <h3 className="text-[10px] font-black text-brand-primary flex items-center gap-4 uppercase tracking-[0.4em] font-sans">
+            <h3 className="text-xs font-semibold text-brand-primary flex items-center gap-2 uppercase tracking-widest font-sans">
               <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
               Intelligence Output
             </h3>
@@ -209,7 +209,7 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => addToResearch(results)}
-                className="flex items-center gap-3 text-[9px] font-black text-brand-primary hover:text-white hover:bg-brand-primary px-6 py-3 rounded-2xl border border-brand-primary/20 transition-all uppercase tracking-widest active:scale-95 shadow-xl bg-brand-primary/5"
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-brand-primary hover:text-white hover:bg-brand-primary px-2.5 py-3 rounded border border-brand-primary/20 transition-all uppercase tracking-widest active:scale-95 shadow-xl bg-brand-primary/5"
               >
                 <Save size={16} />
                 Persist Expansion
@@ -219,13 +219,13 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
           
           <div className="flex-1 pr-6 relative z-10">
             {results ? (
-              <div className="prose prose-invert prose-brand prose-md max-w-none prose-p:text-text-secondary/90 prose-p:leading-[1.8] prose-p:font-serif prose-p:italic prose-headings:text-text-primary prose-headings:font-black prose-headings:font-serif prose-headings:tracking-tight">
+              <div className="prose prose-invert prose-brand prose-md max-w-none prose-p:text-text-secondary/90 prose-p:leading-[1.8] prose-p:font-serif prose-p:italic prose-headings:text-text-primary prose-headings:font-semibold prose-headings:font-serif prose-headings:tracking-tight">
                 <Markdown>{results}</Markdown>
               </div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center gap-12 text-text-secondary">
+              <div className="h-full flex flex-col items-center justify-center text-center gap-1.5 text-text-secondary">
                 {!loading && (
-                  <div className="flex flex-col items-center gap-10 opacity-10 group-hover/results:opacity-20 transition-opacity duration-1000">
+                  <div className="flex flex-col items-center gap-1.5 opacity-10 group-hover/results:opacity-20 transition-opacity duration-1000">
                     <div className="relative">
                        <Zap size={100} strokeWidth={0.5} className="text-text-secondary" />
                        <motion.div 
@@ -234,22 +234,22 @@ export default function Brainstorm({ project, research, sourceMaterials, updateP
                         className="absolute inset-0 bg-brand-primary rounded-full blur-[80px]" 
                        />
                     </div>
-                    <p className="max-w-[240px] text-[10px] font-black uppercase tracking-[0.4em] leading-relaxed mx-auto italic">Processor idle. Provide a narrative spark to begin simulation protocols.</p>
+                    <p className="max-w-[240px] text-xs font-semibold uppercase tracking-widest leading-relaxed mx-auto italic">Processor idle. Provide a narrative spark to begin simulation protocols.</p>
                   </div>
                 )}
                 {loading && (
-                   <div className="flex flex-col items-center gap-12">
+                   <div className="flex flex-col items-center gap-2">
                      <div className="relative">
                         <motion.div 
                           animate={{ scale: [1, 1.5, 1], opacity: [0.1, 0.4, 0.1] }}
                           transition={{ repeat: Infinity, duration: 2.5 }}
                           className="absolute inset-0 bg-brand-primary rounded-full blur-3xl opacity-20" 
                         />
-                        <div className="relative z-10 p-8 bg-brand-primary/10 rounded-[2rem] border border-brand-primary/30 shadow-inner">
+                        <div className="relative z-10 p-2 bg-brand-primary/10 rounded-md border border-brand-primary/30 shadow-inner">
                           <BrainCircuit size={64} className="text-brand-primary animate-pulse" />
                         </div>
                      </div>
-                     <p className="text-brand-primary font-black text-[10px] uppercase tracking-[0.6em] animate-shimmer italic">Processing Intelligence Vector...</p>
+                     <p className="text-brand-primary font-semibold text-xs uppercase tracking-[0.6em] animate-shimmer italic">Processing Intelligence Vector...</p>
                    </div>
                 )}
               </div>

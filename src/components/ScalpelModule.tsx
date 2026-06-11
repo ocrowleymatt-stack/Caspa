@@ -1,278 +1,296 @@
-import React, { useState, useEffect } from 'react';
-import { Scissors, Trash2, Zap, AlertCircle, CheckCircle2, ChevronRight, Play, Wand2, Hammer, Activity, FileUp, Target, Plus, X, Flame, BookOpen, Layers, Split } from 'lucide-react';
-import { Project, Chapter, ProjectType, ResearchNote } from '../types';
-import { AIService } from '../services/ai';
+import React, { useState } from 'react';
+import { Chapter, Project, ViewType } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { Scissors, AlertTriangle, ArrowLeft, Sparkles, Wand2, Copy, Check, Eye } from 'lucide-react';
+import { AIService } from '../services/ai';
 
-interface Props {
+interface ScalpelModuleProps {
   project: Project;
   chapters: Chapter[];
-  updateProject: (updates: Partial<Project>) => void;
-  updateChapters: (chaps: Chapter[]) => void;
-  setView: (view: any) => void;
-  onNotify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  updateProject: (p: Partial<Project>) => Promise<void>;
+  updateChapters: (chaps: Chapter[]) => Promise<void>;
+  setView: (v: ViewType) => void;
+  onNotify: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export default function ScalpelModule({ project, chapters, updateProject, updateChapters, setView, onNotify }: Props) {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [step, setStep] = useState<'selection' | 'analysis' | 'surgery' | 'results'>('selection');
-  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
-  const [seriesAnalysis, setSeriesAnalysis] = useState<any>(null);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [refinedContent, setRefinedContent] = useState<Record<string, string>>({});
+export default function ScalpelModule({
+  project,
+  chapters,
+  updateProject,
+  updateChapters,
+  setView,
+  onNotify
+}: ScalpelModuleProps) {
+  const [selectedChapterId, setSelectedChapterId] = useState<string>(chapters[0]?.id || '');
+  const [reductionTarget, setReductionTarget] = useState<number>(30); // 25-40% reduction target!
+  const [isSlicing, setIsSlicing] = useState<boolean>(false);
+  const [originalProse, setOriginalProse] = useState<string>('');
+  const [slicedProse, setSlicedProse] = useState<string>('');
+  const [surgeryReport, setSurgeryReport] = useState<string>('');
+  const [copied, setCopied] = useState<boolean>(false);
 
-  const addLog = (msg: string) => setLogs(prev => [...prev.slice(-10), `> [${new Date().toLocaleTimeString()}] ${msg}`]);
+  const selectedChapter = chapters.find(c => c.id === selectedChapterId);
 
-  const runSeriesAnalysis = async () => {
-    setIsProcessing(true);
-    addLog("Initializing Series Decompression Engine...");
-    try {
-      const result = await AIService.scalpelSeriesAnalysis(project, chapters);
-      setSeriesAnalysis(result);
-      addLog("Analysis Complete: " + result.recommendation.slice(0, 50) + "...");
-    } catch (err) {
-      addLog("ERROR: Analysis failed.");
-    } finally {
-      setIsProcessing(false);
+  React.useEffect(() => {
+    if (selectedChapter) {
+      setOriginalProse(selectedChapter.content || '');
+      setSlicedProse('');
+      setSurgeryReport('');
     }
-  };
+  }, [selectedChapterId, selectedChapter]);
 
-  const executeSurgery = async () => {
-    setIsProcessing(true);
-    setStep('surgery');
-    addLog("ENGAGING THE SCALPEL. Stand back.");
-    
-    const chaptersToProcess = chapters.filter(c => selectedChapters.includes(c.id));
-    const newRefined: Record<string, string> = {};
-
+  const handleSludgeSurgery = async () => {
+    if (!originalProse.trim()) {
+      onNotify('Select a chapter with content to perform surgery.', 'error');
+      return;
+    }
+    setIsSlicing(true);
+    onNotify('Analyzing prose matrix for padding and superficial flourishes...', 'info');
     try {
-      for (const chap of chaptersToProcess) {
-        addLog(`Surgically editing: ${chap.title}...`);
-        const refined = await AIService.scalpelRefine(chapters, chap, project);
-        newRefined[chap.id] = refined;
-        addLog(`Excision complete for ${chap.title}.`);
+      const prompt = `EXCIZING SLUDGE (SURGICAL MODE):
+      Apply direct surgical correction to the following segment of "${project.title}".
+      Your goal is exactly ${reductionTarget}% prose volume reduction, in strict compliance with Literary Standing Rules:
+      - Cut decorative phrases, repetitive adjectives, and unsolicited exposition.
+      - Retain vital dramatic intention, the sensory texture, and underlying wound.
+      - Reveal characters through behavior rather than explaining.
+      
+      PROSE TO STREAMLINE:
+      ${originalProse}
+      
+      Return JSON:
+      {
+        "leanProse": "The absolute pristine, tightened prose here",
+        "deletedLines": ["list of pretentious or unnecessary sentences excised"],
+        "wordCountSaved": 124,
+        "surgicalNote": "Brief, devastating editor justification for these cuts"
+      }`;
+
+      const response = await AIService.callAI({
+        prompt,
+        json: true,
+        model: 'gemini-2.0-flash',
+        schema: {
+          type: 'OBJECT',
+          properties: {
+            leanProse: { type: 'STRING' },
+            deletedLines: { type: 'ARRAY', items: { type: 'STRING' } },
+            wordCountSaved: { type: 'NUMBER' },
+            surgicalNote: { type: 'STRING' }
+          },
+          required: ['leanProse', 'deletedLines', 'wordCountSaved', 'surgicalNote']
+        }
+      });
+
+      const parsed = JSON.parse(response || '{}');
+      if (parsed.leanProse) {
+        setSlicedProse(parsed.leanProse);
+        setSurgeryReport(
+          `**SURGICAL ARCHIVE REPORT**\n\n` +
+          `*Cuts Made*: Saved ~${parsed.wordCountSaved} words (~${reductionTarget}%).\n` +
+          `*Director Feedback*: ${parsed.surgicalNote}\n\n` +
+          `**EXCISED SENTENCES (THE PRETTY SLUDGE):**\n` +
+          (parsed.deletedLines?.map((l: string) => `❌ *"${l}"*`).join('\n') || '*None identified as purely decorative.*')
+        );
+        onNotify('Surgery successful. Sludge extracted cleanly.', 'success');
+      } else {
+        throw new Error('Invalid surgical response');
       }
-      setRefinedContent(newRefined);
-      addLog("ALL SURGICAL OPERATIONS COMPLETE.");
-      setStep('results');
-    } catch (err) {
-      addLog("CRITICAL FAILURE during excision.");
+    } catch (err: any) {
+      console.error(err);
+      onNotify('Surgery interrupted or API congested.', 'error');
     } finally {
-      setIsProcessing(false);
+      setIsSlicing(false);
     }
   };
 
-  const applyChanges = () => {
-    const updated = chapters.map(c => refinedContent[c.id] ? { ...c, content: refinedContent[c.id], updatedAt: Date.now() } : c);
-    updateChapters(updated);
-    if (onNotify) onNotify("Manunscript successfully tightened and reconciled.", "success");
-    setView('writing');
+  const applySurgery = async () => {
+    if (!slicedProse || !selectedChapterId) return;
+    const updated = chapters.map(c => 
+      c.id === selectedChapterId 
+        ? { ...c, content: slicedProse, wordCount: slicedProse.split(/\s+/).filter(Boolean).length, updatedAt: Date.now() } 
+        : c
+    );
+    await updateChapters(updated);
+    setOriginalProse(slicedProse);
+    setSlicedProse('');
+    setSurgeryReport('');
+    onNotify('Excised prose permanently committed to the manuscript.', 'success');
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(slicedProse || originalProse);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="h-full flex flex-col min-h-0 text-white font-sans">
-      {/* Background FX */}
-      <div className="fixed inset-0 bg-black pointer-events-none -z-10" />
-      <div className="fixed inset-0 bg-gradient-to-br from-red-500/5 via-transparent to-red-900/5 pointer-events-none -z-10" />
-      
-      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 md:p-12">
-        <div className="max-w-5xl mx-auto space-y-12">
-          
-          {/* Header */}
-          <header className="flex flex-col md:flex-row items-center gap-8 border-b border-red-500/20 pb-12">
-            <div className="w-24 h-24 bg-red-600 rounded-[2rem] flex items-center justify-center shadow-[0_0_50px_rgba(220,38,38,0.3)] animate-pulse shrink-0">
-              <Scissors className="text-white bg-red-600" size={48} />
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <h1 className="text-4xl md:text-6xl font-black tracking-tighter uppercase italic leading-none mb-4">The Scalpel</h1>
-              <p className="text-lg text-red-500/60 font-medium tracking-widest uppercase flex items-center gap-2 justify-center md:justify-start">
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-                Elite Literary Surgery Module
-              </p>
-              <p className="mt-4 text-zinc-400 font-serif italic max-w-2xl leading-relaxed">
-                "I am the English teacher from hell. I am the acquisitions editor with a deadline and no patience. If your prose is woolly, I will excise it. If your story is bloated, I will split it. I am the machine that turns drafts into literature."
-              </p>
-            </div>
-          </header>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-            
-            {/* Left Col: Target & Controls */}
-            <div className="lg:col-span-1 space-y-8">
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 space-y-6">
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-red-500">Operation Parameters</h3>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-400">Chapters Detected</span>
-                    <span className="text-xl font-black">{chapters.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-zinc-400">Word Complexity</span>
-                    <span className="text-sm font-bold text-red-400">{project.targetWordCount ? 'STUFFED' : 'STANDARD'}</span>
-                  </div>
-                </div>
-
-                <div className="pt-6 border-t border-zinc-800 space-y-4">
-                  <button 
-                    onClick={runSeriesAnalysis}
-                    disabled={isProcessing}
-                    className="w-full py-4 bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 border border-zinc-700/50 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50"
-                  >
-                    <Layers size={16} />
-                    Series Scan
-                  </button>
-                  <button 
-                    onClick={executeSurgery}
-                    disabled={isProcessing || selectedChapters.length === 0}
-                    className="w-full py-5 bg-red-600 hover:bg-red-500 text-white rounded-2xl flex items-center justify-center gap-3 text-sm font-black uppercase tracking-[0.2em] transition-all shadow-[0_10px_30px_rgba(220,38,38,0.2)] disabled:opacity-50"
-                  >
-                    {isProcessing ? <Activity className="animate-spin" size={20} /> : <Zap size={20} />}
-                    Execute Excision
-                  </button>
-                </div>
-              </div>
-
-              {/* Console */}
-              <div className="bg-black border border-zinc-800 rounded-3xl p-6 h-[300px] flex flex-col">
-                <div className="flex items-center gap-2 mb-4 border-b border-zinc-800 pb-2">
-                  <Activity size={12} className="text-red-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Surgical Telemetry</span>
-                </div>
-                <div className="flex-1 overflow-y-auto font-mono text-[10px] space-y-2 text-zinc-400 custom-scrollbar">
-                  {logs.map((log, i) => <div key={i} className={log.includes('COMPLETE') ? 'text-green-400' : log.includes('ERROR') ? 'text-red-500' : ''}>{log}</div>)}
-                  {isProcessing && <div className="text-red-500 animate-pulse">&gt; PROCESSING...</div>}
-                </div>
-              </div>
-            </div>
-
-            {/* Main Col: Analysis & Results */}
-            <div className="lg:col-span-2 space-y-8">
-              
-              <AnimatePresence mode="wait">
-                {step === 'selection' && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className="space-y-8"
-                  >
-                    {seriesAnalysis?.volumes && Array.isArray(seriesAnalysis.volumes) && (
-                      <div className="bg-red-500/10 border border-red-500/30 rounded-3xl p-8 mb-8">
-                        <div className="flex items-start gap-4">
-                          <AlertCircle className="text-red-500 shrink-0 mt-1" />
-                          <div>
-                            <h3 className="text-xl font-black uppercase tracking-tight mb-2">Series Potential Identified</h3>
-                            <p className="text-zinc-400 italic mb-6 leading-relaxed">{seriesAnalysis.recommendation}</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {(seriesAnalysis.volumes || []).map((v: any, i: number) => (
-                                <div key={i} className="bg-black/40 border border-red-500/20 p-6 rounded-2xl">
-                                  <h4 className="text-red-400 font-black uppercase text-xs tracking-widest mb-2">Volume {i+1}</h4>
-                                  <p className="font-bold text-white mb-2">{v.title}</p>
-                                  <p className="text-[10px] text-zinc-500 leading-relaxed uppercase tracking-tight">{v.reasoning}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-6">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Select Chapters for Excision</h3>
-                        <button 
-                          onClick={() => setSelectedChapters(chapters.map(c => c.id))}
-                          className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:opacity-70"
-                        >
-                          Select All
-                        </button>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {chapters.map(chap => (
-                          <button 
-                            key={chap.id}
-                            onClick={() => setSelectedChapters(prev => prev.includes(chap.id) ? prev.filter(id => id !== chap.id) : [...prev, chap.id])}
-                            className={`p-6 border rounded-3xl text-left transition-all group ${
-                              selectedChapters.includes(chap.id) 
-                                ? 'bg-red-600/10 border-red-500 shadow-[inset_0_0_20px_rgba(220,38,38,0.1)]' 
-                                : 'bg-zinc-900/30 border-zinc-800 hover:border-zinc-700'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Chapter {chap.order + 1}</span>
-                              {selectedChapters.includes(chap.id) && <CheckCircle2 size={16} className="text-red-500" />}
-                            </div>
-                            <h4 className="font-black text-lg text-white group-hover:text-red-400 transition-colors">{chap.title}</h4>
-                            <p className="text-xs text-zinc-500 italic mt-2 line-clamp-1">{chap.summary}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 'results' && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="space-y-8"
-                  >
-                    <div className="bg-green-500/10 border border-green-500/30 rounded-3xl p-8 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/20">
-                          <CheckCircle2 className="text-white" />
-                        </div>
-                        <div>
-                          <h3 className="text-xl font-black uppercase tracking-tight">Surgical Success</h3>
-                          <p className="text-green-500/60 text-xs font-bold uppercase tracking-widest">Biometric Narrative Integrity: 100%</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={applyChanges}
-                        className="px-8 py-4 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg shadow-green-600/20 active:scale-95"
-                      >
-                        Commit to Archive
-                      </button>
-                    </div>
-
-                    <div className="space-y-8">
-                       {chapters.filter(c => refinedContent[c.id]).map(chap => (
-                         <div key={chap.id} className="bg-zinc-900/50 border border-zinc-800 rounded-[2.5rem] overflow-hidden">
-                           <div className="p-6 bg-black/40 border-b border-zinc-800 flex items-center justify-between">
-                             <h4 className="font-black uppercase tracking-widest text-zinc-300 text-sm">{chap.title}</h4>
-                             <span className="text-[10px] text-green-500 font-black uppercase tracking-[0.2em]">Refined & Reconciled</span>
-                           </div>
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-zinc-800">
-                             <div className="bg-zinc-900/80 p-8 space-y-4">
-                               <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600">Pre-Surgery Draft</p>
-                               <p className="text-xs text-zinc-500 font-serif leading-none italic blur-[1px] opacity-40 select-none">
-                                 {chap.content.slice(0, 1000)}...
-                               </p>
-                               <div className="text-xs text-zinc-500 italic mt-8 border-t border-zinc-800 pt-4">Original: {chap.content.split(/\s+/).length} words</div>
-                             </div>
-                             <div className="bg-black/60 p-8 space-y-4">
-                               <p className="text-[10px] font-black uppercase tracking-widest text-green-500/80">Refined Manuscript</p>
-                               <p className="text-sm text-zinc-200 font-serif leading-relaxed line-clamp-6">
-                                 {refinedContent[chap.id]}
-                               </p>
-                               <div className="text-xs text-green-500 font-black italic mt-8 border-t border-zinc-800 pt-4 uppercase tracking-widest flex items-center gap-2">
-                                 <Scissors size={12} />
-                                 New: {refinedContent[chap.id].split(/\s+/).length} words
-                               </div>
-                             </div>
-                           </div>
-                         </div>
-                       ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
+    <div id="scalpel-view" className="flex-1 flex flex-col min-h-0 bg-neutral-950 text-neutral-100 p-6 overflow-y-auto">
+      <div className="max-w-6xl mx-auto w-full flex flex-col h-full">
+        {/* Header toolbar */}
+        <div className="flex items-center justify-between mb-6 border-b border-neutral-800 pb-4">
+          <div className="flex items-center gap-3">
+            <button 
+              id="back-to-writing"
+              onClick={() => setView('writing')}
+              className="p-2 hover:bg-neutral-900 rounded-full text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-xl font-mono tracking-tight font-bold flex items-center gap-2">
+                <Scissors className="w-5 h-5 text-red-500" />
+                DRAFT SCALPEL <span className="text-xs px-2 py-0.5 bg-red-950/50 border border-red-900/50 text-red-400 font-normal rounded font-mono">SLUDGE REDUCTION ACTIVE</span>
+              </h1>
+              <p className="text-xs text-neutral-400 mt-1">Surgically slice 25%–40% decoration and boilerplate, revealing the raw sensory pulse.</p>
             </div>
           </div>
+          <select
+            id="chapter-selector"
+            value={selectedChapterId}
+            onChange={(e) => setSelectedChapterId(e.target.value)}
+            className="bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs rounded px-3 py-1.5 focus:border-red-500 font-mono outline-none"
+          >
+            <option value="">Select Chapter...</option>
+            {chapters.map(c => (
+              <option key={c.id} value={c.id}>{c.title || `Chapter ${c.order + 1}`}</option>
+            ))}
+          </select>
         </div>
+
+        {selectedChapter ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+            {/* Surgery Control Panel */}
+            <div className="lg:col-span-4 bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-5 flex flex-col gap-5">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
+                <Wand2 className="w-3.5 h-3.5 text-neutral-400" /> Surgery settings
+              </h2>
+              
+              <div className="space-y-2">
+                <label className="text-xs text-neutral-400 flex justify-between">
+                  <span>EXCISION PRESSURE:</span>
+                  <span className="font-mono text-red-400 font-bold">{reductionTarget}% REDUCTION</span>
+                </label>
+                <input 
+                  type="range" 
+                  min="15" 
+                  max="50" 
+                  value={reductionTarget} 
+                  onChange={(e) => setReductionTarget(Number(e.target.value))}
+                  className="w-full accent-red-500 bg-neutral-800 rounded-lg height-1.5 cursor-pointer"
+                />
+                <p className="text-[10px] text-neutral-500 italic">25%–40% is recommended. Anything above 45% risks structural narrative tissue loss.</p>
+              </div>
+
+              <div className="border border-neutral-800 rounded p-3 bg-neutral-950/40 text-[11px] text-neutral-400 space-y-2">
+                <p className="font-semibold text-neutral-300">✂️ INGESTION INSTRUCTIONS:</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>Liquidation of redundant atmospheric markers.</li>
+                  <li>Converting passive internal monologues to active gestures.</li>
+                  <li>Forcing dialogue into shorter, high-tension beats.</li>
+                </ul>
+              </div>
+
+              <button
+                id="slice-button"
+                onClick={handleSludgeSurgery}
+                disabled={isSlicing || !originalProse.trim()}
+                className="w-full py-2.5 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-mono font-bold text-xs uppercase tracking-widest transition-all active:scale-[0.98] shadow-lg shadow-red-950/40 flex items-center justify-center gap-1.5"
+              >
+                {isSlicing ? (
+                  <>
+                    <Sparkles className="w-4 h-4 animate-spin text-white" />
+                    PERFORMING RESECTION...
+                  </>
+                ) : (
+                  <>
+                    <Scissors className="w-4 h-4" />
+                    EXCISE PRETTY SLUDGE
+                  </>
+                )}
+              </button>
+
+              {surgeryReport && (
+                <div className="mt-2 text-xs border border-neutral-800 bg-neutral-950/60 rounded p-4 overflow-y-auto max-h-[300px] leading-relaxed prose-invert scrollbar">
+                  <div className="text-[10px] font-mono uppercase text-red-400 tracking-widest mb-1">SURGERY FEEDBACK:</div>
+                  <pre className="whitespace-pre-wrap font-sans text-neutral-300 text-[11px]">
+                    {surgeryReport}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Prose Editor Side-by-Side */}
+            <div className="lg:col-span-8 flex flex-col gap-4 min-h-[500px]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                {/* Original Prose column */}
+                <div className="flex flex-col bg-neutral-950 border border-neutral-800/80 rounded-xl overflow-hidden">
+                  <div className="bg-neutral-900/80 px-4 py-2 border-b border-neutral-800 flex justify-between items-center">
+                    <span className="text-xs font-mono font-semibold tracking-wider text-neutral-400">RAW UNTREATED MANUSCRIPT</span>
+                    <span className="text-[10px] font-mono text-neutral-500 bg-neutral-900 border border-neutral-800 px-1.5 py-0.5 rounded">
+                      {originalProse.split(/\s+/).filter(Boolean).length} words
+                    </span>
+                  </div>
+                  <textarea
+                    id="prose-input"
+                    value={originalProse}
+                    onChange={(e) => setOriginalProse(e.target.value)}
+                    placeholder="Chapter prose segment..."
+                    className="flex-1 p-4 bg-neutral-950 text-neutral-300 font-mono text-xs leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-neutral-800 scrollbar"
+                  />
+                </div>
+
+                {/* Sliced Prose Column */}
+                <div className="flex flex-col bg-neutral-950 border border-neutral-800/80 rounded-xl overflow-hidden relative">
+                  <div className="bg-neutral-950/80 px-4 py-2 border-b border-neutral-800 flex justify-between items-center">
+                    <span className="text-xs font-mono font-semibold tracking-wider text-red-400">PRISTINE SURGICAL CORE</span>
+                    {slicedProse && (
+                      <span className="text-[10px] font-mono text-green-400 bg-green-950/20 border border-green-900/50 px-1.5 py-0.5 rounded">
+                        {slicedProse.split(/\s+/).filter(Boolean).length} words
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 p-4 font-mono text-xs leading-relaxed text-neutral-300 overflow-y-auto scrollbar bg-neutral-950/40">
+                    {slicedProse ? (
+                      <p className="whitespace-pre-wrap">{slicedProse}</p>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center text-neutral-600 p-6 font-sans">
+                        <AlertTriangle className="w-8 h-8 text-neutral-800 mb-2" />
+                        <span className="text-[11px] uppercase tracking-wider font-semibold">Ready for Incision</span>
+                        <p className="text-[10px] text-neutral-600 max-w-xs mt-1">Select reduction pressure and tap 'EXCISE PRETTY SLUDGE' to begin.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {slicedProse && (
+                    <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                      <button 
+                        id="copy-sliced-button"
+                        onClick={copyToClipboard}
+                        className="p-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white rounded transition-all"
+                        title="Copy to Clipboard"
+                      >
+                        {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                      <button 
+                        id="apply-surgery-button"
+                        onClick={applySurgery}
+                        className="px-3 py-1.5 bg-green-700 hover:bg-green-800 text-white rounded text-[10px] font-mono font-bold tracking-widest transition-all hover:shadow-lg shadow-green-950/50"
+                      >
+                        APPLY TO DRAFT
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-neutral-500 py-16">
+            <AlertTriangle className="w-12 h-12 text-neutral-700 mb-3" />
+            <span className="font-mono uppercase tracking-widest text-xs font-semibold">No Chapters Active</span>
+            <p className="text-xs text-neutral-600 mt-1">Please create a chapter first to mobilize the draft scalpel surgery module.</p>
+          </div>
+        )}
       </div>
     </div>
   );

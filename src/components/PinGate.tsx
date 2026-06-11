@@ -61,16 +61,16 @@ export default function PinGate({ children }: Props) {
       >
         <div className="mb-10 relative">
           <div className="absolute inset-0 bg-brand-primary opacity-20 blur-2xl rounded-full" />
-          <div className="p-6 ethereal-panel rounded-full relative z-10 shadow-[0_0_50px_rgba(168,85,247,0.4)]">
+          <div className="p-3 ethereal-panel rounded-full relative z-10 shadow-[0_0_50px_rgba(168,85,247,0.4)]">
             <Ghost size={56} className="text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
           </div>
         </div>
 
-        <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 mb-2 tracking-widest uppercase text-center font-sans drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">Casper<br/>The Ghost Writer</h1>
-        <p className="text-[10px] text-brand-accent uppercase tracking-[0.4em] mb-12 font-bold text-center">Writing the stories of the <br/> digital afterlife</p>
+        <h1 className="text-xs font-semibold font-semibold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 mb-2 tracking-widest uppercase text-center font-sans drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">Caspa<br/>The Ghost Writer</h1>
+        <p className="text-xs text-brand-accent uppercase tracking-widest mb-1.5 font-medium text-center">Writing the stories of the <br/> digital afterlife</p>
 
         {/* PIN Indicators */}
-        <div className="flex gap-4 mb-16">
+        <div className="flex gap-2 mb-1.5">
           {[0, 1, 2, 3].map((i) => (
             <motion.div
               key={i}
@@ -88,12 +88,12 @@ export default function PinGate({ children }: Props) {
         </div>
 
         {/* Keypad */}
-        <div className="grid grid-cols-3 gap-6 w-full">
+        <div className="grid grid-cols-3 gap-1.5 w-full">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
             <button
               key={num}
               onClick={() => handleKeyPress(num.toString())}
-              className="aspect-square rounded-2xl bg-gray-900/50 border border-white/5 text-2xl font-bold text-white hover:bg-gray-800 hover:border-white/20 active:scale-90 transition-all flex items-center justify-center group"
+              className="aspect-square rounded bg-gray-900/50 border border-white/5 text-[11px] font-semibold font-medium text-white hover:bg-gray-800 hover:border-white/20 active:scale-90 transition-all flex items-center justify-center group"
             >
               <span className="group-hover:scale-110 transition-transform">{num}</span>
             </button>
@@ -101,19 +101,19 @@ export default function PinGate({ children }: Props) {
           <div />
           <button
             onClick={() => handleKeyPress('0')}
-            className="aspect-square rounded-2xl bg-gray-900/50 border border-white/5 text-2xl font-bold text-white hover:bg-gray-800 hover:border-white/20 active:scale-90 transition-all flex items-center justify-center"
+            className="aspect-square rounded bg-gray-900/50 border border-white/5 text-[11px] font-semibold font-medium text-white hover:bg-gray-800 hover:border-white/20 active:scale-90 transition-all flex items-center justify-center"
           >
             0
           </button>
           <button
             onClick={handleBackspace}
-            className="aspect-square rounded-2xl bg-gray-900/50 border border-white/5 text-gray-400 hover:text-white hover:bg-gray-800 hover:border-white/20 active:scale-90 transition-all flex items-center justify-center"
+            className="aspect-square rounded bg-gray-900/50 border border-white/5 text-gray-400 hover:text-white hover:bg-gray-800 hover:border-white/20 active:scale-90 transition-all flex items-center justify-center"
           >
             <Delete size={24} />
           </button>
         </div>
 
-        <div className="mt-16 flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] font-black text-gray-700">
+        <div className="mt-16 flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-gray-700">
            <ShieldCheck size={12} className="opacity-50" />
            Private Protocol Active
         </div>

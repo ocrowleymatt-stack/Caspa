@@ -810,16 +810,16 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain custom-scrollbar pb-4" style={{ minHeight: 0 }}>
-      <div className="max-w-5xl mx-auto py-2 px-4 md:px-6 relative">
-      <header className="mb-4 text-center">
+      <div className="max-w-5xl mx-auto py-2 px-2 md:px-2.5 relative">
+      <header className="mb-1.5 text-center">
         <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-brand-primary/10 border border-brand-primary/20 rounded-full mb-2">
           <ShieldCheck size={12} className="text-brand-primary" />
-          <span className="text-[9px] font-black text-brand-primary uppercase tracking-widest">Protocol Engine</span>
+          <span className="text-[10px] font-semibold text-brand-primary uppercase tracking-widest">Protocol Engine</span>
         </div>
-        <h1 className="text-xl font-black text-text-primary mb-1 tracking-tight italic font-serif">Finish & Fix <span className="text-[9px] not-italic text-text-secondary font-sans tracking-normal opacity-30">v2.55 Cloud</span></h1>
+        <h1 className="text-xs font-semibold font-semibold text-text-primary mb-1 tracking-tight italic font-serif">Finish & Fix <span className="text-[10px] not-italic text-text-secondary font-sans tracking-normal opacity-30">v2.55 Cloud</span></h1>
         
         {isFixingBadBook && (
-          <div className="max-w-md mx-auto mt-4 mb-4 space-y-2">
+          <div className="max-w-md mx-auto mt-4 mb-1.5 space-y-2">
             <div className="h-1.5 w-full bg-surface-muted rounded-full overflow-hidden shadow-inner border border-border-subtle">
               <motion.div 
                 className="h-full bg-brand-primary"
@@ -828,22 +828,22 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
                 transition={{ type: "spring", bounce: 0, duration: 0.5 }}
               />
             </div>
-            <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-brand-primary">
+            <div className="flex justify-between items-center text-[10px] font-semibold uppercase tracking-widest text-brand-primary">
               <span>Macro Overhaul: {fixProgress < 20 ? 'Targeting' : fixProgress < 40 ? 'Architecting' : fixProgress < 60 ? 'Reconciling' : fixProgress < 75 ? 'Continuity' : 'Deep Drafting'}</span>
               <span className="tabular-nums">{Math.round(fixProgress)}%</span>
             </div>
           </div>
         )}
 
-        <p className="text-text-secondary max-w-2xl mx-auto font-medium text-[10px] opacity-70">
+        <p className="text-text-secondary max-w-2xl mx-auto font-medium text-xs opacity-70">
           Neural integrity analysis. Automated structural reconciliation. Swarm drafting.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-1.5 md:gap-1.5">
         <div className="lg:col-span-1 space-y-3">
-          <div className="ethereal-panel p-4 rounded-2xl border border-border-subtle shadow-lg">
-            <h3 className="text-[9px] font-black text-text-secondary uppercase tracking-widest mb-3 flex items-center gap-2 opacity-50">
+          <div className="ethereal-panel p-4 rounded border border-border-subtle shadow-lg">
+            <h3 className="text-[10px] font-semibold text-text-secondary uppercase tracking-widest mb-3 flex items-center gap-2 opacity-50">
               <Zap size={12} className="text-amber-500" />
               Directives
             </h3>
@@ -851,13 +851,13 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
               <button 
                 onClick={runFixBadBook}
                 disabled={isFixingBadBook}
-                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
+                className={`w-full flex items-center justify-between p-3 rounded-md transition-all group ${
                   isFixingBadBook ? 'bg-surface-muted text-text-secondary' : 'bg-red-600/95 text-white hover:bg-red-600 shadow-md active:scale-95'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Target size={16} className="shrink-0" />
-                  <span className="text-[11px] font-bold text-left leading-tight uppercase tracking-wider">
+                  <span className="text-xs font-medium text-left leading-tight uppercase tracking-wider">
                     {isFixingBadBook ? `Overhaul: ${Math.round(fixProgress)}%` : 'Fix a Bad Book'}
                   </span>
                 </div>
@@ -871,13 +871,13 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
               <button 
                 onClick={runFinishAndFix}
                 disabled={isFixing}
-                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
+                className={`w-full flex items-center justify-between p-3 rounded-md transition-all group ${
                   isFixing ? 'bg-surface-muted text-text-secondary' : 'bg-brand-dark text-text-primary hover:bg-black border border-border-subtle active:scale-95'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Hammer size={16} className="shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Manuscript Scan</span>
+                  <span className="text-xs font-medium uppercase tracking-wider">Manuscript Scan</span>
                 </div>
                 {isFixing ? (
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
@@ -889,13 +889,13 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
               <button 
                 onClick={startAutoPilot}
                 disabled={autoPilot}
-                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
+                className={`w-full flex items-center justify-between p-3 rounded-md transition-all group ${
                   autoPilot ? 'bg-surface-muted text-text-secondary' : 'btn-nexus-primary active:scale-95'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Play size={16} className="shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Auto-Pilot Finish</span>
+                  <span className="text-xs font-medium uppercase tracking-wider">Auto-Pilot Finish</span>
                 </div>
                 {autoPilot ? (
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
@@ -907,30 +907,30 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
               <button 
                 onClick={handleRipUp}
                 disabled={isRestructuring}
-                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
+                className={`w-full flex items-center justify-between p-3 rounded-md transition-all group ${
                    isRestructuring ? 'bg-surface-muted text-text-secondary' : 'bg-red-600/10 text-red-500 hover:bg-red-600/20 border border-red-500/20 active:scale-95'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Flame size={16} className={`shrink-0 ${isRestructuring ? 'animate-pulse' : ''}`} />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Full Restructure</span>
+                  <span className="text-xs font-medium uppercase tracking-wider">Full Restructure</span>
                 </div>
                 {!isRestructuring && <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform shrink-0" />}
               </button>
             </div>
           </div>
           
-          <div className="bg-brand-dark/40 p-3 rounded-2xl shadow-sm border border-border-subtle">
-            <h3 className="text-[9px] font-black text-text-secondary uppercase tracking-widest mb-2 flex items-center gap-2 opacity-30">
+          <div className="bg-brand-dark/40 p-3 rounded shadow-sm border border-border-subtle">
+            <h3 className="text-[10px] font-semibold text-text-secondary uppercase tracking-widest mb-2 flex items-center gap-2 opacity-30">
               <Activity size={12} className="text-emerald-500" />
               Pulse Logs
             </h3>
             <div className="space-y-1 font-mono h-20 overflow-y-auto custom-scrollbar">
               {logs.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-[7px] text-text-secondary opacity-20 uppercase tracking-[0.4em]">Standby...</div>
+                <div className="h-full flex items-center justify-center text-[7px] text-text-secondary opacity-20 uppercase tracking-widest">Standby...</div>
               ) : (
                 logs.map((log, i) => (
-                  <div key={i} className="text-[8px] text-emerald-400 last:text-emerald-300 line-clamp-1">
+                  <div key={i} className="text-[10px] text-emerald-400 last:text-emerald-300 line-clamp-1">
                     {log}
                   </div>
                 ))
@@ -947,11 +947,11 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="ethereal-panel p-6 rounded-2xl border border-border-subtle shadow-xl min-h-[280px] relative overflow-hidden"
+                className="ethereal-panel p-3 rounded border border-border-subtle shadow-xl min-h-[280px] relative overflow-hidden"
               >
-                <div className="flex items-center justify-between mb-6 pb-4 border-b border-border-subtle">
-                  <h2 className="text-xl font-black text-text-primary italic font-serif tracking-tight">System Report</h2>
-                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-400/20">
+                <div className="flex items-center justify-between mb-2 pb-4 border-b border-border-subtle">
+                  <h2 className="text-xs font-semibold font-semibold text-text-primary italic font-serif tracking-tight">System Report</h2>
+                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-medium bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-400/20">
                     <CheckCircle2 size={14} />
                     Synchronized
                   </div>
@@ -959,16 +959,16 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
                 <div className="markdown-body prose prose-invert prose-brand max-w-none italic">
                   <Markdown>{analysis}</Markdown>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-8">
                   <button 
                     onClick={() => setView('writing')}
-                    className="w-full py-4 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl transition-all active:scale-95"
+                    className="w-full py-1 bg-brand-primary hover:bg-brand-accent text-white rounded font-semibold text-xs uppercase tracking-widest shadow-2xl transition-all active:scale-95"
                   >
                     Enter Writing Studio
                   </button>
                   <button 
                     onClick={() => setView('scalpel')}
-                    className="w-full py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3"
+                    className="w-full py-1 bg-red-600 hover:bg-red-500 text-white rounded font-semibold text-xs uppercase tracking-widest shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-1.5"
                   >
                     <Scissors size={18} />
                     The Scalpel
@@ -976,10 +976,10 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
                 </div>
               </motion.div>
             ) : isImporting || isFixing ? (
-              <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-12 text-center ethereal-panel rounded-2xl border border-border-subtle shadow-inner">
-                <img src="/skeleton_writer.gif" alt="Skeleton Writer" className="h-32 w-auto mb-8 drop-shadow-2xl" referrerPolicy="no-referrer" />
-                <h3 className="text-2xl font-black text-text-primary mb-4 tracking-tight italic font-serif">Processing Manuscript...</h3>
-                <p className="text-text-secondary max-w-sm font-medium opacity-60 italic mb-8"> neural core fragments the narrative architecture...</p>
+              <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-3 text-center ethereal-panel rounded border border-border-subtle shadow-inner">
+                <img src="/skeleton_writer.gif" alt="Skeleton Writer" className="h-32 w-auto mb-3 drop-shadow-2xl" referrerPolicy="no-referrer" />
+                <h3 className="text-[11px] font-semibold font-semibold text-text-primary mb-1.5 tracking-tight italic font-serif">Processing Manuscript...</h3>
+                <p className="text-text-secondary max-w-sm font-medium opacity-60 italic mb-3"> neural core fragments the narrative architecture...</p>
                 <div className="w-full max-w-md h-1.5 bg-surface-muted rounded-full overflow-hidden">
                   <motion.div initial={{ width: 0 }} animate={{ width: "100%" }} transition={{ duration: 10 }} className="h-full bg-brand-primary" />
                 </div>
@@ -989,7 +989,7 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
                 onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
                 onDragLeave={() => setDragActive(false)}
                 onDrop={(e) => { e.preventDefault(); setDragActive(false); handleDrop(e as any); }}
-                className={`h-full min-h-[250px] flex flex-col items-center justify-center p-8 text-center rounded-[2.5rem] border-2 border-dashed transition-all relative overflow-hidden group ${
+                className={`h-full min-h-[250px] flex flex-col items-center justify-center p-2 text-center rounded-md border-2 border-dashed transition-all relative overflow-hidden group ${
                   dragActive ? 'border-brand-primary bg-brand-primary/5' : 'border-border-subtle ethereal-panel hover:border-text-secondary/30'
                 }`}
               >
@@ -1005,13 +1005,13 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
                     }
                   }} 
                 />
-                <img src="/skeleton_writer.gif" alt="Skeleton" className="h-20 w-auto mb-6 opacity-30 group-hover:opacity-60 transition-opacity grayscale hover:grayscale-0" referrerPolicy="no-referrer" />
-                <p className="text-xl font-black text-text-primary italic font-serif">Awaiting Ingestion Signal</p>
+                <img src="/skeleton_writer.gif" alt="Skeleton" className="h-20 w-auto mb-2 opacity-30 group-hover:opacity-60 transition-opacity grayscale hover:grayscale-0" referrerPolicy="no-referrer" />
+                <p className="text-xs font-semibold font-semibold text-text-primary italic font-serif">Awaiting Ingestion Signal</p>
                 <div className="flex flex-col items-center gap-2 mt-4">
-                  <p className="text-[10px] text-text-secondary font-black uppercase tracking-[0.4em] opacity-40">Drag and drop artifacts to begin</p>
+                  <p className="text-xs text-text-secondary font-semibold uppercase tracking-widest opacity-40">Drag and drop artifacts to begin</p>
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="text-[9px] font-black text-brand-primary uppercase tracking-widest hover:underline hover:opacity-100 transition-all opacity-60"
+                    className="text-[10px] font-semibold text-brand-primary uppercase tracking-widest hover:underline hover:opacity-100 transition-all opacity-60"
                   >
                     Or select files manually
                   </button>
@@ -1022,21 +1022,21 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 md:px-6 mt-8">
-        <section className="ethereal-panel p-6 rounded-[2.5rem] border border-brand-primary/20 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-[0.05]">
+      <div className="max-w-5xl mx-auto px-2 md:px-2.5 mt-8">
+        <section className="ethereal-panel p-3 rounded-md border border-brand-primary/20 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-2 opacity-[0.05]">
             <Target size={100} className="text-brand-primary" />
           </div>
           
           <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="p-2 bg-brand-primary/10 rounded-xl text-brand-primary">
+            <div className="flex items-center gap-1.5 mb-5">
+              <div className="p-2 bg-brand-primary/10 rounded-md text-brand-primary">
                 <Sparkles size={18} />
               </div>
-              <h2 className="text-lg font-black text-text-primary uppercase tracking-tight italic font-serif">Narrative Pulse Diagnostics</h2>
+              <h2 className="text-lg font-semibold text-text-primary uppercase tracking-tight italic font-serif">Narrative Pulse Diagnostics</h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {[
                 { 
                   label: 'Wound Check', 
@@ -1057,28 +1057,28 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
                   color: 'text-emerald-500'
                 }
               ].map((item, i) => (
-                <div key={i} className="bg-surface-muted/30 border border-border-subtle p-4 rounded-xl space-y-2 group hover:border-brand-primary/20 transition-all">
+                <div key={i} className="bg-surface-muted/30 border border-border-subtle p-4 rounded-md space-y-2 group hover:border-brand-primary/20 transition-all">
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-text-primary">{item.label}</span>
-                    <span className={`text-[7px] font-black uppercase tracking-widest ${item.color} bg-white/5 px-2 py-0.5 rounded-full border border-current opacity-60`}>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-text-primary">{item.label}</span>
+                    <span className={`text-[7px] font-semibold uppercase tracking-widest ${item.color} bg-white/5 px-2 py-0.5 rounded-full border border-current opacity-60`}>
                       {item.status}
                     </span>
                   </div>
-                  <p className="text-[9px] text-text-secondary leading-relaxed opacity-60">
+                  <p className="text-[10px] text-text-secondary leading-relaxed opacity-60">
                     {item.desc}
                   </p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 pt-5 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="mt-6 pt-5 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
-                <span className="text-[8px] font-black uppercase tracking-[0.2em] text-text-secondary">Neural subtext check active in background...</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-secondary">Neural subtext check active in background...</span>
               </div>
               <button 
                 onClick={runFinishAndFix}
-                className="px-5 py-2 bg-brand-primary text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg shadow-brand-primary/10 hover:scale-105 active:scale-95 transition-all"
+                className="px-2 py-2 bg-brand-primary text-white text-[10px] font-semibold uppercase tracking-widest rounded shadow-lg shadow-brand-primary/10 hover:scale-105 active:scale-95 transition-all"
               >
                 Neural Scan
               </button>
@@ -1089,26 +1089,26 @@ ${isPlan ? "\n**Plan Instruction Protocol Active:** The system will now prioriti
 
       <AnimatePresence>
         {showManualPaste && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-brand-dark/95 backdrop-blur-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-brand-dark/95 backdrop-blur-2xl">
             <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="w-full max-w-4xl ethereal-panel border border-border-subtle rounded-[3rem] p-10 shadow-2xl"
+               className="w-full max-w-4xl ethereal-panel border border-border-subtle rounded-md p-3 shadow-2xl"
             >
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-2xl font-black text-text-primary italic font-serif">Manual Injection</h3>
-                <button onClick={() => setShowManualPaste(false)} className="p-3 bg-surface-muted rounded-xl transition-all border border-border-subtle">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[11px] font-semibold font-semibold text-text-primary italic font-serif">Manual Injection</h3>
+                <button onClick={() => setShowManualPaste(false)} className="p-3 bg-surface-muted rounded-md transition-all border border-border-subtle">
                   <X size={20} />
                 </button>
               </div>
               <textarea 
                 value={pasteContent} 
                 onChange={(e) => setPasteContent(e.target.value)} 
-                className="w-full h-96 bg-brand-dark border border-border-subtle rounded-3xl p-8 text-text-primary focus:ring-2 focus:ring-brand-primary/20 outline-none resize-none"
+                className="w-full h-96 bg-brand-dark border border-border-subtle rounded-md p-2 text-text-primary focus:ring-2 focus:ring-brand-primary/20 outline-none resize-none"
               />
-              <div className="flex justify-end gap-6 mt-10">
-                <button onClick={handleManualImport} className="px-10 py-4 btn-nexus-primary font-black text-[10px] uppercase tracking-widest rounded-2xl active:scale-95">
+              <div className="flex justify-end gap-1.5 mt-10">
+                <button onClick={handleManualImport} className="px-2.5 py-1 btn-nexus-primary font-semibold text-xs uppercase tracking-widest rounded active:scale-95">
                   Neural Fragmentation
                 </button>
               </div>

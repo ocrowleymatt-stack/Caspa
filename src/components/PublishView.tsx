@@ -358,7 +358,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar overscroll-contain pb-32">
-      <div className="max-w-6xl mx-auto py-6 md:py-12 px-4 md:px-6 print:p-0 print:max-w-none print:m-0 print:bg-white">
+      <div className="max-w-6xl mx-auto py-2 md:py-1 px-2 md:px-2 print:p-0 print:max-w-none print:m-0 print:bg-white">
         <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page {
@@ -402,22 +402,22 @@ export default function PublishView({ project, chapters, updateProject, updateCh
           }
         }
       `}} />
-      <header className="mb-6 md:mb-12 no-print">
-        <div className="flex flex-col md:flex-row items-center md:justify-between md:items-end gap-6 md:gap-10 mb-6 md:mb-12">
+      <header className="mb-2 md:mb-1.5 no-print">
+        <div className="flex flex-col md:flex-row items-center md:justify-between md:items-end gap-2 md:gap-2 mb-2 md:mb-1.5">
           <div className="text-center md:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-primary/10 rounded-2xl mb-4 md:mb-6 border border-brand-primary/20">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-primary/10 rounded mb-1.5 md:mb-2 border border-brand-primary/20">
               <Shield size={14} className="text-brand-primary" />
-              <span className="text-[8px] md:text-[10px] font-black text-brand-primary uppercase tracking-[0.4em]">Casper Ghost Writer • High-Level Architecture</span>
+              <span className="text-[10px] md:text-xs font-semibold text-brand-primary uppercase tracking-widest">Caspa Ghost Writer • High-Level Architecture</span>
             </div>
-            <h1 className="text-3xl md:text-6xl font-black text-text-primary tracking-tighter italic font-serif leading-none">Draft Transmissions</h1>
+            <h1 className="text-[11px] font-medium md:text-[11px] font-medium font-semibold text-text-primary tracking-tighter italic font-serif leading-none">Draft Transmissions</h1>
           </div>
           
-          <div className="flex gap-2 p-2 bg-surface-muted rounded-[2rem] w-full md:w-auto overflow-x-auto custom-scrollbar border border-border-subtle shadow-2xl">
+          <div className="flex gap-2 p-2 bg-surface-muted rounded w-full md:w-auto overflow-x-auto custom-scrollbar border border-border-subtle shadow-2xl">
             {(['export', 'preview', 'designer', 'layout', 'plugins', 'kdp'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
-                className={`px-6 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap flex-1 md:flex-none relative ${
+                className={`px-2 py-1 rounded text-xs font-semibold uppercase tracking-[0.2em] transition-all whitespace-nowrap flex-1 md:flex-none relative ${
                   activeTab === tab ? 'btn-nexus-primary shadow-2xl shadow-brand-primary/20' : 'text-text-secondary hover:text-text-primary'
                 }`}
               >
@@ -430,7 +430,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-1.5">
         <AnimatePresence mode="wait">
           {activeTab === 'export' && (
             <motion.div 
@@ -438,34 +438,34 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="lg:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-8 no-print"
+              className="lg:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-2 no-print"
             >
               {/* Vitals Side */}
-              <div className="md:col-span-1 space-y-8">
-                <div className="bg-brand-dark text-white p-10 rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.5)] relative overflow-hidden border border-border-subtle group">
+              <div className="md:col-span-1 space-y-3">
+                <div className="bg-brand-dark text-white p-4 rounded shadow-[0_50px_100px_rgba(0,0,0,0.5)] relative overflow-hidden border border-border-subtle group">
                   <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
-                  <h3 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] mb-10">Manuscript Vitals</h3>
-                  <div className="space-y-10">
+                  <h3 className="text-xs font-semibold text-brand-primary uppercase tracking-widest mb-10">Manuscript Vitals</h3>
+                  <div className="space-y-3">
                     <div>
-                      <div className="text-5xl font-black italic font-serif tracking-tighter text-text-primary leading-none mb-2">{totalWords.toLocaleString()}</div>
-                      <div className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] opacity-40">Word Count</div>
+                      <div className="text-[11px] font-medium font-semibold italic font-serif tracking-tighter text-text-primary leading-none mb-2">{totalWords.toLocaleString()}</div>
+                      <div className="text-xs font-semibold text-text-secondary uppercase tracking-widest opacity-40">Word Count</div>
                     </div>
                     <div>
-                      <div className="text-5xl font-black italic font-serif tracking-tighter text-text-primary leading-none mb-2">{estPageCount}</div>
-                      <div className="text-[10px] font-black text-text-secondary uppercase tracking-[0.4em] opacity-40">Est. Book Pages</div>
+                      <div className="text-[11px] font-medium font-semibold italic font-serif tracking-tighter text-text-primary leading-none mb-2">{estPageCount}</div>
+                      <div className="text-xs font-semibold text-text-secondary uppercase tracking-widest opacity-40">Est. Book Pages</div>
                     </div>
                   </div>
                 </div>
                 
-                <div className="p-10 ethereal-panel border border-border-subtle rounded-[3rem] shadow-xl">
-                  <h4 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] mb-8">Export Standards</h4>
+                <div className="p-4 ethereal-panel border border-border-subtle rounded shadow-xl">
+                  <h4 className="text-xs font-semibold text-brand-primary uppercase tracking-widest mb-3">Export Standards</h4>
                   <div className="space-y-5">
                     {[
                       'Standardized Chapter Headings',
                       'UTF-8 Character Encoding',
                       'High-Density Internal Guttering'
                     ].map(std => (
-                      <div key={std} className="flex items-center gap-4 text-[11px] font-black text-text-secondary uppercase tracking-widest">
+                      <div key={std} className="flex items-center gap-2 text-xs font-semibold text-text-secondary uppercase tracking-widest">
                         <CheckCircle2 size={18} className="text-brand-primary" /> {std}
                       </div>
                     ))}
@@ -474,28 +474,28 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               </div>
 
               {/* Action Column */}
-              <div className="md:col-span-2 space-y-8">
-                <div className="ethereal-panel p-10 rounded-[3.5rem] border border-border-subtle shadow-2xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-12 opacity-[0.02] group-hover:opacity-[0.06] transition-opacity duration-1000">
+              <div className="md:col-span-2 space-y-3">
+                <div className="ethereal-panel p-4 rounded border border-border-subtle shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-[0.02] group-hover:opacity-[0.06] transition-opacity duration-1000">
                     <Download size={200} className="rotate-12" />
                   </div>
-                  <h3 className="text-2xl font-black text-text-primary mb-10 flex items-center gap-4 italic font-serif relative z-10 tracking-tight">
+                  <h3 className="text-[11px] font-medium font-semibold text-text-primary mb-10 flex items-center gap-2 italic font-serif relative z-10 tracking-tight">
                     <Download className="text-brand-primary" size={24} />
                     Production Pipeline
                   </h3>
                   
-                  <div className="mb-10 relative z-10 space-y-6">
-                    <div className="p-6 bg-brand-dark/50 border border-border-subtle rounded-3xl space-y-4">
-                       <h4 className="text-[10px] font-black text-brand-primary uppercase tracking-[0.4em] mb-2">Synthesis Protocol</h4>
-                       <div className="flex flex-col gap-3">
-                          <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="mb-10 relative z-10 space-y-2">
+                    <div className="p-4 bg-brand-dark/50 border border-border-subtle rounded space-y-1.5">
+                       <h4 className="text-xs font-semibold text-brand-primary uppercase tracking-widest mb-2">Synthesis Protocol</h4>
+                       <div className="flex flex-col gap-1.5">
+                          <label className="flex items-center gap-1.5 cursor-pointer group">
                              <input 
                                 type="checkbox" 
                                 checked={includeIllustrations} 
                                 onChange={(e) => setIncludeIllustrations(e.target.checked)}
                                 className="w-4 h-4 rounded border-border-subtle text-brand-primary focus:ring-brand-primary"
                              />
-                             <span className="text-[10px] font-black uppercase tracking-widest text-text-secondary group-hover:text-text-primary transition-colors">Include Digital Illustrations</span>
+                             <span className="text-xs font-semibold uppercase tracking-widest text-text-secondary group-hover:text-text-primary transition-colors">Include Digital Illustrations</span>
                           </label>
                           {includeIllustrations && (
                             <div className="grid grid-cols-2 gap-2 mt-2">
@@ -503,7 +503,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                                  <button
                                     key={style}
                                     onClick={() => setIllustrationStyle(style as any)}
-                                    className={`px-3 py-2 rounded-xl border text-[8px] font-black uppercase tracking-widest transition-all ${
+                                    className={`px-3 py-2 rounded border text-[10px] font-semibold uppercase tracking-widest transition-all ${
                                       illustrationStyle === style ? 'btn-nexus-primary border-brand-primary' : 'ethereal-panel border-border-subtle text-text-secondary'
                                     }`}
                                  >
@@ -518,13 +518,13 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     <button 
                       onClick={handleProductionSynthesis}
                       disabled={isPublishing}
-                      className="w-full py-10 btn-nexus-primary rounded-[2.5rem] shadow-[0_30px_60px_-12px_rgba(168,85,247,0.5)] hover:scale-[1.01] hover:shadow-[0_45px_90px_-15px_rgba(168,85,247,0.6)] transition-all flex flex-col items-center justify-center gap-4 group/master disabled:opacity-50"
+                      className="w-full py-10 btn-nexus-primary rounded shadow-[0_30px_60px_-12px_rgba(168,85,247,0.5)] hover:scale-[1.01] hover:shadow-[0_45px_90px_-15px_rgba(168,85,247,0.6)] transition-all flex flex-col items-center justify-center gap-2 group/master disabled:opacity-50"
                     >
                        <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center group-hover/master:bg-white/20 transition-all">
                           {isPublishing ? <RefreshCcw size={32} className="animate-spin" /> : <Sparkles size={32} />}
                        </div>
                        <div className="flex flex-col items-center">
-                      <span className="text-[12px] font-black uppercase tracking-[0.5em] mb-1">
+                      <span className="text-[12px] font-semibold uppercase tracking-widest mb-1">
                         {isPublishing ? (synthesisProgress ? `Synthesizing [${synthesisProgress.current}/${synthesisProgress.total}]` : 'Synthesizing Book...') : 'Make It Start'}
                       </span>
                       <span className="text-xs opacity-60 font-medium uppercase tracking-widest">
@@ -534,41 +534,41 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-                    <button onClick={exportAsMarkdown} className="p-8 bg-brand-dark rounded-3xl border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98]">
-                      <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center mb-6 group-hover/btn:bg-brand-primary transition-colors">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 relative z-10">
+                    <button onClick={exportAsMarkdown} className="p-4 bg-brand-dark rounded border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98]">
+                      <div className="w-12 h-12 rounded bg-brand-primary/10 flex items-center justify-center mb-2 group-hover/btn:bg-brand-primary transition-colors">
                         <FileText size={24} className="text-brand-primary group-hover/btn:text-white transition-colors" />
                       </div>
-                      <div className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] mb-2">Markdown (.md)</div>
-                      <div className="text-[10px] text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">Industry standard for professional typesetting.</div>
+                      <div className="text-xs font-semibold text-text-primary uppercase tracking-[0.2em] mb-2">Markdown (.md)</div>
+                      <div className="text-xs text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">Industry standard for professional typesetting.</div>
                     </button>
-                    <button onClick={() => handleEpubExport()} className="p-8 bg-brand-dark rounded-3xl border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98]">
-                      <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center mb-6 group-hover/btn:bg-brand-primary transition-colors">
+                    <button onClick={() => handleEpubExport()} className="p-4 bg-brand-dark rounded border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98]">
+                      <div className="w-12 h-12 rounded bg-brand-primary/10 flex items-center justify-center mb-2 group-hover/btn:bg-brand-primary transition-colors">
                         <BookOpen size={24} className="text-brand-primary group-hover/btn:text-white transition-colors" />
                       </div>
-                      <div className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] mb-2">EPUB (Digital)</div>
-                      <div className="text-[10px] text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">Standard format for Kindles and e-readers.</div>
+                      <div className="text-xs font-semibold text-text-primary uppercase tracking-[0.2em] mb-2">EPUB (Digital)</div>
+                      <div className="text-xs text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">Standard format for Kindles and e-readers.</div>
                     </button>
-                    <button onClick={() => handlePDFExport()} className="p-8 bg-brand-dark rounded-3xl border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98] sm:col-span-2 lg:col-span-1">
-                      <div className="w-12 h-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center mb-6 group-hover/btn:bg-brand-primary transition-colors">
+                    <button onClick={() => handlePDFExport()} className="p-4 bg-brand-dark rounded border border-border-subtle text-left hover:border-brand-primary/50 transition-all group/btn shadow-xl active:scale-[0.98] sm:col-span-2 lg:col-span-1">
+                      <div className="w-12 h-12 rounded bg-brand-primary/10 flex items-center justify-center mb-2 group-hover/btn:bg-brand-primary transition-colors">
                          <Printer size={24} className="text-brand-primary group-hover/btn:text-white transition-colors" />
                       </div>
-                      <div className="text-[11px] font-black text-text-primary uppercase tracking-[0.2em] mb-2">Final PDF</div>
-                      <div className="text-[10px] text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">High-fidelity book layout formatted for physical printing.</div>
+                      <div className="text-xs font-semibold text-text-primary uppercase tracking-[0.2em] mb-2">Final PDF</div>
+                      <div className="text-xs text-text-secondary font-medium tracking-tight leading-relaxed opacity-50">High-fidelity book layout formatted for physical printing.</div>
                     </button>
                   </div>
                 </div>
 
-                <div className="bg-brand-primary p-12 rounded-[3.5rem] shadow-[0_50px_100px_rgba(168,85,247,0.3)] relative overflow-hidden text-white group cursor-pointer" onClick={togglePublicStatus}>
+                <div className="bg-brand-primary p-4 rounded shadow-[0_50px_100px_rgba(168,85,247,0.3)] relative overflow-hidden text-white group cursor-pointer" onClick={togglePublicStatus}>
                   <div className="absolute inset-0 bg-brand-accent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-                  <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                  <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-1.5">
                     <div>
-                      <h3 className="text-3xl font-black italic font-serif mb-2 tracking-tight leading-none">Live Reader Access</h3>
-                      <p className="text-white/70 text-sm font-medium">Coordinate private, high-level beta reading protocols via external link.</p>
+                      <h3 className="text-[11px] font-medium font-semibold italic font-serif mb-2 tracking-tight leading-none">Live Reader Access</h3>
+                      <p className="text-white/70 text-[11px] font-medium">Coordinate private, high-level beta reading protocols via external link.</p>
                     </div>
-                    <div className="flex gap-4">
+                    <div className="flex gap-2">
                       <button 
-                        className="px-8 py-4 bg-white text-brand-primary rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all"
+                        className="px-2 py-2 bg-white text-brand-primary rounded-[1.5rem] text-xs font-semibold uppercase tracking-widest shadow-2xl active:scale-95 transition-all"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (project.isPublic) {
@@ -594,11 +594,11 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-8 no-print"
+              className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-2 no-print"
             >
               {/* Cover Preview (Left Side) */}
-              <div className="lg:col-span-7 flex flex-col items-center gap-6">
-                <div className="flex items-center justify-center bg-slate-100/30 rounded-[3rem] p-6 md:p-12 border border-slate-200/50 relative overflow-hidden w-full min-h-[500px]">
+              <div className="lg:col-span-7 flex flex-col items-center gap-2">
+                <div className="flex items-center justify-center bg-slate-100/30 rounded p-4 md:p-4 border border-slate-200/50 relative overflow-hidden w-full min-h-[500px]">
                   <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"></div>
                   
                   <motion.div 
@@ -613,18 +613,18 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   >
                     {/* Back Cover (Wraparound mode) */}
                     {config.coverTheme.showWraparound && (
-                      <div className="w-[350px] shrink-0 h-full border-r border-white/5 relative overflow-hidden flex flex-col p-8 font-sans z-10">
+                      <div className="w-[350px] shrink-0 h-full border-r border-white/5 relative overflow-hidden flex flex-col p-4 font-sans z-10">
                          <div className="absolute inset-0 bg-black/40 z-0" />
                          {config.coverTheme.imageUrl && (
                            <img src={config.coverTheme.imageUrl} alt="Back" className="absolute inset-0 w-full h-full object-cover opacity-40 scale-x-[-1] z-[-1]" referrerPolicy="no-referrer" />
                          )}
                          <div className="relative z-10 h-full flex flex-col justify-between">
-                            <div className="space-y-6">
+                            <div className="space-y-2">
                                <div className="h-1 w-12" style={{ backgroundColor: config.coverTheme.accentColor }} />
                                <div 
-                                  className="text-[11px] leading-relaxed font-serif italic max-w-[280px]" 
+                                  className="text-xs leading-relaxed font-serif italic max-w-[280px]" 
                                   style={{ color: config.coverTheme.textColor, textShadow: config.coverTheme.textShadow ? '0 2px 4px rgba(0,0,0,0.5)' : 'none' }}>
-                                  {project.premise || "A masterpiece in progress. Synthesized using Casper Ghost Writer protocols."}
+                                  {project.premise || "A masterpiece in progress. Synthesized using Caspa Ghost Writer protocols."}
                                </div>
                             </div>
                             <div className="mt-auto pt-8 flex items-end justify-between border-t border-white/10">
@@ -639,9 +639,9 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                                   </div>
                                 </div>
                                 <div 
-                                  className="text-[8px] font-black tracking-widest uppercase opacity-60" 
+                                  className="text-[10px] font-semibold tracking-widest uppercase opacity-60" 
                                   style={{ color: config.coverTheme.textColor }}>
-                                  Casper Ghost Writer
+                                  Caspa Ghost Writer
                                 </div>
                             </div>
                          </div>
@@ -654,12 +654,12 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                         className="h-full shadow-[inset_0_0_30px_rgba(0,0,0,0.3)] relative flex items-center justify-center overflow-hidden border-x border-white/10 z-10 shrink-0"
                         style={{ width: `${Math.max(20, parseFloat(spineWidth) * 100)}px`, backgroundColor: config.coverTheme.accentColor }}
                       >
-                         <div className="rotate-90 whitespace-nowrap flex items-center gap-8">
+                         <div className="rotate-90 whitespace-nowrap flex items-center gap-1.5">
                             <span 
-                               className="text-[10px] font-black uppercase tracking-[0.3em] shadow-sm"
+                               className="text-xs font-semibold uppercase tracking-wider shadow-sm"
                                style={{ color: config.coverTheme.backgroundColor }}>{config.authorName || "Author"}</span>
                             <span 
-                               className="text-[12px] font-black italic font-serif shadow-md"
+                               className="text-[12px] font-semibold italic font-serif shadow-md"
                                style={{ color: config.coverTheme.backgroundColor }}>{project.title}</span>
                          </div>
                       </div>
@@ -668,7 +668,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     {/* Front Cover */}
                     <div className={`flex-1 h-full relative overflow-hidden flex flex-col shrink-0`} style={{ width: '350px' }}>
                       {!config.coverTheme.isOverlayHidden && <div className="h-2 w-full shrink-0" style={{ backgroundColor: config.coverTheme.accentColor }} />}
-                      <div className="flex-1 flex flex-col items-center justify-between p-12 text-center relative overflow-hidden">
+                      <div className="flex-1 flex flex-col items-center justify-between p-4 text-center relative overflow-hidden">
                         {config.coverTheme.imageUrl && (
                           <div className="absolute inset-0 z-0">
                             <img 
@@ -682,12 +682,12 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                         )}
                         
                         {!config.coverTheme.isOverlayHidden && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-between p-12 text-center z-10">
-                            <div className="space-y-6 mt-8">
+                          <div className="absolute inset-0 flex flex-col items-center justify-between p-4 text-center z-10">
+                            <div className="space-y-2 mt-8">
                               <motion.div 
                                 initial={{ y: -20, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
-                                className="text-[10px] font-black uppercase tracking-[0.5em]" 
+                                className="text-xs font-semibold uppercase tracking-widest" 
                                 style={{ 
                                   color: config.coverTheme.accentColor,
                                   textShadow: config.coverTheme.textShadow ? '0 2px 4px rgba(0,0,0,0.5)' : 'none'
@@ -700,7 +700,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                                 initial={{ scale: 0.95, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 transition={{ delay: 0.1 }}
-                                className={`text-4xl md:text-5xl lg:text-6xl font-black font-serif italic leading-[1.1] tracking-tighter`}
+                                className={`text-[11px] font-medium md:text-[11px] font-medium lg:text-[11px] font-medium font-semibold font-serif italic leading-[1.1] tracking-tighter`}
                                 style={{ 
                                   color: config.coverTheme.textColor,
                                   textShadow: config.coverTheme.textShadow ? '0 10px 30px rgba(0,0,0,0.8), 0 5px 15px rgba(0,0,0,0.5)' : 'none'
@@ -714,7 +714,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
                                   transition={{ delay: 0.2 }}
-                                  className="text-[11px] font-bold uppercase tracking-[0.3em] opacity-90 max-w-[240px] mx-auto leading-relaxed border-t border-white/10 pt-4"
+                                  className="text-xs font-medium uppercase tracking-wider opacity-90 max-w-[240px] mx-auto leading-relaxed border-t border-white/10 pt-4"
                                   style={{ 
                                     color: config.coverTheme.textColor,
                                     textShadow: config.coverTheme.textShadow ? '0 4px 10px rgba(0,0,0,0.5)' : 'none'
@@ -725,13 +725,13 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                               )}
                             </div>
 
-                            <div className="mt-auto space-y-4">
+                            <div className="mt-auto space-y-1.5">
                               <div className="w-12 h-[2px] mx-auto" style={{ backgroundColor: config.coverTheme.accentColor }} />
                               <motion.div 
                                 initial={{ y: 20, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
                                 transition={{ delay: 0.3 }}
-                                className="text-xs font-black uppercase tracking-[0.4em]" 
+                                className="text-xs font-semibold uppercase tracking-widest" 
                                 style={{ 
                                   color: config.coverTheme.textColor,
                                   textShadow: config.coverTheme.textShadow ? '0 4px 12px rgba(0,0,0,0.5)' : 'none'
@@ -741,7 +741,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                               </motion.div>
                               
                               <div 
-                                className="text-[8px] font-black uppercase tracking-[0.5em] opacity-40"
+                                className="text-[10px] font-semibold uppercase tracking-widest opacity-40"
                                 style={{ color: config.coverTheme.textColor }}
                               >
                                 Sovereign Press
@@ -754,10 +754,10 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   </motion.div>
                 </div>
                 
-                <div className="flex flex-wrap items-center justify-center gap-4 no-print font-sans">
+                <div className="flex flex-wrap items-center justify-center gap-2 no-print font-sans">
                   <button 
                     onClick={() => updateConfig({ coverTheme: { ...config.coverTheme, isOverlayHidden: !config.coverTheme.isOverlayHidden } })}
-                    className={`flex items-center gap-3 px-8 py-4 rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    className={`flex items-center gap-1.5 px-2 py-2 rounded text-xs font-semibold uppercase tracking-widest transition-all ${
                       !config.coverTheme.isOverlayHidden ? 'btn-nexus-primary shadow-xl shadow-brand-primary/30' : 'ethereal-panel border border-border-subtle text-text-secondary'
                     }`}
                   >
@@ -767,7 +767,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
 
                   <button 
                     onClick={() => updateConfig({ coverTheme: { ...config.coverTheme, showWraparound: !config.coverTheme.showWraparound } })}
-                    className={`flex items-center gap-3 px-8 py-4 rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    className={`flex items-center gap-1.5 px-2 py-2 rounded text-xs font-semibold uppercase tracking-widest transition-all ${
                       config.coverTheme.showWraparound ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/30' : 'ethereal-panel border border-border-subtle text-text-secondary'
                     }`}
                   >
@@ -777,7 +777,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
 
                   <button 
                     onClick={() => updateConfig({ coverTheme: { ...config.coverTheme, textShadow: !config.coverTheme.textShadow } })}
-                    className={`flex items-center gap-3 px-8 py-4 rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    className={`flex items-center gap-1.5 px-2 py-2 rounded text-xs font-semibold uppercase tracking-widest transition-all ${
                       config.coverTheme.textShadow ? 'btn-nexus-primary shadow-xl shadow-brand-primary/30' : 'ethereal-panel border border-border-subtle text-text-secondary'
                     }`}
                   >
@@ -788,20 +788,20 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               </div>
 
               {/* Cover Controls (Right Side) */}
-              <div className="lg:col-span-5 grid grid-cols-1 gap-8 no-print p-4 overflow-y-auto max-h-[1000px] custom-scrollbar">
-                <section className="p-8 bg-brand-dark border border-border-subtle rounded-[2.5rem] relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform">
+              <div className="lg:col-span-5 grid grid-cols-1 gap-2 no-print p-4 overflow-y-auto max-h-[1000px] custom-scrollbar">
+                <section className="p-4 bg-brand-dark border border-border-subtle rounded relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
                     <Sparkles size={64} className="text-brand-primary" />
                   </div>
-                  <h3 className="text-xs font-black text-text-primary uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
+                  <h3 className="text-xs font-semibold text-text-primary uppercase tracking-widest mb-1.5 flex items-center gap-2 relative z-10">
                     <Wand2 size={14} className="text-brand-primary" /> AI Artifact Designer
                   </h3>
-                  <p className="text-[10px] text-text-secondary font-medium mb-6 leading-relaxed relative z-10 font-sans">
+                  <p className="text-xs text-text-secondary font-medium mb-2 leading-relaxed relative z-10 font-sans">
                     Generate a fully integrated cover designed by AI. Includes background and typography concepts.
                     <br/><br/>
                     <em className="opacity-70">(Hiding the overlay is recommended for full-width AI designs)</em>
                   </p>
-                  <div className="space-y-4 relative z-10 font-sans">
+                  <div className="space-y-1.5 relative z-10 font-sans">
                         <div className="w-full overflow-x-auto custom-scrollbar pb-2"><div className="flex gap-2">
                           {coverPresets.map(preset => (
                             <button 
@@ -815,7 +815,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                                   accentColor: preset.colors.accent
                                 } 
                               })}
-                              className="px-3 py-1.5 whitespace-nowrap ethereal-panel border border-border-subtle rounded-lg text-[9px] font-black uppercase tracking-widest text-text-secondary hover:text-white hover:border-brand-primary/50 transition-colors"
+                              className="px-3 py-1.5 whitespace-nowrap ethereal-panel border border-border-subtle rounded text-[10px] font-semibold uppercase tracking-widest text-text-secondary hover:text-white hover:border-brand-primary/50 transition-colors"
                             >
                               {preset.label}
                             </button>
@@ -825,7 +825,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                       value={config.coverTheme.aiPrompt}
                       onChange={(e) => updateConfig({ coverTheme: { ...config.coverTheme, aiPrompt: e.target.value } })}
                       placeholder="Describe the mood, theme, and subjects... (e.g. A noir detective in a rain-slicked neon street, pulp fiction style)"
-                      className="w-full px-4 py-3 ethereal-panel border border-border-subtle rounded-xl text-xs font-medium text-text-primary focus:ring-2 focus:ring-brand-primary/50 outline-none resize-none min-h-[100px]"
+                      className="w-full px-2 py-2 ethereal-panel border border-border-subtle rounded text-xs font-medium text-text-primary focus:ring-2 focus:ring-brand-primary/50 outline-none resize-none min-h-[100px]"
                     />
                     <button 
                       onClick={async () => {
@@ -861,7 +861,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                         }
                       }}
                       disabled={isPublishing}
-                      className="w-full flex items-center justify-center gap-3 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-blue-200 transition-all active:scale-95 disabled:opacity-50"
+                      className="w-full flex items-center justify-center gap-1.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold text-xs uppercase tracking-widest shadow-xl shadow-blue-200 transition-all active:scale-95 disabled:opacity-50"
                     >
                       {isPublishing ? (
                         <RefreshCcw size={14} className="animate-spin" />
@@ -874,25 +874,25 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                 </section>
 
                 <section>
-                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                     <ImageIcon size={14} /> Manual Assets
                   </h3>
-                  <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-2">
                     {config.coverTheme.imageUrl && (
-                      <div className="relative group rounded-xl overflow-hidden aspect-video border border-slate-200">
+                      <div className="relative group rounded overflow-hidden aspect-video border border-slate-200">
                         <img src={config.coverTheme.imageUrl} alt="Current Cover" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         <button 
                           onClick={() => updateConfig({ coverTheme: { ...config.coverTheme, imageUrl: undefined } })}
-                          className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-black uppercase tracking-widest transition-all"
+                          className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-semibold uppercase tracking-widest transition-all"
                         >
                           Remove Asset
                         </button>
                       </div>
                     )}
                     <div className="flex gap-2">
-                       <label className="flex-1 flex items-center justify-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-all">
+                       <label className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 bg-white border border-slate-200 rounded cursor-pointer hover:bg-slate-50 transition-all">
                         <Upload size={16} className="text-slate-600" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Update Local Source</span>
+                        <span className="text-xs font-semibold uppercase tracking-widest text-slate-600">Update Local Source</span>
                         <input 
                           type="file" 
                           accept="image/*" 
@@ -916,54 +916,54 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                 {!config.coverTheme.isOverlayHidden && (
                   <>
                     <section>
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                         <Palette size={14} /> Palette & Skin
                       </h3>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Background</label>
+                          <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Background</label>
                           <input 
                             type="color" 
                             value={config.coverTheme.backgroundColor}
                             onChange={(e) => updateConfig({ coverTheme: { ...config.coverTheme, backgroundColor: e.target.value } })}
-                            className="w-full h-12 rounded-xl cursor-pointer border-none p-1 bg-white shadow-sm"
+                            className="w-full h-12 rounded cursor-pointer border-none p-1 bg-white shadow-sm"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Accent</label>
+                          <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Accent</label>
                           <input 
                             type="color" 
                             value={config.coverTheme.accentColor}
                             onChange={(e) => updateConfig({ coverTheme: { ...config.coverTheme, accentColor: e.target.value } })}
-                            className="w-full h-12 rounded-xl cursor-pointer border-none p-1 bg-white shadow-sm"
+                            className="w-full h-12 rounded cursor-pointer border-none p-1 bg-white shadow-sm"
                           />
                         </div>
                       </div>
                     </section>
     
                     <section>
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                         <Type size={14} /> Typography
                       </h3>
-                      <div className="space-y-6">
+                      <div className="space-y-2">
                         <div>
-                          <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Author Name</label>
+                          <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Author Name</label>
                           <input 
                             type="text" 
                             value={config.authorName}
                             placeholder="John Doe"
                             onChange={(e) => updateConfig({ authorName: e.target.value })}
-                            className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl text-sm font-bold text-slate-900 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-2 py-2 bg-white border border-slate-100 rounded text-[11px] font-medium text-slate-900 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Subtitle</label>
+                          <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Subtitle</label>
                           <input 
                             type="text" 
                             value={config.subtitle}
                             placeholder="A journey through time..."
                             onChange={(e) => updateConfig({ subtitle: e.target.value })}
-                            className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl text-sm font-bold text-slate-900 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full px-2 py-2 bg-white border border-slate-100 rounded text-[11px] font-medium text-slate-900 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
                           />
                         </div>
                       </div>
@@ -971,17 +971,17 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   </>
                 )}
 
-                <div className="p-10 bg-brand-dark rounded-[3rem] text-text-primary shadow-2xl border border-brand-primary/20">
-                  <div className="flex items-center gap-3 mb-6">
+                <div className="p-4 bg-brand-dark rounded text-text-primary shadow-2xl border border-brand-primary/20">
+                  <div className="flex items-center gap-1.5 mb-2">
                     <Shield size={18} className="text-brand-primary" />
-                    <h4 className="text-sm font-black uppercase tracking-widest italic font-serif">Cover Deployment Hub</h4>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest italic font-serif">Cover Deployment Hub</h4>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
                     <button
                       onClick={applyLayoutSettings}
                       disabled={!configDraft || isPublishing}
-                      className={`py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 ${
+                      className={`py-1 rounded font-semibold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
                         configDraft 
                           ? 'bg-emerald-600 text-white shadow-xl hover:scale-[1.02]' 
                           : 'bg-white/5 text-white/30 cursor-not-allowed border border-white/10'
@@ -994,27 +994,27 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     <button 
                       onClick={handleProductionSynthesis}
                       disabled={isPublishing}
-                      className="py-5 btn-nexus-primary rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-primary/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                      className="py-1 btn-nexus-primary rounded font-semibold text-xs uppercase tracking-widest shadow-xl shadow-brand-primary/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
                       {isPublishing ? <RefreshCcw size={16} className="animate-spin" /> : <Sparkles size={16} />}
                       Make It Start
                     </button>
                   </div>
 
-                  <p className="text-[10px] text-slate-400 font-medium leading-relaxed opacity-50 mb-6">
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed opacity-50 mb-2">
                     Finalizing the cover locks the visual identity. Synthesis will then purge drafting artifacts from the interior pages to match this professional standard.
                   </p>
 
-                  <div className="flex gap-4">
+                  <div className="flex gap-2">
                     <button
                       onClick={() => setActiveTab('layout')}
-                      className="flex-1 py-4 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5 flex items-center justify-center gap-2"
+                      className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded text-xs font-semibold uppercase tracking-widest transition-all border border-white/5 flex items-center justify-center gap-2"
                     >
                       <LayoutTemplate size={14} /> Tune Layout
                     </button>
                     <button
                       onClick={() => setActiveTab('preview')}
-                      className="flex-1 py-4 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5 flex items-center justify-center gap-2"
+                      className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded text-xs font-semibold uppercase tracking-widest transition-all border border-white/5 flex items-center justify-center gap-2"
                     >
                       <Eye size={14} /> Preview Book
                     </button>
@@ -1030,14 +1030,14 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-12 no-print"
+              className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-2 no-print"
             >
-              <div className="space-y-8">
+              <div className="space-y-3">
                   <section>
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                       <LayoutTemplate size={14} /> Global Layout Style
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {(['standard', 'coursebook', 'manual', 'magazine', 'technical'] as const).map(style => {
                         const isSelected = config.layoutTheme?.style === style;
                         return (
@@ -1050,13 +1050,13 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                               };
                               updateConfig({ layoutTheme: newLayout });
                             }}
-                            className={`p-5 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all border ${
+                            className={`p-4 rounded flex flex-col items-center justify-center gap-1.5 transition-all border ${
                               isSelected 
                                 ? 'btn-nexus-primary border-brand-primary shadow-xl shadow-brand-primary/20 scale-[1.02]' 
                                 : 'ethereal-panel text-text-secondary border-border-subtle hover:border-brand-primary/50 hover:text-brand-primary'
                             }`}
                           >
-                            <span className="text-[10px] font-black uppercase tracking-widest">
+                            <span className="text-xs font-semibold uppercase tracking-widest">
                               {style === 'standard' ? 'Novel / Standard' : style}
                             </span>
                             {isSelected && <CheckCircle2 size={12} className="text-white/70" />}
@@ -1066,10 +1066,10 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     </div>
                   </section>
                   <section>
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                       <Palette size={14} /> Color Mode
                     </h3>
-                    <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex flex-col sm:flex-row gap-2">
                       {[
                         { id: 'bw' as const, label: 'Black & White', icon: Circle },
                         { id: 'color' as const, label: 'Full Color', icon: Palette }
@@ -1085,14 +1085,14 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                               };
                               updateConfig({ layoutTheme: newLayout });
                             }}
-                            className={`flex-1 p-6 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all border ${
+                            className={`flex-1 p-4 rounded flex flex-col items-center justify-center gap-1.5 transition-all border ${
                               isSelected 
                                 ? (mode.id === 'color' ? 'bg-indigo-600 text-white border-indigo-600 shadow-xl' : 'btn-nexus-primary border-brand-primary shadow-xl')
                                 : 'ethereal-panel text-text-secondary border-border-subtle hover:border-brand-primary/50'
                             }`}
                           >
                              <mode.icon size={24} />
-                             <span className="text-[10px] font-black uppercase tracking-widest">{mode.label}</span>
+                             <span className="text-xs font-semibold uppercase tracking-widest">{mode.label}</span>
                           </button>
                         );
                       })}
@@ -1100,18 +1100,18 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   </section>
               </div>
 
-              <div className="space-y-8">
-                <section className="ethereal-panel border border-border-subtle p-8 rounded-[2.5rem]">
-                  <h3 className="text-xs font-black text-brand-primary uppercase tracking-widest mb-8">Interior Elements</h3>
-                  <div className="space-y-4">
-                    <label className="flex items-center justify-between p-5 bg-surface-muted rounded-2xl cursor-pointer hover:bg-surface-hover transition-colors group">
-                       <div className="flex items-center gap-4">
-                         <div className="p-3 bg-white/5 rounded-xl border border-border-subtle group-hover:border-brand-primary/50 transition-colors">
+              <div className="space-y-3">
+                <section className="ethereal-panel border border-border-subtle p-4 rounded">
+                  <h3 className="text-xs font-semibold text-brand-primary uppercase tracking-widest mb-3">Interior Elements</h3>
+                  <div className="space-y-1.5">
+                    <label className="flex items-center justify-between p-4 bg-surface-muted rounded cursor-pointer hover:bg-surface-hover transition-colors group">
+                       <div className="flex items-center gap-2">
+                         <div className="p-3 bg-white/5 rounded border border-border-subtle group-hover:border-brand-primary/50 transition-colors">
                            <ImageIcon size={18} className="text-text-secondary" />
                          </div>
                          <div>
-                           <span className="text-xs font-bold text-text-primary block">Illustrations & Diagrams</span>
-                           <span className="text-[10px] text-text-secondary leading-relaxed max-w-[200px] block mt-1">Allow spacing for visual assets</span>
+                           <span className="text-xs font-medium text-text-primary block">Illustrations & Diagrams</span>
+                           <span className="text-xs text-text-secondary leading-relaxed max-w-[200px] block mt-1">Allow spacing for visual assets</span>
                          </div>
                        </div>
                        <input 
@@ -1128,14 +1128,14 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                        />
                     </label>
 
-                    <label className="flex items-center justify-between p-5 bg-surface-muted rounded-2xl cursor-pointer hover:bg-surface-hover transition-colors group">
-                       <div className="flex items-center gap-4">
-                         <div className="p-3 bg-white/5 rounded-xl border border-border-subtle group-hover:border-brand-primary/50 transition-colors">
+                    <label className="flex items-center justify-between p-4 bg-surface-muted rounded cursor-pointer hover:bg-surface-hover transition-colors group">
+                       <div className="flex items-center gap-2">
+                         <div className="p-3 bg-white/5 rounded border border-border-subtle group-hover:border-brand-primary/50 transition-colors">
                            <Type size={18} className="text-text-secondary" />
                          </div>
                          <div>
-                           <span className="text-xs font-bold text-text-primary block">Text-box Inlays / Sidebars</span>
-                           <span className="text-[10px] text-text-secondary leading-relaxed max-w-[200px] block mt-1">Format callouts and side-notes</span>
+                           <span className="text-xs font-medium text-text-primary block">Text-box Inlays / Sidebars</span>
+                           <span className="text-xs text-text-secondary leading-relaxed max-w-[200px] block mt-1">Format callouts and side-notes</span>
                          </div>
                        </div>
                        <input 
@@ -1152,14 +1152,14 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                        />
                     </label>
 
-                    <label className="flex items-center justify-between p-5 bg-surface-muted rounded-2xl cursor-pointer hover:bg-surface-hover transition-colors group">
-                       <div className="flex items-center gap-4">
-                         <div className="p-3 bg-white/5 rounded-xl border border-border-subtle group-hover:border-brand-primary/50 transition-colors">
+                    <label className="flex items-center justify-between p-4 bg-surface-muted rounded cursor-pointer hover:bg-surface-hover transition-colors group">
+                       <div className="flex items-center gap-2">
+                         <div className="p-3 bg-white/5 rounded border border-border-subtle group-hover:border-brand-primary/50 transition-colors">
                            <List size={18} className="text-text-secondary" />
                          </div>
                          <div>
-                           <span className="text-xs font-bold text-text-primary block">Generate Index/Glossary</span>
-                           <span className="text-[10px] text-text-secondary leading-relaxed max-w-[200px] block mt-1">Append index at the back</span>
+                           <span className="text-xs font-medium text-text-primary block">Generate Index/Glossary</span>
+                           <span className="text-xs text-text-secondary leading-relaxed max-w-[200px] block mt-1">Append index at the back</span>
                          </div>
                        </div>
                        <input 
@@ -1176,11 +1176,11 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                        />
                     </label>
                    </div>
-                  <div className="pt-8 border-t border-border-subtle flex flex-col md:flex-row gap-4">
+                  <div className="pt-8 border-t border-border-subtle flex flex-col md:flex-row gap-2">
                     <button
                       onClick={applyLayoutSettings}
                       disabled={!configDraft || isPublishing}
-                      className={`flex-1 py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 ${
+                      className={`flex-1 py-1 rounded font-semibold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${
                         configDraft 
                           ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-500/20 hover:scale-[1.02]' 
                           : 'bg-surface-muted text-text-secondary cursor-not-allowed border border-border-subtle'
@@ -1193,7 +1193,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     <button 
                       onClick={handleProductionSynthesis}
                       disabled={isPublishing}
-                      className="flex-1 py-5 btn-nexus-primary rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand-primary/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                      className="flex-1 py-1 btn-nexus-primary rounded font-semibold text-xs uppercase tracking-widest shadow-xl shadow-brand-primary/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
                       {isPublishing ? <RefreshCcw size={16} className="animate-spin" /> : <Sparkles size={16} />}
                       Make It Start
@@ -1201,7 +1201,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
 
                     <button
                       onClick={() => handlePDFExport()}
-                      className="flex-1 px-8 py-5 bg-slate-900 border border-slate-800 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-3 shadow-xl"
+                      className="flex-1 px-2 py-1 bg-slate-900 border border-slate-800 text-white rounded font-semibold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-1.5 shadow-xl"
                     >
                       <Download size={16} />
                       Export Test PDF
@@ -1209,7 +1209,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     
                     <button
                       onClick={() => setActiveTab('preview')}
-                      className="px-8 py-5 ethereal-panel border border-border-subtle text-text-secondary hover:text-brand-primary rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:border-brand-primary/50 flex items-center justify-center gap-3"
+                      className="px-2 py-1 ethereal-panel border border-border-subtle text-text-secondary hover:text-brand-primary rounded font-semibold text-xs uppercase tracking-widest transition-all hover:border-brand-primary/50 flex items-center justify-center gap-1.5"
                     >
                       <Eye size={16} />
                       Preview
@@ -1226,25 +1226,25 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className="lg:col-span-12 space-y-8 print:p-0 print:m-0"
+              className="lg:col-span-12 space-y-3 print:p-0 print:m-0"
             >
-              <div className="flex flex-col md:flex-row items-center justify-between bg-white p-6 rounded-3xl border border-slate-100 shadow-sm no-print gap-4">
-                <div className="flex items-center gap-4">
-                   <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+              <div className="flex flex-col md:flex-row items-center justify-between bg-white p-4 rounded border border-slate-100 shadow-sm no-print gap-2">
+                <div className="flex items-center gap-2">
+                   <div className="p-3 bg-blue-50 text-blue-600 rounded">
                      <FileText size={20} />
                    </div>
                    <div>
-                     <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Typeset Preview</h3>
-                     <p className="text-[10px] text-slate-500 font-medium">Visualizing manuscript as a consumer-ready publication.</p>
+                     <h3 className="text-[11px] font-semibold uppercase tracking-widest text-slate-900">Typeset Preview</h3>
+                     <p className="text-xs text-slate-500 font-medium">Visualizing manuscript as a consumer-ready publication.</p>
                    </div>
                 </div>
                 
-                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
                   {configDraft && (
                     <button 
                       onClick={applyLayoutSettings}
                       disabled={isPublishing}
-                      className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 shrink-0"
+                      className="px-2 py-2 bg-emerald-600 text-white rounded text-xs font-semibold uppercase tracking-widest hover:scale-[1.02] shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 shrink-0"
                     >
                       {isPublishing ? <RefreshCcw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                       Commit Design
@@ -1253,37 +1253,37 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   <button 
                     onClick={handleProductionSynthesis}
                     disabled={isPublishing}
-                    className="px-6 py-3 btn-nexus-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] shadow-lg shadow-brand-primary/20 transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+                    className="px-2 py-2 btn-nexus-primary rounded text-xs font-semibold uppercase tracking-widest hover:scale-[1.02] shadow-lg shadow-brand-primary/20 transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
                   >
                     {isPublishing ? <RefreshCcw size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     Make It Start
                   </button>
                   <button 
                     onClick={() => handlePDFExport()}
-                    className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2 shrink-0"
+                    className="px-2 py-2 bg-slate-900 text-white rounded text-xs font-semibold uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2 shrink-0"
                   >
                     <Download size={14} /> Final Export
                   </button>
                 </div>
               </div>
 
-              <div id="manuscript-pdf-content" className={`bg-white border border-slate-200/60 rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden min-h-[400px] md:min-h-[600px] max-h-[800px] overflow-y-auto p-8 md:p-24 ${config.layoutTheme?.colorMode === 'bw' ? 'grayscale border-slate-300' : 'bg-[#fffdfa]'} relative print:max-h-none print:overflow-visible print:shadow-none print:border-none print:p-0 print-full-width ${config.layoutTheme?.style !== 'standard' ? 'max-w-5xl mx-auto' : ''}`}>
+              <div id="manuscript-pdf-content" className={`bg-white border border-slate-200/60 rounded md:rounded shadow-2xl overflow-hidden min-h-[400px] md:min-h-[600px] max-h-[800px] overflow-y-auto p-4 md:p-24 ${config.layoutTheme?.colorMode === 'bw' ? 'grayscale border-slate-300' : 'bg-[#fffdfa]'} relative print:max-h-none print:overflow-visible print:shadow-none print:border-none print:p-0 print-full-width ${config.layoutTheme?.style !== 'standard' ? 'max-w-5xl mx-auto' : ''}`}>
                 <div className="absolute inset-0 pointer-events-none opacity-[0.03] mix-blend-multiply bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')] no-print"></div>
                 
                 {/* Book Title Page */}
-                <div className="text-center py-12 md:py-24 border-b border-slate-100 mb-12 md:mb-24 relative z-10 manuscript-page">
-                  <h1 className="text-3xl md:text-5xl font-black italic font-serif text-slate-900 mb-4 tracking-tighter">{project.title}</h1>
-                  <p className="text-sm font-black uppercase tracking-[0.4em] text-slate-400">{config.authorName || "Author Name"}</p>
+                <div className="text-center py-1 md:py-24 border-b border-slate-100 mb-1.5 md:mb-24 relative z-10 manuscript-page">
+                  <h1 className="text-[11px] font-medium md:text-[11px] font-medium font-semibold italic font-serif text-slate-900 mb-1.5 tracking-tighter">{project.title}</h1>
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">{config.authorName || "Author Name"}</p>
                   
                   {config.layoutTheme?.style === 'coursebook' && (
-                    <div className="mt-16 inline-block p-6 bg-slate-50 border border-slate-200 rounded-2xl text-left max-w-md mx-auto">
-                       <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2 font-sans">Course Material</h3>
+                    <div className="mt-16 inline-block p-4 bg-slate-50 border border-slate-200 rounded text-left max-w-md mx-auto">
+                       <h3 className="text-xs font-semibold text-blue-600 uppercase tracking-widest mb-2 font-sans">Course Material</h3>
                        <p className="text-xs text-slate-600 font-sans leading-relaxed">This edition includes structured layouts, visual hierarchy, and space for margin notes. Ideal for academic or professional study.</p>
                     </div>
                   )}
                   {config.layoutTheme?.style === 'manual' && (
-                    <div className="mt-16 inline-block p-6 bg-slate-800 border border-slate-700 rounded-2xl text-left max-w-md mx-auto text-white">
-                       <h3 className="text-[10px] font-black text-sky-400 uppercase tracking-widest mb-2 font-sans">Training Manual</h3>
+                    <div className="mt-16 inline-block p-4 bg-slate-800 border border-slate-700 rounded text-left max-w-md mx-auto text-white">
+                       <h3 className="text-xs font-semibold text-sky-400 uppercase tracking-widest mb-2 font-sans">Training Manual</h3>
                        <p className="text-xs text-slate-300 font-sans leading-relaxed">Structured for quick reference, warnings, and procedures.</p>
                     </div>
                   )}
@@ -1294,23 +1294,23 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   {exportableChapters.map((chapter, idx) => {
                     const title = chapter.title.match(/Sequence|Chapter|Section/i) ? `Chapter ${idx + 1}` : chapter.title;
                     return (
-                      <div key={chapter.id} className="space-y-12 manuscript-page">
-                         <div className={config.layoutTheme?.style !== 'standard' ? 'text-left border-b-4 border-slate-900 pb-6 mb-8' : 'text-center'}>
-                            <div className={`text-[10px] font-black uppercase tracking-[0.5em] mb-4 print:text-slate-400 ${config.layoutTheme?.style !== 'standard' ? 'text-slate-900' : 'text-slate-900/40'}`}>
+                      <div key={chapter.id} className="space-y-1.5 manuscript-page">
+                         <div className={config.layoutTheme?.style !== 'standard' ? 'text-left border-b-4 border-slate-900 pb-6 mb-3' : 'text-center'}>
+                            <div className={`text-xs font-semibold uppercase tracking-widest mb-1.5 print:text-slate-400 ${config.layoutTheme?.style !== 'standard' ? 'text-slate-900' : 'text-slate-900/40'}`}>
                               {config.layoutTheme?.style === 'coursebook' ? `Module ${idx + 1}` : config.layoutTheme?.style === 'manual' ? `Section ${idx + 1}` : `Transmission ${idx + 1}`}
                             </div>
-                            <h2 className={`font-black italic text-slate-900 tracking-tight ${config.layoutTheme?.style !== 'standard' ? 'text-5xl font-sans' : 'text-4xl font-serif'}`}>{title}</h2>
+                            <h2 className={`font-semibold italic text-slate-900 tracking-tight ${config.layoutTheme?.style !== 'standard' ? 'text-[11px] font-medium font-sans' : 'text-[11px] font-medium font-serif'}`}>{title}</h2>
                             {config.layoutTheme?.style === 'standard' && <div className="w-12 h-[1px] bg-slate-200 mx-auto mt-6"></div>}
                          </div>
                          
-                          <div className={`flex ${config.layoutTheme?.style !== 'standard' ? 'flex-col md:flex-row gap-12' : 'flex-col gap-12'}`}>
+                          <div className={`flex ${config.layoutTheme?.style !== 'standard' ? 'flex-col md:flex-row gap-2' : 'flex-col gap-2'}`}>
                             {/* Main Content Area */}
-                            <div className="flex-1 space-y-12">
+                            <div className="flex-1 space-y-1.5">
                               {chapter.illustrationUrl && config.layoutTheme?.showIllustrations && (
                                 <motion.div 
                                   initial={{ opacity: 0, y: 20 }}
                                   whileInView={{ opacity: 1, y: 0 }}
-                                  className={`w-full relative rounded-2xl overflow-hidden shadow-2xl ${config.layoutTheme?.colorMode === 'bw' ? 'grayscale' : ''}`}
+                                  className={`w-full relative rounded overflow-hidden shadow-2xl ${config.layoutTheme?.colorMode === 'bw' ? 'grayscale' : ''}`}
                                 >
                                   <img 
                                     src={chapter.illustrationUrl} 
@@ -1321,7 +1321,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                                 </motion.div>
                               )}
                               <div className={`prose prose-slate max-w-none text-slate-800 leading-[2] tracking-normal whitespace-pre-wrap ${
-                                config.layoutTheme?.style !== 'standard' ? 'font-sans prose-lg' : 'font-serif prose-lg first-letter:text-6xl first-letter:font-black first-letter:mr-3 first-letter:float-left first-letter:text-slate-900 first-letter:leading-none print:text-justify'
+                                config.layoutTheme?.style !== 'standard' ? 'font-sans prose-lg' : 'font-serif prose-lg first-letter:text-[11px] font-medium first-letter:font-semibold first-letter:mr-3 first-letter:float-left first-letter:text-slate-900 first-letter:leading-none print:text-justify'
                               }`}>
                                 {cleanContent(chapter.content)}
                               </div>
@@ -1329,16 +1329,16 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                            
                            {/* Margin Notes Area (Coursebook / Manual only) */}
                            {config.layoutTheme?.style === 'coursebook' && (
-                             <div className="w-full md:w-64 shrink-0 border-l-2 border-slate-100 pl-8 space-y-8 hidden md:block">
+                             <div className="w-full md:w-64 shrink-0 border-l-2 border-slate-100 pl-8 space-y-3 hidden md:block">
                                 {config.layoutTheme?.showTextBoxes && (
-                                  <div className="p-4 bg-slate-50 border border-slate-200/50 rounded-xl">
-                                    <h4 className="text-[10px] font-black font-sans uppercase tracking-[0.2em] text-slate-400 mb-2">Key Takeaways</h4>
+                                  <div className="p-4 bg-slate-50 border border-slate-200/50 rounded">
+                                    <h4 className="text-xs font-semibold font-sans uppercase tracking-[0.2em] text-slate-400 mb-2">Key Takeaways</h4>
                                     <div className="h-32 border-b border-dashed border-slate-300"></div>
                                   </div>
                                 )}
                                 <div className="p-4">
-                                  <h4 className="text-[10px] font-black font-sans uppercase tracking-[0.2em] text-slate-400 mb-2">Notes</h4>
-                                  <div className="space-y-4">
+                                  <h4 className="text-xs font-semibold font-sans uppercase tracking-[0.2em] text-slate-400 mb-2">Notes</h4>
+                                  <div className="space-y-1.5">
                                     <div className="border-b border-solid border-slate-200"></div>
                                     <div className="border-b border-solid border-slate-200"></div>
                                     <div className="border-b border-solid border-slate-200"></div>
@@ -1348,28 +1348,28 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                                   </div>
                                 </div>
                                 {config.layoutTheme?.showIllustrations && (
-                                  <div className="p-4 bg-slate-100 border border-slate-200/50 rounded-xl aspect-[3/4] flex items-center justify-center text-slate-400">
+                                  <div className="p-4 bg-slate-100 border border-slate-200/50 rounded aspect-[3/4] flex items-center justify-center text-slate-400">
                                     <ImageIcon size={32} opacity={0.3} />
                                   </div>
                                 )}
                              </div>
                            )}
                            {config.layoutTheme?.style === 'manual' && config.layoutTheme?.showTextBoxes && (
-                              <div className="w-full md:w-64 shrink-0 space-y-8 hidden md:block">
+                              <div className="w-full md:w-64 shrink-0 space-y-3 hidden md:block">
                                 <div className="p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl">
-                                  <h4 className="text-[10px] font-black font-sans uppercase tracking-[0.2em] text-amber-700 mb-2">Caution</h4>
+                                  <h4 className="text-xs font-semibold font-sans uppercase tracking-[0.2em] text-amber-700 mb-2">Caution</h4>
                                   <p className="text-xs text-amber-900">Ensure prerequisite steps are completed.</p>
                                 </div>
                               </div>
                            )}
                            {config.layoutTheme?.style === 'magazine' && config.layoutTheme?.showTextBoxes && (
-                              <div className="w-full md:w-64 shrink-0 space-y-8 hidden md:block">
-                                <div className="p-6 bg-slate-900 border-l-4 border-brand-primary rounded-r-xl text-white">
-                                  <h4 className="text-[10px] font-black font-sans uppercase tracking-[0.2em] text-slate-400 mb-3">Pull Quote</h4>
-                                  <p className="text-xl font-serif italic text-white leading-relaxed">"The layout engine transforms words into an experience."</p>
+                              <div className="w-full md:w-64 shrink-0 space-y-3 hidden md:block">
+                                <div className="p-4 bg-slate-900 border-l-4 border-brand-primary rounded-r-xl text-white">
+                                  <h4 className="text-xs font-semibold font-sans uppercase tracking-[0.2em] text-slate-400 mb-3">Pull Quote</h4>
+                                  <p className="text-[11px] font-medium font-serif italic text-white leading-relaxed">"The layout engine transforms words into an experience."</p>
                                 </div>
                                 {config.layoutTheme?.showIllustrations && (
-                                  <div className="p-0 bg-slate-100 rounded-xl aspect-[4/3] flex items-center justify-center text-slate-400 overflow-hidden">
+                                  <div className="p-0 bg-slate-100 rounded aspect-[4/3] flex items-center justify-center text-slate-400 overflow-hidden">
                                      <div className="w-full h-full bg-slate-200 animate-pulse"></div>
                                   </div>
                                 )}
@@ -1381,19 +1381,19 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   })}
                   
                   {config.layoutTheme?.includeIndex && (
-                     <div className="space-y-12 manuscript-page mt-32 border-t-8 border-slate-900 pt-16">
-                        <h2 className={`font-black italic text-slate-900 tracking-tight ${config.layoutTheme?.style !== 'standard' ? 'text-5xl font-sans text-left' : 'text-4xl font-serif text-center'}`}>Index</h2>
-                        <div className="columns-2 md:columns-3 gap-8 text-sm font-sans text-slate-600">
-                           <div className="mb-4"><strong>A</strong><br/>Artifacts, 42<br/>Author, 12</div>
-                           <div className="mb-4"><strong>L</strong><br/>Layouts, 8<br/>Logic, 101</div>
-                           <div className="mb-4"><strong>T</strong><br/>Typesetting, 56<br/>Typography, 89</div>
+                     <div className="space-y-1.5 manuscript-page mt-32 border-t-8 border-slate-900 pt-16">
+                        <h2 className={`font-semibold italic text-slate-900 tracking-tight ${config.layoutTheme?.style !== 'standard' ? 'text-[11px] font-medium font-sans text-left' : 'text-[11px] font-medium font-serif text-center'}`}>Index</h2>
+                        <div className="columns-2 md:columns-3 gap-2 text-[11px] font-sans text-slate-600">
+                           <div className="mb-1.5"><strong>A</strong><br/>Artifacts, 42<br/>Author, 12</div>
+                           <div className="mb-1.5"><strong>L</strong><br/>Layouts, 8<br/>Logic, 101</div>
+                           <div className="mb-1.5"><strong>T</strong><br/>Typesetting, 56<br/>Typography, 89</div>
                         </div>
                      </div>
                   )}
                 </div>
 
                 <div className="text-center py-24 opacity-20">
-                  <div className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-900">The End</div>
+                  <div className="text-xs font-semibold uppercase tracking-widest text-slate-900">The End</div>
                 </div>
               </div>
             </motion.div>
@@ -1405,16 +1405,16 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-8 no-print"
+              className="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-2 no-print"
             >
-              <div className="space-y-6">
-                <div className="bg-brand-dark p-8 rounded-[2.5rem] border border-border-subtle shadow-2xl relative overflow-hidden group text-text-primary">
-                   <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+              <div className="space-y-2">
+                <div className="bg-brand-dark p-4 rounded border border-border-subtle shadow-2xl relative overflow-hidden group text-text-primary">
+                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
                      <FileText size={80} className="text-brand-primary" />
                    </div>
-                   <h3 className="text-xl font-black italic font-serif mb-2">NovelCrafter Sync</h3>
-                   <p className="text-[10px] text-brand-primary font-bold uppercase tracking-widest mb-6">Series Bible Integration</p>
-                   <p className="text-xs text-text-secondary mb-8 leading-relaxed">
+                   <h3 className="text-[11px] font-medium font-semibold italic font-serif mb-2">NovelCrafter Sync</h3>
+                   <p className="text-xs text-brand-primary font-medium uppercase tracking-widest mb-2">Series Bible Integration</p>
+                   <p className="text-xs text-text-secondary mb-3 leading-relaxed">
                      Export a structured compatible payload including all Deep Research Notes, Plot Nodes, and Characters to rapidly ingest into NovelCrafter.
                    </p>
                    <button 
@@ -1425,19 +1425,19 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                          onNotify('Successfully mapped to NovelCrafter format', 'success');
                        }, 1500)
                      }}
-                     className="w-full py-4 ethereal-panel border border-brand-primary/40 hover:border-brand-primary text-brand-primary rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95"
+                     className="w-full py-2 ethereal-panel border border-brand-primary/40 hover:border-brand-primary text-brand-primary rounded font-semibold text-xs uppercase tracking-widest transition-all active:scale-95"
                    >
                      Export NC Compatible File
                    </button>
                 </div>
 
-                <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-8 rounded-[2.5rem] border border-indigo-800 shadow-2xl relative overflow-hidden group text-white">
-                   <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-4 rounded border border-indigo-800 shadow-2xl relative overflow-hidden group text-white">
+                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
                      <Book size={80} className="text-white" />
                    </div>
-                   <h3 className="text-xl font-black italic font-serif mb-2">Atticus / Vellum Engine</h3>
-                   <p className="text-[10px] text-indigo-300 font-bold uppercase tracking-widest mb-6">Professional Typesetting Routing</p>
-                   <p className="text-xs text-indigo-200 mb-8 leading-relaxed">
+                   <h3 className="text-[11px] font-medium font-semibold italic font-serif mb-2">Atticus / Vellum Engine</h3>
+                   <p className="text-xs text-indigo-300 font-medium uppercase tracking-widest mb-2">Professional Typesetting Routing</p>
+                   <p className="text-xs text-indigo-200 mb-3 leading-relaxed">
                      Bypasses the internal layout engine to prepare a cleanly-stripped, tag-free DOCX blueprint optimized directly for Atticus or Vellum ingestion.
                    </p>
                    <button 
@@ -1448,31 +1448,31 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                            onNotify('Vellum-Ready file exported.', 'success');
                         }, 1200)
                      }}
-                     className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl shadow-indigo-900/50 active:scale-95"
+                     className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-semibold text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-900/50 active:scale-95"
                    >
                      Export to Typesetter
                    </button>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="p-8 bg-[#1e1e1e] border border-[#2d2d2d] rounded-[2.5rem] flex flex-col gap-6 relative overflow-hidden">
-                  <div className="flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 bg-purple-900/30 border border-purple-500/50 rounded-2xl flex items-center justify-center shadow-sm">
+              <div className="space-y-2">
+                <div className="p-4 bg-[#1e1e1e] border border-[#2d2d2d] rounded flex flex-col gap-2 relative overflow-hidden">
+                  <div className="flex items-center gap-2 relative z-10">
+                    <div className="w-12 h-12 bg-purple-900/30 border border-purple-500/50 rounded flex items-center justify-center shadow-sm">
                       <svg width="24" height="24" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M222.75 125.75L138.75 41.75C133.09 36.09 123.91 36.09 118.25 41.75L34.25 125.75C28.59 131.41 28.59 140.59 34.25 146.25L118.25 230.25C123.91 235.91 133.09 235.91 138.75 230.25L222.75 146.25C228.41 140.59 228.41 131.41 222.75 125.75Z" stroke="#a855f7" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </div>
                     <div>
-                      <h4 className="text-sm font-black uppercase tracking-widest text-slate-100 italic font-serif">Obsidian Vault Bridge</h4>
-                      <p className="text-[9px] text-[#a855f7] font-bold uppercase tracking-widest">Multi-Directional Markdown File Sync</p>
+                      <h4 className="text-[11px] font-semibold uppercase tracking-widest text-slate-100 italic font-serif">Obsidian Vault Bridge</h4>
+                      <p className="text-[10px] text-[#a855f7] font-medium uppercase tracking-widest">Multi-Directional Markdown File Sync</p>
                     </div>
                   </div>
                   
                   <p className="text-xs text-slate-400 relative z-10">
-                    Connect this Casper instance to your local Obsidian folder map. Extracts the Intelligence Graph and Chapters as tightly linked Markdown documents for secondary knowledge graphs.
+                    Connect this Caspa instance to your local Obsidian folder map. Extracts the Intelligence Graph and Chapters as tightly linked Markdown documents for secondary knowledge graphs.
                   </p>
                   
-                  <div className="p-4 bg-black/40 rounded-xl space-y-2 border border-white/5 relative z-10">
-                    <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold uppercase tracking-widest">
+                  <div className="p-4 bg-black/40 rounded space-y-2 border border-white/5 relative z-10">
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium uppercase tracking-widest">
                       <span>Vault Connection Status</span>
                       <span className="text-amber-500">AWAITING LOCAL DIRECTORY PATH</span>
                     </div>
@@ -1481,13 +1481,13 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                     </div>
                   </div>
 
-                  <button className="w-full py-4 bg-[#a855f7] hover:bg-[#9333ea] text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all relative z-10">
+                  <button className="w-full py-2 bg-[#a855f7] hover:bg-[#9333ea] text-white rounded font-semibold text-xs uppercase tracking-widest transition-all relative z-10">
                     Link Obsidian Vault
                   </button>
                 </div>
 
-                <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem]">
-                   <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">BBC Radio 4 Standards</h4>
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded">
+                   <h4 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1.5">BBC Radio 4 Standards</h4>
                    <ul className="space-y-3">
                      {[
                        'Scene descriptions strictly through sound cues',
@@ -1495,7 +1495,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                        'Cast size limited for maximum clarity',
                        'Emotional shifts mapped to voice modulation'
                      ].map(rule => (
-                       <li key={rule} className="flex items-start gap-2 text-[10px] text-slate-600 font-medium">
+                       <li key={rule} className="flex items-start gap-2 text-xs text-slate-600 font-medium">
                          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-1 shrink-0" />
                          {rule}
                        </li>
@@ -1512,23 +1512,23 @@ export default function PublishView({ project, chapters, updateProject, updateCh
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-12 no-print"
+              className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-2 no-print"
             >
               {/* Calculator View */}
-              <div className="space-y-8">
+              <div className="space-y-3">
                 <section>
-                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                     <Calculator size={14} /> Production Settings
                   </h3>
-                  <div className="space-y-6">
+                  <div className="space-y-2">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Interior Paper Type</label>
+                      <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Interior Paper Type</label>
                       <div className="grid grid-cols-3 gap-2">
                         {(['white', 'cream', 'color'] as const).map(type => (
                           <button
                             key={type}
                             onClick={() => updateConfig({ paperType: type })}
-                            className={`px-4 py-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${
+                            className={`px-2 py-2 rounded border text-xs font-semibold uppercase tracking-widest transition-all ${
                               config.paperType === type ? 'bg-brand-primary border-brand-primary text-white shadow-lg' : 'bg-surface-muted border-border-subtle text-text-secondary hover:text-text-primary'
                             }`}
                           >
@@ -1538,13 +1538,13 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                       </div>
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Trim Size</label>
+                      <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Trim Size</label>
                       <div className="grid grid-cols-2 gap-2">
                         {(['5x8', '5.5x8.5', '6x9', '8.27x11.69'] as const).map(size => (
                           <button
                             key={size}
                             onClick={() => updateConfig({ trimSize: size })}
-                            className={`px-4 py-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${
+                            className={`px-2 py-2 rounded border text-xs font-semibold uppercase tracking-widest transition-all ${
                               config.trimSize === size ? 'bg-brand-primary border-brand-primary text-white shadow-lg' : 'bg-surface-muted border-border-subtle text-text-secondary hover:text-text-primary'
                             }`}
                           >
@@ -1556,7 +1556,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                   </div>
                 </section>
 
-                <div className="bg-slate-900 p-8 rounded-[3rem] border border-slate-800 flex items-center justify-center overflow-hidden shadow-2xl relative">
+                <div className="bg-slate-900 p-4 rounded border border-slate-800 flex items-center justify-center overflow-hidden shadow-2xl relative">
                   <div className="absolute top-0 right-0 p-4 opacity-10">
                     <Ruler size={40} className="text-white" />
                   </div>
@@ -1569,45 +1569,45 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                           animate={{ width: Math.max(12, parseFloat(spineWidth) * 100) }}
                           className="h-40 bg-blue-600 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)] flex items-center justify-center transition-all duration-700"
                         >
-                           <div className="rotate-90 text-[6px] font-black uppercase tracking-widest whitespace-nowrap text-white/50">
+                           <div className="rotate-90 text-[6px] font-semibold uppercase tracking-widest whitespace-nowrap text-white/50">
                              {project.title}
                            </div>
                         </motion.div>
                         <div className="w-24 h-40 bg-white/5 border border-white/10 rounded-l-md backdrop-blur-sm"></div>
                       </div>
                       <div className="mt-8 text-center">
-                        <div className="text-4xl font-black italic font-serif text-white tracking-tighter">{spineWidth}"</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Spine Thickness</div>
+                        <div className="text-[11px] font-medium font-semibold italic font-serif text-white tracking-tighter">{spineWidth}"</div>
+                        <div className="text-xs font-medium text-slate-500 uppercase tracking-widest">Spine Thickness</div>
                       </div>
                    </div>
                 </div>
               </div>
 
               {/* Data Review */}
-              <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm space-y-8">
+              <div className="bg-white p-4 rounded border border-slate-100 shadow-sm space-y-3">
                  <div>
-                   <h3 className="text-2xl font-black italic font-serif text-slate-900 mb-2">KDP Layout Specifications</h3>
+                   <h3 className="text-[11px] font-medium font-semibold italic font-serif text-slate-900 mb-2">KDP Layout Specifications</h3>
                    <p className="text-xs text-slate-500 font-medium">Use these values when uploading your files to Amazon Kindle Direct Publishing.</p>
                  </div>
 
-                 <div className="space-y-4">
-                    <div className="flex items-center justify-between py-4 border-b border-slate-50">
-                       <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Page Count</span>
-                       <span className="text-sm font-black text-slate-900">{estPageCount}</span>
+                 <div className="space-y-1.5">
+                    <div className="flex items-center justify-between py-2 border-b border-slate-50">
+                       <span className="text-xs font-semibold uppercase text-slate-400 tracking-widest">Page Count</span>
+                       <span className="text-[11px] font-semibold text-slate-900">{estPageCount}</span>
                     </div>
-                    <div className="flex items-center justify-between py-4 border-b border-slate-50">
-                       <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Spine Width</span>
-                       <span className="text-sm font-black text-blue-600">{spineWidth} inches</span>
+                    <div className="flex items-center justify-between py-2 border-b border-slate-50">
+                       <span className="text-xs font-semibold uppercase text-slate-400 tracking-widest">Spine Width</span>
+                       <span className="text-[11px] font-semibold text-blue-600">{spineWidth} inches</span>
                     </div>
-                    <div className="flex items-center justify-between py-4 border-b border-slate-50">
-                       <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Full Cover Width</span>
-                       <span className="text-sm font-black text-slate-900">
+                    <div className="flex items-center justify-between py-2 border-b border-slate-50">
+                       <span className="text-xs font-semibold uppercase text-slate-400 tracking-widest">Full Cover Width</span>
+                       <span className="text-[11px] font-semibold text-slate-900">
                          {(parseFloat(config.trimSize.split('x')[0]) * 2 + parseFloat(spineWidth)).toFixed(3)}"
                        </span>
                     </div>
-                    <div className="flex items-center justify-between py-4 border-b border-slate-50">
-                       <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Bleed Requirements</span>
-                       <span className="text-sm font-black text-amber-600">+0.125" all sides</span>
+                    <div className="flex items-center justify-between py-2 border-b border-slate-50">
+                       <span className="text-xs font-semibold uppercase text-slate-400 tracking-widest">Bleed Requirements</span>
+                       <span className="text-[11px] font-semibold text-amber-600">+0.125" all sides</span>
                     </div>
                  </div>
 
@@ -1616,7 +1616,7 @@ export default function PublishView({ project, chapters, updateProject, updateCh
                       href="https://kdp.amazon.com/en_US/help/topic/G201857950" 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="w-full py-4 bg-slate-900 text-white rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all"
+                      className="w-full py-2 bg-slate-900 text-white rounded flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-widest hover:bg-slate-800 transition-all"
                     >
                       Open KDP Help Center <ExternalLink size={14} />
                     </a>
@@ -1628,13 +1628,13 @@ export default function PublishView({ project, chapters, updateProject, updateCh
       </div>
 
       {/* Global Notice */}
-      <footer className="mt-12 p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] flex items-center gap-6 no-print">
-         <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm flex-shrink-0">
+      <footer className="mt-12 p-4 bg-slate-50 border border-slate-100 rounded flex items-center gap-2 no-print">
+         <div className="w-12 h-12 bg-white rounded flex items-center justify-center shadow-sm flex-shrink-0">
            <RefreshCcw size={20} className="text-blue-600" />
          </div>
          <div>
-            <h5 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-1">Production Consistency</h5>
-            <p className="text-[10px] text-slate-500 font-medium leading-relaxed max-w-2xl">
+            <h5 className="text-xs font-semibold text-slate-900 uppercase tracking-widest mb-1">Production Consistency</h5>
+            <p className="text-xs text-slate-500 font-medium leading-relaxed max-w-2xl">
               Calculations are based on Amazon's standard paper thickness. We recommend a 10-page buffer for final layout shifts during interior formatting.
             </p>
          </div>

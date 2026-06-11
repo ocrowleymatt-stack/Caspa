@@ -38,7 +38,8 @@ import {
   Plus,
   Scissors,
   AlertTriangle,
-  Ghost
+  Ghost,
+  Feather
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -96,6 +97,11 @@ import PinGate from './components/PinGate';
 import ScalpelModule from './components/ScalpelModule';
 import AutoDrafter from './components/AutoDrafter';
 import SpatialGlassMode from './components/SpatialGlassMode';
+import DiscoverView from './components/DiscoverView';
+import DesignView from './components/DesignView';
+import WriteView from './components/WriteView';
+import MemoryView from './components/MemoryView';
+import IntelligenceView from './components/IntelligenceView';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -127,9 +133,13 @@ export default function App() {
   // Load project cache on mount
   useEffect(() => {
     if (user) {
-      const cached = localStorage.getItem(`ls_projects_cache_${user.uid}`);
-      if (cached) {
-        setProjects(JSON.parse(cached));
+      try {
+        const cached = localStorage.getItem(`ls_projects_cache_${user.uid}`);
+        if (cached) {
+          setProjects(JSON.parse(cached));
+        }
+      } catch (e) {
+        console.error("Failed to parse projects cache from localStorage:", e);
       }
     }
   }, [user]);
@@ -330,6 +340,7 @@ export default function App() {
       if (u) {
         setLoginError(null);
         if (u.email) localStorage.setItem('currentUserEmail', u.email);
+        setIsProjectsLoading(true);
       } else {
         localStorage.removeItem('currentUserEmail');
         setProject(INITIAL_PROJECT);
@@ -339,6 +350,7 @@ export default function App() {
         setResearch([]);
         setSourceMaterials([]);
         setExternalReviews([]);
+        setIsProjectsLoading(false);
       }
       setLoading(false);
     });
@@ -385,33 +397,13 @@ export default function App() {
       return;
     }
 
-    // Determine simple independent queries to run in parallel and merge on the client
+    // Keep project sync to security-rule-safe predicates only.
+    // The previous email-variation fan-out produced Firestore PERMISSION_DENIED
+    // errors because several queries were not provably authorised by the rules.
     const queries = [
       query(collection(db, 'projects'), where('ownerId', '==', user.uid)),
       query(collection(db, 'projects'), where('collaborators', 'array-contains', user.uid))
     ];
-
-    const email = user.email || '';
-    if (email) {
-      const emailVariations = new Set<string>();
-      emailVariations.add(email);
-      emailVariations.add(email.toLowerCase());
-      emailVariations.add(email.toUpperCase());
-      emailVariations.add(email.charAt(0).toUpperCase() + email.slice(1));
-      
-      // Handle Gmail dot variance
-      if (email.endsWith('@gmail.com')) {
-        const [local, domain] = email.split('@');
-        const noDots = local.replace(/\./g, '') + '@' + domain;
-        emailVariations.add(noDots);
-        emailVariations.add(noDots.toLowerCase());
-      }
-      
-      emailVariations.forEach(ev => {
-        queries.push(query(collection(db, 'projects'), where('ownerId', '==', ev)));
-        queries.push(query(collection(db, 'projects'), where('collaborators', 'array-contains', ev)));
-      });
-    }
 
     setIsProjectsLoading(true);
     const queryResults: Project[][] = new Array(queries.length).fill([]).map(() => []);
@@ -578,19 +570,22 @@ export default function App() {
     const path = `projects/${newId}`;
     
     try {
+      await user.getIdToken(true);
+      const now = Date.now();
       const newProjectData: Project = { 
         ...INITIAL_PROJECT,
         title: title || 'Untitled Narrative',
         id: newId,
         ownerId: user.uid,
-        createdAt: Date.now(),
-        lastModified: Date.now(),
-        updatedAt: serverTimestamp() as any
+        collaborators: [],
+        createdAt: now,
+        lastModified: now,
+        updatedAt: now as any
       };
       
-      localStorage.setItem(`lastProject_${user.uid}`, newId);
-      
+      // Only persist the selected project after Firestore has accepted it.
       await setDoc(projectRef, newProjectData);
+      localStorage.setItem(`lastProject_${user.uid}`, newId);
       setProject(newProjectData);
       setProjects(prev => [newProjectData, ...prev]);
       setCurrentView('dashboard');
@@ -1200,64 +1195,52 @@ export default function App() {
 
   const navGroups = [
     {
-      title: "Navigation",
+      title: "Workspace",
       items: [
-        { id: 'library', label: 'Archive Vault', sub: 'Project list', icon: Library },
-        { id: 'dashboard', label: 'Mission Control', sub: 'Overview & stats', icon: BarChart3 },
+        { id: 'library', label: 'Library', sub: 'Collection of works', icon: Library },
+        { id: 'dashboard', label: 'Command Centre', sub: 'Narrative hub', icon: BarChart3 }
       ]
     },
     {
-      title: "1. Strategy",
+      title: "Creation Workflow",
       items: [
-        { id: 'prizes', label: 'Prestige Targets', sub: 'Award analysis', icon: Trophy },
-        { id: 'reviews', label: 'Review Vault', sub: 'Critical feedback', icon: MessageSquare },
-        { id: 'brainstorm', label: 'Idea Forge', sub: 'Brainstorm ideas', icon: Sparkles },
+        { id: 'discover', label: 'Discover', sub: 'Premise, research & voice', icon: Sparkles },
+        { id: 'design', label: 'Design', sub: 'Characters & structures', icon: GitBranch },
+        { id: 'write', label: 'Write', sub: 'Manuscript drafting & scenes', icon: PenTool },
+        { id: 'autodraft', label: 'Auto Draft', sub: 'Generate scene outlines & drafts', icon: Zap },
+        { id: 'architect', label: 'Fix a Bad Book', sub: 'Reconstruct & fix bad structure', icon: Activity }
       ]
     },
     {
-      title: "2. Foundations",
+      title: "Lattice & Intelligence",
       items: [
-        { id: 'characters', label: 'Narrative Personnel', sub: 'Character profiles', icon: Users },
-        { id: 'intelligence', label: 'Intelligence Lab', sub: 'Niche research', icon: BrainCircuit },
-      ]
-    },    {
-      title: "3. Structure",
-      items: [
-        { id: 'plot', label: 'Structural Beats', sub: 'Outline beats', icon: GitBranch },
-        { id: 'architect', label: 'Manuscript Architect', sub: 'Fix structure', icon: Construction },
+        { id: 'memory', label: 'Memory & Ledgers', sub: 'Canon, secrets & promises', icon: BrainCircuit },
+        { id: 'intelligence', label: 'Narrative Intelligence', sub: 'The Red Pen & decay', icon: Scissors },
+        { id: 'upload', label: 'Evidence & Uploads', sub: 'Ingest and browse reference documents', icon: Upload }
       ]
     },
     {
-      title: "4. Execution",
+      title: "Publishing",
       items: [
-        { id: 'autodraft', label: 'Drafting Engine', sub: 'Automated drafts', icon: Activity },
-        { id: 'writing', label: 'Writing Studio', sub: 'Main text editor', icon: PenTool },
-        { id: 'swarm', label: 'Narrative Swarm', sub: 'AI feedback', icon: Zap },
-        { id: 'scalpel', label: 'The Scalpel', sub: 'Prose surgery', icon: Scissors },
-      ]
-    },
-    {
-      title: "5. Delivery",
-      items: [
-        { id: 'export', label: 'Publish & Export', sub: 'Share & print', icon: Globe },
-        { id: 'settings', label: 'Agent Settings', sub: 'System config', icon: Settings },
+        { id: 'publish', label: 'Publish', sub: 'Formatting & export', icon: Globe },
+        { id: 'settings', label: 'Settings', sub: 'Account config', icon: Settings }
       ]
     }
   ];
 
   if (loading) {
     return (
-      <div className="h-screen bg-surface-bg flex flex-col items-center justify-center gap-6">
+      <div className="h-screen bg-surface-bg flex flex-col items-center justify-center gap-2">
         <div className="relative">
           <motion.div 
             animate={{ rotate: 360 }}
             transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-            className="w-16 h-16 border-2 border-brand-primary/20 border-t-brand-primary rounded-[2rem] shadow-[0_0_50px_rgba(59,130,246,0.3)]"
+            className="w-16 h-16 border-2 border-brand-primary/20 border-t-brand-primary rounded shadow-[0_0_50px_rgba(59,130,246,0.3)]"
           />
-          <div className="absolute inset-0 bg-brand-primary/10 rounded-[2rem] blur-xl animate-pulse" />
+          <div className="absolute inset-0 bg-brand-primary/10 rounded blur-xl animate-pulse" />
         </div>
         <div className="flex flex-col items-center gap-2">
-          <p className="text-text-primary/80 font-black uppercase tracking-[0.4em] text-[10px] italic">Calibrating Narrative Systems</p>
+          <p className="text-text-primary/80 font-semibold uppercase tracking-widest text-xs italic">Calibrating Narrative Systems</p>
           <div className="w-32 h-0.5 bg-border-subtle rounded-full overflow-hidden">
             <motion.div 
               animate={{ x: [-128, 128] }}
@@ -1269,12 +1252,12 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center gap-4 mt-8"
+              className="flex flex-col items-center gap-2 mt-8"
             >
-              <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest text-center px-8">Cloud synchronization is taking longer than expected.</p>
+              <p className="text-xs text-amber-500 font-medium uppercase tracking-widest text-center px-2">Cloud synchronization is taking longer than expected.</p>
               <button 
                 onClick={() => setLoading(false)}
-                className="px-6 py-3 bg-white/5 hover:bg-white/10 text-text-primary border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
+                className="px-2 py-2 bg-white/5 hover:bg-white/10 text-text-primary border border-white/10 rounded text-xs font-semibold uppercase tracking-widest transition-all active:scale-95"
               >
                 Bypass & Use Local Cache
               </button>
@@ -1287,7 +1270,7 @@ export default function App() {
 
   if (isReading && readerProject) {
     return (
-      <PinGate>
+      <>
         <ReaderView 
           project={readerProject} 
           chapters={readerChapters} 
@@ -1297,33 +1280,33 @@ export default function App() {
             window.history.replaceState({}, '', window.location.pathname);
           }}
         />
-      </PinGate>
+      </>
     );
   }
 
   if (!user) {
     return (
-      <PinGate>
-        <div className="h-screen bg-surface-bg flex items-center justify-center p-8 relative overflow-hidden">
+      <>
+        <div className="h-screen bg-surface-bg flex items-center justify-center p-4 relative overflow-hidden">
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] pointer-events-none" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
           
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-md w-full bg-surface-card rounded-[3.5rem] p-12 shadow-[0_50px_100px_rgba(0,0,0,0.6)] text-center space-y-10 border border-border-subtle relative z-10"
+            className="max-w-md w-full bg-surface-card rounded p-4 shadow-[0_50px_100px_rgba(0,0,0,0.6)] text-center space-y-3 border border-border-subtle relative z-10"
           >
-            <div className="w-24 h-24 bg-brand-primary rounded-[2.5rem] mx-auto flex items-center justify-center shadow-[0_20px_50px_rgba(59,130,246,0.4)] rotate-3 border-4 border-white/10">
+            <div className="w-24 h-24 bg-brand-primary rounded mx-auto flex items-center justify-center shadow-[0_20px_50px_rgba(59,130,246,0.4)] rotate-3 border-4 border-white/10">
                <Globe size={48} className="text-white" />
             </div>
             <div>
-              <h1 className="text-5xl font-black text-text-primary tracking-tighter mb-3 italic font-serif">Casper <span className="text-brand-primary font-sans tracking-wide not-italic">THE GHOST WRITER</span></h1>
-              <p className="text-text-secondary font-black uppercase tracking-[0.2em] text-[10px] opacity-60">Architecting tomorrow's masterpieces</p>
+              <h1 className="text-[11px] font-medium font-semibold text-text-primary tracking-tighter mb-3 italic font-serif">Caspa <span className="text-brand-primary font-sans tracking-wide not-italic">THE GHOST WRITER</span></h1>
+              <p className="text-text-secondary font-semibold uppercase tracking-[0.2em] text-xs opacity-60">Architecting tomorrow's masterpieces</p>
             </div>
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
               <button 
                 onClick={handleLogin}
-                className="group w-full py-5 bg-brand-primary hover:bg-brand-accent text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-4 transition-all shadow-[0_20px_40px_rgba(168,85,247,0.3)] active:scale-95"
+                className="group w-full py-1 bg-brand-primary hover:bg-brand-accent text-white rounded font-semibold uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-2 transition-all shadow-[0_20px_40px_rgba(168,85,247,0.3)] active:scale-95"
               >
                 <LogIn size={20} className="group-hover:translate-x-1 transition-transform" />
                 Authorize Core Sync
@@ -1331,12 +1314,12 @@ export default function App() {
               
               <button 
                 onClick={handleGuestLogin}
-                className="group w-full py-4 bg-white/5 hover:bg-white/10 text-text-secondary rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] flex items-center justify-center gap-4 transition-all border border-white/5 active:scale-95"
+                className="group w-full py-2 bg-white/5 hover:bg-white/10 text-text-secondary rounded font-semibold uppercase tracking-[0.2em] text-xs flex items-center justify-center gap-2 transition-all border border-white/5 active:scale-95"
               >
                 Enter Guest Protocol
               </button>
 
-              <p className="text-[9px] text-text-secondary opacity-40 uppercase tracking-widest font-medium leading-relaxed mt-2">
+              <p className="text-xs text-text-secondary opacity-40 uppercase tracking-widest font-medium leading-relaxed mt-2">
                 Core Sync grants access to Cloud storage (Google Drive) for archival persistence. <br/>
                 Guest mode utilizes local neural storage only.
               </p>
@@ -1345,20 +1328,20 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 font-medium"
+                className="mt-4 p-4 bg-red-50 border border-red-100 rounded text-xs text-red-600 font-medium"
               >
                 {loginError}
               </motion.div>
             )}
           </motion.div>
         </div>
-      </PinGate>
+      </>
     );
   }
 
   if (isMobile && isSpatialGlassModeActive) {
     return (
-      <PinGate>
+      <>
         <SpatialGlassMode 
           currentView={currentView}
           setCurrentView={setCurrentView}
@@ -1393,18 +1376,18 @@ export default function App() {
           upsertExternalReview={upsertExternalReview}
           addNotification={addNotification}
         />
-      </PinGate>
+      </>
     );
   }
 
   return (
-    <PinGate>
+    <>
       <div 
         className="flex h-dvh bg-surface-bg text-text-primary font-sans selection:bg-brand-primary/30 overflow-hidden print:h-auto print:overflow-visible"
         style={{ minHeight: 0 }}
         role="application"
       >
-        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 z-[1000] bg-brand-primary px-4 py-2 rounded-lg text-white font-black uppercase text-[10px] tracking-widest">Skip to Content</a>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 z-[1000] bg-brand-primary px-2 py-2 rounded text-white font-semibold uppercase text-xs tracking-widest">Skip to Content</a>
       {/* Sidebar Overlay for Mobile */}
       <AnimatePresence>
         {isMobile && isSidebarOpen && (
@@ -1442,28 +1425,28 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div className="p-8 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-brand-primary flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)] font-black text-xl rotate-3 text-white border border-white/10">
-            C
+        <div className="p-4 md:p-4 flex items-center gap-1.5 border-b border-border-subtle mb-2">
+          <div className="w-8 h-8 flex items-center justify-center text-brand-primary">
+            <Feather size={24} strokeWidth={2.5} />
           </div>
           {isSidebarOpen && (
             <motion.h1 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="font-black text-2xl italic tracking-tighter font-serif text-text-primary"
+              className="font-medium text-[11px] font-medium font-serif text-white tracking-wide"
             >
-              Casper <span className="text-brand-primary font-normal font-sans tracking-widest text-[10px] uppercase ml-1 relative -top-1 opacity-80">GHOST WRITER</span>
+              Caspa
             </motion.h1>
           )}
         </div>
 
-        <nav className="flex-1 px-4 space-y-6 mt-4 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-2 space-y-2 mt-4 overflow-y-auto custom-scrollbar">
           {navGroups.map((group, groupIndex) => (
             <div key={groupIndex} className="space-y-2">
               {isSidebarOpen ? (
-                <div className="text-[10px] font-black text-text-secondary uppercase tracking-[0.3em] px-4 mb-3 opacity-40">{group.title}</div>
+                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider px-3 mb-1 mt-4">{group.title}</div>
               ) : (
-                <div className="w-full h-px bg-border-subtle my-6" />
+                <div className="w-full h-px bg-border-subtle my-4" />
               )}
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -1475,19 +1458,16 @@ export default function App() {
                       setCurrentView(item.id as ViewType);
                       if (isMobile) setIsSidebarOpen(false);
                     }}
-                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group text-xs font-bold uppercase tracking-widest ${
+                    className={`w-full flex items-center gap-1.5 px-3 py-1 rounded transition-all duration-200 group text-[11px] font-medium ${
                       isActive 
-                        ? 'bg-brand-primary text-white shadow-xl shadow-brand-primary/30 scale-[1.02]' 
-                        : 'text-text-secondary hover:text-text-primary hover:bg-white/5 active:scale-95'
+                        ? 'bg-brand-primary/10 text-brand-primary' 
+                        : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted'
                     }`}
                     title={item.label}
                   >
-                    <Icon size={20} className={isActive ? 'text-white' : 'group-hover:text-brand-primary transition-colors'} />
+                    <Icon size={18} className={isActive ? 'text-brand-primary' : 'group-hover:text-text-primary transition-colors'} />
                     {isSidebarOpen && (
-                      <div className="flex flex-col items-start min-w-0 text-left">
-                        <span className="flex-1 truncate">{item.label}</span>
-                        {item.sub && <span className={`text-[8px] font-black uppercase tracking-widest opacity-40 ${isActive ? 'text-white/60' : 'text-text-secondary group-hover:text-brand-primary/60'}`}>{item.sub}</span>}
-                      </div>
+                      <span className="flex-1 truncate text-left">{item.label}</span>
                     )}
                   </button>
                 );
@@ -1496,12 +1476,12 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="px-4 py-6 space-y-3 border-t border-border-subtle mx-4">
+        <div className="px-2 py-2 space-y-3 border-t border-border-subtle mx-4">
           <div className={`flex items-center gap-2 ${isSidebarOpen ? 'justify-between' : 'justify-center flex-col'}`}>
             <button 
               onClick={undo}
               disabled={history.length === 0}
-              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all disabled:opacity-10 active:scale-90"
+              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded transition-all disabled:opacity-10 active:scale-90"
               title="Undo (Ctrl+Z)"
             >
               <RotateCcw size={18} />
@@ -1509,14 +1489,14 @@ export default function App() {
             <button 
               onClick={redo}
               disabled={future.length === 0}
-              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-xl transition-all disabled:opacity-10 active:scale-90"
+              className="p-2.5 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded transition-all disabled:opacity-10 active:scale-90"
               title="Redo (Ctrl+Y)"
             >
               <RotateCw size={18} />
             </button>
             <button 
               onClick={saveToCloud}
-              className={`p-2.5 text-text-secondary hover:text-brand-primary hover:bg-white/5 rounded-xl transition-all active:scale-90 ${isSaving ? 'text-brand-primary' : ''}`}
+              className={`p-2.5 text-text-secondary hover:text-brand-primary hover:bg-white/5 rounded transition-all active:scale-90 ${isSaving ? 'text-brand-primary' : ''}`}
               title="Manual Sync"
             >
               <Save size={18} />
@@ -1524,12 +1504,12 @@ export default function App() {
           </div>
         </div>
 
-        <div className="p-6 border-t border-border-subtle flex items-center gap-4 bg-white/5">
-          <img src={user.photoURL || ''} className="w-12 h-12 rounded-xl border border-border-subtle shadow-2xl" alt="Profile" />
+        <div className="p-4 border-t border-border-subtle flex items-center gap-2 bg-white/5">
+          <img src={user.photoURL || ''} className="w-12 h-12 rounded border border-border-subtle shadow-2xl" alt="Profile" />
           {isSidebarOpen && (
             <div className="flex-1 overflow-hidden">
-              <div className="text-xs font-black truncate text-text-primary uppercase tracking-widest">{user.displayName}</div>
-              <button onClick={logout} className="text-[10px] font-bold text-text-secondary hover:text-red-400 transition-colors uppercase flex items-center gap-1 mt-1">
+              <div className="text-xs font-semibold truncate text-text-primary uppercase tracking-widest">{user.displayName}</div>
+              <button onClick={logout} className="text-xs font-medium text-text-secondary hover:text-red-400 transition-colors uppercase flex items-center gap-1 mt-1">
                 <LogOut size={12} />
                 Disconnect Session
               </button>
@@ -1545,29 +1525,24 @@ export default function App() {
         style={{ minHeight: 0 }}
       >
         {/* Top Header */}
-        <header className={`${isShortHeight ? 'h-14' : 'h-20'} border-b border-border-subtle flex items-center justify-between px-4 md:px-10 bg-surface-card relative z-10 shrink-0 no-print shadow-sm transition-all duration-300`}>
-          <div className="flex items-center gap-4 md:gap-12 overflow-hidden h-full">
-            <div className="flex items-center gap-2">
-              <img src="/casper_logo.png" alt="Casper" className="h-6 md:h-8 w-auto opacity-80 hover:opacity-100 transition-opacity" referrerPolicy="no-referrer" />
-              <div className="text-[10px] bg-white/5 px-2.5 py-0.5 rounded-full font-mono text-text-secondary border border-border-subtle/30 uppercase tracking-widest opacity-20">LITERARY ENGINE v3.1</div>
-            </div>
-            
+        <header className={`h-10 border-b border-border-subtle flex items-center justify-between px-3 md:px-2 bg-surface-bg relative z-10 shrink-0 no-print transition-all duration-300`}>
+          <div className="flex items-center w-full justify-between h-full">
             <div className="relative h-full flex items-center">
               <button 
                 onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                aria-label="Select Manuscript"
+                aria-label="Select Project"
                 aria-expanded={isProjectMenuOpen}
                 aria-haspopup="listbox"
-                className="flex items-center gap-2 md:gap-4 px-2 md:px-5 py-1.5 md:py-2.5 hover:bg-white/5 transition-all rounded-2xl group overflow-hidden border border-transparent hover:border-border-subtle"
+                className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-surface-muted transition-all rounded group border border-transparent"
               >
                 <div className="flex flex-col items-start min-w-0 text-left">
-                  <div className={`text-[8px] md:text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] leading-none ${isShortHeight ? 'mb-0.5' : 'mb-1.5'} flex items-center gap-2`}>
-                    <div className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-brand-primary animate-pulse" />
-                    Live Vault
+                  <div className={`text-xs text-text-secondary flex items-center gap-2`}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand-primary" />
+                    Project Workspace
                   </div>
-                  <div className="flex items-center gap-2 md:gap-3 text-text-primary">
-                    <span className={`italic font-serif truncate max-w-[120px] md:max-w-[400px] font-bold ${isShortHeight ? 'text-base' : 'text-lg md:text-2xl'} leading-tight`}>{project.title}</span>
-                    <ChevronDown size={isShortHeight ? 14 : 18} className={`text-text-secondary group-hover:text-brand-primary transition-all duration-300 ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
+                  <div className="flex items-center gap-2 text-text-primary">
+                    <span className={`truncate max-w-[150px] md:max-w-[400px] font-medium text-[11px] md:text-[11px] font-medium leading-tight`}>{project.title}</span>
+                    <ChevronDown size={14} className={`text-text-secondary group-hover:text-brand-primary transition-all duration-300 ${isProjectMenuOpen ? 'rotate-180' : ''}`} />
                   </div>
                 </div>
               </button>
@@ -1578,15 +1553,15 @@ export default function App() {
                     initial={{ opacity: 0, y: 15, scale: 0.98 }}
                     animate={{ opacity: 1, y: 5, scale: 1 }}
                     exit={{ opacity: 0, y: 15, scale: 0.98 }}
-                    className="fixed inset-x-4 top-[74px] md:absolute md:top-full md:left-0 md:inset-x-auto md:w-[480px] bg-surface-card rounded-3xl shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2"
+                    className="fixed inset-x-4 top-[74px] md:absolute md:top-full md:left-0 md:inset-x-auto md:w-[480px] bg-surface-card rounded shadow-[0_50px_100px_-20px_rgba(0,0,0,0.6)] border border-border-subtle z-[110] overflow-hidden mt-2"
                   >
-                    <div className="p-6 max-h-[500px] overflow-y-auto custom-scrollbar">
-                      <div className="flex items-center justify-between mb-6 px-2">
+                    <div className="p-4 max-h-[500px] overflow-y-auto custom-scrollbar">
+                      <div className="flex items-center justify-between mb-2 px-2">
                         <div>
-                          <p className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em]">Archived Artifacts</p>
-                          <p className="text-[8px] text-text-secondary/60 uppercase tracking-widest mt-1">Switch between manuscripts or forge new books</p>
+                          <p className="text-xs font-semibold text-text-secondary uppercase tracking-[0.2em]">Archived Artifacts</p>
+                          <p className="text-xs text-text-secondary/60 uppercase tracking-widest mt-1">Switch between manuscripts or forge new books</p>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1605,18 +1580,18 @@ export default function App() {
                                 }
                               }
                             }}
-                            className="text-[9px] font-black text-brand-primary uppercase tracking-widest hover:underline"
+                            className="text-xs font-semibold text-brand-primary uppercase tracking-widest hover:underline"
                           >
                             Recovery Mode
                           </button>
-                          <span className="text-[10px] bg-brand-primary/10 px-3 py-1 rounded-full text-brand-primary font-black uppercase">{projects.length} Total</span>
+                          <span className="text-xs bg-brand-primary/10 px-3 py-1 rounded-full text-brand-primary font-semibold uppercase">{projects.length} Total</span>
                         </div>
                       </div>
                       <div className="space-y-2">
                         {isProjectsLoading ? (
-                          <div className="py-12 text-center text-[11px] font-black text-text-secondary animate-pulse uppercase tracking-[0.3em]">Calibrating Vault...</div>
+                          <div className="py-1 text-center text-xs font-semibold text-text-secondary animate-pulse uppercase tracking-wider">Calibrating Vault...</div>
                         ) : projects.length === 0 ? (
-                          <div className="py-12 text-center text-[11px] font-black text-text-secondary uppercase tracking-[0.3em]">Void Detected</div>
+                          <div className="py-1 text-center text-xs font-semibold text-text-secondary uppercase tracking-wider">Void Detected</div>
                         ) : (
                           projects.map(p => (
                             <button
@@ -1625,20 +1600,20 @@ export default function App() {
                                 setProject(p);
                                 setIsProjectMenuOpen(false);
                               }}
-                              className={`w-full text-left p-5 rounded-2xl transition-all group/item border ${
+                              className={`w-full text-left p-3 rounded transition-all group/item border ${
                                 p.id === project.id 
-                                  ? 'bg-brand-primary border-brand-primary text-white shadow-2xl shadow-brand-primary/20' 
-                                  : 'hover:bg-white/5 border-border-subtle/30 text-text-secondary hover:text-text-primary'
+                                  ? 'bg-brand-primary/10 border-brand-primary/20 text-brand-primary' 
+                                  : 'hover:bg-surface-muted border-transparent text-text-secondary hover:text-text-primary'
                               }`}
                             >
-                              <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${p.id === project.id ? 'bg-white/20' : 'bg-surface-muted group-hover/item:bg-brand-primary/10 transition-colors'}`}>
-                                  <Library size={18} className={p.id === project.id ? 'text-white' : 'text-text-secondary group-hover/item:text-brand-primary'} />
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-8 h-8 rounded flex items-center justify-center shrink-0 ${p.id === project.id ? 'bg-brand-primary/20' : 'bg-surface-card group-hover/item:bg-white/5 transition-colors border border-border-subtle'}`}>
+                                  <Library size={14} className={p.id === project.id ? 'text-brand-primary' : 'text-text-secondary group-hover/item:text-brand-primary'} />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <div className="text-sm font-black leading-tight truncate italic font-serif">{p.title || 'Untitled Narrative'}</div>
-                                  <div className={`text-[9px] uppercase mt-1 tracking-widest font-bold opacity-60 flex items-center gap-2`}>
-                                    {p.type} <div className="w-1 h-1 rounded-full bg-current" /> {new Date(p.lastModified).toLocaleDateString()}
+                                  <div className="text-[11px] font-medium leading-tight truncate">{p.title || 'Untitled Project'}</div>
+                                  <div className={`text-xs opacity-60 flex items-center gap-1.5`}>
+                                    {p.type} <div className="w-0.5 h-0.5 rounded-full bg-current" /> {new Date(p.lastModified).toLocaleDateString()}
                                   </div>
                                 </div>
                               </div>
@@ -1647,7 +1622,7 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                    <div className="p-4 sm:p-6 bg-surface-muted/50 border-t border-border-subtle grid grid-cols-2 gap-3 shrink-0">
+                    <div className="p-4 sm:p-4 bg-surface-muted/50 border-t border-border-subtle grid grid-cols-2 gap-1.5 shrink-0">
                        <button 
                         onClick={() => {
                           const title = window.prompt('Define narrative title:');
@@ -1657,15 +1632,15 @@ export default function App() {
                             setIsProjectMenuOpen(false);
                           }
                         }}
-                        className="flex items-center justify-center gap-2 py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-brand-primary hover:text-white shadow-xl active:scale-95"
+                        className="flex items-center justify-center gap-2 py-2 bg-brand-primary/10 text-brand-primary rounded font-medium text-[11px] transition-all hover:bg-brand-primary hover:text-white shadow-sm active:scale-95"
                       >
                         <Plus size={16} />
-                        New Archive
+                        New Project
                       </button>
 
-                      <label className="flex items-center justify-center gap-2 py-4 bg-brand-primary text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-brand-accent shadow-xl shadow-brand-primary/20 cursor-pointer active:scale-95">
+                      <label className="flex items-center justify-center gap-2 py-2 bg-surface-muted text-text-primary border border-border-subtle rounded font-medium text-[11px] transition-all hover:bg-white/5 cursor-pointer active:scale-95">
                         <Upload size={16} />
-                        Ingest Case
+                        Import
                         <input 
                           type="file" 
                           className="hidden" 
@@ -1683,27 +1658,27 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="hidden md:flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full text-[9px] font-black text-brand-primary uppercase tracking-[0.1em]"
+                className="hidden md:flex items-center gap-2 px-3 py-1 bg-brand-primary/10 border border-brand-primary/20 rounded-full text-xs font-semibold text-brand-primary uppercase tracking-[0.1em]"
               >
                 <div className="w-1 h-1 rounded-full bg-brand-primary animate-ping" />
                 Intelligence Synced
               </motion.div>
             )}
           </div>
-          <div className="flex items-center gap-2 lg:gap-3 shrink-0">
+          <div className="flex items-center gap-2 lg:gap-1.5 shrink-0">
              {isMobile && (
                <div className="flex items-center gap-2">
                  <button 
                    onClick={() => setIsSpatialGlassModeActive(true)}
-                   className="px-3 py-2.5 text-brand-accent bg-brand-primary/10 hover:bg-brand-primary/20 rounded-xl transition-all border border-brand-primary/30 flex items-center gap-1.5 active:scale-95 shadow-md shadow-brand-primary/10 min-h-[44px]"
+                   className="px-3 py-1 text-brand-accent bg-brand-primary/10 hover:bg-brand-primary/20 rounded transition-all border border-brand-primary/30 flex items-center gap-1.5 active:scale-95 shadow-md shadow-brand-primary/10 min-h-[44px]"
                    title="Enable Spatial Glass PWA mode"
                  >
                    <Sparkles size={14} className="animate-pulse text-brand-accent" />
-                   <span className="text-[9px] font-black tracking-widest uppercase">SPATIAL</span>
+                   <span className="text-xs font-semibold tracking-widest uppercase">SPATIAL</span>
                  </button>
                  <button 
                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                   className="p-3 text-text-primary bg-surface-muted rounded-xl hover:bg-white/5 transition-colors border border-border-subtle min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-95"
+                   className="p-3 text-text-primary bg-surface-muted rounded hover:bg-white/5 transition-colors border border-border-subtle min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-95"
                    title="Toggle Menu"
                  >
                    <Menu size={20} />
@@ -1714,21 +1689,16 @@ export default function App() {
                <>
                  <button 
                   onClick={() => setCurrentView('export')}
-                  className="px-6 py-2.5 bg-brand-primary text-white rounded-xl font-black text-[10px] hover:bg-brand-accent transition-all uppercase tracking-[0.2em] shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95"
+                  className="px-2 py-2 bg-brand-primary text-surface-bg rounded font-medium text-[11px] hover:bg-brand-accent transition-all shadow-sm shadow-brand-primary/20 active:scale-95 flex items-center gap-2"
                 >
-                  Export & Publish
+                  Secure Export
                 </button>
                 <button 
                   onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                  className="flex items-center gap-2 p-2.5 px-4 bg-surface-muted border border-border-subtle rounded-xl text-text-secondary hover:text-brand-primary hover:border-brand-primary/30 transition-all active:scale-90 shadow-sm"
-                  title="Toggle Sidebar Architecture"
+                  className="flex items-center gap-2 px-3 py-2 bg-surface-muted border border-border-subtle rounded text-text-secondary hover:text-text-primary hover:border-text-secondary/30 transition-all active:scale-90 shadow-sm"
+                  title="Toggle Sidebar Menu"
                 >
-                  {isSidebarOpen ? (
-                    <GitBranch size={16} className="rotate-90 transition-transform duration-500" />
-                  ) : (
-                    <Menu size={16} />
-                  )}
-                  <span className="text-[10px] uppercase font-black tracking-widest">{isSidebarOpen ? "COLLAPSE" : "MENU"}</span>
+                  <Menu size={18} />
                 </button>
                </>
              )}
@@ -1739,17 +1709,17 @@ export default function App() {
           <motion.div 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
-            className={`shrink-0 px-8 py-3 flex items-center justify-between gap-4 z-10 relative no-print shadow-lg ${
+            className={`shrink-0 px-2 py-2 flex items-center justify-between gap-2 z-10 relative no-print shadow-lg ${
               systemAlert.type === 'error' ? 'bg-red-500 text-white' : 'bg-amber-500 text-black'
             }`}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
               <AlertTriangle size={18} />
-              <p className="text-xs font-black uppercase tracking-widest">{systemAlert.message}</p>
+              <p className="text-xs font-semibold uppercase tracking-widest">{systemAlert.message}</p>
             </div>
             <button 
               onClick={() => setSystemAlert(null)}
-              className="p-1 hover:bg-black/10 rounded-lg transition-colors"
+              className="p-1 hover:bg-black/10 rounded transition-colors"
             >
               <X size={16} />
             </button>
@@ -1762,15 +1732,15 @@ export default function App() {
           style={{ minHeight: 0 }}
         >
           {isProjectsLoading && projects.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-20 text-center gap-8 bg-surface-bg">
+            <div className="flex-1 flex flex-col items-center justify-center p-20 text-center gap-2 bg-surface-bg">
               <Ghost size={80} className="text-brand-primary opacity-20 animate-pulse" />
-              <div className="space-y-4">
-                <h2 className="text-3xl font-black italic font-serif text-text-primary">Opening The Vault...</h2>
-                <p className="text-sm text-text-secondary font-black uppercase tracking-widest opacity-60">Synchronizing intelligence with core neural infrastructure</p>
+              <div className="space-y-1.5">
+                <h2 className="text-[11px] font-medium font-semibold italic font-serif text-text-primary">Opening The Vault...</h2>
+                <p className="text-[11px] text-text-secondary font-semibold uppercase tracking-widest opacity-60">Synchronizing intelligence with core neural infrastructure</p>
                 <div className="pt-8">
                   <button 
                     onClick={() => setIsProjectsLoading(false)}
-                    className="px-8 py-3 bg-brand-primary/10 border border-brand-primary/20 rounded-xl text-[10px] font-black text-brand-primary uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all"
+                    className="px-2 py-2 bg-brand-primary/10 border border-brand-primary/20 rounded text-xs font-semibold text-brand-primary uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all"
                   >
                     Bypass Synchronizer
                   </button>
@@ -1781,7 +1751,7 @@ export default function App() {
             <div
               className={`w-full flex-1 flex flex-col min-h-0 ${
                 ['writing', 'plot', 'swarm', 'brainstorm', 'characters', 'research', 'library', 'intelligence'].includes(currentView) 
-                  ? `w-full ${currentView === 'writing' ? '' : 'p-2 md:p-6 lg:p-8'}`
+                  ? `w-full ${currentView === 'writing' ? '' : 'p-2 md:p-4 lg:p-3'}`
                   : 'w-full'
               }`}
               style={{ minHeight: 0 }}
@@ -1790,6 +1760,8 @@ export default function App() {
               <LibraryView 
                 key="library"
                 projects={projects}
+                activeProject={project}
+                sourceMaterials={sourceMaterials}
                 onSelectProject={(p) => {
                   setProject(p);
                   setCurrentView('dashboard');
@@ -1800,318 +1772,287 @@ export default function App() {
                 isMobile={isMobile}
               />
             )}
-            {(currentView === 'dashboard' || currentView === 'brainstorm') && (
-                 <div key={project.id} className="flex-1 flex flex-col min-h-0">
-                   {currentView === 'dashboard' && (
-                     <Dashboard 
-                       project={{ ...project, stats: { ...project.stats, totalWords } }} 
-                       projects={projects}
-                       chapters={chapters}
-                       characters={characters}
-                       plotNodes={plotNodes}
-                       isMobile={isMobile}
-                       selectProject={(p) => setProject(p)}
-                       createNewProject={createNewProject}
-                       updateProject={updateProject} 
-                       setView={setCurrentView} 
-                       deleteProject={deleteProject}
-                       saveToCloud={saveToCloud}
-                       isSaving={isSaving}
-                     />
-                   )}
-                   {currentView === 'brainstorm' && (
-                     <Brainstorm 
-                       project={project} 
-                       research={research}
-                       sourceMaterials={sourceMaterials}
-                       updateProject={updateProject} 
-                       onAddResearch={upsertResearch}
-                       onError={(msg) => addNotification(msg, 'error')}
-                     />
-                   )}
-                   {!['dashboard', 'brainstorm'].includes(currentView) && (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-white/5 rounded-[3rem] border border-white/10 m-8">
-                        <Activity className="text-brand-primary mb-4 animate-pulse" size={48} />
-                        <h2 className="text-2xl font-black italic font-serif mb-2 text-white">Neural View Collision</h2>
-                        <p className="text-sm text-text-secondary max-w-md">You've reached a sector that is either under construction or has been purged by the neural architect. Returning to Dashboard safely...</p>
-                        <button 
-                          onClick={() => setCurrentView('dashboard')}
-                          className="mt-6 px-8 py-3 bg-brand-primary text-white rounded-2xl font-black uppercase tracking-widest text-[10px]"
-                        >
-                          Stabilize Connection
-                        </button>
-                      </div>
-                   )}
-                 </div>
-              )}
-              {currentView === 'characters' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <CharacterForge 
-                    key={project.id}
-                    project={{ ...project, characters }} 
-                    research={research}
-                    chapters={chapters}
-                    updateProject={async (updates) => {
-                      if (updates.characters) {
-                        await upsertCharacterBatch(updates.characters);
+            {currentView === 'dashboard' && (
+              <Dashboard 
+                project={{ ...project, stats: { ...project.stats, totalWords } }} 
+                projects={projects}
+                chapters={chapters}
+                characters={characters}
+                plotNodes={plotNodes}
+                isMobile={isMobile}
+                selectProject={(p) => setProject(p)}
+                createNewProject={createNewProject}
+                updateProject={updateProject} 
+                setView={setCurrentView} 
+                deleteProject={deleteProject}
+                saveToCloud={saveToCloud}
+                isSaving={isSaving}
+              />
+            )}
+            {currentView === 'discover' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <DiscoverView 
+                  key={project.id}
+                  project={project}
+                  research={research}
+                  chapters={chapters}
+                  sourceMaterials={sourceMaterials}
+                  updateProject={updateProject}
+                  onAddResearch={upsertResearch}
+                  onDeleteResearch={(id) => deleteSubDoc('research', id)}
+                  onAddChapter={upsertChapter}
+                  onAddSource={upsertSourceMaterial}
+                  onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                />
+              </div>
+            )}
+            {currentView === 'design' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <DesignView 
+                  key={project.id}
+                  project={{ ...project, characters }}
+                  plotNodes={plotNodes}
+                  chapters={chapters}
+                  research={research}
+                  characters={characters}
+                  updateProject={updateProject}
+                  updatePlotNodes={async (nodes) => {
+                     setPlotNodes(nodes);
+                     await upsertPlotNodesBatch(nodes);
+                  }}
+                  updateChapters={async (chapList) => {
+                    setChapters(chapList);
+                    await upsertChapterBatch(chapList);
+                  }}
+                  updateCharacters={async (updates) => {
+                    await upsertCharacterBatch(updates);
+                  }}
+                  onDeduplicateCharacters={deduplicateCharacters}
+                  setView={setCurrentView}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                  onError={(msg) => addNotification(msg, 'error')}
+                />
+              </div>
+            )}
+            {currentView === 'write' && (
+              <div className="flex-1 flex flex-col min-h-0">
+                <WriteView 
+                  key={project.id}
+                  project={{ ...project, chapters, sourceMaterials, research, externalReviews }}
+                  plotNodes={plotNodes}
+                  presence={presence}
+                  chapters={chapters}
+                  updateProject={updateProject}
+                  updateChapters={async (chapList) => {
+                    setChapters(chapList);
+                    await upsertChapterBatch(chapList);
+                  }}
+                  setView={setCurrentView}
+                  upsertChapter={async (chap) => {
+                    setChapters(prev => prev.map(c => c.id === chap.id ? chap : c));
+                    await upsertChapter(chap);
+                  }}
+                  onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
+                  onUpsertSource={upsertSourceMaterial}
+                  onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                  onUpsertCharacters={upsertCharacterBatch}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                  onError={(msg) => addNotification(msg, 'error')}
+                />
+              </div>
+            )}
+            {currentView === 'memory' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <MemoryView 
+                  key={project.id}
+                  project={project}
+                  characters={characters}
+                  chapters={chapters}
+                  updateProject={updateProject}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                />
+              </div>
+            )}
+            {currentView === 'intelligence' && (
+              <div className="flex-1 flex flex-col min-h-0">
+                <IntelligenceView 
+                  key={project.id}
+                  project={project}
+                  chapters={chapters}
+                  characters={characters}
+                  sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
+                  updateProject={updateProject}
+                  updateChapters={async (chaps) => {
+                    setChapters(chaps);
+                    await upsertChapterBatch(chaps);
+                  }}
+                  setView={setCurrentView}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                  onError={(msg) => addNotification(msg, 'error')}
+                />
+              </div>
+            )}
+            {currentView === 'autodraft' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <AutoDrafter 
+                  key={project.id}
+                  project={{ ...project, sourceMaterials, research }}
+                  chapters={chapters}
+                  plotNodes={plotNodes}
+                  research={research}
+                  updateProject={updateProject}
+                  updateChapters={async (chaps) => {
+                    setChapters(chaps);
+                    await upsertChapterBatch(chaps);
+                  }}
+                  setView={setCurrentView}
+                  onNotify={(msg, type) => addNotification(msg, type || 'info')}
+                  onError={(msg) => addNotification(msg, 'error')}
+                />
+              </div>
+            )}
+            {currentView === 'architect' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <ManuscriptFixer 
+                  key={project.id}
+                  project={{ ...project, sourceMaterials, research }}
+                  chapters={chapters}
+                  research={research}
+                  updateProject={updateProject}
+                  updateChapters={async (chaps) => {
+                    setChapters(chaps);
+                    await upsertChapterBatch(chaps);
+                  }}
+                  updatePlotNodes={async (nodes) => {
+                    setPlotNodes(nodes);
+                    await upsertPlotNodesBatch(nodes);
+                  }}
+                  onImportCharacters={async (chars) => {
+                    await upsertCharacterBatch(chars);
+                  }}
+                  onAddResearch={upsertResearch}
+                  setView={setCurrentView}
+                  onError={(msg) => addNotification(msg, 'error')}
+                />
+              </div>
+            )}
+            {currentView === 'upload' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <IntelligenceLab 
+                  key={project.id}
+                  project={project}
+                  research={research}
+                  chapters={chapters}
+                  sourceMaterials={sourceMaterials}
+                  onAddResearch={upsertResearch}
+                  onDeleteResearch={(id) => deleteSubDoc('research', id)}
+                  onAddChapter={upsertChapter}
+                  onAddSource={upsertSourceMaterial}
+                  onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                  onNotify={(msg, type) => addNotification(msg, type || 'info')}
+                />
+              </div>
+            )}
+            {currentView === 'publish' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <PublishView 
+                  key={project.id}
+                  project={project}
+                  chapters={chapters}
+                  updateProject={updateProject}
+                  updateChapters={async (chaps) => {
+                    setChapters(chaps);
+                    await upsertChapterBatch(chaps);
+                  }}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                />
+              </div>
+            )}
+            {currentView === 'settings' && (
+              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
+                <SettingsView 
+                  key={project.id}
+                  project={project} 
+                  updateProject={updateProject}
+                  deleteProject={deleteProject}
+                  onBroadScan={broadRecoveryScan}
+                  onNotify={onNotify}
+                  chapters={chapters}
+                  characters={characters}
+                  plotNodes={plotNodes}
+                  research={research}
+                  sourceMaterials={sourceMaterials}
+                  externalReviews={externalReviews}
+                  onRestoreBackup={async (payload: any) => {
+                    if (!user) return;
+                    try {
+                      let restoredProjData = payload.project;
+                      if (!restoredProjData) throw new Error("Invalid backup payload.");
+
+                      // Fresh Project ID representation
+                      const newProjectId = `project_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`;
+                      
+                      const projectPayload = { 
+                        ...restoredProjData, 
+                        id: newProjectId,
+                        ownerId: user.uid,
+                        lastModified: Date.now(),
+                        updatedAt: serverTimestamp() as any
+                      };
+                      
+                      await setDoc(doc(db, 'projects', newProjectId), projectPayload);
+                        
+                      // 2. Logic for sub-collections MUST use the new ID directly
+                      // We define helper that takes explicit ID
+                      const forceUpsert = async (coll: string, docId: string, data: any) => {
+                        await setDoc(doc(db, 'projects', newProjectId, coll, docId), { ...data, ownerId: user.uid });
+                      };
+
+                      if (Array.isArray(payload.chapters)) {
+                        for (const chap of payload.chapters) {
+                          await forceUpsert('chapters', chap.id, chap);
+                        }
                       }
-                    }} 
-                    onDeduplicateCharacters={deduplicateCharacters}
-                    onError={(msg) => addNotification(msg, 'error')}
-                  />
-                </div>
-              )}
-              {currentView === 'plot' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <PlotArchitect 
-                    key={project.id}
-                    project={{ ...project, chapters, sourceMaterials }}
-                    chapters={chapters} 
-                    plotNodes={plotNodes} 
-                    research={research}
-                    updateProject={updateProject}
-                    updatePlotNodes={async (nodes) => {
-                       setPlotNodes(nodes);
-                       await upsertPlotNodesBatch(nodes);
-                    }}
-                    updateChapters={async (chapList) => {
-                      setChapters(chapList);
-                      await upsertChapterBatch(chapList);
-                    }}
-                    setView={setCurrentView}
-                    onNotify={(msg, type) => addNotification(msg, type)}
-                    onError={(msg) => addNotification(msg, 'error')}
-                  />
-                </div>
-              )}
-              {currentView === 'intelligence' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <IntelligenceLab 
-                    key={project.id}
-                    project={project} 
-                    research={research} 
-                    chapters={chapters}
-                    sourceMaterials={sourceMaterials}
-                    onAddResearch={upsertResearch}
-                    onDeleteResearch={(id) => deleteSubDoc('research', id)}
-                    onAddChapter={upsertChapter}
-                    onAddSource={upsertSourceMaterial}
-                    onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
-                    onNotify={(msg, type) => addNotification(msg, type)}
-                  />
-                </div>
-              )}
-              {currentView === 'writing' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <WritingStudio 
-                    key={project.id}
-                    project={{ ...project, chapters, sourceMaterials, research, externalReviews }} 
-                    plotNodes={plotNodes}
-                    presence={presence}
-                    updateProject={updateProject} 
-                    updateChapters={async (chapList) => {
-                       setChapters(chapList);
-                       // ALWAYS ensure cloud sync for content changes, not just structural changes
-                       await upsertChapterBatch(chapList);
-                    }}
-                    setView={setCurrentView}
-                    upsertChapter={async (chap) => {
-                      setChapters(prev => prev.map(c => c.id === chap.id ? chap : c));
-                      await upsertChapter(chap);
-                    }}
-                    onDeleteChapter={(id) => deleteSubDoc('chapters', id)}
-                    onUpsertSource={upsertSourceMaterial}
-                    onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
-                    onUpsertCharacters={upsertCharacterBatch}
-                    onError={(msg) => addNotification(msg, 'error')}
-                  />
-                </div>
-              )}
-              {currentView === 'swarm' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <CriticSwarm 
-                    key={project.id}
-                    projectType={project.type}
-                    maturity={project.maturity}
-                    chapters={chapters}
-                    sourceMaterials={[...sourceMaterials, ...research.map(r => ({ id: r.id, name: r.title, content: r.content, type: 'Research' }))]}
-                    existingCritiques={project.critiques}
-                    updateProject={updateProject}
-                    updateChapters={async (chaps) => {
-                      setChapters(chaps);
-                      await upsertChapterBatch(chaps);
-                    }}
-                    setView={setCurrentView}
-                    onError={(msg) => addNotification(msg, 'error')}
-                  />
-                </div>
-              )}
-              {currentView === 'autodraft' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <AutoDrafter 
-                    key={project.id}
-                    project={project}
-                    chapters={chapters}
-                    plotNodes={plotNodes}
-                    research={research}
-                    updateProject={updateProject}
-                    updateChapters={async (chaps) => {
-                      setChapters(chaps);
-                      await upsertChapterBatch(chaps);
-                    }}
-                    setView={setCurrentView}
-                    onNotify={(msg, type) => addNotification(msg, type)}
-                    onError={(msg) => addNotification(msg, 'error')}
-                  />
-                </div>
-              )}
-              {currentView === 'prizes' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <PrizeView 
-                    key={project.id}
-                    project={project}
-                    chapters={chapters}
-                    updateProject={updateProject}
-                  />
-                </div>
-              )}
-              {currentView === 'reviews' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <ReviewVault 
-                    key={project.id}
-                    project={project}
-                    reviews={externalReviews}
-                    onUpsert={upsertExternalReview}
-                    onDelete={(id) => deleteSubDoc('externalReviews', id)}
-                  />
-                </div>
-              )}
-              {currentView === 'export' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <PublishView 
-                    key={project.id}
-                    project={project}
-                    chapters={chapters}
-                    updateProject={updateProject}
-                    updateChapters={async (chaps) => {
-                      setChapters(chaps);
-                      await upsertChapterBatch(chaps);
-                    }}
-                    onNotify={(msg, type) => addNotification(msg, type)}
-                  />
-                </div>
-              )}
-              {currentView === 'architect' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <ManuscriptFixer 
-                    key={project.id}
-                    project={{ ...project, sourceMaterials, research }}
-                    chapters={chapters}
-                    research={research}
-                    updateProject={updateProject}
-                    updateChapters={async (chaps) => {
-                      setChapters(chaps);
-                      await upsertChapterBatch(chaps);
-                    }}
-                    updatePlotNodes={async (nodes) => {
-                      setPlotNodes(nodes);
-                      await upsertPlotNodesBatch(nodes);
-                    }}
-                    onImportCharacters={async (chars) => {
-                      setCharacters(prev => [...prev, ...chars]); // Optimistic update
-                      await upsertCharacterBatch(chars);
-                    }}
-                    onAddResearch={upsertResearch}
-                    setView={setCurrentView}
-                    onError={(msg) => addNotification(msg, 'error')}
-                  />
-                </div>
-              )}
-              {currentView === 'settings' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <SettingsView 
-                    key={project.id}
-                    project={project} 
-                    updateProject={updateProject}
-                    deleteProject={deleteProject}
-                    onBroadScan={broadRecoveryScan}
-                    onNotify={onNotify}
-                    chapters={chapters}
-                    characters={characters}
-                    plotNodes={plotNodes}
-                    research={research}
-                    sourceMaterials={sourceMaterials}
-                    externalReviews={externalReviews}
-                    onRestoreBackup={async (payload: any) => {
-                      if (!user) return;
-                      try {
-                        let restoredProjData = payload.project;
-                        if (!restoredProjData) throw new Error("Invalid backup payload.");
-
-                        // Always generate a fresh project ID to ensure ownership and avoid permission conflicts
-                        const newProjectId = `project_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`;
-                        
-                        const projectPayload = { 
-                          ...restoredProjData, 
-                          id: newProjectId,
-                          ownerId: user.uid,
-                          lastModified: Date.now(),
-                          updatedAt: serverTimestamp() as any
-                        };
-                        
-                        // 1. Commit main project document
-                        await setDoc(doc(db, 'projects', newProjectId), projectPayload);
-                        
-                        // 2. Logic for sub-collections MUST use the new ID directly
-                        // We define helper that takes explicit ID
-                        const forceUpsert = async (coll: string, docId: string, data: any) => {
-                          await setDoc(doc(db, 'projects', newProjectId, coll, docId), { ...data, ownerId: user.uid });
-                        };
-
-                        if (Array.isArray(payload.chapters)) {
-                          for (const chap of payload.chapters) {
-                            await forceUpsert('chapters', chap.id, chap);
-                          }
+                      
+                      if (Array.isArray(payload.characters)) {
+                        for (const char of payload.characters) {
+                          await forceUpsert('characters', char.id, char);
                         }
-                        
-                        if (Array.isArray(payload.characters)) {
-                          for (const char of payload.characters) {
-                            await forceUpsert('characters', char.id, char);
-                          }
-                        }
-
-                        if (Array.isArray(payload.plotNodes)) {
-                          for (const node of payload.plotNodes) {
-                            await forceUpsert('plotNodes', node.id, node);
-                          }
-                        }
-
-                        if (Array.isArray(payload.research)) {
-                          for (const res of payload.research) {
-                            await forceUpsert('research', res.id, res);
-                          }
-                        }
-
-                        if (Array.isArray(payload.sourceMaterials)) {
-                          for (const src of payload.sourceMaterials) {
-                            await forceUpsert('sourceMaterials', src.id, src);
-                          }
-                        }
-
-                        if (Array.isArray(payload.externalReviews)) {
-                          for (const rev of payload.externalReviews) {
-                            await forceUpsert('externalReviews', rev.id, rev);
-                          }
-                        }
-
-                        setProject(projectPayload);
-                        setCurrentView('dashboard');
-                        onNotify("Narrative blueprint restored and synchronized.", "success");
-                      } catch (err: any) {
-                        console.error("Restore failed:", err);
-                        onNotify(`Restore collapsed: ${err.message}`, "error");
                       }
-                    }}
+
+                      if (Array.isArray(payload.plotNodes)) {
+                        for (const node of payload.plotNodes) {
+                          await forceUpsert('plotNodes', node.id, node);
+                        }
+                      }
+
+                      if (Array.isArray(payload.research)) {
+                        for (const res of payload.research) {
+                          await forceUpsert('research', res.id, res);
+                        }
+                      }
+
+                      if (Array.isArray(payload.sourceMaterials)) {
+                        for (const src of payload.sourceMaterials) {
+                          await forceUpsert('sourceMaterials', src.id, src);
+                        }
+                      }
+
+                      if (Array.isArray(payload.externalReviews)) {
+                        for (const rev of payload.externalReviews) {
+                          await forceUpsert('externalReviews', rev.id, rev);
+                        }
+                      }
+
+                      setProject(projectPayload);
+                      setCurrentView('dashboard');
+                      onNotify("Narrative blueprint restored and synchronized.", "success");
+                    } catch (err: any) {
+                      console.error("Restore failed:", err);
+                      onNotify(`Restore collapsed: ${err.message}`, "error");
+                    }
+                  }}
                   />
                 </div>
               )}
@@ -2137,7 +2078,7 @@ export default function App() {
       </main>
 
         {/* Notifications Toast */}
-        <div className="fixed bottom-8 right-8 z-[100] flex flex-col gap-3 pointer-events-none">
+        <div className="fixed bottom-8 right-8 z-[100] flex flex-col gap-1.5 pointer-events-none">
           <AnimatePresence>
             {notifications.map((n) => (
               <motion.div
@@ -2145,20 +2086,20 @@ export default function App() {
                 initial={{ opacity: 0, x: 20, y: 0, scale: 0.9 }}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-                className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border min-w-[300px] backdrop-blur-xl ${
+                className={`pointer-events-auto flex items-center gap-1.5 px-2 py-2 rounded shadow-2xl border min-w-[300px] backdrop-blur-xl ${
                   n.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
                   n.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
                   'bg-brand-primary/10 border-brand-primary/20 text-brand-primary'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${
+                <div className={`p-2 rounded ${
                   n.type === 'error' ? 'bg-red-500/20' :
                   n.type === 'success' ? 'bg-emerald-500/20' :
                   'bg-brand-primary/20'
                 }`}>
                   {n.type === 'error' ? <X size={14} /> : n.type === 'success' ? <Zap size={14} /> : <Activity size={14} />}
                 </div>
-                <p className="text-xs font-black uppercase tracking-widest leading-tight">{n.message}</p>
+                <p className="text-xs font-semibold uppercase tracking-widest leading-tight">{n.message}</p>
                 <button 
                   onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))}
                   className="ml-auto opacity-50 hover:opacity-100 transition-opacity"
@@ -2170,7 +2111,7 @@ export default function App() {
           </AnimatePresence>
         </div>
       </div>
-    </PinGate>
+    </>
     );
 }
 

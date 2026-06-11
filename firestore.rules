@@ -14,26 +14,16 @@ service cloud.firestore {
     function isOwner(projectData) {
       return isSignedIn() && projectData != null && (
         projectData.get('ownerId', '') == request.auth.uid ||
-        (request.auth.token.email != null && projectData.get('ownerId', '') is string && (
-          projectData.get('ownerId', '').lower() == request.auth.token.email.lower() ||
-          // Handle Gmail dot variance (Dots are ignored by Gmail)
-          (request.auth.token.email.lower().endsWith('@gmail.com') && 
-           projectData.get('ownerId', '').lower().replace('\\.', '') == request.auth.token.email.lower().replace('\\.', ''))
-        )) ||
-        (request.auth.token.email != null && projectData.get('ownerId', '') is string && 
-          projectData.get('ownerId', '') == request.auth.token.email)
+        (request.auth.token.email != null && projectData.get('ownerId', '') == request.auth.token.email)
       );
     }
 
     function isCollaborator(projectData) {
-      return isSignedIn() && projectData != null && 
-             projectData.get('collaborators', []) is list && (
-              request.auth.uid in projectData.get('collaborators', []) ||
-              (request.auth.token.email != null && (
-                request.auth.token.email in projectData.get('collaborators', []) ||
-                request.auth.token.email.lower() in projectData.get('collaborators', [])
-              ))
-             );
+      return isSignedIn() && projectData != null && (
+        projectData.get('collaborators', []).hasAny([request.auth.uid]) ||
+        (request.auth.token.email != null && 
+          projectData.get('collaborators', []).hasAny([request.auth.token.email]))
+      );
     }
 
     function canAccessProject(projectData) {
@@ -41,95 +31,95 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128;
     }
 
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
+    function projectExistsAndUserHasAccess(projectId) {
+      return exists(/databases/$(database)/documents/projects/$(projectId)) &&
+             canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
     }
 
     // --- Entity Validations ---
     function isValidProject(data) {
-      return data.get('id', '') is string && data.get('id', '').size() <= 128 &&
+      return data.get('id', '') is string && data.get('id', '').size() > 0 && data.get('id', '').size() <= 128 &&
              data.get('title', '') is string && data.get('title', '').size() <= 1000 &&
-             data.get('ownerId', '') is string && data.get('ownerId', '').size() <= 128;
+             data.get('ownerId', '') is string && data.get('ownerId', '').size() > 0 && data.get('ownerId', '').size() <= 128;
     }
 
     function isValidChapter(data) {
-      return data.get('id', '') is string && data.get('id', '').size() <= 128 &&
+      return data.get('id', '') is string && data.get('id', '').size() > 0 && data.get('id', '').size() <= 128 &&
              data.get('title', '') is string && data.get('title', '').size() <= 1000 &&
              data.get('content', '') is string && data.get('content', '').size() <= 5242880 && // 5MB limit
-             data.get('order', 0) is number &&
-             data.get('updatedAt', 0) is number;
+             data.get('order', 0) is number;
     }
 
     // --- Rules ---
 
     // Projects
     match /projects/{projectId} {
-      allow get: if isSignedIn() && (canAccessProject(existing()) || existing().get('isPublic', false) == true);
-      allow list: if isSignedIn(); // Broad query filtering happens via 'where' index constraints in code
+      allow get: if (resource.data != null && resource.data.get('isPublic', false) == true) ||
+                    (isSignedIn() && canAccessProject(resource.data));
+      
+      // Query/list returns matching documents based on ownerId (UID or email) and collaborators (UID or email).
+      allow list: if isSignedIn() && (
+        resource.data.get('ownerId', '') == request.auth.uid ||
+        (request.auth.token.email != null && resource.data.get('ownerId', '') == request.auth.token.email) ||
+        resource.data.get('collaborators', []).hasAny([request.auth.uid]) ||
+        (request.auth.token.email != null && resource.data.get('collaborators', []).hasAny([request.auth.token.email]))
+      );
       
       allow create: if isSignedIn() && 
                       isValidId(projectId) &&
-                      isValidProject(incoming()) &&
-                      (incoming().ownerId == request.auth.uid || 
-                       (request.auth.token.email != null && (incoming().ownerId == request.auth.token.email || incoming().ownerId == request.auth.token.email.lower())));
+                      isValidProject(request.resource.data) &&
+                      (request.resource.data.get('ownerId', '') == request.auth.uid ||
+                       (request.auth.token.email != null && request.resource.data.get('ownerId', '') == request.auth.token.email));
 
       allow update: if isSignedIn() &&
-                      isValidProject(incoming()) &&
-                      canAccessProject(existing()) &&
-                      incoming().ownerId == existing().ownerId &&
-                      incoming().createdAt == existing().createdAt;
+                      isValidProject(request.resource.data) &&
+                      canAccessProject(resource.data) &&
+                      request.resource.data.get('ownerId', '') == resource.data.get('ownerId', '') &&
+                      request.resource.data.get('createdAt', 0) == resource.data.get('createdAt', 0);
 
-      allow delete: if isSignedIn() && isOwner(existing());
+      allow delete: if isSignedIn() && isOwner(resource.data);
 
       // Sub-collections
       match /characters/{charId} {
-        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if isSignedIn() && projectExistsAndUserHasAccess(projectId);
       }
 
       match /plotNodes/{nodeId} {
-        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if isSignedIn() && projectExistsAndUserHasAccess(projectId);
       }
 
       match /chapters/{chapterId} {
-         allow get, list: if isSignedIn() && (
-          resource == null || 
-          resource.data.get('ownerId', '') == request.auth.uid ||
-          (request.auth.token.email != null && resource.data.get('ownerId', '') is string && resource.data.get('ownerId', '').lower() == request.auth.token.email.lower()) ||
-          canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data)
-        );
-        allow write: if isSignedIn() && (
-          incoming().get('ownerId', '') == request.auth.uid ||
-          (request.auth.token.email != null && incoming().get('ownerId', '') is string && incoming().get('ownerId', '').lower() == request.auth.token.email.lower()) ||
-          canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data)
-        );
+        allow read: if (exists(/databases/$(database)/documents/projects/$(projectId)) && 
+                        get(/databases/$(database)/documents/projects/$(projectId)).data.get('isPublic', false) == true) ||
+                     (isSignedIn() && projectExistsAndUserHasAccess(projectId));
+        allow write: if isSignedIn() && projectExistsAndUserHasAccess(projectId);
       }
 
-      match /research/{noteId} {
-        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+      match /research/{nodeId} {
+        allow read, write: if isSignedIn() && projectExistsAndUserHasAccess(projectId);
       }
 
       match /sourceMaterials/{sourceId} {
-        allow read, write: if isSignedIn() && canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read, write: if isSignedIn() && projectExistsAndUserHasAccess(projectId);
+      }
+
+      match /externalReviews/{reviewId} {
+        allow read, write: if isSignedIn() && projectExistsAndUserHasAccess(projectId);
       }
 
       match /presence/{userId} {
-        allow read: if canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow read: if isSignedIn() && projectExistsAndUserHasAccess(projectId);
         allow write: if isSignedIn() && userId == request.auth.uid && 
-                        canAccessProject(get(/databases/$(database)/documents/projects/$(projectId)).data);
+                        projectExistsAndUserHasAccess(projectId);
       }
     }
 
     // Users
     match /users/{userId} {
-      allow read: if isSignedIn() && (userId == request.auth.uid || 
-                     exists(/databases/$(database)/documents/projects/$(request.auth.uid))); // Simplified check for collaborators
+      allow read: if isSignedIn();
       allow write: if isSignedIn() && userId == request.auth.uid;
     }
   }

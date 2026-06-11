@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Type, GoogleGenAI } from "@google/genai";
+import { Type } from "@google/genai";
 import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 
-const GEMINI_API_KEY = 'configured_on_server';
-const XAI_API_KEY = 'configured_on_server';
-const VENICE_API_KEY = 'configured_on_server';
-const CLAUDE_API_KEY = 'configured_on_server';
-const OPENAI_API_KEY = 'configured_on_server';
+const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined;
+const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
+const CLAUDE_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_ANTHROPIC_API_KEY : undefined;
+const OPENAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_OPENAI_API_KEY : undefined;
 
 let globalPrimaryProvider: IntelligenceProvider = 'grok';
 
@@ -57,63 +56,6 @@ LITERARY ENGINE — STANDING RULES (MASTER COMMAND):
 19. WORD COUNT PRECISION: All generated drafts must hit the STRICT WORD TARGET stated above. Do NOT exceed it by more than 3%. Do NOT fall below 90% of it. Word count discipline is non-negotiable.
 20. PLAN PRIORITIZATION: If a "Structural Plan" or "Instructional Archetype" is provided, those instructions MANDATORY override generic structural rules.
 21. STAGED GROWTH SUPREMACY: The DRAFT STAGE and STRICT WORD TARGET stated above OVERRIDE rules 1-20 where they conflict. At Pass 1, lean skeletal prose overrides all calls for sensory depth, imagery, or immersion. The manuscript grows across passes — do not pre-empt later passes by writing at full depth now.
-22. NOVEL COHESION OVER EPISODE LOGIC: This is a single unified work, not a collection of short stories. Chapters are NOT self-contained episodes. Do not wrap up tension neatly at the end of a chapter. Carry tension, unresolved conflicts, and continuous action forward into the next beat. You MUST reconcile all narrative lines, character choices, and environmental details with the provided continuity context. If a chapter introduces a tone or fact that contradicts earlier depth, reconcile it immediately.
-23. NO BUILD ARTIFACTS: Strike all meta-commentary, placeholders, "To be continued" markers, or formatting artifacts. The output should be ready for absolute publication.
-24. RECONCILIATION & SMOOTHING: Actively bridge the gap between chapters. Ensure the "handshake" between the end of the previous chapter and the start of this one is seamless and meaningful.
-25. BAN ALL AI GHOSTS & TROPES: STRICTLY FORBIDDEN to use clichés like "a testament to", "tapestry", "dance of", "symphony", "labyrinthine", "palpable", "delving", "intricate", or "navigating the complexities." Be stark, original, and grounded. DO NOT end scenes with summarizing moral philosophies. End scenes abruptly on actions or images, without neatly wrapping up the chapter's "meaning". 
-26. NO "MIRRORING" OR "ECHOING": Do not start successive paragraphs with the same sentence structure or the same character name. If paragraph 1 starts with "The street was...", paragraph 2 MUST NOT start with "The sky was...". Rupture the AI's tendency for balanced, rhythmic repetition.
-27. STRIP THE "SENTINELS": Delete all introductory phrases like "It was a...", "There were...", "He found himself...". Start with the action or the sensorium directly.
-`;
-
-const INSTRUCTIONAL_ENGINE_RULES = `
-INSTRUCTIONAL ENGINE — STANDING RULES (MASTER COMMAND):
-1. CLARITY & PEDAGOGY FIRST: Your primary goal is to teach, explain, and instruct. Use clear, formal, and accessible language. Do not mix narrative fiction prose into formal explanations.
-2. STRUCTURAL LAYOUT: Structure the content logically with clear headings, bullet points, informative callouts, and modular progression.
-3. SPACE FOR THE LEARNER: Explicitly design the text as an illustrated/course book. Include structured pauses, 'Notes' sections, exercises, and practical application prompts.
-4. VISUAL INTEGRATION: Describe compelling illustrations, diagrams, or page design elements directly in the text (e.g., "[ILLUSTRATION: Diagram of...]") to aid instructional design and create leeway for page layout.
-5. NO FICTIONAL NARRATIVE: Do NOT force fictional narrative tropes, "character wounds," subtext, or fictional scenes unless explicitly requested for a case study. Be instructional, authoritative, and direct.
-6. TARGET PRECISION: Hit the stated word count. Do not pad with fluff. Keep the instructional momentum high.
-`;
-
-const getEngineRules = (type?: string) => {
-  if (type && ['coursebook', 'academic', 'cookbook', 'subject_bible'].includes(type)) {
-    return INSTRUCTIONAL_ENGINE_RULES;
-  }
-  return LITERARY_ENGINE_RULES;
-};
-
-const SCALPEL_RULES = `
-THE SCALPEL — SURGICAL EDITING PROTOCOL (KITCHEN SINK MODE):
-
-You are the "English Teacher from Hell" and a Senior Acquisitions Editor with a deadline and a sharp scalpel. Your goal is to transform "content" into "literature" through brutal excision.
-
-1. REPETITION PURGE (THE ECHO CHAMBER):
-   - Actively scan for word echoes: the same noun, adjective, or verb appearing within the same paragraph. Tweak or delete.
-   - Look for recurring sentence structures (e.g., Starting 3 sentences in a row with "He..."). Rupture the rhythm.
-   - Eliminate "Narrative Static": Ideas or character beats that have already been expressed in the continuity context.
-
-2. WOOLLY PROSE & FILLER INCINERATION:
-   - Excise filter words: "seemed to", "felt like", "began to", "realized that", "wondered if". 
-   - Incinerate "Hedge Words": "very", "almost", "nearly", "sort of", "rather".
-   - Replace abstract emotion labels (He was sad) with concrete behavior or imagery (He kept washing the same glass).
-
-3. ARTIFACT & FORMATTING CLEANSING:
-   - STRIKE all build artifacts: "Chapter X", "---", "Draft 1", meta-tags, AI notes, or preamble.
-   - Ensure standard, clean Markdown. No decorative symbols.
-
-4. NARRATIVE RECONCILIATION:
-   - Smooth the "Handshake": Ensure the start of this text flows perfectly from the end of the previous chapter.
-   - Reconcile storylines: If a character is described one way in context, they MUST remain consistent here.
-   - This is a JOINED-UP NOVEL, not a short story collection. Link the imagery.
-
-5. SERIES DECOMPRESSION (KITCHEN SINK ONLY):
-   - If the ideas are too dense, simplify the prose to let the ideas breathe, or suggest a split point.
-
-6. BAN ALL AI GHOSTS & TROPES:
-   - Search and destroy LLM-isms like "a testament to", "tapestry", "dance of", "symphony", "palpable", "delving", "intricate", or "navigating the complexities."
-   - DO NOT end scenes with summarizing moral philosophies. Let them bleed.
-
-COMMAND: CUT THE SLUDGE. FIND THE WOUND. MAKE IT BLEED PROSE.
 `;
 
 /**
@@ -126,7 +68,7 @@ async function callAI(options: {
   schema?: any;
   maxTokens?: number;
   providerOverride?: IntelligenceProvider;
-  useSearch?: boolean;
+  useWebSearch?: boolean;
 }) {
   try {
     const response = await fetch("/api/ai/call", {
@@ -150,52 +92,6 @@ async function callAI(options: {
   } catch (error: any) {
     console.error("AI Proxy Call failed:", error);
     throw error;
-  }
-}
-
-async function callVeniceImage(prompt: string) {
-  try {
-    const response = await fetch("/api/ai/image", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ prompt })
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.message || `Image API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.result;
-  } catch (error: any) {
-    console.error("Venice Image Proxy Call failed:", error);
-    return null;
-  }
-}
-
-async function callGrokImage(prompt: string) {
-  try {
-    const response = await fetch("/api/ai/image-grok", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ prompt })
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.message || `Grok Image API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.result;
-  } catch (error: any) {
-    console.error("Grok Image Proxy Call failed:", error);
-    return null;
   }
 }
 
@@ -303,7 +199,7 @@ export const AIService = {
       ${sourceContext}
       ${reviewContext}
       
-      ${getEngineRules(type)}
+      ${LITERARY_ENGINE_RULES}
       
       Provide a sophisticated narrative expansion. Include:
       1. Structural Pivot Points (specific scene ideas that "turn" the story).
@@ -341,7 +237,7 @@ export const AIService = {
     };
 
     const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
-    const data = safeParseJSON(text || "{}");
+    const data = safeParseJSON(text || "{}")
     return {
       name: (data.name && data.name !== 'Unknown' && data.name !== 'Unknown Character') ? data.name : `${concept.split(' ')[0] || 'Character'}_${Date.now().toString(36)}`,
       role: data.role || 'Supporting',
@@ -368,9 +264,8 @@ export const AIService = {
       ? `\n=== EXTERNAL CRITICAL REVIEWS ===\n${(project.externalReviews || []).filter(r => !r.isImplemented).map(r => `[FROM ${r.source}]: ${r.content}`).join('\n')}`
       : "";
     
-    const expectedBeats = project.targetWordCount ? Math.min(30, Math.max(5, Math.round(project.targetWordCount / 3000))) : 15;
-    let prompt = `You are a Master Plot Architect outlining a ${project.type} structure for "${project.title}". Create approximately ${expectedBeats} major narrative beats (appropriate for a ~${project.targetWordCount || 75000} word work). ${getMaturityDirectives(project.maturity)}\n\n`;
-    prompt += getEngineRules(project.type);
+    let prompt = `You are a Master Plot Architect outlining a ${project.type} structure for "${project.title}". Create between 8 and 18 major narrative beats. ${getMaturityDirectives(project.maturity)}\n\n`;
+    prompt += LITERARY_ENGINE_RULES;
     
     if (chaptersContext || sourceContext || researchContext || reviewContext) {
       prompt += `Analyze ALL of the following materials. 
@@ -456,8 +351,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["content", "severity", "suggestions"]
     };
 
-    const critiques = [];
-    for (const role of roles) {
+    const critiquePromises = roles.map(async (role) => {
       const personaNames: Record<string, string> = {
         agent: "Literary Agent",
         publisher: "Acquisitions Editor",
@@ -496,32 +390,25 @@ Based ONLY on the provided text and strictly following any structural plans foun
         Return ONLY valid JSON according to the requested schema.
       `;
 
-      try {
-        const responseText = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
-        const data = safeParseJSON(responseText || "{}");
-        
-        const suggestions = Array.isArray(data.suggestions) 
-          ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s)
-          : [];
-
-        critiques.push({
-          id: crypto.randomUUID(),
-          agentName: personaNames[role] || `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`,
-          role: role as any,
-          content: data.content || "No major issues identified.",
-          severity: data.severity || "low",
-          suggestions,
-          timestamp: Date.now() // Add timestamp for versioning
-        } as Critique);
-      } catch (err) {
-        console.error(`Critique failed for role: ${role}`, err);
-      }
+      const responseText = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+      const data = safeParseJSON(responseText || "{}");
       
-      // Delay for rate limiting
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
+      const suggestions = Array.isArray(data.suggestions) 
+        ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s)
+        : [];
 
-    return critiques;
+      return {
+        id: crypto.randomUUID(),
+        agentName: personaNames[role] || `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`,
+        role: role as any,
+        content: data.content || "No major issues identified.",
+        severity: data.severity || "low",
+        suggestions,
+        timestamp: Date.now() // Add timestamp for versioning
+      } as Critique;
+    });
+
+    return Promise.all(critiquePromises);
   },
 
   async writeDraft(title: string, summary: string, context: string, type: ProjectType, activeNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], directives: string[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = [], draftStage?: 1 | 2 | 3 | 4, chapterCount?: number, cutMode?: boolean): Promise<string> {
@@ -550,14 +437,14 @@ Based ONLY on the provided text and strictly following any structural plans foun
     const PASS_INSTRUCTIONS: Record<number, string> = {
       1: 'Focus on scene architecture and skeletal prose. Do not over-expand.',
       2: 'Expand skeletal structure with subtext and character interiority. Add grounding sensory details.',
-      3: 'Full narrative reconciliation. Ensure chapters connect seamlessly. Reconcile preceding character arcs. Eliminate narrative echoes.',
-      4: 'Final literary polish. Eliminate all repetitive prose or redundant imagery. Smooth every transition. Ensure novel-wide cohesion.'
+      3: 'Full scene depth. Pacing refined. Every scene must turn.',
+      4: 'Every sentence must earn its place. Cut all sludge. Perfect rhythm.'
     };
     const PASS_TASK: Record<number, string> = {
       1: 'Write a SKELETAL FIRST DRAFT of Chapter: "' + title + '". STRICT RULES: Hit every scene beat. Essential dialogue only. No descriptive padding, no sensory flourishes, no internal monologue beyond one line per character. LEAN FUNCTIONAL PROSE only. DO NOT write purple prose. DO NOT write beautifully. Write clearly and structurally. Output must be approximately the STRICT WORD TARGET above.',
       2: 'Write a SECOND PASS EXPANSION of Chapter: "' + title + '". RULES: Expand skeletal structure with subtext and character interiority. Add ONE grounding sensory detail per scene maximum. Strengthen dialogue. Still lean. No decorative adjectives. No lush description. Output must be approximately the STRICT WORD TARGET above.',
-      3: 'Write a THIRD PASS COHESIVE NOVEL DRAFT of Chapter: "' + title + '". RULES: Full narrative immersion. RECONCILE this chapter with all preceding context. Ensure character motivations align across the arc. Actively identify and REPLACE any motifs or descriptions that appear in the context. Ensure a seamless "handshake" with the surrounding chapters. Output must be approximately the STRICT WORD TARGET above.',
-      4: 'Write the FINAL RECONCILED NOVEL DRAFT of Chapter: "' + title + '". RULES: Every sentence must earn its place. STRIKE all redundant prose, "echoed" descriptions, and formatting artifacts. Ensure absolute novel-wide cohesion. This is a unified book, not an episode. Smoothen all transitions. Output must be approximately the STRICT WORD TARGET above.'
+      3: 'Write a THIRD PASS NEAR-FINAL DRAFT of Chapter: "' + title + '". RULES: Full scene depth. Pacing refined. Every scene must turn. Sensory grounding appropriate but must serve the story. Cut anything that does not advance plot, character, or tension. Output must be approximately the STRICT WORD TARGET above.',
+      4: 'Write the FINAL POLISHED DRAFT of Chapter: "' + title + '". RULES: Every sentence must earn its place. Cut all sludge. Perfect rhythm, voice, and subtext. This is the version that goes to the publisher. Output must be approximately the STRICT WORD TARGET above.'
     };
 
     const effectiveDraftStage: 1 | 2 | 3 | 4 = draftStage || 1;
@@ -572,16 +459,20 @@ Based ONLY on the provided text and strictly following any structural plans foun
       ? Math.round((projectTargetWords * passPercent) / effectiveChapterCount)
       : Math.round((50000 * passPercent) / effectiveChapterCount);
 
-    const targetContext = isPlanDriven
-      ? `DRAFT STAGE: ${passLabel}
-PLAN-DRIVEN DRAFTING: Follow the CRITICAL AUTHOR DIRECTIVES below. Still respect the pass stage — do not write beyond ${passLabel} depth.`
-      : `DRAFT STAGE: ${passLabel}
-PROJECT SCALE: ${(projectTargetWords || 50000).toLocaleString()} words total across ${effectiveChapterCount} chapters.
+    // Word target block is always included — plan-driven drafts still need a hard target
+    const wordTargetBlock = `PROJECT SCALE: ${(projectTargetWords || 50000).toLocaleString()} words total across ${effectiveChapterCount} chapters.
 STRICT WORD TARGET FOR THIS CHAPTER: ${perChapterTarget!.toLocaleString()} words.
-CRITICAL ENFORCEMENT: You must output at least ${Math.round(perChapterTarget! * 0.9).toLocaleString()} words. Do NOT output a short summary.
-HOW TO ACHIEVE WORD COUNT: Do not summarize. Unfold the scene beat by beat. Include full dialogue exchanges. Describe the micro-actions between lines of dialogue. Let characters process the moment internally. Slow the pacing down. SHOW, don't summarize.
+HARD WORD LIMIT: Do NOT exceed ${Math.round(perChapterTarget! * 1.03).toLocaleString()} words (3% tolerance).
+Do NOT write below ${Math.round(perChapterTarget! * 0.90).toLocaleString()} words (90% floor).
 ${passInstr}
 STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% manuscript depth. Writing beyond this depth is a failure. The manuscript will be expanded in later passes.`;
+
+    const targetContext = isPlanDriven
+      ? `DRAFT STAGE: ${passLabel}
+PLAN-DRIVEN DRAFTING: Follow the CRITICAL AUTHOR DIRECTIVES below. Still respect the pass stage — do not write beyond ${passLabel} depth.
+${wordTargetBlock}`
+      : `DRAFT STAGE: ${passLabel}
+${wordTargetBlock}`;
 
     const researchContext = research.length > 0 
       ? `\nRESEARCH ARCHIVE (INTEGRATE THESE SENSORY DETAILS):\n${research.map(r => `- ${r.title}: ${r.content} [Sensory: ${JSON.stringify(r.sensoryDetails)}]`).join('\n')}`
@@ -599,7 +490,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       ${maturityDirective}
       ${targetContext}
       
-      ${getEngineRules(type)}
+      ${LITERARY_ENGINE_RULES}
       ${cutModeDirective}
       
       TASK: ${cutMode ? `Redraft and COMPRESS the chapter "${title}" — cut bloat, delete what does not serve the story, and return a tighter, leaner version.` : passTask}
@@ -629,24 +520,22 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       - CHARACTER NAMES IN PROSE: Character names are stored in the library for reference only. In prose, use a character's name only when the narrative naturally calls for it. Characters may be referred to by role, pronoun, relationship, or description throughout. Never force a name into prose as a rule.
     `;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    // Compute a generous maxTokens budget: ~1.4 tokens per word, plus 20% headroom
+    const maxTokensBudget = Math.ceil(perChapterTarget * 1.4 * 1.2);
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06", maxTokens: maxTokensBudget });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType, deep = false): Promise<ResearchNote> {
     const prompt = deep ? 
-      `You are a Senior Academic Research Assistant and Master Storyteller specialized in ${type}.
-       Your objective: Conduct rigorous, search-grounded deep research to produce content suitable for an academic thesis, technical manual, or high-fidelity manuscript reference for the topic: "${topic}".
-       
+      `You are a high-fidelity Deep Research Agent for a ${type}. 
+       Your goal is to provide granular, visceral research details for the topic: "${topic}".
        Context of the work: ${context}
        
-       STRICT REQUIREMENTS:
-       1. VERIFIABILITY: Base findings on real-world, high-fidelity facts, historical precedent, and verifiable data.
-       2. SUBSTANCE: Provide deep analytical insights, niche technical mechanisms, and comprehensive historical/cultural contexts. Do not provide superficial summaries.
-       3. SENSORY GROUNDING: Where relevant, anchor these facts with visceral sensory details (sights, sounds, smells, tactile elements) to maintain narrative utility.
-       4. GROUNDING: Use your search tool EXTENSIVELY to find real-world references and citations.
+       STRICT REQUIREMENT: Provide detailed sensory information (sounds, smells, textures, visuals) and niche technical/historical facts.
+       Use your search tool to find real-world high-fidelity references.
        
        Return JSON.` :
-      `Research Assistant for a ${type}. Topic: "${topic}". Context: ${context}. Return JSON with "sources" array.`;
+      `You are a research assistant for a ${type}.\nTopic: "${topic}"\nContext: ${context}\n\nGather current, verifiable sources and synthesize findings.\nReturn JSON with keys: title, content, category, tags, sources.\nFor sources, include concrete citations (publication or site names with URLs when available).`;
 
     const schema = {
       type: Type.OBJECT,
@@ -673,8 +562,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       prompt, 
       json: true, 
       schema, 
-      model: deep ? "gemini-2.0-flash" : "gemini-2.0-flash", // Increased capacity if needed in backend
-      useSearch: deep 
+      model: deep ? "gemini-2.5-pro-preview-05-06" : "gemini-2.0-flash"
     });
 
     const data = safeParseJSON(text || "{}");
@@ -716,145 +604,6 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(response || "{}");
     return Array.isArray(data.topics) ? data.topics : [];
-  },
-
-  async brainstormSequel(project: Project, chapters: Chapter[]): Promise<string> {
-    const context = chapters.map(c => `${c.title}: ${c.summary}`).join('\n').slice(-5000);
-    const endingContent = chapters[chapters.length - 1]?.content.slice(-2000) || "";
-
-    const prompt = `You are a Top-Tier Publisher and Story Consultant. 
-      The manuscript for "${project.title}" (${project.type}) is nearing completion.
-      
-      FINAL CHAPTER CONTEXT:
-      ${endingContent}
-      
-      STORY ARC SO FAR:
-      ${context}
-      
-      TASK: Suggest a high-concept sequel or the next logical volume in this universe.
-      - Find the "open wound" or unresolved tension in the ending.
-      - Suggest a sharp, commercial hook for Volume II.
-      - Provide a "cliffhanger bridge" that makes the transition inevitable.
-      
-      Write 200 words of compelling, pitch-like prose.`;
-
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
-  },
-
-  async scalpelRefineChunk(context: string, chunk: string, project?: Project): Promise<string> {
-    const prompt = `
-      ${SCALPEL_RULES}
-      
-      TASK: Perform a PROSE-LEVEL EDIT on the following text chunk.
-      - CRITICAL: MAINTAIN THE EXACT SAME SCENE STRUCTURE AND OVERALL LENGTH. DO NOT SUMMARIZE.
-      - DO NOT SKIP OR DELETE PARAGRAPHS. You must return approximately the same word count.
-      - CATCH AND TWEAK overused or repetitive phrases (echoes).
-      - REWRITE woolly prose and filler into sharp, compelling prose. 
-      - STRIP all build artifacts and meta-tags.
-      
-      PROJECT TYPE: ${project?.type || 'novel'}
-      PROJECT TITLE: ${project?.title || 'Unknown'}
-      GENRE: ${project?.genre || 'Unknown'}
-      
-      CONTINUITY CONTEXT:
-      ${context}
-      
-      TEXT TO EDIT:
-      "${chunk}"
-      
-      OUTPUT: Only the refined, tightened, and polished prose. DO NOT summarize. Output the edited content directly. No preamble.
-    `;
-
-    const res = await callAI({ prompt, model: "gemini-2.0-flash" });
-    return res || chunk; // fallback to original if null
-  },
-
-  async scalpelRefine(chapters: Chapter[], focusChapter?: Chapter, project?: Project): Promise<string> {
-    const context = chapters.map(c => `${c.title}: ${c.summary}`).join('\n').slice(-5000);
-    const contentToRefine = focusChapter ? focusChapter.content : chapters.map(c => c.content).join('\n\n');
-    
-    // Chunk content to prevent massive summarization
-    const maxChunkSize = 8000; // ~1200 words
-    const chunks: string[] = [];
-    let currentChunk = "";
-    
-    const paragraphs = contentToRefine.split('\n');
-    for (const p of paragraphs) {
-      if (currentChunk.length + p.length > maxChunkSize) {
-        if (currentChunk.trim().length > 0) chunks.push(currentChunk);
-        currentChunk = p + '\n';
-      } else {
-        currentChunk += p + '\n';
-      }
-    }
-    if (currentChunk.trim().length > 0) chunks.push(currentChunk);
-
-    let refinedContent = "";
-    for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        if (chunk.trim().length < 50) {
-            refinedContent += chunk + '\n';
-            continue;
-        }
-        try {
-            const out = await this.scalpelRefineChunk(context, chunk, project);
-            // Safety check: if output is less than 50% of input length, it probably summarized. Reject it.
-            if (out && out.length < chunk.length * 0.5) {
-                console.warn("Scalpel chunk likely summarized (dropped >50%). Reverting to original.");
-                refinedContent += chunk + '\n\n';
-            } else {
-                refinedContent += (out || chunk) + '\n\n';
-            }
-        } catch (e) {
-            console.error("Scalpel refine chunk error", e);
-            refinedContent += chunk + '\n\n'; // fallback to original if failed
-        }
-    }
-
-    return refinedContent.trim();
-  },
-
-  async scalpelSeriesAnalysis(project: Project, chapters: Chapter[]): Promise<{ recommendation: string; volumes: { title: string; range: string; reasoning: string }[] }> {
-    const context = chapters.map(c => `Chapter ${c.order + 1}: ${c.title}\n${c.summary}`).join('\n\n');
-    
-    const prompt = `
-      ${SCALPEL_RULES}
-      
-      TASK: Analyze the manuscript structural integrity for "${project.title}".
-      Determing if the work is "STUFFED" with too many ideas, arcs, or complexities that could confuse a single-volume reader.
-      
-      IF the work is too dense, propose "PEELING" it into 2 or 3 separate books/volumes.
-      - Identify logical thematic or narrative break points.
-      - Provide a "Series Roadmap" that turns this confusion into a trilogy or duology.
-      
-      MANUSCRIPT ARC:
-      ${context}
-      
-      Return as JSON.
-    `;
-
-    const schema = {
-      type: Type.OBJECT,
-      properties: {
-        recommendation: { type: Type.STRING },
-        volumes: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              range: { type: Type.STRING },
-              reasoning: { type: Type.STRING }
-            },
-            required: ["title", "range", "reasoning"]
-          }
-        }
-      },
-      required: ["recommendation", "volumes"]
-    };
-
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
-    return safeParseJSON(response || "{}");
   },
 
   async generateNarrativeGraph(
@@ -922,7 +671,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       required: ["nodes", "researchTracks"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     return safeParseJSON(response || "{}");
   },
 
@@ -970,7 +719,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       required: ["characters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(text || '{"characters":[]}', { characters: [] });
     
     return (data.characters || []).map((char: any) => ({
@@ -1003,7 +752,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       
       Format as a professional literary report in Markdown.`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
   async splitManuscript(fullText: string, type: ProjectType, isPlan = false): Promise<{ title: string; summary: string; marker: string; directives?: string[] }[]> {
@@ -1054,7 +803,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -1072,23 +821,22 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       MANUSCRIPT:\n${fullText.slice(0, 100000)}
       ${sourceContext}`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
   },
 
-  async automateNextSteps(project: Project, chapters: Chapter[], scanResult?: string): Promise<{ title: string; summary: string; directives: string[] }[]> {
+  async automateNextSteps(project: Project, chapters: Chapter[], analysis?: string): Promise<{ title: string; summary: string; directives: string[] }[]> {
     const context = chapters.map(c => `${c.title}: ${c.summary}`).join('\n');
     const sourceContext = project.sourceMaterials?.length 
       ? `\nSOURCE CONTEXT:\n${project.sourceMaterials.map(s => `- ${s.name}: ${s.content.slice(0, 2000)}`).join('\n')}`
       : "";
-
-    const scanContext = scanResult ? `\nGLOBAL MANUSCRIPT SCAN FINDINGS (PRIORITY): \n${scanResult}\n` : "";
+    const analysisContext = analysis ? `\n\nANALYSIS CONTEXT:\n${analysis}` : "";
 
     const prompt = `Narrative Architect: Generate the next 3 logical chapter beats to bring "${project.title}" (${project.type}) to a satisfying conclusion. 
       
       EXISTING BEATS:
       ${context}
       ${sourceContext}
-      ${scanContext}
+      ${analysisContext}
       
       Return as a JSON array of objects with "title", "summary", and an array of 3-5 "directives" (specific prose instructions) for the author.`;
 
@@ -1112,7 +860,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     };
 
     const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
-    const data = safeParseJSON(text || "[]", []);
+    const data = safeParseJSON(text || '[]', []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
 
@@ -1141,7 +889,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
 
   async generateCoverPrompt(project: Project, author: string, subtitle: string, basePrompt: string): Promise<string> {
     const prompt = `You are a World-Class Book Cover Designer and Master Prompt Architect. 
-      Generate a HIGH-FIDELITY, PRODUCTION-READY prompt for an image generator for "${project.title}".
+      Generate a HIGH-FIDELITY, PRODUCTION-READY prompt for an image generator (DALL-E 3) for "${project.title}".
       
       CONTEXT:
       AUTHOR: ${author}
@@ -1150,50 +898,14 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       GENRE: ${project.genre}
       
       PROMPT ARCHITECTURE:
-      - VIBE: Cinematic, moody, hyper-detailed, stunning book cover art.
-      - NO TEXT RULE: The image MUST NOT contain any words, letters, text, titles, or author names. You are generating the background art ONLY. Leave negative space (empty areas like skies, dark shadows, or simple textures) where typography will be placed later.
-      - STYLE: Avoid 'stock photo' looks. Prefer stylized digital painting, conceptual photography, or striking graphic design based on the genre.
-      - COMPOSITION: Law of thirds, strong focal points, atmospheric lighting, clear empty areas for title placement.
+      - VIBE: Cinematic, moody, hyper-detailed.
+      - TEXT ENFORCEMENT: Instruction: "The text on the cover must be perfectly legible. The title '${project.title}' is the hero element. The author name '${author}' should be present at the base. No spelling errors."
+      - STYLE: Avoid 'stock photo' looks. Prefer stylized digital painting, conceptual photography, or brutalist graphic design based on the genre.
+      - COMPOSITION: Law of thirds, strong focal points, atmospheric lighting.
       
       OUTPUT ONLY THE FINAL CONCATENATED PROMPT.`;
     
     return await callAI({ prompt, model: "gemini-2.0-flash" });
-  },
-
-  async generateCoverImage(prompt: string): Promise<string> {
-    if (!GEMINI_API_KEY) throw new Error("Gemini API key is missing");
-    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-    
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [{ text: prompt }]
-        },
-        config: {
-          // @ts-ignore
-          imageConfig: {
-            aspectRatio: "3:4"
-          }
-        }
-      });
-      
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        // @ts-ignore
-        if (part.inlineData && part.inlineData.data) {
-          // @ts-ignore
-          const base64EncodeString = part.inlineData.data;
-          // @ts-ignore
-          const mimeType = part.inlineData.mimeType || 'image/png';
-          return `data:${mimeType};base64,${base64EncodeString}`;
-        }
-      }
-      
-      throw new Error("No image data returned from generator");
-    } catch (e: any) {
-      console.error("Cover Art Synthesis Failed:", e);
-      throw e;
-    }
   },
 
   async generateAudiobookScript(project: Project, chapters: Chapter[]): Promise<string> {
@@ -1225,8 +937,6 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       ? `\nEXTERNAL CRITICAL REVIEWS TO RECONCILE:\n${(project.externalReviews || []).filter(r => !r.isImplemented).map(r => `- [FROM ${r.source}]: ${r.content}`).join('\n')}`
       : "";
 
-    const expectedChapters = project.targetWordCount ? Math.round(project.targetWordCount / 3000) : 25;
-
     const prompt = `Narrative Architect: Reconcile the following Plot Nodes with the current Chapter structure for "${project.title}" (${project.type}).
     ${researchContext}
     ${reviewContext}
@@ -1238,8 +948,6 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     ${chapters.map(c => `- ${c.title}: ${c.summary} (Current Plot Node links: ${(c.plotNodeIds || []).join(', ')})`).join('\n')}
     
     TASK: Harmonize these beats into a tight, non-repetitive manuscript structure. 
-    - The target length is ${project.targetWordCount || 75000} words, meaning you should divide this story into approximately ${Math.max(3, expectedChapters)} chapters to give the story enough breathing room.
-    - Break scenes and plot nodes across multiple chapters if necessary to allow for deeper interiority and pacing.
     - AVOID DUPLICATION: If two chapters cover the same plot ground or repeat information, merge them immediately.
     - Ensure every chapter has a unique "turn" and contributes new information to the narrative engine.
     - Map each chapter to the most relevant Plot Nodes.
@@ -1298,17 +1006,15 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
 
     const draftStageInfo = draftStage ? `
     DRAFT STAGE: Pass ${currentPass} of 4 (${Math.round(passPercent * 100)}% target depth).
-    PER-CHAPTER TARGET: ~${perChapterTarget.toLocaleString()} words.
-    CRITICAL ENFORCEMENT: You must output at least ${Math.round(perChapterTarget * 0.9).toLocaleString()} words. Do NOT output a short summary.
-    HOW TO ACHIEVE WORD COUNT: Do not summarize. Unfold the scene beat by beat. Include full dialogue exchanges. Describe the micro-actions between lines of dialogue. Let characters process the moment internally. Slow the pacing down. SHOW, don't summarize.
     ` : "";
 
-    const targetContext = projectTargetWords 
-      ? `\nPROJECT TARGET SCALE: ~${projectTargetWords.toLocaleString()} words total. 
-         STRICT DEPTH DIRECTIVE: For this pass, prioritize a density level of ~${perChapterTarget.toLocaleString()} words.
-         ${draftStageInfo}
-         Maintain depth and pacing accordingly.`
-      : draftStageInfo ? `\n${draftStageInfo}` : "";
+    const targetContext = `
+PROJECT TARGET SCALE: ${(projectTargetWords || 50000).toLocaleString()} words total across ${totalChapters} chapters.
+STRICT WORD TARGET FOR THIS CHAPTER: ${perChapterTarget.toLocaleString()} words.
+HARD WORD LIMIT: Do NOT exceed ${Math.round(perChapterTarget * 1.03).toLocaleString()} words (3% tolerance).
+Do NOT write below ${Math.round(perChapterTarget * 0.90).toLocaleString()} words (90% floor).
+WORD COUNT IS LAW: Output must land within 3% of the STRICT WORD TARGET. Too long = failure. Too short = failure.
+${draftStageInfo}`;
 
     const cutModeDirective = cutMode ? `
       CRITICAL CUT & COMPRESS DIRECTIVE:
@@ -1344,7 +1050,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     const prompt = `You are a ${personaMap[type || 'novel']}. 
       TASK: ${cutMode ? 'Redraft and COMPRESS' : 'Elevate the following scene to "Prize-Winning" caliber'}.
       
-      ${getEngineRules(type)}
+      ${LITERARY_ENGINE_RULES}
       ${cutModeDirective}
       ${getMaturityDirectives(maturity)}
       ${targetContext}
@@ -1368,7 +1074,9 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       - Find the "winding" of the scene—where the power shifts or the secret leaks.
       - Return ONLY the enhanced text. No preamble.`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    // Compute a generous maxTokens budget: ~1.4 tokens per word, plus 20% headroom
+    const deepSimmerMaxTokens = Math.ceil(perChapterTarget * 1.4 * 1.2);
+    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06", maxTokens: deepSimmerMaxTokens });
   },
 
   async assessPrizeWorthiness(project: Project, chapters: Chapter[]): Promise<PrizeAssessment[]> {
@@ -1382,7 +1090,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       radioplay: ["Sony Radio Academy Award", "BBC Audio Drama Award"]
     };
 
-    const relevantPrizes = [...(prizesByProject[project.type] || prizesByProject.novel), "Degree Thesis Classification (Oxon Standards: 1st, 2:1, 2:2, 3rd)"];
+    const relevantPrizes = prizesByProject[project.type] || prizesByProject.novel;
     const contentSample = chapters.map(c => `[${c.title}]\n${c.content.slice(0, 800)}`).join('\n\n').slice(0, 6000);
 
     const prompt = `You are a prestigious literary and cinematic judge. Analyze the following work and assess its potential for the following awards: ${relevantPrizes.join(', ')}.
@@ -1397,8 +1105,8 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     ${contentSample}
 
     TASK: For EACH prize, evaluate the project's current trajectory.
-    1. eligibilityScore: A number from 0 to 100. This should represent the structural and stylistic alignment with the prize. Be critical but encouraging, so scores in the 30-80% range are common for drafts with potential, avoiding overly pessimistic unattainable numbers.
-    2. Format as JSON: { "assessments": [{ "prizeName": string, "eligibilityScore": number, "pros": string[], "cons": string[], "recommendation": string, "targetWordCount": number }] }
+    
+    Format as JSON: { "assessments": [{ "prizeName": string, "eligibilityScore": number, "pros": string[], "cons": string[], "recommendation": string, "targetWordCount": number }] }
     `;
 
     const schema = {
@@ -1423,7 +1131,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       required: ["assessments"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const data = safeParseJSON(response || "{}");
     return data.assessments || [];
   },
@@ -1442,16 +1150,15 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     const prompt = `
       You are a brutal Sentence Stylist and Literary Agent. Analyze the following ${type} segment based on these STRICT STANDING RULES:
       
-      ${getEngineRules(type)}
+      ${LITERARY_ENGINE_RULES}
       
       TASK: Identify exactly where these rules are violated. 
       ${reviewContext}
       
-      CRITICAL FOCUS ON REPETITION & TROPES:
-      - AI Ghosts: Flag any LLM-isms ("a testament to", "tapestry", "dance of", "navigating the complexities", "palpable").
-      - Echoes: Look for words or sentence structures repeated close together.
+      CRITICAL FOCUS ON REPETITION:
+      - Look for "Echoes": Words or sentence structures repeated close together.
       - Narrative Static: Ideas and motifs that have been said before in the provided context but add no new energy.
-      - Pretty Sludge: Recursive adjectives, fake profundity, decorative filler.
+      - "Pretty Sludge": Recursive adjectives, fake profundity, decorative filler.
       - Abstract over Concrete: Vague descriptions of emotions instead of specific gestures/images.
       
       PREVIOUS CONTEXT (SUMMARY OF PRIOR BEATS):
@@ -1491,72 +1198,28 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
   },
 
   async synthesizePortrait(description: string, archetype: string): Promise<string> {
-    const prompt = `A highly detailed cinematic character portrait. Subject: ${description}. Vibe: ${archetype || 'Dramatic, noir lighting'}. Style: Professional character photography, realistic textures.`;
-    // Use Pollinations as a reliable fallback for on-the-fly image generation in SPA
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
-  },
-
-  async synthesizeManuscript(chapters: Chapter[], project: Project): Promise<{ id: string; content: string; illustrationPrompt?: string }[]> {
-    // Parallelize synthesis for production speed
-    const synthesisPromises = chapters.map(async (chapter) => {
-      const prompt = `
-        ${SCALPEL_RULES}
-        
-        PRODUCTION SYNTHESIS PROTOCOL (LITERARY ENGINE MODE):
-        You are a Master Production Editor and Elite Art Director. Your task is to perform the FINAL "Synthesis" on this chapter.
-        
-        CRITICAL DIRECTIVES:
-        1. TOTAL PURGE: Remove all drafting remnants, markup ([...], {...}), AI summaries ("In this chapter..."), technical headers (CRITIQUE, REVIEW), and conversational placeholder text.
-        2. BOOK-LEADING PROSE: Elevate the language to professional trade publication standards. Lean, musical, and concrete.
-        3. STRIP AI GHOSTS: Eliminate "a testament to", "the tapestry of", "shrouded in mystery", and standard AI structural signposts.
-        4. UNIFIED NARRATIVE: Ensure the chapter flows without disjointed transitions often caused by iterative drafting.
-        5. ART DIRECTION (GROK-STYLE HIGH FIDELITY): Provide a specific, 60-word art direction prompt for a professional book illustrator. It should be cinematic, symbolic, and atmospheric. Return as "illustrationPrompt".
-        
-        CHAPTER TITLE: "${chapter.title}"
-        CHAPTER CONTENT:
-        "${chapter.content}"
-        
-        OUTPUT FORMAT: Return ONLY a JSON object: { "content": string, "illustrationPrompt": string }
-      `;
-      
-      const response = await callAI({ prompt, json: true, model: "gemini-2.0-flash" });
-      const data = safeParseJSON(response || "{}");
-      
-      return { 
-        id: chapter.id, 
-        content: data.content || chapter.content,
-        illustrationPrompt: data.illustrationPrompt
-      };
+    const prompt = `A highly detailed cinematic character portrait. 
+      Subject: ${description}
+      Vibe: ${archetype || 'Dramatic, noir lighting, elite literature quality'}
+      Style: Professional character photography, shallow depth of field, realistic textures.`;
+    
+    //@ts-ignore
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1"
+        }
+      }
     });
-    
-    return await Promise.all(synthesisPromises);
-  },
 
-  async generateProductionIllustration(prompt: string, style: 'noir' | 'classic' | 'abstract' | 'blueprint' | 'venice' | 'grok' = 'classic'): Promise<string> {
-    const stylePrefixes = {
-      noir: "Dramatic high-contrast film noir sketch, heavy shadows, gritty ink wash, professional book illustration.",
-      classic: "Classical oil painting / lithograph style, rich textures, moody lighting, professional book plate.",
-      abstract: "Conceptual abstract expressionist painting, symbolic forms, atmospheric colors, professional book art.",
-      blueprint: "Precise technical blueprint sketch, architectural drafting style, clean lines on weathered paper.",
-      venice: "Renaissance inspired oil painting, rich pigments, warm candlelight, dramatic chiaroscuro, Masterpiece.",
-      grok: "Hyper-modern cybernetic art, clean futuristic lines, energetic composition, high-fidelity digital illustration."
-    };
-
-    const finalPrompt = `${stylePrefixes[style]} ${prompt}. Masterpiece, high fidelity, no text.`;
-    
-    // Check for specific API providers
-    if (style === 'venice' && VENICE_API_KEY) {
-      const res = await callVeniceImage(finalPrompt);
-      if (res) return res;
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+      }
     }
-    
-    if (style === 'grok' && XAI_API_KEY) {
-      const res = await callGrokImage(finalPrompt);
-      if (res) return res;
-    }
-
-    // Fallback to Pollinations
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+    throw new Error("Visual DNA synthesis failed: No image data returned.");
   },
 
   async checkSceneTurn(text: string, externalReviews: ExternalReview[] = []): Promise<{ turned: boolean; score: number; reasoning: string; missing: string }> {
@@ -1590,6 +1253,418 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
     const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
     const data = safeParseJSON(response || "{}");
     return safeParseJSON(response || "{}");
+  },
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SEED INGESTION: Any raw input → collaborative story proposal
+  // ─────────────────────────────────────────────────────────────────────────────
+  async seedToStory(rawSeed: string, seedType: 'text' | 'image_ocr' | 'voice_transcript' | 'url' = 'text'): Promise<{
+    title: string;
+    premise: string;
+    genre: string;
+    tone: string;
+    type: ProjectType;
+    targetWordCount: number;
+    logline: string;
+    centralWound: string;
+    suggestedChapters: { title: string; summary: string }[];
+    suggestedCharacters: { name: string; role: string; backstory: string }[];
+    authorQuestions: string[];
+    prizeTarget: string;
+  }> {
+    const prompt = `
+YOU ARE A WORLD-CLASS LITERARY EDITOR AND STORY ARCHITECT.
+
+A raw seed has been provided. Your job is to find the STORY INSIDE IT — the hidden wound, the dramatic engine, the human truth — and propose a full literary project from it.
+
+SEED TYPE: ${seedType}
+RAW SEED:
+${rawSeed.slice(0, 8000)}
+
+CRITICAL PHILOSOPHY:
+- Every seed contains a story. A receipt on the floor contains a life. A voice note contains a confession. Find it.
+- The ambition is ALWAYS literary prize quality. Think Booker, Pulitzer, Costa.
+- Do NOT produce a generic plot. Find the SPECIFIC, STRANGE, HUMAN truth in this seed.
+- The story should feel inevitable once you see it — but surprising when proposed.
+- Suggest 5 AUTHOR QUESTIONS that will unlock the story further. These pull the author INTO the process.
+
+Return JSON with:
+- title: A working title (evocative, not generic)
+- premise: 2-3 sentences. The dramatic engine. What is at stake and why it matters.
+- genre: The primary genre
+- tone: The tonal register (e.g. "Dry wit, melancholic undertow, Carver-esque restraint")
+- type: One of: novel|screenplay|stageplay|radioplay|legal|academic|experimental|coursebook|subject_bible|cookbook|illustrated
+- targetWordCount: Appropriate word count for the type and ambition
+- logline: One sentence. The hook.
+- centralWound: The hidden wound at the heart of the story.
+- suggestedChapters: Array of 10-20 chapters with title and summary
+- suggestedCharacters: Array of 3-6 characters with name, role, backstory
+- authorQuestions: Array of 5 questions to ask the author to deepen the story
+- prizeTarget: Which literary prize this could realistically target and why
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        premise: { type: Type.STRING },
+        genre: { type: Type.STRING },
+        tone: { type: Type.STRING },
+        type: { type: Type.STRING },
+        targetWordCount: { type: Type.NUMBER },
+        logline: { type: Type.STRING },
+        centralWound: { type: Type.STRING },
+        suggestedChapters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, summary: { type: Type.STRING } }, required: ['title', 'summary'] } },
+        suggestedCharacters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, role: { type: Type.STRING }, backstory: { type: Type.STRING } }, required: ['name', 'role', 'backstory'] } },
+        authorQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+        prizeTarget: { type: Type.STRING }
+      },
+      required: ['title', 'premise', 'genre', 'tone', 'type', 'targetWordCount', 'logline', 'centralWound', 'suggestedChapters', 'suggestedCharacters', 'authorQuestions', 'prizeTarget']
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const data = safeParseJSON(response || '{}');
+    return {
+      title: data.title || 'Untitled',
+      premise: data.premise || '',
+      genre: data.genre || 'Literary Fiction',
+      tone: data.tone || 'Measured, precise',
+      type: (data.type as ProjectType) || 'novel',
+      targetWordCount: data.targetWordCount || 80000,
+      logline: data.logline || '',
+      centralWound: data.centralWound || '',
+      suggestedChapters: Array.isArray(data.suggestedChapters) ? data.suggestedChapters : [],
+      suggestedCharacters: Array.isArray(data.suggestedCharacters) ? data.suggestedCharacters : [],
+      authorQuestions: Array.isArray(data.authorQuestions) ? data.authorQuestions : [],
+      prizeTarget: data.prizeTarget || ''
+    };
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // BOOK COMPLETION CHECK: Detect when the manuscript is genuinely finished
+  // ─────────────────────────────────────────────────────────────────────────────
+  async checkBookCompletion(project: Project, chapters: Chapter[]): Promise<{
+    isComplete: boolean;
+    completionScore: number;
+    verdict: string;
+    missingElements: string[];
+    nextAction: string;
+    readyForScalpel: boolean;
+  }> {
+    const totalWords = chapters.reduce((acc, c) => acc + (c.content?.split(/\s+/).filter((t: string) => t.length > 0).length || 0), 0);
+    const targetWords = project.targetWordCount || 80000;
+    const wordProgress = totalWords / targetWords;
+    const draftStage = project.draftStage || 1;
+    const emptyChapters = chapters.filter(c => !c.content || c.content.trim().length < 100).length;
+
+    const prompt = `
+YOU ARE A SENIOR LITERARY EDITOR assessing whether a manuscript is genuinely complete.
+
+PROJECT: "${project.title}" (${project.type}, ${project.genre})
+DRAFT STAGE: Pass ${draftStage} of 4
+WORD COUNT: ${totalWords.toLocaleString()} of ${targetWords.toLocaleString()} target (${Math.round(wordProgress * 100)}%)
+EMPTY/STUB CHAPTERS: ${emptyChapters} of ${chapters.length}
+CHAPTER SUMMARIES:
+${chapters.slice(0, 30).map((c: Chapter, i: number) => `${i + 1}. ${c.title}: ${(c.summary || c.content?.slice(0, 100) || 'EMPTY').slice(0, 120)}`).join('\n')}
+
+ASSESS:
+1. Is the narrative arc complete? (Beginning, middle, end — all present?)
+2. Is the word count within 10% of target?
+3. Are there stub/empty chapters?
+4. Is the draft stage at 4 (final polish)?
+5. Does the story feel resolved?
+
+Return JSON:
+- isComplete: boolean (true only if genuinely ready for scalpel/publish)
+- completionScore: 0-100
+- verdict: One sentence. Honest. Direct.
+- missingElements: Array of what is still missing
+- nextAction: What the author should do next
+- readyForScalpel: boolean (true if complete enough for Mrs. Parry's cut)
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        isComplete: { type: Type.BOOLEAN },
+        completionScore: { type: Type.NUMBER },
+        verdict: { type: Type.STRING },
+        missingElements: { type: Type.ARRAY, items: { type: Type.STRING } },
+        nextAction: { type: Type.STRING },
+        readyForScalpel: { type: Type.BOOLEAN }
+      },
+      required: ['isComplete', 'completionScore', 'verdict', 'missingElements', 'nextAction', 'readyForScalpel']
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.0-flash' });
+    const data = safeParseJSON(response || '{}');
+    return {
+      isComplete: data.isComplete || false,
+      completionScore: data.completionScore || 0,
+      verdict: data.verdict || 'Assessment incomplete.',
+      missingElements: Array.isArray(data.missingElements) ? data.missingElements : [],
+      nextAction: data.nextAction || 'Continue drafting.',
+      readyForScalpel: data.readyForScalpel || false
+    };
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // NON-FICTION LAYOUT INTELLIGENCE: Auto-design coursebook/cookbook/academic layouts
+  // ─────────────────────────────────────────────────────────────────────────────
+  async generateNonFictionLayout(project: Project, chapters: Chapter[]): Promise<{
+    layoutType: string;
+    interiorElements: { type: string; label: string; placement: string; description: string }[];
+    chapterTemplate: string;
+    suggestedImageSlots: { chapterIndex: number; description: string; aspectRatio: string }[];
+    suggestedDiagramSlots: { chapterIndex: number; description: string; type: string }[];
+    notesConfig: { hasMarginNotes: boolean; hasEndNotes: boolean; hasExercises: boolean; hasKeyTerms: boolean; hasSummaryBoxes: boolean };
+    kdpInteriorType: 'black_white' | 'color';
+  }> {
+    const typeLayoutMap: Record<string, string> = {
+      coursebook: 'Academic Coursebook (exercises, key terms, summary boxes, notes pages)',
+      cookbook: 'Illustrated Cookbook (full-bleed images, ingredient lists, method steps, tips sidebars)',
+      academic: 'Academic Monograph (footnotes, bibliography, figures, tables)',
+      illustrated: 'Illustrated Book (image-led, captions, minimal text blocks)',
+      subject_bible: 'Reference Bible (index, cross-references, definition boxes, diagrams)'
+    };
+
+    const layoutType = typeLayoutMap[project.type] || 'Standard Non-Fiction (chapter-led, clean typography)';
+
+    const prompt = `
+YOU ARE A PROFESSIONAL BOOK INTERIOR DESIGNER specialising in non-fiction.
+
+PROJECT: "${project.title}" (${project.type})
+LAYOUT TYPE: ${layoutType}
+CHAPTERS:
+${chapters.slice(0, 20).map((c: Chapter, i: number) => `${i + 1}. ${c.title}: ${(c.summary || '').slice(0, 150)}`).join('\n')}
+
+DESIGN THIS BOOK'S INTERIOR. For each chapter, identify:
+1. What interior elements are needed (exercises, notes pages, key terms, summary boxes, image slots, diagram slots)
+2. Where images and diagrams should be placed
+3. Whether the book needs color or B&W interior for KDP
+4. A chapter template in Markdown that shows the layout structure
+
+Return JSON:
+- layoutType: string describing the layout
+- interiorElements: array of { type, label, placement, description }
+- chapterTemplate: A Markdown template showing the chapter structure with [IMAGE], [DIAGRAM], [NOTES_PAGE], [EXERCISE], [KEY_TERMS], [SUMMARY_BOX] placeholders
+- suggestedImageSlots: array of { chapterIndex, description, aspectRatio }
+- suggestedDiagramSlots: array of { chapterIndex, description, type }
+- notesConfig: { hasMarginNotes, hasEndNotes, hasExercises, hasKeyTerms, hasSummaryBoxes }
+- kdpInteriorType: 'black_white' or 'color'
+`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        layoutType: { type: Type.STRING },
+        interiorElements: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, label: { type: Type.STRING }, placement: { type: Type.STRING }, description: { type: Type.STRING } }, required: ['type', 'label', 'placement', 'description'] } },
+        chapterTemplate: { type: Type.STRING },
+        suggestedImageSlots: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { chapterIndex: { type: Type.NUMBER }, description: { type: Type.STRING }, aspectRatio: { type: Type.STRING } }, required: ['chapterIndex', 'description', 'aspectRatio'] } },
+        suggestedDiagramSlots: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { chapterIndex: { type: Type.NUMBER }, description: { type: Type.STRING }, type: { type: Type.STRING } }, required: ['chapterIndex', 'description', 'type'] } },
+        notesConfig: { type: Type.OBJECT, properties: { hasMarginNotes: { type: Type.BOOLEAN }, hasEndNotes: { type: Type.BOOLEAN }, hasExercises: { type: Type.BOOLEAN }, hasKeyTerms: { type: Type.BOOLEAN }, hasSummaryBoxes: { type: Type.BOOLEAN } }, required: ['hasMarginNotes', 'hasEndNotes', 'hasExercises', 'hasKeyTerms', 'hasSummaryBoxes'] },
+        kdpInteriorType: { type: Type.STRING }
+      },
+      required: ['layoutType', 'interiorElements', 'chapterTemplate', 'suggestedImageSlots', 'suggestedDiagramSlots', 'notesConfig', 'kdpInteriorType']
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const data = safeParseJSON(response || '{}');
+    return {
+      layoutType: data.layoutType || layoutType,
+      interiorElements: Array.isArray(data.interiorElements) ? data.interiorElements : [],
+      chapterTemplate: data.chapterTemplate || '',
+      suggestedImageSlots: Array.isArray(data.suggestedImageSlots) ? data.suggestedImageSlots : [],
+      suggestedDiagramSlots: Array.isArray(data.suggestedDiagramSlots) ? data.suggestedDiagramSlots : [],
+      notesConfig: data.notesConfig || { hasMarginNotes: false, hasEndNotes: false, hasExercises: false, hasKeyTerms: false, hasSummaryBoxes: false },
+      kdpInteriorType: data.kdpInteriorType || 'black_white'
+    };
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // COVER GENERATION: Best-in-class AI cover using secure backend proxy
+  // ─────────────────────────────────────────────────────────────────────────────
+  async generateBookCover(project: Project): Promise<string> {
+    // First, craft a world-class cover prompt using narrative intelligence
+    const promptCraftPrompt = `
+YOU ARE A WORLD-CLASS BOOK COVER ART DIRECTOR. Your covers win awards. They sell books.
+
+PROJECT: "${project.title}"
+TYPE: ${project.type}
+GENRE: ${project.genre}
+PREMISE: ${(project.premise || '').slice(0, 500)}
+TONE: ${project.tone || ''}
+STYLE DNA: ${JSON.stringify(project.styleDNA || {})}
+
+Craft a BOOK COVER IMAGE GENERATION PROMPT that:
+1. Captures the EMOTIONAL CORE of the book — not a literal scene, but the feeling
+2. Uses a SPECIFIC, EVOCATIVE visual metaphor
+3. Specifies: composition, lighting, colour palette, mood, photographic/illustrative style
+4. Is suitable for a ${project.type} cover that could win a design award
+5. Does NOT include text, titles, or author names (those are overlaid separately)
+6. Is 150-200 words maximum
+
+Return ONLY the image generation prompt. No preamble. No explanation.`;
+
+    const coverPrompt = await callAI({ prompt: promptCraftPrompt, model: 'gemini-2.5-pro-preview-05-06' });
+
+    // Generate the cover image using Express server proxy (Flux pro / Venice / Grok)
+    try {
+      const response = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: (coverPrompt || "").trim().slice(0, 1000) })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Cover generation proxy failed: ${response.status}`);
+      }
+
+      const imageData = await response.json();
+      if (imageData.result) return imageData.result;
+    } catch (err) {
+      console.warn("Venice image proxy failed, falling back to Grok image proxy:", err);
+    }
+
+    // Fallback to Grok Image generation
+    const responseGrok = await fetch("/api/ai/image-grok", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: (coverPrompt || "").trim().slice(0, 1000) })
+    });
+
+    if (!responseGrok.ok) {
+      throw new Error("Grok cover generation proxy failed");
+    }
+
+    const grokData = await responseGrok.json();
+    if (grokData.result) return grokData.result;
+
+    throw new Error('No image data returned from cover generation.');
+  },
+
+  async generateCoverImage(prompt: string): Promise<string> {
+    try {
+      const response = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: (prompt || "").trim().slice(0, 1000) })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.result) return data.result;
+      }
+    } catch (err) {
+      console.warn("Cover image general proxy failed, trying Grok proxy...", err);
+    }
+
+    try {
+      const responseGrok = await fetch("/api/ai/image-grok", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: (prompt || "").trim().slice(0, 1000) })
+      });
+
+      if (responseGrok.ok) {
+        const data = await responseGrok.json();
+        if (data.result) return data.result;
+      }
+    } catch (err) {
+      console.warn("Cover image Grok proxy failed, using high-quality abstract fallback.", err);
+    }
+
+    // Fallback to beautiful seeded abstract illustration from picsum
+    return `https://picsum.photos/seed/${encodeURIComponent(prompt.slice(0, 20))}/600/900`;
+  },
+
+  async generateProductionIllustration(prompt: string, style: string): Promise<string> {
+    const fullPrompt = `An award-winning chapter illustration. Style: ${style}. Subject: ${prompt}. Cinematic, detailed, high resolution, no text.`;
+    try {
+      const response = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: fullPrompt.slice(0, 1000) })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.result) return data.result;
+      }
+    } catch (err) {
+      console.warn("Production illustration proxy failed, using Grok proxy...", err);
+    }
+
+    try {
+      const responseGrok = await fetch("/api/ai/image-grok", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: fullPrompt.slice(0, 1000) })
+      });
+
+      if (responseGrok.ok) {
+        const data = await responseGrok.json();
+        if (data.result) return data.result;
+      }
+    } catch (err) {
+      console.warn("Production illustration Grok proxy failed, using abstract fallback.", err);
+    }
+
+    return `https://picsum.photos/seed/${encodeURIComponent(prompt.slice(0, 20))}/800/600`;
+  },
+
+  async synthesizeManuscript(chapters: Chapter[], project: Project): Promise<{ id: string, content: string, illustrationPrompt: string }[]> {
+    const list = chapters.map(c => `Chapter [ID: ${c.id}, Title: ${c.title}, Summary: ${c.summary}]:\n${c.content?.slice(0, 3000)}`);
+    const prompt = `You are a World-Class Acquisitions Chief and Editor. 
+    Synthesize and refine these chapter contents for publication quality.
+    Enhance flow, remove structural repetitive phrases (such as ending consecutive chapters with similar thoughts), and align prose style with Genre: "${project.genre}", Tone: "${project.tone}". For each chapter, also write a highly specific, wordless visual art description for chapter-front illustrations.
+    
+    CHAPTERS:
+    ${list.join('\n\n')}
+    
+    Return a JSON array of objects structured as:
+    { "refined": [{ "id": string, "content": string, "illustrationPrompt": string }] }`;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        refined: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              content: { type: Type.STRING },
+              illustrationPrompt: { type: Type.STRING }
+            },
+            required: ["id", "content", "illustrationPrompt"]
+          }
+        }
+      },
+      required: ["refined"]
+    };
+
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const data = safeParseJSON(response || "{}");
+    return data.refined || chapters.map(c => ({ id: c.id, content: c.content, illustrationPrompt: `Evocative book illustration of ${c.title}` }));
+  },
+
+  async brainstormSequel(project: Project, chapters: Chapter[]): Promise<string> {
+    const prompt = `You are an elite Literary Critic and Publisher. 
+    Analyze this completed narrative:
+    - Title: "${project.title}"
+    - Genre: "${project.genre}"
+    - Tone: "${project.tone}"
+    - Brief chapters summary: ${chapters.map(c => `- ${c.title}: ${c.summary}`).join('\n')}
+    
+    Brainstorm a high-concept, transgressive, and commercially explosive sequel blueprint.
+    Describe the core conflict, the new central wound of the characters, the dramatic stakes, and two major plot twists.
+    Include a stunning, image-led transition ending.
+    
+    Write with beauty and restraint.`;
+
+    return await callAI({ prompt, model: 'gemini-2.5-pro-preview-05-06' });
   },
 
   async ripUpAndRestart(project: Project, chapters: Chapter[], research: ResearchNote[]): Promise<{ plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] }> {
@@ -1662,7 +1737,7 @@ STAGED GROWTH ENFORCEMENT: You are writing at ${Math.round(passPercent * 100)}% 
       required: ["plotNodes", "chapters", "newResearch"]
     };
 
-    const data = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const data = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
     const result = safeParseJSON(data || "{}");
 
     return {

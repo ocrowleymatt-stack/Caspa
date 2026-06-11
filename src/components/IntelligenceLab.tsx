@@ -396,25 +396,25 @@ export default function IntelligenceLab({
   });
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain custom-scrollbar px-4 pb-32" style={{ minHeight: 0 }}>
-      <div className="max-w-6xl mx-auto py-6 md:py-12 md:px-2">
-        <header className="mb-8">
-          <div className="flex items-center gap-2 px-3 py-1 bg-brand-primary/10 text-brand-primary rounded-full w-fit mb-4 border border-brand-primary/20">
+    <div className="h-full overflow-y-auto overscroll-contain custom-scrollbar px-2 pb-32" style={{ minHeight: 0 }}>
+      <div className="max-w-6xl mx-auto py-3 md:py-1 md:px-2">
+        <header className="mb-3">
+          <div className="flex items-center gap-2 px-3 py-1 bg-brand-primary/10 text-brand-primary rounded-full w-fit mb-1.5 border border-brand-primary/20">
             <BrainCircuit size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Research Workspace</span>
+            <span className="text-xs font-semibold uppercase tracking-widest">Research Workspace</span>
           </div>
-          <h1 className="text-2xl md:text-5xl font-black text-text-primary tracking-tighter italic font-serif">Intelligence Lab</h1>
-          <p className="text-text-secondary max-w-2xl mt-2 font-medium text-sm md:text-md">
+          <h1 className="text-[11px] font-semibold md:text-xs font-semibold font-semibold text-text-primary tracking-tighter italic font-serif">Intelligence Lab</h1>
+          <p className="text-text-secondary max-w-2xl mt-2 font-medium text-[11px] md:text-md">
             Dictate custom themes, scan your drafts for missing details, or map conceptual structures. 
             Deployed search-grounded agents will synthesize answers and drop them straight into your persistent Archive.
           </p>
         </header>
 
         {/* Dynamic Navigation */}
-        <div className="flex gap-4 mb-8 p-1 bg-surface-muted border border-border-subtle/50 rounded-2xl w-full md:w-fit overflow-x-auto">
+        <div className="flex gap-2 mb-3 p-1 bg-surface-muted border border-border-subtle/50 rounded w-full md:w-fit overflow-x-auto">
           <button
             onClick={() => setActiveStep('hub')}
-            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 md:flex-none ${
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold uppercase tracking-widest transition-all whitespace-nowrap flex-1 md:flex-none ${
               activeStep === 'hub' 
                 ? 'btn-nexus-primary shadow-lg shadow-brand-primary/20' 
                 : 'text-text-secondary hover:text-text-primary'
@@ -424,7 +424,7 @@ export default function IntelligenceLab({
           </button>
           <button
             onClick={() => setActiveStep('archive')}
-            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap flex-1 md:flex-none relative ${
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold uppercase tracking-widest transition-all whitespace-nowrap flex-1 md:flex-none relative ${
               activeStep === 'archive' 
                 ? 'btn-nexus-primary shadow-lg shadow-brand-primary/20' 
                 : 'text-text-secondary hover:text-text-primary'
@@ -432,14 +432,14 @@ export default function IntelligenceLab({
           >
             2. Evidence Archive
             {allArchiveItems.length > 0 && (
-              <span className="absolute -top-1.5 -right-1 px-1.5 py-0.5 bg-brand-primary text-white font-mono text-[8px] rounded-full">
+              <span className="absolute -top-1.5 -right-1 px-1.5 py-0.5 bg-brand-primary text-white font-mono text-[10px] rounded-full">
                 {allArchiveItems.length}
               </span>
             )}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-1.5">
           {/* LEFT SIDE: Workspace or Archive based on Step */}
           <div className="lg:col-span-8">
             <AnimatePresence mode="wait">
@@ -449,25 +449,25 @@ export default function IntelligenceLab({
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
-                  className="space-y-6"
+                  className="space-y-2"
                 >
                   {/* Research Entry Points */}
-                  <div className="ethereal-panel p-6 rounded-2xl border border-border-subtle space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <h3 className="text-sm font-black uppercase tracking-widest text-text-primary flex items-center gap-2">
+                  <div className="ethereal-panel p-3 rounded border border-border-subtle space-y-1.5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-widest text-text-primary flex items-center gap-2">
                         <ListTree size={16} className="text-brand-primary" /> Target Exploration List
                       </h3>
                       
-                      <div className="flex gap-3">
+                      <div className="flex gap-1.5">
                         <button 
                           onClick={toggleSelectAll}
-                          className="text-[9px] font-black text-text-secondary uppercase tracking-widest hover:text-brand-primary transition-all bg-surface-muted px-3 py-1.5 rounded-lg border border-border-subtle hover:border-brand-primary/30"
+                          className="text-[10px] font-semibold text-text-secondary uppercase tracking-widest hover:text-brand-primary transition-all bg-surface-muted px-3 py-1.5 rounded border border-border-subtle hover:border-brand-primary/30"
                         >
                           {topics.every(t => t.selected) ? 'Deselect All' : 'Select All'}
                         </button>
                         <button 
                           onClick={() => setTopics([])}
-                          className="text-[9px] font-black text-text-secondary uppercase tracking-widest hover:text-red-500 transition-all bg-surface-muted px-3 py-1.5 rounded-lg border border-border-subtle hover:border-red-500/25"
+                          className="text-[10px] font-semibold text-text-secondary uppercase tracking-widest hover:text-red-500 transition-all bg-surface-muted px-3 py-1.5 rounded border border-border-subtle hover:border-red-500/25"
                         >
                           Clear
                         </button>
@@ -482,23 +482,23 @@ export default function IntelligenceLab({
                         onChange={(e) => setCustomTopicInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && addCustomTopic()}
                         placeholder="Add arbitrary theme (e.g., French café slang in 1920, diesel engines acoustics)..."
-                        className="flex-grow bg-surface-muted border border-border-subtle rounded-xl px-4 py-3 text-sm text-text-primary outline-none focus:border-brand-primary/60 transition-colors"
+                        className="flex-grow bg-surface-muted border border-border-subtle rounded-md px-2 py-3 text-[11px] text-text-primary outline-none focus:border-brand-primary/60 transition-colors"
                       />
                       <button 
                         onClick={addCustomTopic}
-                        className="px-4 bg-brand-primary/10 border border-brand-primary/20 text-brand-primary hover:bg-brand-primary/20 transition-all rounded-xl flex items-center justify-center gap-1.5 text-xs font-black uppercase tracking-wider whitespace-nowrap"
+                        className="px-2 bg-brand-primary/10 border border-brand-primary/20 text-brand-primary hover:bg-brand-primary/20 transition-all rounded-md flex items-center justify-center gap-1.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                       >
                         <Plus size={16} /> Add 
                       </button>
                     </div>
 
                     {/* Display of Topics */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[420px] overflow-y-auto custom-scrollbar pr-1 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[420px] overflow-y-auto custom-scrollbar pr-1 pt-1">
                       {topics.map((t, idx) => (
                         <div 
                           key={idx}
                           onClick={() => toggleTopicSelection(t.topic)}
-                          className={`p-4 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-3 select-none relative group ${
+                          className={`p-4 rounded-md border text-left cursor-pointer transition-all flex items-start gap-1.5 select-none relative group ${
                             t.selected 
                               ? 'border-brand-primary/50 bg-brand-primary/5 shadow-md shadow-brand-primary/5' 
                               : 'border-border-subtle bg-surface-muted hover:border-text-secondary/40'
@@ -511,11 +511,11 @@ export default function IntelligenceLab({
                           </div>
 
                           <div className="flex-grow min-w-0 pr-6">
-                            <p className={`text-xs font-bold leading-snug truncate ${t.selected ? 'text-text-primary' : 'text-text-secondary'}`}>
+                            <p className={`text-xs font-medium leading-snug truncate ${t.selected ? 'text-text-primary' : 'text-text-secondary'}`}>
                               {t.topic}
                             </p>
                             <div className="flex gap-2 mt-1.5 items-center">
-                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
                                 t.source === 'Custom' ? 'bg-blue-500/15 text-blue-500' :
                                 t.source === 'Scan' ? 'bg-yellow-500/15 text-yellow-500' :
                                 t.source === 'Map' ? 'bg-indigo-500/15 text-indigo-500' : 'bg-brand-primary/15 text-brand-primary'
@@ -524,7 +524,7 @@ export default function IntelligenceLab({
                               </span>
                               
                               {t.status !== 'ready' && (
-                                <span className={`text-[8px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                                <span className={`text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1 ${
                                   t.status === 'loading' ? 'text-brand-primary animate-pulse' :
                                   t.status === 'completed' ? 'text-emerald-500' : 'text-red-500'
                                 }`}>
@@ -544,20 +544,20 @@ export default function IntelligenceLab({
                       ))}
 
                       {topics.length === 0 && (
-                        <div className="col-span-2 text-center py-12 border border-dashed border-border-subtle rounded-xl flex flex-col items-center justify-center text-text-secondary">
+                        <div className="col-span-2 text-center py-1 border border-dashed border-border-subtle rounded-md flex flex-col items-center justify-center text-text-secondary">
                           <Database size={32} className="opacity-35 mb-2" />
                           <p className="text-xs font-semibold uppercase tracking-wider">Workspace is empty</p>
-                          <p className="text-[10px] mt-1 max-w-xs leading-normal">Seeding focus points, write some custom themes, or use the generator buttons down below to inflate the workspace.</p>
+                          <p className="text-xs mt-1 max-w-xs leading-normal">Seeding focus points, write some custom themes, or use the generator buttons down below to inflate the workspace.</p>
                         </div>
                       )}
                     </div>
 
                     {/* Automatic generator nodes */}
-                    <div className="pt-4 border-t border-border-subtle flex flex-col sm:flex-row gap-3">
+                    <div className="pt-4 border-t border-border-subtle flex flex-col sm:flex-row gap-1.5">
                       <button 
                         onClick={runManuscriptScan}
                         disabled={loading}
-                        className="flex-1 py-3 bg-surface-muted hover:bg-surface-neutral text-text-primary border border-border-subtle rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 hover:border-brand-primary/30 disabled:opacity-50"
+                        className="flex-1 py-3 bg-surface-muted hover:bg-surface-neutral text-text-primary border border-border-subtle rounded-md font-semibold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 hover:border-brand-primary/30 disabled:opacity-50"
                       >
                         <Search size={14} className="text-brand-primary" />
                         Scan Drafts for Missing Gaps
@@ -565,7 +565,7 @@ export default function IntelligenceLab({
                       <button 
                         onClick={runThematicMap}
                         disabled={loading}
-                        className="flex-1 py-3 bg-surface-muted hover:bg-surface-neutral text-text-primary border border-border-subtle rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 hover:border-brand-primary/30 disabled:opacity-50"
+                        className="flex-1 py-3 bg-surface-muted hover:bg-surface-neutral text-text-primary border border-border-subtle rounded-md font-semibold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 hover:border-brand-primary/30 disabled:opacity-50"
                       >
                         <Sparkles size={14} className="text-brand-primary" />
                         Map Genre Concepts & Roadmap
@@ -581,7 +581,7 @@ export default function IntelligenceLab({
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
-                  className="space-y-6"
+                  className="space-y-2"
                 >
                   {/* File Upload Zone */}
                   <div 
@@ -589,7 +589,7 @@ export default function IntelligenceLab({
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`p-8 border rounded-2xl text-center cursor-pointer transition-all relative overflow-hidden ${
+                    className={`p-2 border rounded text-center cursor-pointer transition-all relative overflow-hidden ${
                       isDragging 
                         ? 'border-brand-primary bg-brand-primary/5 ring-1 ring-brand-primary/20 scale-[0.99]' 
                         : 'border-dashed border-border-subtle bg-surface-muted hover:border-brand-primary/30'
@@ -607,23 +607,23 @@ export default function IntelligenceLab({
                       <div className="w-10 h-10 rounded-full bg-brand-primary/10 text-brand-primary flex items-center justify-center">
                         <Upload size={18} />
                       </div>
-                      <h4 className="text-xs font-black uppercase tracking-widest text-text-primary">Ingest Reference Literature</h4>
-                      <p className="text-[10px] text-text-secondary leading-relaxed font-medium">
+                      <h4 className="text-xs font-semibold uppercase tracking-widest text-text-primary">Ingest Reference Literature</h4>
+                      <p className="text-xs text-text-secondary leading-relaxed font-medium">
                         Drag and drop your project briefs, historical documents, character profiles, or raw PDF/TXT materials up to 15MB. They will process directly to your Archive.
                       </p>
                     </div>
                   </div>
 
                   {/* Archive Directory Container */}
-                  <div className="ethereal-panel p-6 rounded-2xl border border-border-subtle space-y-4">
+                  <div className="ethereal-panel p-3 rounded border border-border-subtle space-y-1.5">
                     {/* Filter and search */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 bg-surface-muted p-1 rounded-xl w-fit border border-border-subtle/50">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-2 bg-surface-muted p-1 rounded-md w-fit border border-border-subtle/50">
                         {['All', 'Research', 'Source'].map(type => (
                           <button
                             key={type}
                             onClick={() => setArchiveFilter(type as any)}
-                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                            className={`px-3 py-1.5 rounded text-[10px] font-semibold uppercase tracking-widest transition-all ${
                               archiveFilter === type ? 'bg-brand-primary text-white shadow-sm' : 'text-text-secondary hover:text-text-primary'
                             }`}
                           >
@@ -638,13 +638,13 @@ export default function IntelligenceLab({
                           value={archiveSearchTerm}
                           onChange={(e) => setArchiveSearchTerm(e.target.value)}
                           placeholder="Search evidence database..."
-                          className="w-full bg-surface-muted border border-border-subtle rounded-xl pl-9 pr-4 py-2 text-xs text-text-primary font-medium outline-none focus:border-brand-primary/50 transition-colors"
+                          className="w-full bg-surface-muted border border-border-subtle rounded-md pl-9 pr-4 py-2 text-xs text-text-primary font-medium outline-none focus:border-brand-primary/50 transition-colors"
                         />
                       </div>
                     </div>
 
                     {/* Master-Detail Partition Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                       {/* Left: list items */}
                       <div className="md:col-span-5 space-y-2 max-h-[480px] overflow-y-auto custom-scrollbar pr-1">
                         {filteredArchive.map(item => {
@@ -653,24 +653,24 @@ export default function IntelligenceLab({
                             <div
                               key={item.id}
                               onClick={() => setSelectedArchiveItem(item)}
-                              className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all relative flex flex-col gap-1.5 ${
+                              className={`p-3.5 rounded-md border text-left cursor-pointer transition-all relative flex flex-col gap-1.5 ${
                                 isSelected 
                                   ? 'bg-brand-primary/5 border-brand-primary shadow-sm' 
                                   : 'bg-surface-muted border-border-subtle hover:border-text-secondary/25'
                               }`}
                             >
                               <div className="flex justify-between items-start gap-2">
-                                <h4 className="text-xs font-black text-text-primary truncate">{(item as any).title || (item as any).name}</h4>
-                                <span className={`px-1 rounded text-[7px] font-black uppercase tracking-widest shrink-0 ${
+                                <h4 className="text-xs font-semibold text-text-primary truncate">{(item as any).title || (item as any).name}</h4>
+                                <span className={`px-1 rounded text-[7px] font-semibold uppercase tracking-widest shrink-0 ${
                                   item.displayType === 'Source' ? 'bg-blue-500/10 text-blue-500' : 'bg-brand-primary/10 text-brand-primary'
                                 }`}>
                                   {item.displayType}
                                 </span>
                               </div>
-                              <p className="text-[10px] text-text-secondary line-clamp-2 leading-relaxed font-medium">
+                              <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed font-medium">
                                 {item.content}
                               </p>
-                              <span className="text-[8px] font-mono text-text-secondary opacity-40">
+                              <span className="text-[10px] font-mono text-text-secondary opacity-40">
                                 {new Date(item.updatedAt).toLocaleDateString()}
                               </span>
                             </div>
@@ -678,27 +678,27 @@ export default function IntelligenceLab({
                         })}
 
                         {filteredArchive.length === 0 && (
-                          <div className="text-center py-12 flex flex-col items-center">
-                            <img src="/casper_logo.png" alt="Ghost" className="h-16 w-auto mb-4 opacity-20 filter grayscale" referrerPolicy="no-referrer" />
+                          <div className="text-center py-1 flex flex-col items-center">
+                            <img src="/casper_logo.png" alt="Ghost" className="h-16 w-auto mb-1.5 opacity-20 filter grayscale" referrerPolicy="no-referrer" />
                             <p className="text-xs font-semibold uppercase tracking-wider text-text-secondary">No matched evidence</p>
-                            <p className="text-[9px] mt-1 max-w-[180px] mx-auto leading-normal text-text-secondary opacity-60">Commission agent units on the left workspace or ingest your own files.</p>
+                            <p className="text-[10px] mt-1 max-w-[180px] mx-auto leading-normal text-text-secondary opacity-60">Commission agent units on the left workspace or ingest your own files.</p>
                           </div>
                         )}
                       </div>
 
                       {/* Right: details pane */}
-                      <div className="md:col-span-7 bg-surface-muted/50 border border-border-subtle rounded-xl p-5 min-h-[300px] max-h-[480px] overflow-y-auto custom-scrollbar flex flex-col">
+                      <div className="md:col-span-7 bg-surface-muted/50 border border-border-subtle rounded-md p-2 min-h-[300px] max-h-[480px] overflow-y-auto custom-scrollbar flex flex-col">
                         {selectedArchiveItem ? (
-                          <div className="space-y-4 flex-grow">
-                            <div className="flex justify-between items-start gap-4 pb-4 border-b border-border-subtle">
+                          <div className="space-y-1.5 flex-grow">
+                            <div className="flex justify-between items-start gap-2 pb-4 border-b border-border-subtle">
                               <div>
-                                <h3 className="text-md font-black text-text-primary max-w-sm font-serif italic">{selectedArchiveItem.title || selectedArchiveItem.name}</h3>
+                                <h3 className="text-md font-semibold text-text-primary max-w-sm font-serif italic">{selectedArchiveItem.title || selectedArchiveItem.name}</h3>
                                 <div className="flex items-center gap-2 mt-1.5">
-                                  <span className="px-1.5 py-0.5 bg-background border border-border-subtle text-[8px] font-black uppercase tracking-widest text-text-secondary rounded">
+                                  <span className="px-1.5 py-0.5 bg-background border border-border-subtle text-[10px] font-semibold uppercase tracking-widest text-text-secondary rounded">
                                     {selectedArchiveItem.category || selectedArchiveItem.type || 'General'}
                                   </span>
                                   {selectedArchiveItem.isDeepResearch && (
-                                    <span className="px-1.5 py-0.5 bg-brand-primary/10 text-brand-primary border border-brand-primary/10 text-[8px] font-black uppercase tracking-widest rounded flex items-center gap-1">
+                                    <span className="px-1.5 py-0.5 bg-brand-primary/10 text-brand-primary border border-brand-primary/10 text-[10px] font-semibold uppercase tracking-widest rounded flex items-center gap-1">
                                       <Globe size={8} /> Web-Vetted
                                     </span>
                                   )}
@@ -716,7 +716,7 @@ export default function IntelligenceLab({
                                   setSelectedArchiveItem(null);
                                   onNotify('Item deleted.', 'success');
                                 }}
-                                className="p-1.5 text-text-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors rounded-lg"
+                                className="p-1.5 text-text-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors rounded"
                               >
                                 <Trash2 size={14} />
                               </button>
@@ -724,43 +724,43 @@ export default function IntelligenceLab({
 
                             {/* Sensory Profile breakdown for generated research notes */}
                             {selectedArchiveItem.sensoryDetails && (Object.values(selectedArchiveItem.sensoryDetails).some((arr: any) => arr && arr.length > 0)) && (
-                              <div className="grid grid-cols-2 gap-2 bg-background/55 border border-border-subtle/80 p-3 rounded-xl">
+                              <div className="grid grid-cols-2 gap-2 bg-background/55 border border-border-subtle/80 p-3 rounded-md">
                                 {selectedArchiveItem.sensoryDetails.sounds?.length > 0 && (
                                   <div className="space-y-1">
-                                    <div className="text-[8px] font-black uppercase tracking-widest text-brand-primary flex items-center gap-1">
+                                    <div className="text-[10px] font-semibold uppercase tracking-widest text-brand-primary flex items-center gap-1">
                                       <Headphones size={10} /> Auditory
                                     </div>
-                                    <div className="text-[9px] text-text-secondary leading-snug">
+                                    <div className="text-[10px] text-text-secondary leading-snug">
                                       {selectedArchiveItem.sensoryDetails.sounds.slice(0, 2).join(', ')}
                                     </div>
                                   </div>
                                 )}
                                 {selectedArchiveItem.sensoryDetails.smells?.length > 0 && (
                                   <div className="space-y-1">
-                                    <div className="text-[8px] font-black uppercase tracking-widest text-brand-primary flex items-center gap-1">
+                                    <div className="text-[10px] font-semibold uppercase tracking-widest text-brand-primary flex items-center gap-1">
                                       <Wind size={10} /> Olfactory
                                     </div>
-                                    <div className="text-[9px] text-text-secondary leading-snug">
+                                    <div className="text-[10px] text-text-secondary leading-snug">
                                       {selectedArchiveItem.sensoryDetails.smells.slice(0, 2).join(', ')}
                                     </div>
                                   </div>
                                 )}
                                 {selectedArchiveItem.sensoryDetails.textures?.length > 0 && (
                                   <div className="space-y-1">
-                                    <div className="text-[8px] font-black uppercase tracking-widest text-brand-primary flex items-center gap-1">
+                                    <div className="text-[10px] font-semibold uppercase tracking-widest text-brand-primary flex items-center gap-1">
                                       <Hand size={10} /> Tactile
                                     </div>
-                                    <div className="text-[9px] text-text-secondary leading-snug">
+                                    <div className="text-[10px] text-text-secondary leading-snug">
                                       {selectedArchiveItem.sensoryDetails.textures.slice(0, 2).join(', ')}
                                     </div>
                                   </div>
                                 )}
                                 {selectedArchiveItem.sensoryDetails.visuals?.length > 0 && (
                                   <div className="space-y-1">
-                                    <div className="text-[8px] font-black uppercase tracking-widest text-brand-primary flex items-center gap-1">
+                                    <div className="text-[10px] font-semibold uppercase tracking-widest text-brand-primary flex items-center gap-1">
                                       <Eye size={10} /> Visual
                                     </div>
-                                    <div className="text-[9px] text-text-secondary leading-snug">
+                                    <div className="text-[10px] text-text-secondary leading-snug">
                                       {selectedArchiveItem.sensoryDetails.visuals.slice(0, 2).join(', ')}
                                     </div>
                                   </div>
@@ -776,7 +776,7 @@ export default function IntelligenceLab({
                             {/* Sources cited */}
                             {selectedArchiveItem.sources?.length > 0 && (
                               <div className="pt-4 border-t border-border-subtle mt-4">
-                                <h5 className="text-[8px] font-black uppercase tracking-widest text-text-secondary mb-1 flex items-center gap-1">
+                                <h5 className="text-[10px] font-semibold uppercase tracking-widest text-text-secondary mb-1 flex items-center gap-1">
                                   <Globe size={10} /> Retrieval Citations
                                 </h5>
                                 <ul className="space-y-0.5">
@@ -792,7 +792,7 @@ export default function IntelligenceLab({
                         ) : (
                           <div className="h-full flex-grow flex flex-col items-center justify-center text-text-secondary/40 space-y-3 py-20 select-none">
                             <Library size={44} strokeWidth={1} />
-                            <p className="text-[10px] font-black uppercase tracking-widest">Select an entity to explore</p>
+                            <p className="text-xs font-semibold uppercase tracking-widest">Select an entity to explore</p>
                           </div>
                         )}
                       </div>
@@ -804,17 +804,17 @@ export default function IntelligenceLab({
           </div>
 
           {/* RIGHT SIDE: Dispatch Command Center */}
-          <div className="lg:col-span-4 space-y-6">
+          <div className="lg:col-span-4 space-y-2">
             {/* COMMISSION COMMAND CENTER */}
-            <div className="btn-nexus-primary p-6 rounded-2xl shadow-xl flex flex-col relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none group-hover:scale-110 transition-transform duration-700">
+            <div className="btn-nexus-primary p-3 rounded shadow-xl flex flex-col relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-2 opacity-10 pointer-events-none group-hover:scale-110 transition-transform duration-700">
                 <Microchip size={100} />
               </div>
               
-              <h4 className="text-[10px] font-black text-white/80 uppercase tracking-widest flex items-center gap-2 mb-2">
+              <h4 className="text-xs font-semibold text-white/80 uppercase tracking-widest flex items-center gap-2 mb-2">
                 <BrainCircuit size={14} /> Intelligence Core
               </h4>
-              <p className="text-[11.5px] font-medium text-white/90 leading-relaxed mb-6">
+              <p className="text-[11.5px] font-medium text-white/90 leading-relaxed mb-2">
                 Ready to synthesize target components. Deep agents will perform research, cross-reference resources, and lock results directly in your Archive.
               </p>
 
@@ -822,7 +822,7 @@ export default function IntelligenceLab({
               <button
                 onClick={executeResearchSession}
                 disabled={isRunningResearch || topics.filter(t => t.selected && t.status === 'ready').length === 0}
-                className="w-full py-4 bg-white text-brand-primary hover:bg-white/95 transition-all shadow-xl rounded-xl flex items-center justify-center gap-3 font-black text-[10px] uppercase tracking-[0.2em] active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none group/action"
+                className="w-full py-1 bg-white text-brand-primary hover:bg-white/95 transition-all shadow-xl rounded-md flex items-center justify-center gap-1.5 font-semibold text-xs uppercase tracking-[0.2em] active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none group/action"
               >
                 {isRunningResearch ? (
                   <RefreshCcw size={16} className="animate-spin text-brand-primary" />
@@ -837,8 +837,8 @@ export default function IntelligenceLab({
             </div>
 
             {/* Quick Tips or Brief Status instead of Console */}
-            <div className="ethereal-panel border border-border-subtle p-6 rounded-2xl space-y-4">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-text-secondary flex items-center gap-2">
+            <div className="ethereal-panel border border-border-subtle p-3 rounded space-y-1.5">
+              <h4 className="text-[10px] font-semibold uppercase tracking-widest text-text-secondary flex items-center gap-2">
                 <Info size={12} className="text-brand-primary" />
                 Deployment Guide
               </h4>
@@ -848,9 +848,9 @@ export default function IntelligenceLab({
                   { icon: Sparkles, text: 'Use Map to envision complete genre frameworks.' },
                   { icon: Globe, text: 'Deep Agents cross-reference high-fidelity web data.' }
                 ].map((tip, i) => (
-                  <li key={i} className="flex gap-3 items-start">
+                  <li key={i} className="flex gap-1.5 items-start">
                     <tip.icon size={12} className="text-brand-primary mt-0.5 shrink-0" />
-                    <span className="text-[10px] text-text-secondary leading-normal font-medium">{tip.text}</span>
+                    <span className="text-xs text-text-secondary leading-normal font-medium">{tip.text}</span>
                   </li>
                 ))}
               </ul>

@@ -1,437 +1,239 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Zap, Activity, Play, Pause, SkipForward, CheckCircle2, AlertCircle, RefreshCw, Layers, Sparkles, Flame, Fingerprint, BookOpen, Clock } from 'lucide-react';
-import { Project, Chapter, PlotNode, ResearchNote, ViewType } from '../types';
+import React, { useState } from 'react';
+import { Chapter, Project, PlotNode, ResearchNote, ViewType } from '../types';
+import { motion } from 'motion/react';
+import { Play, SkipForward, CheckCircle, AlertOctagon, Terminal, Flame, FileText, ArrowLeft, Cpu } from 'lucide-react';
 import { AIService } from '../services/ai';
-import { getDraftPassWordTarget } from './DraftStagePanel';
 
-interface Props {
-  project: Project;
+interface AutoDrafterProps {
+  project: Project & { sourceMaterials?: any[]; research?: ResearchNote[] };
   chapters: Chapter[];
   plotNodes: PlotNode[];
   research: ResearchNote[];
-  updateProject: (updates: Partial<Project>) => void;
-  updateChapters: (chapters: Chapter[]) => void;
-  setView: (view: ViewType) => void;
-  onNotify?: (message: string, type?: 'success' | 'info' | 'error') => void;
-  onError?: (message: string) => void;
+  updateProject: (p: Partial<Project>) => Promise<void>;
+  updateChapters: (chaps: Chapter[]) => Promise<void>;
+  setView: (v: ViewType) => void;
+  onNotify: (msg: string, type: 'success' | 'error' | 'info') => void;
+  onError: (msg: string) => void;
 }
 
-export default function AutoDrafter({ 
-  project, 
-  chapters, 
-  plotNodes, 
-  research, 
-  updateProject, 
-  updateChapters, 
+export default function AutoDrafter({
+  project,
+  chapters,
+  plotNodes,
+  research,
+  updateProject,
+  updateChapters,
   setView,
   onNotify,
   onError
-}: Props) {
-  const [isRunning, setIsRunning] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [log, setLog] = useState<{ msg: string; type: 'info' | 'success' | 'err' | 'ai' }[]>([]);
-  const [isBootstrapping, setIsBootstrapping] = useState(false);
-  const abortRef = useRef<boolean>(false);
-  const logEndRef = useRef<HTMLDivElement>(null);
+}: AutoDrafterProps) {
+  const [isDrafting, setIsDrafting] = useState<boolean>(false);
+  const [draftLogs, setDraftLogs] = useState<string[]>(['Drafter initialized and ready.', 'Linked style DNA & plot lattice...']);
+  const [selectedChapterId, setSelectedChapterId] = useState<string>(chapters.find(c => !c.content.trim())?.id || chapters[0]?.id || '');
+  const [wordsPerChapter, setWordsPerChapter] = useState<number>(2000);
 
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [log]);
+  const selectedChapter = chapters.find(c => c.id === selectedChapterId);
 
-  // Filter out chapters that are actually planning documents (isPlan)
-  const draftChapters = chapters.filter(c => !c.isPlan).sort((a, b) => a.order - b.order);
-  const currentPass = project.draftStage || 1;
-  const targetWordsPerChapter = getDraftPassWordTarget(currentPass, project.targetWordCount || 80000, draftChapters.length);
-
-  const addLog = (msg: string, type: 'info' | 'success' | 'err' | 'ai' = 'info') => {
-    setLog(prev => [{ msg, type }, ...prev].slice(0, 50));
+  const addLog = (msg: string) => {
+    setDraftLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   };
 
-  const handleBootstrap = async () => {
-    setIsBootstrapping(true);
-    addLog("Initializing Project Bootstrap...", 'info');
+  const handleDeepDraft = async () => {
+    if (!selectedChapterId || !selectedChapter) {
+      onNotify('Select a chapter to draft.', 'error');
+      return;
+    }
+
+    setIsDrafting(true);
+    addLog(`Initiating Deep Draft sequence for: "${selectedChapter.title}"`);
+    addLog(`Targeting ${wordsPerChapter} words with ${project.tone || 'standard'} tone.`);
+
     try {
-      addLog("Synthesizing Plot Architecture Nodes...", 'ai');
-      const nodes = await AIService.outlinePlotNodes(project, chapters, research);
-      if (!nodes || nodes.length === 0) throw new Error("Neural Engine failed to generate structure.");
+      // Create high-craft prompt combining character backgrounds, plot nodes and research references
+      const prompt = `DEEP DRAFTING SEQUENCE:
+      Draft a full, high-fidelity scene for Chapter "${selectedChapter.title}".
       
-      addLog(`Generated ${nodes.length} Narrative Beats. Reconciling with Chapters...`, 'success');
-      const reconciled = await AIService.reconcileChapters(project, nodes, chapters);
+      WORLD METADATA:
+      - Title: "${project.title}"
+      - Type: "${project.type}"
+      - Style DNA Tone: "${project.tone}"
+      - Summary: "${selectedChapter.summary}"
+      - Directives/Guidelines: ${selectedChapter.directives?.join(', ') || 'Standard progression'}
+
+      STYLE SPECIFICATION:
+      - Vocabulary level: Elevate the vocabulary; select words matching the ${project.styleDNA?.vocabularyLevel || 'elevated'} level.
+      - Prose intensity: ${project.styleDNA?.proseIntensity || 70}/100.
+      - Prose Rhythm: ${project.styleDNA?.narrativeRhythm || 60}/100 duration mixes.
       
-      const newChapters: Chapter[] = reconciled.map((item, index) => ({
-        id: crypto.randomUUID(),
-        title: item.title,
-        summary: item.summary,
-        content: "",
-        order: index,
-        plotNodeIds: item.plotNodeIds,
-        tags: ['auto-bootstrap'],
-        updatedAt: Date.now()
-      }));
+      CONTEXTUAL NOTES & BEATS:
+      - Active Plot Points: ${plotNodes.filter(p => selectedChapter.plotNodeIds?.includes(p.id)).map(p => p.title).join(', ') || 'Progress the core narrative'}
+      - Relevant research nodes: ${research.slice(0, 3).map(r => r.title + ': ' + r.content.slice(0, 500)).join('\n')}
 
-      updateChapters(newChapters);
-      addLog("Bootstrap Complete: Global Architecture Online.", 'success');
-      onNotify?.("Structural nodes and chapters synthesized successfully.", 'success');
-    } catch (err: any) {
-      addLog(`Bootstrap Failure: ${err.message}`, 'err');
-    } finally {
-      setIsBootstrapping(false);
-    }
-  };
+      Write detailed, immersive prose without rushing. Ensure the scene ends on a lingering sensory image.
+      Return the drafted prose string directly. Do NOT wrap in markdown blocks, JSON, or quotes.`;
 
-  const advancementCheck = () => {
-    if (currentPass < 4) {
-      updateProject({ draftStage: (currentPass + 1) as 1 | 2 | 3 | 4 });
-      addLog(`Operational Directive: Advanced to Pass ${currentPass + 1}.`, 'success');
-    }
-  };
+      const response = await AIService.callAI({
+        prompt,
+        model: 'gemini-2.5-pro-preview-05-06', // Large context model for deep writing
+      });
 
-  const draftingSession = async () => {
-    if (isRunning) {
-      abortRef.current = true;
-      setIsRunning(false);
-      addLog("Operational pause initiated by user.", 'err');
-      return;
-    }
-
-    if (draftChapters.length === 0) {
-      addLog("No narrative segments identified. Initialize Architecture first.", 'err');
-      return;
-    }
-
-    setIsRunning(true);
-    abortRef.current = false;
-    addLog(`Neural Auto-Draft Core engaged. Target: Pass ${currentPass}.`, 'ai');
-
-    // Create a mutable copy of chapters to prevent stale closure overwrites in the loop
-    let currentChapters = [...chapters];
-
-    for (let i = currentIndex; i < draftChapters.length; i++) {
-      if (abortRef.current) break;
-      setCurrentIndex(i);
-      
-      // Use the updated currentChapters array to ensure we reference active content
-      const chapter = currentChapters.find(c => c.id === draftChapters[i].id) || draftChapters[i];
-      
-      // Check if chapter already meets target for this pass
-      const wordCount = chapter.content?.trim() ? chapter.content.trim().split(/\s+/).length : 0;
-      if (wordCount >= targetWordsPerChapter * 0.9 && chapter.content?.length > 0) {
-        addLog(`Segment ${i + 1} finalized: Target reached (${wordCount} words). Skipping.`, 'success');
-        continue;
-      }
-
-      addLog(`Synthesizing Segment ${i + 1}: ${chapter.title}...`, 'info');
-      
-      try {
-        let content = "";
-        let currentWords = 0;
-        let iterations = 0;
-        const maxIterations = 8;
-
-        while (iterations < maxIterations) {
-          const iterationDirectives = [...(chapter.directives || [])];
-          let isAppending = false;
-          
-          if (iterations > 0) {
-            const diff = currentWords - targetWordsPerChapter;
-            if (Math.abs(diff) / targetWordsPerChapter <= 0.02) {
-              break;
-            }
-            
-            addLog(`Adjusting (Iteration ${iterations + 1}): Got ${currentWords} words, Target ${targetWordsPerChapter}...`, 'info');
-            
-            // Give a small break between runs to avoid rate limits and let the system breathe
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            if (diff > 0) {
-              iterationDirectives.push(`CRITICAL: The current draft is ${currentWords} words. It MUST BE exactly ${targetWordsPerChapter} words (you are over by ${diff} words). You must CUT and COMPRESS the scene to meet the exact word count. Do not lose the narrative thread. Ban all filler and cut aggressively.`);
-              iterationDirectives.push(`PREVIOUS ATTEMPT TEXT FOR REVISION:\n${content}`);
-            } else {
-              if (Math.abs(diff) > 300) {
-                isAppending = true;
-                iterationDirectives.push(`CRITICAL CONTINUATION REQUIRED: You are short by ${Math.abs(diff)} words. DO NOT REWRITE THE PREVIOUS SCENE. You MUST CONTINUE the narrative from where the previous text left off. Expand the plot organically, introduce new sub-conflicts, explore the character's internal wound, and propel the story forward. DO NOT just pad with words. ONLY output the continuation, DO NOT output the previous text.`);
-              } else {
-                iterationDirectives.push(`CRITICAL: The current draft is ${currentWords} words. It MUST BE exactly ${targetWordsPerChapter} words (you are short by ${Math.abs(diff)} words). Do NOT pad with useless adjectives, purple prose, or looped internal monologue. Instead, EXPAND STRUCTURALLY: deepen the subtext, escalate the tension, reveal the character's hidden wound, or add a necessary complication. Keep prose lean, precise, and sharp.`);
-                iterationDirectives.push(`PREVIOUS ATTEMPT TEXT FOR REVISION:\n${content}`);
-              }
-            }
-          }
-
-          const earlierContent = currentChapters
-            .filter(c => !c.isPlan)
-            .sort((a, b) => a.order - b.order)
-            .slice(Math.max(0, i - 3), i)
-            .map(c => c.content)
-            .join('\n\n')
-            .slice(-15000);
-
-          const activeNodes = plotNodes.filter(n => chapter.plotNodeIds?.includes(n.id));
-
-          const generated = await AIService.writeDraft(
-            chapter.title,
-            chapter.summary + (isAppending ? `\n\nCONTINUING FROM PREVIOUS TEXT: Pick up exactly where the last paragraph left off.` : ""),
-            isAppending ? (earlierContent + "\n\n" + content) : earlierContent,
-            project.type,
-            activeNodes,
-            research || [],
-            project.maturity,
-            project.sourceMaterials || [],
-            iterationDirectives,
-            project.targetWordCount,
-            project.externalReviews || [],
-            currentPass as 1 | 2 | 3 | 4,
-            draftChapters.length,
-            project.cutMode
-          );
-          
-          if (isAppending) {
-            content = content + "\n\n" + generated;
-          } else {
-            content = generated;
-          }
-          
-          currentWords = content.split(/\s+/).filter(w => w.length > 0).length;
-          iterations++;
-          
-          if (Math.abs(currentWords - targetWordsPerChapter) / targetWordsPerChapter <= 0.02) {
-            addLog(`Segment ${i + 1} Target achieved: ${currentWords} words (within 2% margin).`, 'success');
-            break;
-          } else if (iterations === maxIterations) {
-            addLog(`Segment ${i + 1} Max iterations reached. Final words: ${currentWords} (Target: ${targetWordsPerChapter})`, 'err');
-          }
-        }
-
-        const updatedChapters = currentChapters.map(c => 
-          c.id === chapter.id ? { ...c, content: (c.content ? c.content + '\n\n' : '') + content.trim(), updatedAt: Date.now() } : c
+      if (response && response.trim()) {
+        const wordCount = response.split(/\s+/).filter(Boolean).length;
+        const updatedChapters = chapters.map(c => 
+          c.id === selectedChapterId 
+            ? { ...c, content: response, wordCount, status: 'completed' as const, updatedAt: Date.now() } 
+            : c
         );
-        currentChapters = updatedChapters; // Update local tracker
-        updateChapters(updatedChapters);   // Update remote/database state
-        addLog(`Sychronized Segment ${i + 1}. Growth: +${content.split(/\s+/).length} words.`, 'success');
-        
-        // Brief delay between requests to prevent rate limiting & allow UI rendering
-        await new Promise(r => setTimeout(r, 1500));
-        
-      } catch (err: any) {
-        addLog(`Critical Failure in Segment ${i + 1}: ${err.message || 'Connection lost'}.`, 'err');
-        setIsRunning(false);
-        return;
-      }
-    }
 
-    if (!abortRef.current) {
-      addLog("Neural Cycle 100% Optimized. Manuscript ready for review.", 'success');
-      setIsRunning(false);
-      setCurrentIndex(0);
+        await updateChapters(updatedChapters);
+
+        addLog(`Successfully generated prose! Output: ${wordCount} words.`);
+        addLog(`Chapter "${selectedChapter.title}" committed successfully.`);
+        onNotify(`Generated ${wordCount} words for "${selectedChapter.title}"!`, 'success');
+
+        // Automatically select the next empty chapter
+        const nextEmpty = chapters.find(c => c.id !== selectedChapterId && !c.content.trim());
+        if (nextEmpty) {
+          setSelectedChapterId(nextEmpty.id);
+          addLog(`Sequence loaded next empty target chapter: "${nextEmpty.title}"`);
+        }
+      } else {
+        throw new Error('Drafter returned empty response');
+      }
+    } catch (err: any) {
+      console.error(err);
+      addLog(`FATAL: drafting sequence interrupted.`);
+      onError?.(err?.message || 'Drafting interrupted.');
+      onNotify('Deep draft sequence crashed.', 'error');
+    } finally {
+      setIsDrafting(false);
     }
   };
-
-  const overallProgress = draftChapters.length > 0 ? (currentIndex / draftChapters.length) * 100 : 0;
 
   return (
-    <div className="h-full flex flex-col min-h-0 bg-brand-dark/20">
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 md:px-8 custom-scrollbar">
-        <div className="py-12 pb-40 max-w-6xl mx-auto gap-8 flex flex-col w-full">
-          <header className="flex flex-col md:flex-row items-center justify-between gap-8 ethereal-panel p-10 md:p-12 rounded-[3rem] border border-border-subtle shadow-4xl relative overflow-hidden group shrink-0">
-            <div className="absolute inset-0 bg-brand-primary opacity-[0.03] group-hover:opacity-[0.05] transition-opacity duration-1000 pointer-events-none" />
-            <div className="flex flex-col gap-4 relative z-20">
-              <div className="flex items-center gap-5">
-                 <div className={`w-4 h-4 rounded-full ${isRunning ? 'bg-brand-primary animate-pulse shadow-[0_0_20px_rgba(168,85,247,1)]' : 'bg-surface-muted'}`} />
-                 <h2 className="text-4xl font-black italic font-serif text-text-primary tracking-tighter">Neural Auto-Draft</h2>
-              </div>
-              <p className="text-[11px] font-black uppercase tracking-[0.4em] text-text-secondary opacity-40">Recursive sequence engine & high-fidelity drafting</p>
+    <div id="autodraft-view" className="flex-1 flex flex-col min-h-0 bg-neutral-950 text-neutral-100 p-6 overflow-y-auto">
+      <div className="max-w-6xl mx-auto w-full flex flex-col h-full">
+        {/* Header toolbar */}
+        <div className="flex items-center justify-between mb-6 border-b border-neutral-800 pb-4">
+          <div className="flex items-center gap-3">
+            <button 
+              id="back-to-writing"
+              onClick={() => setView('writing')}
+              className="p-2 hover:bg-neutral-900 rounded-full text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-xl font-mono tracking-tight font-bold flex items-center gap-2">
+                <Cpu className="w-5 h-5 text-purple-400" />
+                AUTO-DRAFTER ENGINE <span className="text-xs px-2 py-0.5 bg-purple-950/50 border border-purple-900/50 text-purple-400 font-normal rounded font-mono">STANDBY POOL</span>
+              </h1>
+              <p className="text-xs text-neutral-400 mt-1">Harness high-context Gemini models to expand structural outlines into rich literary prose.</p>
             </div>
+          </div>
+        </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-4 relative z-20">
-              {draftChapters.length === 0 ? (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleBootstrap(); }}
-                  disabled={isBootstrapping}
-                  className="px-12 py-6 bg-brand-dark border border-brand-primary/40 text-brand-primary rounded-[1.8rem] font-black text-[11px] uppercase tracking-widest transition-all shadow-2xl flex items-center gap-5 active:scale-95 hover:bg-brand-primary/10 hover:border-brand-primary disabled:opacity-40"
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+          {/* Drafter Config */}
+          <div className="lg:col-span-5 flex flex-col gap-5">
+            <div className="bg-neutral-900/50 border border-neutral-800/80 rounded-xl p-5 space-y-4">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
+                <Flame className="w-4 h-4 text-purple-400" /> SEQUENCE CALIBRATION
+              </h2>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-neutral-400 font-mono">SELECT TARGET CHAPTER:</label>
+                <select
+                  id="drafter-chapter-select"
+                  value={selectedChapterId}
+                  onChange={(e) => setSelectedChapterId(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-200 text-xs rounded px-3 py-2 focus:border-purple-500 font-mono outline-none"
                 >
-                  {isBootstrapping ? <RefreshCw className="animate-spin" size={20} /> : <Sparkles size={20} />}
-                  Launch Initial Bootstrap
-                </button>
-              ) : (
-                <>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); advancementCheck(); }}
-                    disabled={isRunning}
-                    className="px-8 py-6 bg-brand-dark border border-border-subtle text-text-secondary rounded-[1.8rem] font-black text-[11px] uppercase tracking-[0.2em] transition-all hover:text-text-primary active:scale-95 disabled:opacity-20 flex items-center gap-3 flex-col justify-center leading-tight"
-                  >
-                    <span>Pass 0{currentPass}</span>
-                    <span className="text-[9px] text-brand-primary opacity-80 mt-1">Target: {targetWordsPerChapter.toLocaleString()} W/C</span>
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); draftingSession(); }}
-                    className={`px-12 py-6 rounded-[1.8rem] font-black text-[11px] uppercase tracking-[0.3em] transition-all shadow-2xl flex items-center gap-5 active:scale-95 ${
-                      isRunning 
-                        ? 'bg-red-600 text-white shadow-red-600/20' 
-                        : 'btn-nexus-primary shadow-brand-primary/30 hover:bg-brand-accent'
-                    }`}
-                  >
-                    {isRunning ? <Pause size={22} /> : <Play size={22} className="fill-current" />}
-                    {isRunning ? 'Pause Core' : 'Start Recursive Draft'}
-                  </button>
-                </>
-              )}
-            </div>
-          </header>
-
-          {targetWordsPerChapter > 4000 && draftChapters.length > 0 && !isRunning && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-red-900/20 border border-red-500/30 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex gap-4 items-center">
-                <AlertCircle className="text-red-400 shrink-0" size={24} />
-                <div className="text-sm">
-                  <p className="font-bold text-red-200">High Word Count Strain Detected</p>
-                  <p className="text-red-300 pr-4">
-                    Your target is <strong>{targetWordsPerChapter.toLocaleString()} words per chapter</strong>. The AI will struggle to generate high-quality prose in blocks this large without excessive stretching or losing plot focus. We strongly recommend going to the <strong>Plot Architect</strong> to add more chapters and break up your story.
-                  </p>
-                </div>
+                  <option value="">Choose outline to expand...</option>
+                  {chapters.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.content.trim() ? '✓' : '◌'} {c.title || `Chapter ${c.order + 1}`} ({c.content.trim() ? `${c.content.split(/\s+/).filter(Boolean).length}w` : 'empty'})
+                    </option>
+                  ))}
+                </select>
               </div>
-            </motion.div>
-          )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 flex-1 min-h-0">
-            {/* Progress Array */}
-            <div className="lg:col-span-12 space-y-8">
-              <div className="h-5 bg-surface-muted rounded-full overflow-hidden border border-border-subtle p-1 shadow-inner">
-                <motion.div 
-                   className="h-full bg-brand-primary rounded-full shadow-[0_0_30px_rgba(168,85,247,0.8)]"
-                   initial={{ width: 0 }}
-                   animate={{ width: `${overallProgress}%` }}
-                   transition={{ type: "spring", damping: 25, stiffness: 120 }}
+              <div className="space-y-1.5">
+                <label className="text-xs text-neutral-400 font-mono flex justify-between">
+                  <span>TARGET SCALE PROSE:</span>
+                  <span className="text-purple-400 font-bold">{wordsPerChapter} WORDS</span>
+                </label>
+                <input 
+                  type="range" 
+                  min="500" 
+                  max="4000" 
+                  step="250"
+                  value={wordsPerChapter} 
+                  onChange={(e) => setWordsPerChapter(Number(e.target.value))}
+                  className="w-full accent-purple-500 bg-neutral-800 rounded-lg height-1.5 cursor-pointer"
                 />
               </div>
-              <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-4">
-                <span className="text-[10px] font-black text-brand-primary uppercase tracking-[0.3em] flex items-center gap-4">
-                  <Layers size={16} />
-                  Operational Cycle: Pass {currentPass} Synthesis
-                </span>
-                <span className="text-[10px] font-black text-text-secondary uppercase tracking-[0.3em] italic font-serif opacity-60">
-                   Segment {currentIndex + 1} of {draftChapters.length} Architecture Nodes
-                </span>
-              </div>
-            </div>
 
-            {/* Neural Stream Log */}
-            <div className="lg:col-span-8 flex flex-col bg-brand-dark border border-border-subtle rounded-[3rem] overflow-hidden shadow-3xl min-h-[500px]">
-              <div className="p-10 border-b border-border-subtle flex items-center justify-between ethereal-panel/80 backdrop-blur-md">
-                 <div className="flex items-center gap-5">
-                    <Activity size={20} className="text-brand-primary" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.4em] text-text-primary">System Telemetry Stream</span>
-                 </div>
-                 <div className="flex items-center gap-4">
-                   <div className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
-                 </div>
-              </div>
-              <div className="flex-1 p-10 overflow-y-auto custom-scrollbar font-mono text-[12px] leading-relaxed space-y-4 bg-black/20">
-                 <AnimatePresence initial={false}>
-                   {log.map((entry, i) => (
-                     <motion.div 
-                       key={`${i}-${entry.msg.slice(0, 15)}`}
-                       initial={{ opacity: 0, y: 10 }}
-                       animate={{ opacity: 1, y: 0 }}
-                       className={`flex gap-5 p-4 rounded-2xl border transition-all hover:bg-white/[0.02] ${
-                         entry.type === 'ai' ? 'bg-brand-primary/5 border-brand-primary/30 text-brand-primary shadow-[0_0_15px_rgba(168,85,247,0.1)]' :
-                         entry.type === 'success' ? 'bg-green-500/5 border-green-500/30 text-green-400' :
-                         entry.type === 'err' ? 'bg-red-500/5 border-red-500/30 text-red-500' :
-                         'bg-white/5 border-border-subtle text-text-secondary opacity-80'
-                       }`}
-                     >
-                       <span className="opacity-20 shrink-0 select-none">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span>
-                       <span className="flex-1 font-medium">{entry.msg}</span>
-                     </motion.div>
-                   ))}
-                   {log.length === 0 && (
-                     <div className="h-full flex flex-col items-center justify-center opacity-10 gap-6 grayscale">
-                        <RefreshCw size={48} className="animate-spin-slow" />
-                        <p className="uppercase tracking-[0.4em] text-[10px] font-black">Waiting for Recurse Initialization</p>
-                     </div>
-                   )}
-                   <div ref={logEndRef} className="h-4" />
-                 </AnimatePresence>
-              </div>
-            </div>
-
-            {/* Config & Analysis */}
-            <div className="lg:col-span-4 flex flex-col gap-8">
-               <div className="ethereal-panel border border-border-subtle rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
-                    <Fingerprint size={120} />
-                  </div>
-                  <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-primary mb-8 flex items-center gap-4">
-                    <Sparkles size={18} />
-                    Neural Weights
-                  </h3>
-                  <div className="space-y-5 relative z-10">
-                     <div className="flex items-center justify-between p-5 bg-brand-dark rounded-2xl border border-border-subtle group hover:border-brand-primary/40 transition-colors">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary opacity-40">Operational Stage</span>
-                          <span className="text-sm font-black text-text-primary tracking-tight">Pass 0{currentPass}</span>
-                        </div>
-                        <Layers size={22} className="text-brand-primary/20 group-hover:text-brand-primary/40 transition-colors" />
-                     </div>
-                     <div className="flex items-center justify-between p-5 bg-brand-dark rounded-2xl border border-border-subtle group hover:border-brand-primary/40 transition-colors">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary opacity-40">Target Expansion</span>
-                          <span className="text-sm font-black text-text-primary tracking-tight">~{targetWordsPerChapter.toLocaleString()} wds</span>
-                        </div>
-                        <Fingerprint size={22} className="text-brand-primary/20 group-hover:text-brand-primary/40 transition-colors" />
-                     </div>
-                     <div className="flex items-center justify-between p-5 bg-brand-dark rounded-2xl border border-border-subtle group hover:border-brand-primary/40 transition-colors">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-text-secondary opacity-40">Active Provider</span>
-                          <span className="text-sm font-black text-text-primary italic font-serif tracking-tight">{project.primaryProvider || 'Standard'}</span>
-                        </div>
-                        <Flame size={22} className="text-brand-primary/20 group-hover:text-brand-primary/40 transition-colors" />
-                     </div>
-                  </div>
-                  <button 
-                    onClick={() => setView('settings')}
-                    className="w-full mt-8 py-5 bg-surface-muted hover:ethereal-panel border border-border-subtle rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] text-text-primary transition-all flex items-center justify-center gap-4 active:scale-95 group/cal"
-                  >
-                    <RefreshCw size={14} className="group-hover:rotate-180 transition-transform duration-700" />
-                    Calibration Center
-                  </button>
-               </div>
-
-               <div className="bg-brand-dark border border-border-subtle rounded-[2.5rem] p-10 shadow-2xl flex-1 flex flex-col relative overflow-hidden">
-                  <div className="absolute bottom-0 right-0 p-8 opacity-[0.02] pointer-events-none">
-                    <BookOpen size={140} />
-                  </div>
-                  <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-text-secondary mb-8 flex items-center gap-4">
-                    <BookOpen size={18} />
-                    Active Node Context
-                  </h3>
-                  {draftChapters[currentIndex] ? (
-                    <div className="flex-1 flex flex-col gap-6 relative z-10">
-                      <div className="p-6 ethereal-panel rounded-2xl border border-border-subtle shadow-inner">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-brand-primary mb-3 flex items-center gap-2">
-                           <Activity size={10} />
-                           Neural Synthesis Goal
-                        </p>
-                        <p className="text-sm font-black text-text-primary italic font-serif leading-relaxed line-clamp-6 opacity-90">
-                          {draftChapters[currentIndex].summary || "No architectural summary provided. Neural engine will extrapolate narrative intent based on global structure."}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-4 text-text-secondary/40 px-2 mt-auto">
-                         <Clock size={16} />
-                         <span className="text-[10px] font-black uppercase tracking-widest tracking-[0.2em]">Expected Latency: 45s-90s</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center opacity-10 gap-6 grayscale">
-                      <Fingerprint size={64} strokeWidth={0.5} />
-                      <p className="uppercase tracking-[0.3em] text-[10px] font-black">Architectural Void</p>
+              {selectedChapter && (
+                <div className="border border-neutral-800 rounded-lg bg-neutral-950/40 p-4 space-y-2 text-xs">
+                  <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-neutral-500" /> Target chapter summary:
+                  </span>
+                  <p className="text-neutral-400 leading-relaxed italic">"{selectedChapter.summary || 'No summary configured'}"</p>
+                  {selectedChapter.directives && selectedChapter.directives.length > 0 && (
+                    <div className="pt-2 border-t border-neutral-800">
+                      <span className="text-[10px] uppercase font-mono text-neutral-500">Active Directives:</span>
+                      <ul className="list-disc pl-4 space-y-0.5 text-neutral-400 mt-1">
+                        {selectedChapter.directives.map((d, i) => <li key={i}>{d}</li>)}
+                      </ul>
                     </div>
                   )}
-               </div>
+                </div>
+              )}
+
+              <button
+                id="ignite-draft-button"
+                onClick={handleDeepDraft}
+                disabled={isDrafting || !selectedChapterId}
+                className="w-full py-3 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-mono font-bold text-xs uppercase tracking-widest transition-all active:scale-[0.98] shadow-lg shadow-purple-950/40 flex items-center justify-center gap-1.5"
+              >
+                {isDrafting ? (
+                  <>
+                    <Cpu className="w-4 h-4 animate-spin text-white" />
+                    DEEP DRAFTING CORE...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    IGNITE AUTO-DRAFTER
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Console / Output Logging */}
+          <div className="lg:col-span-7 flex flex-col bg-neutral-900/40 border border-neutral-800 rounded-xl overflow-hidden min-h-[450px]">
+            <div className="bg-neutral-900 border-b border-neutral-800 px-4 py-2 flex items-center gap-2 text-neutral-300 font-mono text-xs">
+              <Terminal className="w-4 h-4 text-neutral-400" />
+              <span>LIVE AUTOPILOT CONSOLE</span>
+              {isDrafting && (
+                <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping ml-auto" />
+              )}
+            </div>
+            <div className="flex-1 p-4 bg-neutral-950/80 font-mono text-xs text-green-400/90 space-y-2 overflow-y-auto max-h-[450px] leading-relaxed scrollbar">
+              {draftLogs.map((log, index) => (
+                <div key={index} className="flex gap-2">
+                  <span className="text-neutral-600 shrink-0">❯</span>
+                  <p className="whitespace-pre-wrap">{log}</p>
+                </div>
+              ))}
+              {isDrafting && (
+                <div className="flex gap-2 animate-pulse text-purple-400">
+                  <span className="shrink-0">⚙</span>
+                  <p>Awaiting highly cohesive prose stream from Gemini...</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
