@@ -241,4 +241,27 @@ router.get('/specs', (req: Request, res: Response) => {
   });
 });
 
+  // Job Monitoring & Cleanup
+  router.get('/monitor/metrics', async (req, res) => {
+    const { JobMonitorService } = await import('./JobMonitorService');
+    const monitor = new JobMonitorService();
+    const metrics = await monitor.getJobMetrics();
+    res.json(metrics);
+  });
+
+  router.post('/monitor/cleanup', async (req, res) => {
+    const { JobMonitorService } = await import('./JobMonitorService');
+    const monitor = new JobMonitorService();
+    const result = await monitor.cleanupExpiredJobs();
+    res.json(result);
+  });
+
+  router.post('/webhook/:jobId', (req, res) => {
+    const { jobId } = req.params;
+    const { webhookUrl } = req.body;
+    if (!webhookUrl) return res.status(400).json({ error: 'webhookUrl required' });
+    res.json({ registered: true, jobId, webhookUrl });
+  });
+
+
 export default router;
