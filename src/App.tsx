@@ -2119,7 +2119,6 @@ export default function App() {
                     }}
                     setView={setCurrentView}
                     onNotify={onNotify}
-                  />
                 </div>
               )}
             </div>
