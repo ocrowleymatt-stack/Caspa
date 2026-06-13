@@ -1196,35 +1196,35 @@ export default function App() {
 
   const navGroups = [
     {
-      title: "Workspace",
+      title: "WORKSPACE",
       items: [
-        { id: 'library', label: 'Library', sub: 'Collection of works', icon: Library },
-        { id: 'dashboard', label: 'Command Centre', sub: 'Narrative hub', icon: BarChart3 }
+        { id: 'library', label: 'Library', sub: 'All your projects & works', icon: Library },
+        { id: 'dashboard', label: 'Command Centre', sub: 'Project overview & word count stats', icon: BarChart3 }
       ]
     },
     {
-      title: "Creation Workflow",
+      title: "WRITE YOUR BOOK",
       items: [
-        { id: 'discover', label: 'Discover', sub: 'Premise, research & voice', icon: Sparkles },
-        { id: 'design', label: 'Design', sub: 'Characters & structures', icon: GitBranch },
-        { id: 'write', label: 'Write', sub: 'Manuscript drafting & scenes', icon: PenTool },
-        { id: 'autodraft', label: 'Auto Draft', sub: 'Generate scene outlines & drafts', icon: Zap },
-        { id: 'architect', label: 'Fix a Bad Book', sub: 'Reconstruct & fix bad structure', icon: Activity }
+        { id: 'discover', label: 'Research Desk', sub: 'Source materials & research notes', icon: Sparkles },
+        { id: 'design', label: 'Blueprint', sub: 'Characters, plot & story architecture', icon: GitBranch },
+        { id: 'write', label: 'Write', sub: 'Draft scenes & chapters directly', icon: PenTool },
+        { id: 'autodraft', label: 'Auto Draft', sub: 'AI-powered scene & chapter generation', icon: Zap },
+        { id: 'architect', label: 'Rip & Fix', sub: 'Diagnose & restructure broken manuscripts', icon: Activity }
       ]
     },
     {
-      title: "Lattice & Intelligence",
+      title: "TOOLS & INTELLIGENCE",
       items: [
-        { id: 'memory', label: 'Memory & Ledgers', sub: 'Canon, secrets & promises', icon: BrainCircuit },
-        { id: 'intelligence', label: 'Narrative Intelligence', sub: 'The Red Pen & decay', icon: Scissors },
-        { id: 'upload', label: 'Evidence & Uploads', sub: 'Ingest and browse reference documents', icon: Upload }
+        { id: 'memory', label: 'Story Bible', sub: 'Canon, continuity & character secrets', icon: BrainCircuit },
+        { id: 'intelligence', label: 'The Red Pen', sub: 'Edit, critique & narrative health', icon: Scissors },
+        { id: 'upload', label: 'Evidence Archive', sub: 'Upload files & generate book plans with AI', icon: Upload }
       ]
     },
     {
-      title: "Publishing",
+      title: "PUBLISH",
       items: [
-        { id: 'publish', label: 'Publish', sub: 'Formatting & export', icon: Globe },
-        { id: 'settings', label: 'Settings', sub: 'Account config', icon: Settings }
+        { id: 'publish', label: 'Publish', sub: 'Format & export for Amazon / print', icon: Globe },
+        { id: 'settings', label: 'Settings', sub: 'Account & API configuration', icon: Settings }
       ]
     }
   ];
@@ -1468,7 +1468,10 @@ export default function App() {
                   >
                     <Icon size={18} className={isActive ? 'text-brand-primary' : 'group-hover:text-text-primary transition-colors'} />
                     {isSidebarOpen && (
-                      <span className="flex-1 truncate text-left">{item.label}</span>
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="truncate leading-tight">{item.label}</div>
+                        <div className="truncate text-[9px] opacity-50 font-normal leading-tight mt-0.5">{item.sub}</div>
+                      </div>
                     )}
                   </button>
                 );
