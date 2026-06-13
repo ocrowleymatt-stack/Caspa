@@ -3,6 +3,12 @@ import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { analyzeContent, generateGrokPrompts, validateProductionReadiness, generateOutputSpec } from './src/services/ContentIntelligenceService';
+import { createGrokImagineService, type GenerationRequest, type GenerationResult } from './src/services/GrokImagineService';
+import pdfRoutes from './src/services/pdf-assembly-routes';
+import { createBookMetadataRoutes } from './src/services/book-metadata-routes';
+import serviceApiRoutes from './src/services/service-api-routes';
+import phase6Routes from './src/services/phase6-routes';
 
 dotenv.config();
 
@@ -677,6 +683,188 @@ IMPORTANT: Return raw JSON only. No preamble. No explanation. No markdown fences
   res.status(502).json({ message: "All providers failed for deep ingest" });
 });
 
+
+
+// ============================================
+// CONTENT INTELLIGENCE ENDPOINTS
+// ============================================
+
+// Analyze content and generate comprehensive intelligence
+app.post('/api/content/analyze', async (req, res) => {
+  try {
+    const { content, title, context, targetAudience, purpose } = req.body;
+    
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    const intelligence = await analyzeContent(
+      { content, title, context, targetAudience, purpose },
+      (prompt, json) => callGeminiOnServer({ prompt, json })
+    );
+
+    const validation = validateProductionReadiness(intelligence);
+    const outputSpec = generateOutputSpec(intelligence);
+
+    return res.json({
+      intelligence,
+      validation,
+      outputSpec,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Content analysis error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to analyze content'
+    });
+  }
+});
+
+// Generate professional Grok Imagine prompts from illustrations
+app.post('/api/content/grok-prompts', async (req, res) => {
+  try {
+    const { illustrations } = req.body;
+    
+    if (!illustrations || !Array.isArray(illustrations)) {
+      return res.status(400).json({ error: 'Illustrations array is required' });
+    }
+
+    const prompts = generateGrokPrompts(illustrations);
+    
+    // Convert Map to JSON object
+    const promptsObj: Record<string, string> = {};
+    prompts.forEach((value, key) => {
+      promptsObj[key] = value;
+    });
+
+    return res.json({
+      prompts: promptsObj,
+      count: prompts.size,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Grok prompt generation error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to generate prompts'
+    });
+  }
+});
+
+// Validate production readiness
+app.post('/api/content/validate', async (req, res) => {
+  try {
+    const { intelligence } = req.body;
+    
+    if (!intelligence) {
+      return res.status(400).json({ error: 'Intelligence object is required' });
+    }
+
+    const validation = validateProductionReadiness(intelligence);
+
+    return res.json({
+      validation,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Validation error:', error);
+    return res.status(500).json({
+      error: error.message || 'Validation failed'
+    });
+  }
+});
+
+
+// ============================================
+// ILLUSTRATION GENERATION ENDPOINTS
+// ============================================
+
+// Generate illustrations from specifications
+app.post('/api/content/generate-illustrations', async (req, res) => {
+  try {
+    const { illustrations, batchSize, styleOverride } = req.body;
+    
+    if (!illustrations || !Array.isArray(illustrations) || illustrations.length === 0) {
+      return res.status(400).json({ error: 'Illustrations array is required' });
+    }
+
+    // Initialize Grok service
+    const grokService = createGrokImagineService();
+    
+    // Estimate cost upfront
+    const estimatedCost = grokService.estimateCost(illustrations.length);
+
+    // Start generation (non-blocking)
+    const generationPromise = grokService.generateIllustrations({
+      illustrations,
+      batchSize: batchSize || 1,
+      styleOverride
+    });
+
+    // Return immediately with generation tracking ID
+    const trackingId = `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Store in-flight generation (would normally use Redis/database)
+    // For now, return tracking info with estimated cost
+    res.json({
+      trackingId,
+      status: 'generating',
+      estimated: {
+        illustrationCount: illustrations.length,
+        estimatedCost: estimatedCost,
+        estimatedTimeSeconds: illustrations.length * 15, // rough estimate
+      },
+      message: 'Illustration generation started. Poll /api/content/generate-illustrations/:trackingId for progress.',
+      generationPromise: generationPromise.then(result => {
+        // Cache result (would use Redis in production)
+        console.log(`Generation ${trackingId} complete: ${result.summary.successful}/${result.summary.total} successful`);
+        return result;
+      }).catch(err => {
+        console.error(`Generation ${trackingId} failed:`, err);
+        throw err;
+      })
+    });
+  } catch (error: any) {
+    console.error('Illustration generation error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to generate illustrations'
+    });
+  }
+});
+
+// Estimate cost for illustrations
+app.post('/api/content/estimate-cost', async (req, res) => {
+  try {
+    const { illustrationCount } = req.body;
+    
+    if (typeof illustrationCount !== 'number' || illustrationCount <= 0) {
+      return res.status(400).json({ error: 'Valid illustrationCount required' });
+    }
+
+    const grokService = createGrokImagineService();
+    const estimatedCost = grokService.estimateCost(illustrationCount);
+    const estimatedTimeSeconds = illustrationCount * 15; // rough estimate
+
+    return res.json({
+      illustrationCount,
+      estimatedCostPence: estimatedCost,
+      estimatedCostPounds: (estimatedCost / 100).toFixed(2),
+      estimatedTimeSeconds,
+      costPerImage: (estimatedCost / illustrationCount).toFixed(0),
+      note: 'Costs are estimates and may vary based on complexity and model pricing'
+    });
+  } catch (error: any) {
+    console.error('Cost estimation error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to estimate cost'
+    });
+  }
+});
+
+// Mount PDF Assembly routes (BEFORE Vite middleware)
+app.use("/api/metadata", createBookMetadataRoutes(process.env.GEMINI_API_KEY!));
+app.use("/api/service", serviceApiRoutes);
+app.use("/api/phase6", phase6Routes);
+app.use("/api", pdfRoutes);
 
 async function run() {
   if (process.env.NODE_ENV !== "production") {
