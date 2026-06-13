@@ -466,8 +466,55 @@ class PDFAssemblyService {
   }
 
   async generateSimpleProfessionalPDF(title: string, content: string): Promise<{ buffer: Buffer; output: PDFOutput }> {
-    // Phase 4a uses screen; Phase 4b adds CMYK
-    return this.generateSimpleScreenPDF(title, content);
+    // Phase 4b: Generate screen PDF then convert to CMYK for professional print
+    const screenPDF = await this.generateSimpleScreenPDF(title, content);
+    
+    try {
+      // Write temporary RGB PDF
+      const tempDir = '/tmp/caspa-cmyk-convert';
+      if (!require('fs').existsSync(tempDir)) {
+        require('fs').mkdirSync(tempDir, { recursive: true });
+      }
+      
+      const tempRGBPath = require('path').join(tempDir, `temp-${Date.now()}.pdf`);
+      const tempCMYKPath = require('path').join(tempDir, `temp-cmyk-${Date.now()}.pdf`);
+      
+      require('fs').writeFileSync(tempRGBPath, screenPDF.buffer);
+      
+      // Validate and convert
+      const validator = new CMYKValidator();
+      const result = await validator.convertRGBToCMYK(tempRGBPath, tempCMYKPath);
+      
+      if (result.success && require('fs').existsSync(tempCMYKPath)) {
+        const cmykBuffer = require('fs').readFileSync(tempCMYKPath);
+        
+        // Clean up temp files
+        require('fs').unlinkSync(tempRGBPath);
+        require('fs').unlinkSync(tempCMYKPath);
+        
+        return {
+          buffer: cmykBuffer,
+          output: {
+            format: 'PDF',
+            colorSpace: 'CMYK',
+            resolution: 300,
+            pageCount: 1,
+            fileSize: cmykBuffer.length,
+          },
+        };
+      } else {
+        // Fallback to RGB if conversion fails
+        require('fs').unlinkSync(tempRGBPath);
+        if (require('fs').existsSync(tempCMYKPath)) {
+          require('fs').unlinkSync(tempCMYKPath);
+        }
+        console.warn('CMYK conversion failed, returning RGB:', result.error);
+        return screenPDF;
+      }
+    } catch (e) {
+      console.warn('CMYK conversion error, returning RGB:', e);
+      return screenPDF;
+    }
   }
 
 }

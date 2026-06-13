@@ -1,0 +1,18 @@
+{
+  "jobId": "51a0c549-4b85-4689-8ae8-dd688138e826",
+  "status": "completed",
+  "submittedAt": "2026-06-13T21:25:36.975Z",
+  "documentCount": 1,
+  "processed": 1,
+  "failed": 0,
+  "results": {
+    "cmyk-test-1": {
+      "documentId": "cmyk-test-1",
+      "status": "completed",
+      "pdfPath": "51a0c549-4b85-4689-8ae8-dd688138e826/cmyk-test-1.pdf",
+      "processingTime": 2476
+    }
+  },
+  "startedAt": "2026-06-13T21:25:36.976Z",
+  "completedAt": "2026-06-13T21:25:39.458Z"
+}

@@ -1,0 +1,18 @@
+{
+  "jobId": "fbeb8212-dfa3-47de-aad4-eb8c28011499",
+  "status": "completed",
+  "submittedAt": "2026-06-13T21:26:07.670Z",
+  "documentCount": 1,
+  "processed": 1,
+  "failed": 0,
+  "results": {
+    "screen-1": {
+      "documentId": "screen-1",
+      "status": "completed",
+      "pdfPath": "fbeb8212-dfa3-47de-aad4-eb8c28011499/screen-1.pdf",
+      "processingTime": 2029
+    }
+  },
+  "startedAt": "2026-06-13T21:26:07.672Z",
+  "completedAt": "2026-06-13T21:26:09.703Z"
+}

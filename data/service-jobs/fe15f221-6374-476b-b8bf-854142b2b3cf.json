@@ -1,0 +1,18 @@
+{
+  "jobId": "fe15f221-6374-476b-b8bf-854142b2b3cf",
+  "status": "completed",
+  "submittedAt": "2026-06-13T21:26:07.681Z",
+  "documentCount": 1,
+  "processed": 1,
+  "failed": 0,
+  "results": {
+    "prof-1": {
+      "documentId": "prof-1",
+      "status": "completed",
+      "pdfPath": "fe15f221-6374-476b-b8bf-854142b2b3cf/prof-1.pdf",
+      "processingTime": 2035
+    }
+  },
+  "startedAt": "2026-06-13T21:26:07.683Z",
+  "completedAt": "2026-06-13T21:26:09.723Z"
+}
