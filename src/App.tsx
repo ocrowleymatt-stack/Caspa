@@ -1212,8 +1212,6 @@ export default function App() {
       items: [
         { id: 'discover', label: 'Research Desk', sub: 'Source materials & research notes', icon: Sparkles },
         { id: 'pilot', label: 'Pilot Seat', sub: 'Issue a directive — AI rewrites the architecture', icon: Navigation2 },
-  Wand2,
-        { id: 'design', label: 'Blueprint', sub: 'Characters, plot & story architecture', icon: GitBranch },
         { id: 'write', label: 'Write', sub: 'Draft scenes & chapters directly', icon: PenTool },
         { id: 'autodraft', label: 'Auto Draft', sub: 'AI-powered scene & chapter generation', icon: Zap },
         { id: 'architect', label: 'Rip & Fix', sub: 'Diagnose & restructure broken manuscripts', icon: Activity }
