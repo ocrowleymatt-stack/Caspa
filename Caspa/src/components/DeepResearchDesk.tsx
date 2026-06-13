@@ -1,11 +1,11 @@
 /**
- * Deep Research Desk Component
- * Comprehensive research interface: academic, historical, psychological, logistical, cultural
- * Auto-populates Research Library with findings
+ * Deep Research Desk - Mobile Optimized
+ * Touch-first design: responsive, tap-friendly, gesture support
+ * Optimized for phones (320px+) and tablets
  */
 
-import React, { useState } from 'react';
-import { Search, BookOpen, Loader, AlertCircle, CheckCircle, Filter } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Search, BookOpen, Loader, AlertCircle, CheckCircle, Filter, ChevronDown, X } from 'lucide-react';
 import { deepResearchService, ResearchQuery, ResearchFinding } from '../services/deepResearchService';
 import { researchLibrary } from '../services/researchLibrary';
 
@@ -14,31 +14,37 @@ interface DeepResearchDeskProps {
   onResearchComplete?: (entries: number) => void;
 }
 
+type FocusArea = 'comprehensive' | 'academic' | 'historical' | 'psychological' | 'logistical' | 'cultural';
+type DepthLevel = 'undergraduate' | 'graduate' | 'expert' | 'specialized';
+
 export const DeepResearchDesk: React.FC<DeepResearchDeskProps> = ({ projectId, onResearchComplete }) => {
   const [topic, setTopic] = useState('');
-  const [focus, setFocus] = useState<'comprehensive' | 'academic' | 'historical' | 'psychological' | 'logistical' | 'cultural'>('comprehensive');
-  const [depth, setDepth] = useState<'undergraduate' | 'graduate' | 'expert' | 'specialized'>('graduate');
+  const [focus, setFocus] = useState<FocusArea>('comprehensive');
+  const [depth, setDepth] = useState<DepthLevel>('graduate');
   const [isSearching, setIsSearching] = useState(false);
   const [searchHistory, setSearchHistory] = useState<ResearchFinding[]>([]);
   const [selectedFindings, setSelectedFindings] = useState<Set<number>>(new Set());
   const [addingToLibrary, setAddingToLibrary] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showFocusMenu, setShowFocusMenu] = useState(false);
+  const [showDepthMenu, setShowDepthMenu] = useState(false);
+  const topicInputRef = useRef<HTMLInputElement>(null);
 
-  const focusOptions = [
-    { value: 'comprehensive', label: '🌍 Comprehensive', description: 'All research angles' },
-    { value: 'academic', label: '📚 Academic', description: 'Peer-reviewed research' },
-    { value: 'historical', label: '📜 Historical', description: 'Historical context & events' },
-    { value: 'psychological', label: '🧠 Psychological', description: 'Behavior & motivations' },
-    { value: 'logistical', label: '⚙️ Logistical', description: 'Practical how-to & systems' },
-    { value: 'cultural', label: '🎭 Cultural', description: 'Traditions & local knowledge' },
-  ] as const;
+  const focusOptions: Array<{ value: FocusArea; label: string; icon: string; description: string }> = [
+    { value: 'comprehensive', label: 'Comprehensive', icon: '🌍', description: 'All angles' },
+    { value: 'academic', label: 'Academic', icon: '📚', description: 'Peer-reviewed' },
+    { value: 'historical', label: 'Historical', icon: '📜', description: 'Context & events' },
+    { value: 'psychological', label: 'Psychological', icon: '🧠', description: 'Behavior' },
+    { value: 'logistical', label: 'Logistical', icon: '⚙️', description: 'How-to & systems' },
+    { value: 'cultural', label: 'Cultural', icon: '🎭', description: 'Traditions' },
+  ];
 
-  const depthOptions = [
-    { value: 'undergraduate', label: 'Undergraduate', description: 'Foundation level' },
-    { value: 'graduate', label: 'Graduate', description: 'Advanced study' },
-    { value: 'expert', label: 'Expert', description: 'Specialized knowledge' },
-    { value: 'specialized', label: 'Specialized', description: 'Deep expertise' },
-  ] as const;
+  const depthOptions: Array<{ value: DepthLevel; label: string; description: string }> = [
+    { value: 'undergraduate', label: 'Undergraduate', description: 'Foundation' },
+    { value: 'graduate', label: 'Graduate', description: 'Advanced' },
+    { value: 'expert', label: 'Expert', description: 'Specialized' },
+    { value: 'specialized', label: 'Deep', description: 'Expertise' },
+  ];
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +55,8 @@ export const DeepResearchDesk: React.FC<DeepResearchDeskProps> = ({ projectId, o
 
     setIsSearching(true);
     setError(null);
+    setShowFocusMenu(false);
+    setShowDepthMenu(false);
 
     try {
       const query: ResearchQuery = {
@@ -59,7 +67,8 @@ export const DeepResearchDesk: React.FC<DeepResearchDeskProps> = ({ projectId, o
 
       const findings = await deepResearchService.researchTopic(query);
       setSearchHistory(prev => [findings, ...prev]);
-      setSelectedFindings(new Set([0])); // Auto-select latest
+      setSelectedFindings(new Set([0]));
+      setTopic('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed. Please try again.');
     } finally {
@@ -99,6 +108,7 @@ export const DeepResearchDesk: React.FC<DeepResearchDeskProps> = ({ projectId, o
       setSearchHistory([]);
       setSelectedFindings(new Set());
       onResearchComplete?.(findingsToAdd.length);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add to library');
     } finally {
@@ -106,203 +116,266 @@ export const DeepResearchDesk: React.FC<DeepResearchDeskProps> = ({ projectId, o
     }
   };
 
+  const currentFocusOption = focusOptions.find(opt => opt.value === focus);
+  const currentDepthOption = depthOptions.find(opt => opt.value === depth);
+
   return (
-    <div className="w-full max-w-6xl mx-auto p-6 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 rounded-xl shadow-lg">
-      {/* Header */}
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3 mb-2">
-          <BookOpen className="w-8 h-8 text-blue-600" />
-          Deep Research Desk
-        </h2>
-        <p className="text-slate-600 dark:text-slate-300">
-          Comprehensive topic research: academic, historical, psychological, logistical, and cultural sources
-        </p>
+    <div className="w-full min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 pb-20 md:pb-0">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-50 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <BookOpen className="w-6 h-6 text-blue-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white truncate">Research Desk</h1>
+            <p className="text-xs text-slate-600 dark:text-slate-400 truncate">Deep topic research</p>
+          </div>
+        </div>
       </div>
 
-      {/* Search Form */}
-      <form onSubmit={handleSearch} className="mb-8 bg-white dark:bg-slate-800 p-6 rounded-lg shadow">
-        {/* Topic Input */}
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-            Research Topic
-          </label>
+      <div className="px-4 py-4 space-y-4">
+        {/* Search Form */}
+        <form onSubmit={handleSearch} className="space-y-4">
+          {/* Topic Input */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+              Topic
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                ref={topicInputRef}
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder="Victorian medicine, neural networks..."
+                className="w-full pl-9 pr-4 py-3 text-base border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-slate-100 dark:disabled:bg-slate-600 transition-colors"
+                disabled={isSearching}
+              />
+            </div>
+          </div>
+
+          {/* Focus Area - Mobile Dropdown */}
           <div className="relative">
-            <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g., 'Victorian London medicine', 'Cognitive biases in decision-making'..."
-              className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={isSearching}
-            />
-          </div>
-        </div>
-
-        {/* Focus Area Selection */}
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-            <Filter className="w-4 h-4" />
-            Research Focus
-          </label>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {focusOptions.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setFocus(option.value)}
-                className={`p-3 rounded-lg border-2 transition-all text-left ${
-                  focus === option.value
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900'
-                    : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 hover:border-blue-300'
-                }`}
-              >
-                <div className="font-medium text-slate-900 dark:text-white">{option.label}</div>
-                <div className="text-xs text-slate-600 dark:text-slate-400">{option.description}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Research Depth */}
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
-            Research Depth
-          </label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {depthOptions.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setDepth(option.value)}
-                className={`p-3 rounded-lg border-2 transition-all text-center ${
-                  depth === option.value
-                    ? 'border-green-500 bg-green-50 dark:bg-green-900'
-                    : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 hover:border-green-300'
-                }`}
-              >
-                <div className="font-medium text-slate-900 dark:text-white text-sm">{option.label}</div>
-                <div className="text-xs text-slate-600 dark:text-slate-400">{option.description}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Error Display */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-red-700 dark:text-red-200 text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Search Button */}
-        <button
-          type="submit"
-          disabled={isSearching}
-          className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-        >
-          {isSearching ? (
-            <>
-              <Loader className="w-5 h-5 animate-spin" />
-              Researching...
-            </>
-          ) : (
-            <>
-              <Search className="w-5 h-5" />
-              Research Topic
-            </>
-          )}
-        </button>
-      </form>
-
-      {/* Search Results */}
-      {searchHistory.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Research Findings ({searchHistory.length})
-            </h3>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+              Focus Area
+            </label>
             <button
-              onClick={handleAddToLibrary}
-              disabled={selectedFindings.size === 0 || addingToLibrary}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+              type="button"
+              onClick={() => setShowFocusMenu(!showFocusMenu)}
+              className="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg flex items-center justify-between text-slate-900 dark:text-white hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
             >
-              {addingToLibrary ? (
-                <>
-                  <Loader className="w-4 h-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4" />
-                  Add Selected ({selectedFindings.size})
-                </>
-              )}
+              <span className="flex items-center gap-2">
+                <span className="text-lg">{currentFocusOption?.icon}</span>
+                <span className="font-medium">{currentFocusOption?.label}</span>
+              </span>
+              <ChevronDown className={`w-5 h-5 text-slate-600 dark:text-slate-400 transition-transform ${showFocusMenu ? 'rotate-180' : ''}`} />
             </button>
+
+            {showFocusMenu && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg z-40">
+                {focusOptions.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setFocus(option.value);
+                      setShowFocusMenu(false);
+                    }}
+                    className={`w-full px-4 py-3 text-left flex items-center gap-3 border-b border-slate-200 dark:border-slate-600 last:border-b-0 ${
+                      focus === option.value
+                        ? 'bg-blue-50 dark:bg-blue-900 font-semibold'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-600'
+                    } transition-colors`}
+                  >
+                    <span className="text-lg flex-shrink-0">{option.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-slate-900 dark:text-white">{option.label}</div>
+                      <div className="text-xs text-slate-600 dark:text-slate-400">{option.description}</div>
+                    </div>
+                    {focus === option.value && <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="space-y-4">
-            {searchHistory.map((finding, index) => (
-              <div
-                key={index}
-                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                  selectedFindings.has(index)
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900'
-                    : 'border-slate-200 dark:border-slate-600 hover:border-blue-300'
-                }`}
-                onClick={() => toggleFindingSelection(index)}
+          {/* Research Depth - Mobile Dropdown */}
+          <div className="relative">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+              Research Depth
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowDepthMenu(!showDepthMenu)}
+              className="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg flex items-center justify-between text-slate-900 dark:text-white hover:border-green-400 dark:hover:border-green-500 transition-colors"
+            >
+              <span className="font-medium">{currentDepthOption?.label}</span>
+              <ChevronDown className={`w-5 h-5 text-slate-600 dark:text-slate-400 transition-transform ${showDepthMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showDepthMenu && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg shadow-lg z-40">
+                {depthOptions.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setDepth(option.value);
+                      setShowDepthMenu(false);
+                    }}
+                    className={`w-full px-4 py-3 text-left border-b border-slate-200 dark:border-slate-600 last:border-b-0 ${
+                      depth === option.value
+                        ? 'bg-green-50 dark:bg-green-900 font-semibold'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-600'
+                    } transition-colors`}
+                  >
+                    <div className="font-medium text-slate-900 dark:text-white">{option.label}</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">{option.description}</div>
+                    {depth === option.value && <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 mt-1" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-red-700 dark:text-red-300 text-sm flex-1">{error}</p>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 flex-shrink-0"
               >
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedFindings.has(index)}
-                    onChange={() => toggleFindingSelection(index)}
-                    className="mt-1 w-5 h-5 cursor-pointer"
-                    onClick={e => e.stopPropagation()}
-                  />
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-slate-900 dark:text-white mb-1">
-                      {finding.topic}
-                    </h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                      {finding.summary}
-                    </p>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {finding.tags.slice(0, 5).map((tag, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-xs"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                      {finding.tags.length > 5 && (
-                        <span className="px-2 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-xs">
-                          +{finding.tags.length - 5}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {finding.sources.length} sources • Confidence: {(finding.confidence * 100).toFixed(0)}%
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Search Button - Full Width, Touch-Friendly */}
+          <button
+            type="submit"
+            disabled={isSearching || !topic.trim()}
+            className="w-full py-4 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 active:scale-95 disabled:active:scale-100"
+          >
+            {isSearching ? (
+              <>
+                <Loader className="w-5 h-5 animate-spin" />
+                <span>Researching...</span>
+              </>
+            ) : (
+              <>
+                <Search className="w-5 h-5" />
+                <span>Research</span>
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Search Results */}
+        {searchHistory.length > 0 && (
+          <div className="space-y-4">
+            {/* Results Header */}
+            <div className="flex items-center justify-between sticky top-20 z-40 bg-slate-50 dark:bg-slate-900 py-2 px-0">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Findings <span className="text-blue-600 dark:text-blue-400">({searchHistory.length})</span>
+              </h3>
+              {selectedFindings.size > 0 && (
+                <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded">
+                  {selectedFindings.size} selected
+                </span>
+              )}
+            </div>
+
+            {/* Results List */}
+            <div className="space-y-3">
+              {searchHistory.map((finding, index) => (
+                <div
+                  key={index}
+                  onClick={() => toggleFindingSelection(index)}
+                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all active:scale-95 ${
+                    selectedFindings.has(index)
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                      : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 active:border-blue-300'
+                  }`}
+                >
+                  <div className="flex gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedFindings.has(index)}
+                      onChange={() => toggleFindingSelection(index)}
+                      className="w-5 h-5 mt-1 flex-shrink-0 cursor-pointer accent-blue-600"
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-slate-900 dark:text-white text-sm mb-1 line-clamp-2">
+                        {finding.topic}
+                      </h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 line-clamp-3">
+                        {finding.summary}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {finding.tags.slice(0, 3).map((tag, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-1 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 rounded text-xs whitespace-nowrap"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {finding.tags.length > 3 && (
+                          <span className="px-2 py-1 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 rounded text-xs">
+                            +{finding.tags.length - 3}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                        <span>{finding.sources.length} sources</span>
+                        <span>•</span>
+                        <span>{(finding.confidence * 100).toFixed(0)}% confidence</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+              ))}
+            </div>
 
-      {/* Empty State */}
-      {!isSearching && searchHistory.length === 0 && (
-        <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-lg">
-          <BookOpen className="w-12 h-12 text-slate-400 dark:text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-600 dark:text-slate-400">
-            Enter a topic and choose your research focus to begin
-          </p>
-        </div>
-      )}
+            {/* Add to Library Button - Sticky Bottom */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 p-4 safe-bottom">
+              <button
+                onClick={handleAddToLibrary}
+                disabled={selectedFindings.size === 0 || addingToLibrary}
+                className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 active:scale-95 disabled:active:scale-100"
+              >
+                {addingToLibrary ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    <span>Adding...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    <span>Add {selectedFindings.size > 0 ? `(${selectedFindings.size})` : 'to Library'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isSearching && searchHistory.length === 0 && (
+          <div className="text-center py-12 px-4">
+            <BookOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+              Ready to research?
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Enter a topic and pick your research focus to get started
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

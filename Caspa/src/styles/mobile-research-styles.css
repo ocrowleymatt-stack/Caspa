@@ -1,0 +1,239 @@
+/* Deep Research Desk - Mobile Optimization Styles */
+
+/* Safe Area Insets (iPhone notch/Dynamic Island support) */
+@supports (padding: max(0px)) {
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  
+  .safe-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+}
+
+/* Touch-friendly tap targets (minimum 44x44px) */
+button, input[type="button"], input[type="submit"], [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Improve text input on mobile */
+input[type="text"],
+input[type="search"],
+textarea,
+select {
+  font-size: 16px; /* Prevents auto-zoom on iOS */
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0.5rem;
+}
+
+/* Better mobile keyboard support */
+input[type="text"],
+input[type="email"],
+input[type="search"] {
+  background-image: -webkit-gradient(linear, left top, left bottom, 
+    color-stop(0%, #fff), 
+    color-stop(0.01%, #fff), 
+    color-stop(0.99%, #fff), 
+    color-stop(100%, #f9fafb)
+  );
+  background-size: 100% 30px;
+  background-repeat: repeat-y;
+  padding: 10px 12px;
+}
+
+/* Mobile scrolling optimization */
+.scroll-smooth {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; /* Momentum scrolling */
+}
+
+/* Sticky headers on mobile */
+.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: inherit;
+}
+
+/* Prevent horizontal scroll on mobile */
+body {
+  overflow-x: hidden;
+}
+
+/* Line clamp utility for mobile text truncation */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Active state feedback for mobile */
+button:active {
+  opacity: 0.8;
+}
+
+/* Improve checkbox/radio on mobile */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #2563eb; /* Tailwind blue-600 */
+}
+
+/* Mobile-friendly focus styles */
+input:focus,
+button:focus,
+[role="button"]:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Prevent text selection on long-press (except inputs) */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Optimize animations for reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Mobile-optimized spacing */
+@media (max-width: 640px) {
+  /* Increase padding on small screens */
+  .px-4 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  /* Better button sizing */
+  button {
+    padding: 1rem 1.25rem;
+  }
+  
+  /* Larger input height for easier touch */
+  input[type="text"],
+  input[type="search"] {
+    min-height: 48px;
+  }
+  
+  /* Remove max-width constraints on mobile */
+  .max-w-6xl,
+  .max-w-4xl,
+  .max-w-2xl {
+    max-width: 100%;
+  }
+}
+
+/* Landscape mode optimizations */
+@media (max-height: 500px) and (orientation: landscape) {
+  .py-12 {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+  
+  button {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+}
+
+/* Dark mode improvements for OLED screens */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #0f172a; /* Nearly black, better for OLED */
+  }
+}
+
+/* Improve readability on small screens */
+@media (max-width: 375px) {
+  body {
+    font-size: 14px;
+  }
+  
+  h1 {
+    font-size: 1.25rem;
+  }
+  
+  h2 {
+    font-size: 1.125rem;
+  }
+}
+
+/* Prevent iOS keyboard from covering inputs */
+@media (max-width: 640px) {
+  input:focus {
+    scroll-margin-top: 100px;
+  }
+}
+
+/* Better visuals for selection states */
+.selection-highlight {
+  background-color: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.5);
+}
+
+/* Mobile-optimized dropdown */
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Scale animations for better mobile feedback */
+@media (prefers-reduced-motion: no-preference) {
+  .active\:scale-95:active {
+    transform: scale(0.95);
+  }
+  
+  .transition-colors {
+    transition-property: background-color, border-color, color;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+}
+
+/* Optimize for viewport height changes (keyboard appearing) */
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+main {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
