@@ -325,19 +325,19 @@ export default function DiscoverView({
             onClick={() => setActiveTab('ingest')}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'ingest' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'}`}
           >
-            📥 Import & Analyze
+            Ingest
           </button>
           <button
             onClick={() => setActiveTab('library')}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'library' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'}`}
           >
-            📚 Research Library ({research.length + sourceMaterials.length})
+            Library ({research.length + sourceMaterials.length})
           </button>
             <button
               onClick={() => setActiveTab('prize')}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'prize' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'}`}
             >
-              🏆 Compete
+              🏆 Prize Calibration
             </button>
         </div>
       </div>
