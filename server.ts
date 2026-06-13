@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { analyzeContent, generateGrokPrompts, validateProductionReadiness, generateOutputSpec } from './src/services/ContentIntelligenceService';
+import { createGrokImagineService, type GenerationRequest, type GenerationResult } from './src/services/GrokImagineService';
 
 dotenv.config();
 
@@ -764,6 +765,93 @@ app.post('/api/content/validate', async (req, res) => {
     console.error('Validation error:', error);
     return res.status(500).json({
       error: error.message || 'Validation failed'
+    });
+  }
+});
+
+
+// ============================================
+// ILLUSTRATION GENERATION ENDPOINTS
+// ============================================
+
+// Generate illustrations from specifications
+app.post('/api/content/generate-illustrations', async (req, res) => {
+  try {
+    const { illustrations, batchSize, styleOverride } = req.body;
+    
+    if (!illustrations || !Array.isArray(illustrations) || illustrations.length === 0) {
+      return res.status(400).json({ error: 'Illustrations array is required' });
+    }
+
+    // Initialize Grok service
+    const grokService = createGrokImagineService();
+    
+    // Estimate cost upfront
+    const estimatedCost = grokService.estimateCost(illustrations.length);
+
+    // Start generation (non-blocking)
+    const generationPromise = grokService.generateIllustrations({
+      illustrations,
+      batchSize: batchSize || 1,
+      styleOverride
+    });
+
+    // Return immediately with generation tracking ID
+    const trackingId = `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Store in-flight generation (would normally use Redis/database)
+    // For now, return tracking info with estimated cost
+    res.json({
+      trackingId,
+      status: 'generating',
+      estimated: {
+        illustrationCount: illustrations.length,
+        estimatedCost: estimatedCost,
+        estimatedTimeSeconds: illustrations.length * 15, // rough estimate
+      },
+      message: 'Illustration generation started. Poll /api/content/generate-illustrations/:trackingId for progress.',
+      generationPromise: generationPromise.then(result => {
+        // Cache result (would use Redis in production)
+        console.log(`Generation ${trackingId} complete: ${result.summary.successful}/${result.summary.total} successful`);
+        return result;
+      }).catch(err => {
+        console.error(`Generation ${trackingId} failed:`, err);
+        throw err;
+      })
+    });
+  } catch (error: any) {
+    console.error('Illustration generation error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to generate illustrations'
+    });
+  }
+});
+
+// Estimate cost for illustrations
+app.post('/api/content/estimate-cost', async (req, res) => {
+  try {
+    const { illustrationCount } = req.body;
+    
+    if (typeof illustrationCount !== 'number' || illustrationCount <= 0) {
+      return res.status(400).json({ error: 'Valid illustrationCount required' });
+    }
+
+    const grokService = createGrokImagineService();
+    const estimatedCost = grokService.estimateCost(illustrationCount);
+    const estimatedTimeSeconds = illustrationCount * 15; // rough estimate
+
+    return res.json({
+      illustrationCount,
+      estimatedCostPence: estimatedCost,
+      estimatedCostPounds: (estimatedCost / 100).toFixed(2),
+      estimatedTimeSeconds,
+      costPerImage: (estimatedCost / illustrationCount).toFixed(0),
+      note: 'Costs are estimates and may vary based on complexity and model pricing'
+    });
+  } catch (error: any) {
+    console.error('Cost estimation error:', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to estimate cost'
     });
   }
 });
