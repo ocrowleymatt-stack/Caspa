@@ -538,6 +538,146 @@ Be bold, specific, and literary. Use the source materials — do not invent thin
 });
 
 
+// ============================================================
+// DEEP INGEST — structured extraction for Research Desk
+// Returns JSON: characters, plotNodes, researchNotes, projectUpdates, summary
+// ============================================================
+app.post("/api/ai/deep-ingest", async (req, res) => {
+  const { sources, projectTitle, projectGenre, projectPremise, projectType } = req.body;
+  if (!sources || !sources.length) {
+    return res.status(400).json({ message: "No sources provided" });
+  }
+
+  const combinedContent = sources
+    .map((s: any) => `### FILE: ${s.name}\n\n${(s.content || "").slice(0, 8000)}`)
+    .join("\n\n---\n\n");
+
+  const prompt = `You are a world-class literary analyst and story architect. You have been given evidence files for a writing project.
+
+PROJECT: "${projectTitle || "Untitled"}" | Genre: ${projectGenre || "Unknown"} | Type: ${projectType || "novel"}
+Premise: ${projectPremise || "Not yet defined"}
+
+UPLOADED FILES:
+---
+${combinedContent}
+---
+
+Analyse ALL content deeply. Extract every character, plot thread, and research fact. Be thorough — miss nothing.
+
+Respond with ONLY a valid JSON object in this exact schema (no markdown, no code blocks, just raw JSON):
+
+{
+  "summary": "Two sentence summary of what you found and injected",
+  "projectUpdates": {
+    "premise": "A refined one-sentence premise if you can infer it, else empty string",
+    "tone": "Tone/voice description if inferable, else empty string",
+    "genre": "Genre if inferable, else empty string"
+  },
+  "characters": [
+    {
+      "id": "unique_id_string",
+      "name": "Full name",
+      "role": "Protagonist / Antagonist / Supporting / etc",
+      "backstory": "Background and history from the evidence",
+      "traits": ["trait1", "trait2"],
+      "goals": ["what they want"],
+      "fears": ["what they fear"],
+      "motivations": ["why they act"],
+      "quirks": ["distinctive behaviours"],
+      "archetype": "The archetype (Hero, Mentor, etc)",
+      "physicalDescription": "Physical appearance if mentioned",
+      "updatedAt": 0
+    }
+  ],
+  "plotNodes": [
+    {
+      "id": "unique_id_string",
+      "title": "Thread title",
+      "description": "What this plot thread is about",
+      "status": "active",
+      "type": "main",
+      "order": 1,
+      "updatedAt": 0
+    }
+  ],
+  "researchNotes": [
+    {
+      "id": "unique_id_string",
+      "title": "Note title",
+      "content": "Detailed research content extracted from the evidence",
+      "category": "world-building",
+      "tags": ["tag1", "tag2"],
+      "source": "filename it came from",
+      "updatedAt": 0
+    }
+  ]
+}
+
+IMPORTANT: Return raw JSON only. No preamble. No explanation. No markdown fences. Valid parseable JSON.`;
+
+  const tryGrok = async () => {
+    const apiKey = process.env.GROK_API_KEY;
+    if (!apiKey) return null;
+    const r = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "grok-3",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4000,
+        temperature: 0.3
+      })
+    });
+    if (!r.ok) throw new Error(`Grok ${r.status}`);
+    const d = await r.json();
+    const text = d.choices?.[0]?.message?.content || "";
+    // Strip any accidental markdown fences
+    const cleaned = text.replace(/^```json?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    return JSON.parse(cleaned);
+  };
+
+  const tryOpenAI = async () => {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return null;
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4000,
+        temperature: 0.3,
+        response_format: { type: "json_object" }
+      })
+    });
+    if (!r.ok) throw new Error(`OpenAI ${r.status}`);
+    const d = await r.json();
+    const text = d.choices?.[0]?.message?.content || "{}";
+    return JSON.parse(text);
+  };
+
+  const providers = [
+    { name: "Grok", fn: tryGrok },
+    { name: "OpenAI", fn: tryOpenAI }
+  ];
+
+  for (const { name, fn } of providers) {
+    try {
+      console.log(`[deep-ingest] Trying ${name}...`);
+      const result = await fn();
+      if (result) {
+        console.log(`[deep-ingest] ${name} succeeded`);
+        return res.json(result);
+      }
+    } catch (err: any) {
+      console.warn(`[deep-ingest] ${name} failed:`, err.message);
+    }
+  }
+
+  res.status(502).json({ message: "All providers failed for deep ingest" });
+});
+
+
 async function run() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -1801,12 +1801,16 @@ export default function App() {
                   research={research}
                   chapters={chapters}
                   sourceMaterials={sourceMaterials}
+                  characters={characters}
+                  plotNodes={plotNodes}
                   updateProject={updateProject}
                   onAddResearch={upsertResearch}
                   onDeleteResearch={(id) => deleteSubDoc('research', id)}
                   onAddChapter={upsertChapter}
                   onAddSource={upsertSourceMaterial}
                   onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
+                  onSaveCharacter={upsertCharacter}
+                  onSavePlotNode={upsertPlotNode}
                   onNotify={(msg, type) => addNotification(msg, type)}
                 />
               </div>
