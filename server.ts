@@ -47,9 +47,9 @@ async function callGeminiOnServer(options: {
     throw new Error("GEMINI_API_KEY environment variable is not configured on the server.");
   }
 
-  const { prompt, model = 'gemini-3.5-flash', json = false, maxTokens, useSearch = false } = options;
+  const { prompt, model = 'gemini-2.0-flash', json = false, maxTokens, useSearch = false } = options;
 
-  // Enforce prohibited models upgrade to gemini-3.5-flash
+  // Enforce prohibited models upgrade to gemini-2.0-flash
   const prohibited = [
     'gemini-1.5-flash',
     'gemini-1.5-pro',
@@ -58,7 +58,7 @@ async function callGeminiOnServer(options: {
     'gemini-2.0-pro',
     'gemini-2.0-flash-thinking'
   ];
-  const activeModel = prohibited.includes(model) ? 'gemini-3.5-flash' : model;
+  const activeModel = prohibited.includes(model) ? 'gemini-2.0-flash' : model;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for Gemini
@@ -182,7 +182,7 @@ async function callXAI(prompt: string, json = false) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "grok-2-1212",
+        model: "grok-3",
         messages: [
           { role: "system", content: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand." },
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
@@ -256,7 +256,7 @@ app.get("/api/health", (req, res) => {
 
 // API endpoint for AI queries
 app.post("/api/ai/call", async (req, res) => {
-  const { prompt, model = "gemini-3.5-flash", json = false, schema, maxTokens, providerOverride, useSearch, primaryProvider = "grok" } = req.body;
+  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride, useSearch, primaryProvider = "grok" } = req.body;
 
   // Let's analyze sensitivity check on the server
   const isSensitive = /chem\s*sex|chemsex|slamming|crystal\s*meth|methamphetamine|gbl|ghb|tina|harm\s*reduction|overdose|substance|drug|rehab|addiction|recovery\s*guide|survival\s*guide|unfiltered|explicit/i.test(prompt);
@@ -385,7 +385,7 @@ app.post("/api/ai/image-grok", async (req, res) => {
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "grok-2-1212",
+        model: "grok-3",
         prompt,
         n: 1,
         size: "1024x1024"

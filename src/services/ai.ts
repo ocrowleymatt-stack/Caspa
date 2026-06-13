@@ -522,7 +522,7 @@ ${wordTargetBlock}`;
 
     // Compute a generous maxTokens budget: ~1.4 tokens per word, plus 20% headroom
     const maxTokensBudget = Math.ceil(perChapterTarget * 1.4 * 1.2);
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06", maxTokens: maxTokensBudget });
+    return await callAI({ prompt, model: "gemini-2.5-pro", maxTokens: maxTokensBudget });
   },
 
   async compileResearch(topic: string, context: string, type: ProjectType, deep = false): Promise<ResearchNote> {
@@ -562,7 +562,7 @@ ${wordTargetBlock}`;
       prompt, 
       json: true, 
       schema, 
-      model: deep ? "gemini-2.5-pro-preview-05-06" : "gemini-2.0-flash"
+      model: deep ? "gemini-2.5-pro" : "gemini-2.0-flash"
     });
 
     const data = safeParseJSON(text || "{}");
@@ -671,7 +671,7 @@ ${wordTargetBlock}`;
       required: ["nodes", "researchTracks"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro" });
     return safeParseJSON(response || "{}");
   },
 
@@ -719,7 +719,7 @@ ${wordTargetBlock}`;
       required: ["characters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro" });
     const data = safeParseJSON(text || '{"characters":[]}', { characters: [] });
     
     return (data.characters || []).map((char: any) => ({
@@ -752,7 +752,7 @@ ${wordTargetBlock}`;
       
       Format as a professional literary report in Markdown.`;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    return await callAI({ prompt, model: "gemini-2.5-pro" });
   },
 
   async splitManuscript(fullText: string, type: ProjectType, isPlan = false): Promise<{ title: string; summary: string; marker: string; directives?: string[] }[]> {
@@ -803,7 +803,7 @@ ${wordTargetBlock}`;
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-2.5-pro-preview-05-06" });
+    const text = await callAI({ prompt, json: true, schema, maxTokens: 8192, model: "gemini-2.5-pro" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return data.chapters || [];
   },
@@ -821,7 +821,7 @@ ${wordTargetBlock}`;
       MANUSCRIPT:\n${fullText.slice(0, 100000)}
       ${sourceContext}`;
 
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06" });
+    return await callAI({ prompt, model: "gemini-2.5-pro" });
   },
 
   async automateNextSteps(project: Project, chapters: Chapter[], analysis?: string): Promise<{ title: string; summary: string; directives: string[] }[]> {
@@ -1076,7 +1076,7 @@ ${draftStageInfo}`;
 
     // Compute a generous maxTokens budget: ~1.4 tokens per word, plus 20% headroom
     const deepSimmerMaxTokens = Math.ceil(perChapterTarget * 1.4 * 1.2);
-    return await callAI({ prompt, model: "gemini-2.5-pro-preview-05-06", maxTokens: deepSimmerMaxTokens });
+    return await callAI({ prompt, model: "gemini-2.5-pro", maxTokens: deepSimmerMaxTokens });
   },
 
   async assessPrizeWorthiness(project: Project, chapters: Chapter[]): Promise<PrizeAssessment[]> {
@@ -1131,7 +1131,7 @@ ${draftStageInfo}`;
       required: ["assessments"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro" });
     const data = safeParseJSON(response || "{}");
     return data.assessments || [];
   },
@@ -1323,7 +1323,7 @@ Return JSON with:
       required: ['title', 'premise', 'genre', 'tone', 'type', 'targetWordCount', 'logline', 'centralWound', 'suggestedChapters', 'suggestedCharacters', 'authorQuestions', 'prizeTarget']
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro' });
     const data = safeParseJSON(response || '{}');
     return {
       title: data.title || 'Untitled',
@@ -1469,7 +1469,7 @@ Return JSON:
       required: ['layoutType', 'interiorElements', 'chapterTemplate', 'suggestedImageSlots', 'suggestedDiagramSlots', 'notesConfig', 'kdpInteriorType']
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro' });
     const data = safeParseJSON(response || '{}');
     return {
       layoutType: data.layoutType || layoutType,
@@ -1507,7 +1507,7 @@ Craft a BOOK COVER IMAGE GENERATION PROMPT that:
 
 Return ONLY the image generation prompt. No preamble. No explanation.`;
 
-    const coverPrompt = await callAI({ prompt: promptCraftPrompt, model: 'gemini-2.5-pro-preview-05-06' });
+    const coverPrompt = await callAI({ prompt: promptCraftPrompt, model: 'gemini-2.5-pro' });
 
     // Generate the cover image using Express server proxy (Flux pro / Venice / Grok)
     try {
@@ -1645,7 +1645,7 @@ Return ONLY the image generation prompt. No preamble. No explanation.`;
       required: ["refined"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro-preview-05-06' });
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-pro' });
     const data = safeParseJSON(response || "{}");
     return data.refined || chapters.map(c => ({ id: c.id, content: c.content, illustrationPrompt: `Evocative book illustration of ${c.title}` }));
   },
@@ -1664,7 +1664,7 @@ Return ONLY the image generation prompt. No preamble. No explanation.`;
     
     Write with beauty and restraint.`;
 
-    return await callAI({ prompt, model: 'gemini-2.5-pro-preview-05-06' });
+    return await callAI({ prompt, model: 'gemini-2.5-pro' });
   },
 
   async ripUpAndRestart(project: Project, chapters: Chapter[], research: ResearchNote[]): Promise<{ plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] }> {
@@ -1737,7 +1737,7 @@ Return ONLY the image generation prompt. No preamble. No explanation.`;
       required: ["plotNodes", "chapters", "newResearch"]
     };
 
-    const data = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro-preview-05-06" });
+    const data = await callAI({ prompt, json: true, schema, model: "gemini-2.5-pro" });
     const result = safeParseJSON(data || "{}");
 
     return {

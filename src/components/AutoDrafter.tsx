@@ -74,7 +74,7 @@ export default function AutoDrafter({
 
       const response = await AIService.callAI({
         prompt,
-        model: 'gemini-2.5-pro-preview-05-06', // Large context model for deep writing
+        model: 'gemini-2.5-pro', // Large context model for deep writing
       });
 
       if (response && response.trim()) {
