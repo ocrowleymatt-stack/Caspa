@@ -6,7 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import { analyzeContent, generateGrokPrompts, validateProductionReadiness, generateOutputSpec } from './src/services/ContentIntelligenceService';
 import { createGrokImagineService, type GenerationRequest, type GenerationResult } from './src/services/GrokImagineService';
 import pdfRoutes from './src/services/pdf-assembly-routes';
-import bookMetadataRoutes from './src/services/book-metadata-routes';
+import { createBookMetadataRoutes } from './src/services/book-metadata-routes';
 
 dotenv.config();
 
@@ -859,7 +859,7 @@ app.post('/api/content/estimate-cost', async (req, res) => {
 });
 
 // Mount PDF Assembly routes (BEFORE Vite middleware)
-app.use("/api", bookMetadataRoutes);
+app.use("/api/metadata", createBookMetadataRoutes(process.env.GEMINI_API_KEY!));
 app.use("/api", pdfRoutes);
 
 async function run() {

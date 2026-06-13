@@ -1,174 +1,194 @@
 import { Router, Request, Response } from "express";
-import { BookMetadataService } from "./BookMetadataService";
-import { analyzeContent } from "./ContentIntelligenceService";
+import { BookMetadataService, BookMetadata } from "./BookMetadataService";
 
-const router = Router();
+export function createBookMetadataRoutes(geminiKey: string): Router {
+  const router = Router();
+  const service = new BookMetadataService(geminiKey);
 
-interface MetadataRequest {
-  manuscript: string; // Excerpt or full text
-  title?: string; // Optional explicit title
-  author?: string;
-  contentIntelligence?: any; // Pre-analyzed content intelligence
+  /**
+   * POST /metadata/generate
+   * Generate complete book metadata from manuscript
+   * Body: { manuscript, title?, isbn? }
+   */
+  router.post("/generate", async (req: Request, res: Response) => {
+    try {
+      const { manuscript, title, isbn } = req.body;
+
+      if (!manuscript || manuscript.length < 500) {
+        return res.status(400).json({
+          error: "Manuscript required (minimum 500 characters)",
+        });
+      }
+
+      // Validate ISBN if provided
+      if (isbn && !isValidISBNFormat(isbn)) {
+        return res.status(400).json({
+          error: `Invalid ISBN format: ${isbn}`,
+        });
+      }
+
+      const metadata = await service.generateMetadata(
+        manuscript,
+        title,
+        isbn
+      );
+
+      return res.status(200).json(metadata);
+    } catch (error) {
+      console.error("Metadata generation error:", error);
+      return res.status(500).json({
+        error: "Failed to generate metadata",
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  /**
+   * POST /metadata/validate
+   * Validate existing metadata for quality/hallucination
+   * Body: { metadata }
+   */
+  router.post("/validate", async (req: Request, res: Response) => {
+    try {
+      const { metadata } = req.body;
+
+      if (!metadata) {
+        return res.status(400).json({ error: "Metadata object required" });
+      }
+
+      const validation = await service.validateMetadata(metadata);
+
+      return res.status(200).json(validation);
+    } catch (error) {
+      console.error("Validation error:", error);
+      return res.status(500).json({
+        error: "Validation failed",
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  /**
+   * POST /metadata/kdp
+   * Generate Amazon KDP-optimized metadata
+   * (Prepares for future FTP integration)
+   * Body: { metadata }
+   */
+  router.post("/kdp", async (req: Request, res: Response) => {
+    try {
+      const { metadata } = req.body;
+
+      if (!metadata || typeof metadata !== "object") {
+        return res.status(400).json({ error: "Metadata object required" });
+      }
+
+      const kdpMeta = await service.generateKDPMetadata(
+        metadata as BookMetadata
+      );
+
+      return res.status(200).json(kdpMeta);
+    } catch (error) {
+      console.error("KDP generation error:", error);
+      return res.status(500).json({
+        error: "KDP metadata generation failed",
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  /**
+   * GET /metadata/specs
+   * Return metadata schema and best practices
+   */
+  router.get("/specs", (req: Request, res: Response) => {
+    return res.status(200).json({
+      schema: {
+        title: "string (required, 3-200 chars)",
+        backCopy: "string (required, 80-4000 chars, award-calibre)",
+        spineText: "string (required, 2-50 chars)",
+        keywords: "string[] (required, 3-10 items)",
+        tagline: "string (optional, powerful image/essence)",
+        isbn: "string (optional ISBN-10 or ISBN-13)",
+      },
+      isbnInfo: {
+        required_for: "Print distribution (Amazon KDP, IngramSpark, offset)",
+        optional_for: "Digital ebooks",
+        format: "ISBN-10 (10 chars) or ISBN-13 (13 chars), with or without hyphens",
+        validation: "Check digit automatically verified",
+        sources: [
+          "Bowker (US): https://www.isbn.org/",
+          "KDP: Amazon generates ISBNs for free (KDP-owned) or you provide your own",
+          "IngramSpark: Requires ISBN-13 for print distribution",
+        ],
+      },
+      hallucination_prevention: {
+        noun_matching:
+          "70%+ of key claims must have noun support in manuscript",
+        red_flags: [
+          "only",
+          "never before",
+          "first",
+          "only author",
+          "must read",
+          "will change",
+          "unforgettable",
+          "masterpiece",
+        ],
+        quality_threshold: "Minimum score 7/10, award-calibre ≥ 8/10",
+      },
+      examples: {
+        manuscript_input: "... (first 8000 chars of your manuscript)",
+        request_with_isbn: {
+          manuscript: "...",
+          title: "Optional: provide your title",
+          isbn: "978-1-234567-89-0",
+        },
+        request_without_isbn: {
+          manuscript: "...",
+          title: "Optional: provide your title",
+        },
+      },
+    });
+  });
+
+  return router;
 }
 
 /**
- * POST /metadata/generate
- * Generate award-calibre book metadata (title, back cover, spine text)
- * linked to actual manuscript content with hallucination prevention
+ * Helper: Validate ISBN format (ISBN-10 or ISBN-13)
  */
-router.post("/metadata/generate", async (req: Request, res: Response) => {
-  try {
-    const { manuscript, title, author, contentIntelligence } =
-      req.body as MetadataRequest;
+function isValidISBNFormat(isbn: string): boolean {
+  const clean = isbn.replace(/[-\s]/g, "");
 
-    if (!manuscript || manuscript.trim().length < 500) {
-      return res.status(400).json({
-        error: "Manuscript excerpt required (minimum 500 chars)",
-      });
-    }
-
-    // Get the gemini function from global (set by server.ts)
-    const callGemini = (global as any).callGeminiAPI;
-    if (!callGemini) {
-      return res.status(503).json({
-        error: "Gemini API not configured",
-      });
-    }
-
-    // If no content intelligence provided, generate it
-    let intelligence = contentIntelligence;
-    if (!intelligence) {
-      try {
-        intelligence = await analyzeContent(manuscript, callGemini);
-      } catch (error) {
-        // Continue without intelligence if it fails
-        intelligence = {
-          document_type: "manuscript",
-          summary: manuscript.slice(0, 200),
-        };
-      }
-    }
-
-    // Generate metadata with hallucination prevention
-    const metadataService = new BookMetadataService();
-    const metadata = await metadataService.generateMetadata(
-      manuscript,
-      intelligence,
-      title,
-      callGemini
-    );
-
-    // Return 202 Accepted (processing may have taken time)
-    res.status(202).json({
-      status: "success",
-      metadata,
-      warnings: metadata.hallucination_risk === "high" ? ["High hallucination risk in metadata generation"] : [],
-    });
-  } catch (error) {
-    console.error("Metadata generation error:", error);
-    res.status(422).json({
-      error: "Metadata generation failed",
-      message: error instanceof Error ? error.message : String(error),
-    });
+  // ISBN-13
+  if (clean.length === 13 && /^\d{13}$/.test(clean)) {
+    return validateISBN13(clean);
   }
-});
 
-/**
- * POST /metadata/validate
- * Validate existing metadata against manuscript
- * Returns quality score and hallucination risk assessment
- */
-router.post("/metadata/validate", async (req: Request, res: Response) => {
-  try {
-    const { backCoverCopy, title, manuscript } = req.body;
-
-    if (!backCoverCopy || !manuscript) {
-      return res.status(400).json({
-        error: "backCoverCopy and manuscript required",
-      });
-    }
-
-    // Simple validation: check if claims in copy are supported by manuscript
-    const excerptLower = manuscript.toLowerCase();
-    const copyLower = backCoverCopy.toLowerCase();
-
-    // Extract nouns from copy
-    const copyNouns = copyLower.match(/\b[a-z]{4,}\b/g) || [];
-    const matchCount = copyNouns.filter((noun) =>
-      excerptLower.includes(noun)
-    ).length;
-    const matchRatio = matchCount / (copyNouns.length || 1);
-
-    const hallucinationRisk =
-      matchRatio > 0.7 ? "low" : matchRatio > 0.4 ? "medium" : "high";
-
-    const qualityScore = Math.round(matchRatio * 100);
-
-    res.status(200).json({
-      qualityScore,
-      hallucinationRisk,
-      supportedByManuscript: matchRatio > 0.6,
-      recommendation:
-        hallucinationRisk === "high"
-          ? "Back cover copy contains unsupported claims. Recommend revision."
-          : hallucinationRisk === "medium"
-            ? "Some claims lack strong manuscript support. Consider tightening language."
-            : "Metadata well-grounded in manuscript content.",
-    });
-  } catch (error) {
-    console.error("Metadata validation error:", error);
-    res.status(500).json({
-      error: "Validation failed",
-      message: error instanceof Error ? error.message : String(error),
-    });
+  // ISBN-10
+  if (clean.length === 10 && /^\d{10}$|^\d{9}X$/.test(clean)) {
+    return validateISBN10(clean);
   }
-});
 
-/**
- * GET /metadata/specs
- * Return metadata specifications (character limits, best practices)
- */
-router.get("/metadata/specs", (req: Request, res: Response) => {
-  res.status(200).json({
-    title: {
-      maxLength: 80,
-      recommended: "50-70 characters",
-      notes: "Must be from manuscript or explicitly provided; no hallucination",
-    },
-    backCoverCopy: {
-      wordCount: "100-150",
-      requirements: [
-        "Award-calibre writing",
-        "Reference specific themes from text",
-        "No generic praise",
-        "Include tension/hook",
-        "No unsupported claims",
-      ],
-      hallucinationPreventionRules: [
-        "All major claims must be evident in manuscript",
-        "No superlatives without evidence",
-        "Avoid 'only', 'never before', 'first time'",
-        "Quote-support recommended for key themes",
-      ],
-    },
-    spineText: {
-      maxLength: "25-30 visible characters",
-      rule: "Intelligently truncated title at word boundary",
-    },
-    tagline: {
-      length: "10-15 words",
-      rule: "One-line thematic essence (must be evident in text)",
-    },
-    thematicKeywords: {
-      count: "5-8 keywords",
-      rule: "Only keywords evident in manuscript, not inferred",
-    },
-    qualityThresholds: {
-      awardCalibre: "Score ≥ 8/10",
-      acceptable: "Score ≥ 7/10",
-      hallucinationRisk: "Must be 'low' for professional output",
-    },
-  });
-});
+  return false;
+}
 
-export default router;
+function validateISBN13(isbn: string): boolean {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(isbn[i]) * (i % 2 === 0 ? 1 : 3);
+  }
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return checkDigit === parseInt(isbn[12]);
+}
+
+function validateISBN10(isbn: string): boolean {
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(isbn[i]) * (10 - i);
+  }
+  const checkChar = isbn[9];
+  const checkDigit = (11 - (sum % 11)) % 11;
+  const expectedChar = checkDigit === 10 ? "X" : checkDigit.toString();
+  return checkChar === expectedChar;
+}
