@@ -5,6 +5,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { analyzeContent, generateGrokPrompts, validateProductionReadiness, generateOutputSpec } from './src/services/ContentIntelligenceService';
 import { createGrokImagineService, type GenerationRequest, type GenerationResult } from './src/services/GrokImagineService';
+import pdfRoutes from './src/services/pdf-assembly-routes';
 
 dotenv.config();
 
@@ -855,6 +856,9 @@ app.post('/api/content/estimate-cost', async (req, res) => {
     });
   }
 });
+
+// Mount PDF Assembly routes (BEFORE Vite middleware)
+app.use("/api", pdfRoutes);
 
 async function run() {
   if (process.env.NODE_ENV !== "production") {
