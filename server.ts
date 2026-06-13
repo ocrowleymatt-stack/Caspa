@@ -693,7 +693,363 @@ async function run() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  
+// ── Pilot Seat: structural directive ──────────────────────────────────────────
+
+// ─── Pilot Chat ───────────────────────────────────────────────────────────────
+app.post('/api/ai/pilot-chat', async (req, res) => {
+  try {
+    const { messages = [], context } = req.body;
+    const { project, characters = [], plotNodes = [], chapters = [], research = [] } = context || {};
+
+    const grokKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+
+    const systemPrompt = `You are a master story architect and co-author sitting in the Pilot Seat with the writer.
+You have full knowledge of their manuscript and engage in a natural, sharp, collaborative conversation.
+
+Your persona: incisive, creative, direct — like a brilliant script editor who has read everything and has strong opinions.
+You challenge weak ideas, celebrate bold ones, and always push toward a better story.
+
+━━━ WHAT YOU CAN OUTPUT ━━━
+
+1. CONVERSATIONAL REPLY — just talk. Explore ideas, ask questions, challenge assumptions.
+   No special blocks needed for casual exchange.
+
+2. STRUCTURAL CHANGES — when the conversation lands on a real decision, add this block AFTER your reply text:
+[CHANGES]
+{"changes":[{"id":"unique-id","type":"plot_add|plot_modify|character_add|character_modify|chapter_modify|research_add|project_update","title":"Short title","description":"What specifically changes","impact":"low|medium|high","data":{}}]}
+[/CHANGES]
+
+3. RESEARCH COMMAND — when you need real-world facts, historical data, or contextual information to properly answer or build a better story, output this block:
+[RESEARCH]
+{"queries":["specific search query 1","specific search query 2"],"reason":"Why this research is needed for the story"}
+[/RESEARCH]
+   Use this when: the author asks about real locations, historical periods, scientific facts, cultural context, real events, psychological concepts, etc.
+   The system will run live web searches and return the results to you as research notes.
+   DO NOT fabricate facts — if you need real-world grounding, request research.
+
+━━━ DATA FIELDS ━━━
+- character_add/modify: { id, name, role, backstory, traits[], goals[], fears[], motivations[], quirks[], archetype }
+- plot_add/modify: { id, title, description, type (main|sub|theme), status (active|planned|complete), order }
+- chapter_modify: { id, title, summary, directives[] }
+- research_add: { id, title, content, category, tags[], source? }
+- project_update: { premise?, tone?, genre? }
+
+━━━ RULES ━━━
+- Only propose CHANGES when the conversation has reached a clear decision — not on every message.
+- Only request RESEARCH when you genuinely need factual grounding — not for creative decisions.
+- Never output both [CHANGES] and [RESEARCH] in the same response — pick one.
+- Use existing IDs from the book state for modifications.
+- Generate 1-5 focused changes per proposal. Quality over volume.
+- Your reply text and any block are separate — text explains and justifies, JSON contains data.
+
+━━━ CURRENT BOOK STATE ━━━
+Title: \${project?.title || 'Untitled'}
+Genre: \${project?.genre || 'Unknown'}
+Type: \${project?.type || 'novel'}
+Premise: \${project?.premise || 'Not set'}
+Tone: \${project?.tone || 'Not set'}
+
+CHARACTERS (\${characters.length}):
+\${characters.map((c: any) => `- [\${c.id}] \${c.name} (\${c.role}): \${c.backstory?.slice(0,200) || ''}`).join('\n') || 'None'}
+
+PLOT THREADS (\${plotNodes.length}):
+\${plotNodes.map((n: any) => `- [\${n.id}] \${n.title} (\${n.type}/\${n.status}): \${n.description?.slice(0,150) || ''}`).join('\n') || 'None'}
+
+CHAPTERS (\${chapters.length}):
+\${chapters.map((ch: any) => `- [\${ch.id}] Ch.\${ch.order+1} "\${ch.title}": \${ch.summary?.slice(0,150) || ''}`).join('\n') || 'None'}
+
+RESEARCH (\${research.length}):
+\${research.map((r: any) => `- [\${r.id}] [\${r.category}] \${r.title}: \${r.content?.slice(0,100) || ''}`).join('\n') || 'None'}`;
+
+    // ── Helper: call AI ──────────────────────────────────────────────────────
+    const callAI = async (msgs: any[], useWebSearch = false): Promise<string> => {
+      if (grokKey) {
+        try {
+          const body: any = {
+            model: useWebSearch ? 'grok-3' : 'grok-3',
+            messages: msgs,
+            temperature: useWebSearch ? 0.3 : 0.9,
+            max_tokens: useWebSearch ? 4000 : 3000,
+          };
+          if (useWebSearch) {
+            body.search_parameters = { mode: 'on', return_citations: true };
+          }
+          const r = await fetch('https://api.x.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer \${grokKey}` },
+            body: JSON.stringify(body),
+          });
+          if (r.ok) {
+            const d = await r.json();
+            const text = d.choices?.[0]?.message?.content || '';
+            if (text) return text;
+          }
+        } catch (e) { console.error('Grok pilot-chat failed:', e); }
+      }
+      if (openaiKey) {
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer \${openaiKey}` },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: msgs,
+            temperature: useWebSearch ? 0.3 : 0.9,
+            max_tokens: useWebSearch ? 4000 : 3000,
+          }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          return d.choices?.[0]?.message?.content || '';
+        }
+      }
+      return '';
+    };
+
+    // ── Helper: parse blocks ─────────────────────────────────────────────────
+    const parseChanges = (raw: string): { changes: any[]; clean: string } => {
+      const m = raw.match(/\[CHANGES\]\s*([\s\S]*?)\s*\[\/CHANGES\]/);
+      if (!m) return { changes: [], clean: raw.trim() };
+      let changes: any[] = [];
+      try { changes = JSON.parse(m[1])?.changes || []; } catch {}
+      return { changes, clean: raw.replace(/\[CHANGES\][\s\S]*?\[\/CHANGES\]/g, '').trim() };
+    };
+
+    const parseResearch = (raw: string): { queries: string[]; reason: string; clean: string } | null => {
+      const m = raw.match(/\[RESEARCH\]\s*([\s\S]*?)\s*\[\/RESEARCH\]/);
+      if (!m) return null;
+      try {
+        const d = JSON.parse(m[1]);
+        const clean = raw.replace(/\[RESEARCH\][\s\S]*?\[\/RESEARCH\]/g, '').trim();
+        return { queries: d.queries || [], reason: d.reason || '', clean };
+      } catch { return null; }
+    };
+
+    // ── Step 1: Initial AI call ──────────────────────────────────────────────
+    const history = messages.map((m: any) => ({
+      role: m.role === 'ai' ? 'assistant' : m.role,
+      content: m.content,
+    }));
+
+    let raw = await callAI([{ role: 'system', content: systemPrompt }, ...history]);
+    if (!raw) return res.status(502).json({ error: 'No AI provider available' });
+
+    // ── Step 2: Check if AI requested research ───────────────────────────────
+    const researchReq = parseResearch(raw);
+
+    if (researchReq && researchReq.queries.length > 0) {
+      const introReply = researchReq.clean || `Let me look that up — running \${researchReq.queries.length} search\${researchReq.queries.length > 1 ? 'es' : ''} now.`;
+
+      // Fire a Grok web-search call per query (max 3)
+      const queries = researchReq.queries.slice(0, 3);
+      const researchChanges: any[] = [];
+
+      for (const query of queries) {
+        const searchPrompt = `Search for: "\${query}"
+Context: This research is for a \${project?.genre || ''} \${project?.type || 'novel'} called "\${project?.title || 'Untitled'}".
+Reason: \${researchReq.reason}
+
+Return a detailed research note with:
+1. A clear title for the research topic
+2. Key facts, context, and nuances relevant to fiction writing
+3. Specific details an author would find useful (names, dates, places, sensory details, cultural context)
+4. Any caveats or controversies worth knowing
+
+Format your response as a well-structured research note, not a list of bullet points.`;
+
+        const searchRaw = await callAI([
+          { role: 'system', content: `You are a research assistant for fiction writers. When given a query, search the web and return detailed, accurate, source-grounded information.` },
+          { role: 'user', content: searchPrompt },
+        ], true);
+
+        if (searchRaw) {
+          researchChanges.push({
+            id: `res-\${Date.now()}-\${Math.random().toString(36).slice(2)}`,
+            type: 'research_add',
+            title: query,
+            description: `Live research: \${query}`,
+            impact: 'medium',
+            data: {
+              id: `res-\${Date.now()}-\${Math.random().toString(36).slice(2)}`,
+              title: query,
+              content: searchRaw,
+              category: 'Pilot Seat Research',
+              tags: [project?.genre, project?.type, 'live-search'].filter(Boolean),
+              source: 'Grok Web Search',
+            },
+          });
+        }
+      }
+
+      // Step 3: Feed research results back to AI for a synthesis reply
+      const synthesisMessages = [
+        { role: 'system', content: systemPrompt },
+        ...history,
+        { role: 'assistant', content: introReply },
+        {
+          role: 'user',
+          content: `[SYSTEM: Research complete. Results below. Use these to continue the conversation naturally — synthesise the key points relevant to the story, then keep the discussion going.]
+
+\${researchChanges.map((c, i) => `RESULT \${i+1} — \${c.data.title}:
+\${c.data.content?.slice(0, 800)}`).join('
+
+---
+
+')}`,
+        },
+      ];
+
+      const synthesisRaw = await callAI(synthesisMessages);
+      const { changes: extraChanges, clean: synthesisReply } = parseChanges(synthesisRaw || '');
+
+      return res.json({
+        reply: introReply,
+        researching: true,
+        researchReply: synthesisReply || `Found \${researchChanges.length} research note\${researchChanges.length !== 1 ? 's' : ''} — staged above.`,
+        changes: [...researchChanges, ...extraChanges],
+      });
+    }
+
+    // ── Step 3: Normal reply — parse changes ─────────────────────────────────
+    const { changes, clean: reply } = parseChanges(raw);
+    return res.json({ reply, changes: changes.length ? changes : undefined });
+
+  } catch (e: any) {
+    console.error('pilot-chat error:', e);
+    return res.status(500).json({ error: e.message || 'Internal error' });
+  }
+});
+
+app.post('/api/ai/pilot-directive', async (req, res) => {
+  try {
+    const { directive, scope, targetChapterId, context } = req.body;
+    if (!directive) return res.status(400).json({ error: 'directive required' });
+
+    const { project, characters = [], plotNodes = [], chapters = [], research = [] } = context || {};
+
+    const scopeNote = scope === 'chapter' && targetChapterId
+      ? `\n\nSCOPE: Chapter-level change only. Target chapter ID: ${targetChapterId}.`
+      : '\n\nSCOPE: Book-wide structural change.';
+
+    const systemPrompt = `You are a master story architect and developmental editor. 
+The user issues a high-level directive about their book and you translate it into precise, actionable structural changes.
+You think in terms of character arcs, plot threads, chapter redirections, and thematic shifts.
+You always return valid JSON only.`;
+
+    const userPrompt = `DIRECTIVE: "${directive}"${scopeNote}
+
+CURRENT BOOK STATE:
+Title: ${project?.title || 'Untitled'}
+Genre: ${project?.genre || 'Unknown'}
+Type: ${project?.type || 'novel'}
+Premise: ${project?.premise || 'Not set'}
+Tone: ${project?.tone || 'Not set'}
+
+CHARACTERS (${characters.length}):
+${characters.map((c: any) => `- ${c.name} (${c.role}): ${c.backstory || ''} | Goals: ${(c.goals || []).join(', ')} | Fears: ${(c.fears || []).join(', ')}`).join('\n') || 'None'}
+
+PLOT THREADS (${plotNodes.length}):
+${plotNodes.map((n: any) => `- [${n.type}] ${n.title}: ${n.description || ''} (${n.status})`).join('\n') || 'None'}
+
+CHAPTERS (${chapters.length}):
+${chapters.map((ch: any) => `- Ch.${ch.order+1} "${ch.title}": ${ch.summary || ''} [${ch.status || 'draft'}]`).join('\n') || 'None'}
+
+RESEARCH NOTES (${research.length}):
+${research.map((r: any) => `- [${r.category}] ${r.title}`).join('\n') || 'None'}
+
+Based on this directive, generate a complete structural change plan. Return ONLY this JSON:
+{
+  "summary": "A 2-3 sentence plain-English explanation of what you're changing and why it serves the narrative",
+  "narrativeRationale": "A deeper explanation of the storytelling logic — what dramatic/thematic effect this achieves",
+  "changes": [
+    {
+      "id": "unique-string",
+      "type": "plot_add|plot_modify|character_add|character_modify|chapter_modify|research_add|project_update",
+      "title": "Short change title",
+      "description": "What specifically changes and how it connects to the directive",
+      "impact": "low|medium|high",
+      "data": {
+        // For character_add/modify: { id, name, role, backstory, traits[], goals[], fears[], motivations[], quirks[], archetype }
+        // For plot_add/modify: { id, title, description, type, status, order }
+        // For chapter_modify: { id, title, summary, directives[] } — use existing chapter ID if modifying
+        // For research_add: { id, title, content, category, tags[] }
+        // For project_update: { premise?, tone?, genre? } — only fields that change
+      }
+    }
+  ]
+}
+
+Rules:
+- Generate 3-8 changes. Quality over quantity.
+- Be specific and concrete. Vague changes are worthless.
+- For chapter_modify, use the existing chapter ID from the book state.
+- For character/plot modify, use the existing ID from the book state where possible.
+- For new items, generate a unique short ID (e.g. "char-antagonist-new" or "plot-dark-turn").
+- Do not invent characters or threads that contradict the existing premise unless the directive demands it.
+- Make changes feel inevitable in hindsight — good story architecture always does.`;
+
+    // Try Grok first, then OpenAI
+    const grokKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+
+    let raw = '';
+
+    if (grokKey) {
+      try {
+        const r = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization':  },
+          body: JSON.stringify({
+            model: 'grok-3',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.8,
+            max_tokens: 4000,
+            response_format: { type: 'json_object' },
+          }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          raw = d.choices?.[0]?.message?.content || '';
+        }
+      } catch (e) { console.error('Grok pilot failed:', e); }
+    }
+
+    if (!raw && openaiKey) {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization':  },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.8,
+          max_tokens: 4000,
+          response_format: { type: 'json_object' },
+        }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        raw = d.choices?.[0]?.message?.content || '';
+      }
+    }
+
+    if (!raw) return res.status(502).json({ error: 'No AI provider available' });
+
+    const parsed = JSON.parse(raw);
+    return res.json(parsed);
+  } catch (e: any) {
+    console.error('pilot-directive error:', e);
+    return res.status(500).json({ error: e.message || 'Internal error' });
+  }
+});
+
+app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server is running at http://0.0.0.0:${PORT}`);
   });
 }

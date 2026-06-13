@@ -39,7 +39,9 @@ import {
   Scissors,
   AlertTriangle,
   Ghost,
-  Feather
+  Feather,
+  Navigation2
+  Wand2,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -99,10 +101,13 @@ import ScalpelModule from './components/ScalpelModule';
 import AutoDrafter from './components/AutoDrafter';
 import SpatialGlassMode from './components/SpatialGlassMode';
 import DiscoverView from './components/DiscoverView';
+import PilotSeatView from './components/PilotSeatView';
 import DesignView from './components/DesignView';
 import WriteView from './components/WriteView';
 import MemoryView from './components/MemoryView';
 import IntelligenceView from './components/IntelligenceView';
+import EnhancedResearchDesk from './components/EnhancedResearchDesk';
+import { creativeEngineServices } from './services/CreativeEngineCore';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -1206,6 +1211,8 @@ export default function App() {
       title: "WRITE YOUR BOOK",
       items: [
         { id: 'discover', label: 'Research Desk', sub: 'Source materials & research notes', icon: Sparkles },
+        { id: 'pilot', label: 'Pilot Seat', sub: 'Issue a directive — AI rewrites the architecture', icon: Navigation2 },
+  Wand2,
         { id: 'design', label: 'Blueprint', sub: 'Characters, plot & story architecture', icon: GitBranch },
         { id: 'write', label: 'Write', sub: 'Draft scenes & chapters directly', icon: PenTool },
         { id: 'autodraft', label: 'Auto Draft', sub: 'AI-powered scene & chapter generation', icon: Zap },
@@ -1216,6 +1223,7 @@ export default function App() {
       title: "TOOLS & INTELLIGENCE",
       items: [
         { id: 'memory', label: 'Story Bible', sub: 'Canon, continuity & character secrets', icon: BrainCircuit },
+        { id: 'creative', label: 'Creative Studio', sub: 'Literary excellence engine & multi-format publishing', icon: Wand2 },
         { id: 'intelligence', label: 'The Red Pen', sub: 'Edit, critique & narrative health', icon: Scissors },
         { id: 'upload', label: 'Evidence Archive', sub: 'Upload files & generate book plans with AI', icon: Upload }
       ]
@@ -1815,6 +1823,23 @@ export default function App() {
                 />
               </div>
             )}
+            {currentView === 'pilot' && (
+              <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                <PilotSeatView
+                  key={project.id}
+                  project={project}
+                  characters={characters}
+                  plotNodes={plotNodes}
+                  chapters={chapters}
+                  research={research}
+                  onSaveCharacter={upsertCharacter}
+                  onSavePlotNode={upsertPlotNode}
+                  onAddResearch={upsertResearch}
+                  updateProject={updateProject}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                />
+              </div>
+            )}
             {currentView === 'design' && (
               <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
                 <DesignView 
@@ -1898,6 +1923,28 @@ export default function App() {
                   setView={setCurrentView}
                   onNotify={(msg, type) => addNotification(msg, type)}
                   onError={(msg) => addNotification(msg, 'error')}
+                />
+              </div>
+            )}
+            {currentView === 'creative' && (
+              <div className="flex-1 flex flex-col min-h-0">
+                <EnhancedResearchDesk
+                  key={project.id}
+                  project={project}
+                  characters={characters}
+                  chapters={chapters}
+                  research={research}
+                  sourceMaterials={sourceMaterials}
+                  services={creativeEngineServices}
+                  onNavigate={(view) => setCurrentView(view as ViewType)}
+                  onNotify={(msg, type) => addNotification(msg, type)}
+                  onError={(msg) => addNotification(msg, 'error')}
+                  onSaveProject={updateProject}
+                  onSaveCharacter={upsertCharacter}
+                  onUpdateChapters={async (chaps) => {
+                    setChapters(chaps);
+                    await upsertChapterBatch(chaps);
+                  }}
                 />
               </div>
             )}

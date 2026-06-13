@@ -206,4 +206,4 @@ export interface Project {
   };
 }
 
-export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'reviews' | 'library' | 'scalpel' | 'autodraft' | 'discover' | 'design' | 'write' | 'memory' | 'publish' | 'upload';
+export type ViewType = 'dashboard' | 'brainstorm' | 'characters' | 'plot' | 'writing' | 'intelligence' | 'swarm' | 'settings' | 'architect' | 'export' | 'prizes' | 'reviews' | 'library' | 'scalpel' | 'autodraft' | 'discover' | 'design' | 'write' | 'memory' | 'publish' | 'upload' | 'creative';
