@@ -1,4 +1,5 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
+import { BookMetadataService } from "./BookMetadataService";
 import { ContentIntelligence, IllustrationAsset } from './ContentIntelligenceService';
 
 export interface DesignProfile {
