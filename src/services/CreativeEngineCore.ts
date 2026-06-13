@@ -1,521 +1,496 @@
 /**
- * CreativeEngineCore.ts
+ * CreativeEngineCore_Production.ts
  * 
- * Comprehensive Creative Engine for Caspa
- * Transforms research & seeds into literary works, manuals, training materials, subject bibles
+ * PRODUCTION-WIRED Creative Engine
+ * Calls real APIs via /api/ai/call (Gemini backend)
  * 
- * Core layers:
- * 1. SEED INGESTION: Raw input → prize-quality story/project proposal
- * 2. LITERARY EXCELLENCE: Prose quality + prize-worthiness scoring
- * 3. HUMANIZING ENGINE: Research → character psychology + emotional authenticity
- * 4. MULTI-FORMAT OUTPUT: Novel/manual/training material/subject bible generation
- * 5. NON-FICTION ARCHITECT: Research-backed structure + visual layout intelligence
+ * All 6 engines now call the server backend for real AI analysis.
  */
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SEED INGESTION: Any idea → collaborative story proposal with prize ambition
-// ─────────────────────────────────────────────────────────────────────────────
+import type { Character, ResearchEntry, Project } from './types';
 
-export interface SeedProposal {
-  title: string;
+// ============================================================================
+// API CLIENT
+// ============================================================================
+
+interface AiCallOptions {
+  prompt: string;
+  model?: string;
+  json?: boolean;
+  maxTokens?: number;
+  useSearch?: boolean;
+}
+
+async function callAI(options: AiCallOptions): Promise<string> {
+  const response = await fetch('/api/ai/call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`API Error: ${response.status} - ${error}`);
+  }
+
+  const data = await response.json();
+  return data.result || '';
+}
+
+// ============================================================================
+// ENGINE 1: SEED LAB
+// Transforms raw ideas into full story proposals
+// ============================================================================
+
+export interface SeedLabInput {
+  idea: string;
+  genre?: string;
+  targetAudience?: string;
+}
+
+export interface SeedLabOutput {
   premise: string;
-  genre: string;
-  tone: string;
-  contentType: 'novel' | 'screenplay' | 'stageplay' | 'illustrated' | 'coursebook' | 'subject_bible' | 'cookbook' | 'non_fiction' | 'training_manual';
-  targetWordCount: number;
-  logline: string;
-  centralWound: string;
-  suggestedChapters: { title: string; summary: string }[];
-  suggestedCharacters: { name: string; role: string; backstory: string }[];
-  authorQuestions: string[];
-  prizeTarget: {
-    award: string;
-    reasoning: string;
-    comparableWorks: string[];
-  };
+  mainCharacters: string[];
+  thematicAnchors: string[];
+  fiveActStructure: string[];
+  prizePositioning: string;
+  narrativeArc: string;
 }
 
-export async function seedToStory(
-  rawSeed: string,
-  seedType: 'text' | 'image_ocr' | 'voice_transcript' | 'url' = 'text',
-  callAI: (opts: any) => Promise<any>
-): Promise<SeedProposal> {
-  const prompt = `
-YOU ARE A WORLD-CLASS LITERARY EDITOR AND CREATIVE VISIONARY.
+export async function seedToStory(input: SeedLabInput): Promise<SeedLabOutput> {
+  const prompt = `You are a world-leading story architect for prize-worthy fiction. Transform this raw idea into a complete story proposal.
 
-A raw seed has been provided. Your job is to find the STORY/PROJECT INSIDE IT — the hidden wound, the dramatic engine, the human truth — and propose a full literary work from it.
+IDEA: "${input.idea}"
+${input.genre ? `GENRE: ${input.genre}` : ''}
+${input.targetAudience ? `AUDIENCE: ${input.targetAudience}` : ''}
 
-SEED TYPE: ${seedType}
-RAW SEED:
-${rawSeed.slice(0, 8000)}
+Provide a JSON response with:
+{
+  "premise": "A 2-3 sentence story premise that hooks immediately",
+  "mainCharacters": ["Character 1 with core wound/desire", "Character 2...", "Character 3..."],
+  "thematicAnchors": ["Theme 1 that resonates emotionally", "Theme 2...", "Theme 3..."],
+  "fiveActStructure": [
+    "Act 1: Setup & inciting incident",
+    "Act 2a: Rising action",
+    "Act 2b: Midpoint revelation",
+    "Act 3: Rising stakes & climax",
+    "Act 4: Resolution & thematic closure"
+  ],
+  "prizePositioning": "How this story positions for literary prizes (Booker, Pulitzer, National Book Award, etc.)",
+  "narrativeArc": "The emotional & character journey from beginning to end"
+}
 
-CRITICAL PHILOSOPHY:
-- Every seed contains a story. A receipt on the floor contains a life. A voice note contains a confession. Find it.
-- The ambition is ALWAYS literary prize quality or professional/academic excellence.
-- Think: Booker Prize, Pulitzer, Costa, National Book Award, Hugo, Nebula.
-- For non-fiction: think influential, field-defining, beautiful research design.
-- For training materials: think transformative, pedagogically sound, visually compelling.
-- Do NOT produce generic output. Find the SPECIFIC, STRANGE, HUMAN truth in this seed.
-- The story/project should feel inevitable once revealed — but surprising when proposed.
-- Suggest 5 AUTHOR/CREATOR QUESTIONS that unlock the work further.
+Be bold. Be specific. Show why this story matters.`;
 
-Return JSON with:
-- title: A working title (evocative, not generic)
-- premise: 2-3 sentences. The dramatic/conceptual engine. What is at stake and why it matters.
-- genre: The primary genre or category
-- tone: The tonal register (e.g. "Dry wit, melancholic undertow, Carver-esque restraint" or "Authoritative, accessible, warm")
-- contentType: One of: novel|screenplay|stageplay|illustrated|coursebook|subject_bible|cookbook|non_fiction|training_manual
-- targetWordCount: Appropriate word count for the type and ambition
-- logline: One sentence. The hook.
-- centralWound: The hidden wound/central insight at the heart of the work.
-- suggestedChapters: Array of 10-20 chapters/sections with title and summary (for all types)
-- suggestedCharacters: Array of 3-6 key personas/contributors with name, role, backstory
-- authorQuestions: Array of 5 questions to unlock the work further
-- prizeTarget: Object with:
-  - award: Which literary/professional prize this could realistically target
-  - reasoning: Why it fits this award
-  - comparableWorks: Array of 2-3 comparable works that target the same prize
-`;
-
-  const response = await callAI({
+  const result = await callAI({
     prompt,
+    model: 'gemini-2.0-flash',
     json: true,
-    model: 'gemini-2.5-pro-preview-05-06'
+    maxTokens: 2000,
   });
 
-  return typeof response === 'string' ? JSON.parse(response) : response;
+  try {
+    return JSON.parse(result);
+  } catch {
+    throw new Error(`Failed to parse Seed Lab response: ${result}`);
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LITERARY EXCELLENCE ENGINE: Prose quality + prize-worthiness scoring
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
+// ENGINE 2: LITERARY EXCELLENCE ENGINE
+// Scores prose on 6 dimensions + prize-worthiness
+// ============================================================================
 
-export interface ProseMetrics {
-  clarity: number; // 0-100: clarity of expression
-  originality: number; // 0-100: uniqueness of voice/perspective
-  emotionalResonance: number; // 0-100: impact on reader
-  narrativeStrength: number; // 0-100: plot/structure coherence
-  characterDepth: number; // 0-100: complexity of characters
-  proseQuality: number; // 0-100: beauty of language, style maturity
-  overallScore: number; // 0-100: composite literary quality
-  prizeWorthinessLevel: 'debut' | 'shortlist' | 'finalist' | 'winner';
-  strengthAreas: string[];
-  developmentAreas: string[];
-  recommendations: string[];
+export interface LiteraryAnalysisInput {
+  excerpt: string;
+  genre?: string;
 }
 
-export async function scoreProseQuality(
-  text: string,
-  genre: string,
-  callAI: (opts: any) => Promise<any>
-): Promise<ProseMetrics> {
-  const prompt = `
-YOU ARE A LITERARY PRIZE JUDGE WITH 20+ YEARS EXPERIENCE.
+export interface DimensionScore {
+  score: number; // 0-10
+  feedback: string;
+}
 
-You are evaluating prose quality and prize-worthiness. Genre: ${genre}
+export interface LiteraryExcellenceOutput {
+  proseQuality: DimensionScore;
+  narrativeArc: DimensionScore;
+  characterDepth: DimensionScore;
+  emotionalResonance: DimensionScore;
+  originality: DimensionScore;
+  overallComposite: number; // 0-100
+  prizeCallibreTier: 'Prize Ready' | 'Strong Commercial' | 'Emerging' | 'Develop Further';
+  keyStrengths: string[];
+  edgeFeedback: string[];
+  nextSteps: string[];
+}
 
-TEXT TO EVALUATE (first 5000 chars):
-${text.slice(0, 5000)}
+export async function analyzeLiteraryExcellence(
+  input: LiteraryAnalysisInput
+): Promise<LiteraryExcellenceOutput> {
+  const prompt = `You are a Booker Prize judge and literary critic evaluating prose for prize-worthiness.
 
-Rate the following on 0-100 scales:
-- clarity: Does the prose express ideas clearly without unnecessary obscuration?
-- originality: Is the voice/perspective unique and distinctive?
-- emotionalResonance: Does this text move the reader? Does it land emotionally?
-- narrativeStrength: Does the story/argument structure feel cohesive and compelling?
-- characterDepth: Are characters (human or conceptual) complex and memorable?
-- proseQuality: Is the language beautiful, mature, crafted with care?
+EXCERPT:
+"${input.excerpt}"
+${input.genre ? `GENRE: ${input.genre}` : ''}
 
-Provide:
-- Individual scores for each dimension
-- overallScore: Composite 0-100
-- prizeWorthinessLevel: One of: debut|shortlist|finalist|winner
-- strengthAreas: Array of 2-3 areas where this text excels
-- developmentAreas: Array of 2-3 areas for growth
-- recommendations: Array of 3-4 specific craft improvements
+Score this excerpt on 6 dimensions (0-10 each) with honest, specific feedback:
 
-Return JSON.
-`;
+1. **Prose Quality** — Vocabulary, rhythm, sentence structure, language sophistication
+2. **Narrative Arc** — Pacing, tension, momentum, structural clarity
+3. **Character Depth** — Motivation, psychology, authenticity, growth potential
+4. **Emotional Resonance** — Impact, vulnerability, stakes, reader connection
+5. **Originality** — Fresh voice, perspective, ideas, departure from convention
+6. **Overall Composite** — Holistic prize-worthiness (0-100 scale)
 
-  const response = await callAI({
+Respond in JSON:
+{
+  "proseQuality": { "score": 8, "feedback": "..." },
+  "narrativeArc": { "score": 7, "feedback": "..." },
+  "characterDepth": { "score": 9, "feedback": "..." },
+  "emotionalResonance": { "score": 8, "feedback": "..." },
+  "originality": { "score": 8, "feedback": "..." },
+  "overallComposite": 81,
+  "prizeCallibreTier": "Prize Ready",
+  "keyStrengths": ["Strength 1", "Strength 2", "Strength 3"],
+  "edgeFeedback": ["Area to develop 1", "Area to develop 2"],
+  "nextSteps": ["Specific edit 1", "Specific edit 2", "Specific edit 3"]
+}
+
+Be rigorous. Be honest. Prize-ready means publishable at the highest tier.`;
+
+  const result = await callAI({
     prompt,
+    model: 'gemini-2.0-flash',
     json: true,
-    model: 'gemini-2.5-pro-preview-05-06'
+    maxTokens: 1500,
   });
 
-  return typeof response === 'string' ? JSON.parse(response) : response;
+  try {
+    return JSON.parse(result);
+  } catch {
+    throw new Error(`Failed to parse Literary Excellence response: ${result}`);
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HUMANIZING ENGINE: Research → Character psychology + emotional authenticity
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
+// ENGINE 3: CHARACTER PSYCHE ENGINE
+// Deep character depth grounded in psychology
+// ============================================================================
 
-export interface CharacterPsychology {
+export interface CharacterInput {
   name: string;
-  archetype: string;
-  primaryWound: string; // The deepest hurt/fear driving behavior
-  defenseMechanism: string; // How they protect themselves
-  desireVsNeed: {
-    surfaceDesire: string; // What they think they want
-    deepNeed: string; // What they actually need
-  };
-  psychologicalMotivations: string[]; // 3-5 deep psychological drivers
-  emotionalArc: {
-    startingState: string;
-    keyTurningPoints: string[];
-    transformationAtEnd: string;
-  };
-  researchConnections: {
-    psychologyPrinciple: string;
-    academicSource: string;
-    applicationToCharacter: string;
-  }[];
-  dialogueVoice: {
-    speechPatterns: string;
-    vocabularyRange: string;
-    emotionalTellsAndTics: string;
-  };
-  actionableInsights: string[]; // Specific ways to write this character authentically
+  role: string;
+  backgroundSummary?: string;
+  currentChallenge?: string;
 }
 
-export async function humanizeCharacter(
-  characterName: string,
-  characterBrief: string,
-  researchContext: string[], // Array of relevant research findings
-  genre: string,
-  callAI: (opts: any) => Promise<any>
-): Promise<CharacterPsychology> {
-  const prompt = `
-YOU ARE A PSYCHOLOGIST, CHARACTER COACH, AND MASTER STORYTELLER.
+export interface PsychologicalDimension {
+  dimension: string;
+  depth: string;
+  psychologicalBasis: string;
+}
 
-Your job: Take a character concept and deepen it through real psychology, research, and emotional authenticity.
+export interface CharacterPsycheOutput {
+  attachmentStyle: string;
+  traumaAndResilience: PsychologicalDimension;
+  coreMotivation: string;
+  internalConflict: string;
+  growthArc: string[];
+  emotionalVulnerabilities: string[];
+  strengths: string[];
+  psychologyResearch: string[];
+  writingGuidance: string;
+}
 
-CHARACTER: ${characterName}
-BRIEF: ${characterBrief}
-GENRE: ${genre}
+export async function analyzeCharacterPsyche(input: CharacterInput): Promise<CharacterPsycheOutput> {
+  const prompt = `You are a clinical psychologist and character development expert. Build psychological depth for this character grounded in real attachment theory, trauma, and resilience science.
 
-RELEVANT RESEARCH CONTEXT:
-${researchContext.slice(0, 3).join('\n')}
+CHARACTER:
+Name: ${input.name}
+Role: ${input.role}
+${input.backgroundSummary ? `Background: ${input.backgroundSummary}` : ''}
+${input.currentChallenge ? `Current Challenge: ${input.currentChallenge}` : ''}
 
-TASK:
-Create a deeply human, psychologically authentic character grounded in real psychology research.
+Provide deep psychological analysis in JSON:
+{
+  "attachmentStyle": "Secure/Anxious/Avoidant/Fearful-Avoidant (explain why)",
+  "traumaAndResilience": {
+    "dimension": "Core trauma or wound",
+    "depth": "How it shapes behavior, decisions, relationships",
+    "psychologicalBasis": "Psychological framework (e.g., Polyvagal Theory, Complex PTSD)"
+  },
+  "coreMotivation": "What drives this character at the deepest level (not plot-driven)",
+  "internalConflict": "The want vs. need (what they think they want vs. what they actually need to heal)",
+  "growthArc": [
+    "Stage 1: Current state of wounding/denial",
+    "Stage 2: First crack in defense",
+    "Stage 3: Integration of difficult truth",
+    "Stage 4: Behavioral shift rooted in psychology",
+    "Stage 5: Earned wisdom (not toxic positivity)"
+  ],
+  "emotionalVulnerabilities": ["Vulnerability 1", "Vulnerability 2", "Vulnerability 3"],
+  "strengths": ["Strength 1 (rooted in resilience)", "Strength 2", "Strength 3"],
+  "psychologyResearch": [
+    "Research paper or concept 1 that informs this character",
+    "Research paper or concept 2",
+    "Research paper or concept 3"
+  ],
+  "writingGuidance": "Specific instruction for how to write this character authentically (internal voice, behavior patterns, what triggers them)"
+}
 
-Think about:
-- What is this character's PRIMARY WOUND? (The deepest hurt/fear from their past)
-- What DEFENSE MECHANISMS do they use to protect themselves?
-- What do they DESIRE vs. what do they NEED? (Often in conflict)
-- What PSYCHOLOGICAL PRINCIPLES apply? (attachment theory, trauma, resilience, etc.)
-- How do they TALK? What's their voice? Speech patterns? Verbal tics?
-- What's their EMOTIONAL ARC? How do they transform?
-- How does RESEARCH context make them more real and specific?
+Ground this in real psychology. Avoid cliches. Make vulnerabilities feel earned and realistic.`;
 
-Return JSON with:
-- name: Character name
-- archetype: Their archetypal role (the Hero, the Mentor, the Shadow, etc.)
-- primaryWound: The deepest hurt/fear driving behavior
-- defenseMechanism: How they protect themselves psychologically
-- desireVsNeed:
-  - surfaceDesire: What they think they want
-  - deepNeed: What they actually need (often opposite)
-- psychologicalMotivations: Array of 3-5 deep psychological drivers
-- emotionalArc:
-  - startingState: Where they begin emotionally
-  - keyTurningPoints: Array of 3-4 moments that shift their psychology
-  - transformationAtEnd: How they've changed
-- researchConnections: Array of:
-  - psychologyPrinciple: e.g., "Attachment Theory" or "Trauma Recovery"
-  - academicSource: e.g., "Bessel van der Kolk, The Body Keeps the Score"
-  - applicationToCharacter: How this applies specifically
-- dialogueVoice:
-  - speechPatterns: e.g., "Fragmented, interrupted, trailing off"
-  - vocabularyRange: e.g., "High education, but speaks colloquially under stress"
-  - emotionalTellsAndTics: e.g., "Says 'actually' when defensive; touches face when lying"
-- actionableInsights: Array of 5+ specific, concrete ways to write this character authentically
-
-This character should feel like a real person, grounded in psychology.
-`;
-
-  const response = await callAI({
+  const result = await callAI({
     prompt,
+    model: 'gemini-2.0-flash',
     json: true,
-    model: 'gemini-2.5-pro-preview-05-06'
+    maxTokens: 1500,
   });
 
-  return typeof response === 'string' ? JSON.parse(response) : response;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MULTI-FORMAT OUTPUT ENGINE: Generate novels, manuals, training materials, subject bibles
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface FormatSpecification {
-  format: 'novel' | 'illustrated_manual' | 'training_course' | 'subject_bible' | 'cookbook' | 'academic';
-  title: string;
-  description: string;
-  structure: {
-    frontMatter: string[];
-    mainSections: {
-      title: string;
-      purpose: string;
-      recommendedPageCount: number;
-      designElements: string[]; // e.g., "sidebars", "callout boxes", "visual diagrams"
-    }[];
-    backMatter: string[];
-  };
-  designRecommendations: {
-    interior: 'black_and_white' | 'color' | 'mixed';
-    visualDensity: 'text_heavy' | 'moderate' | 'illustration_rich';
-    readingLevel: string;
-    targetAudience: string;
-  };
-  outputDeliverables: {
-    format: 'pdf' | 'epub' | 'markdown' | 'html' | 'print';
-    filename: string;
-    description: string;
-  }[];
-}
-
-export async function generateFormatSpecification(
-  title: string,
-  contentType: string,
-  targetAudience: string,
-  sourceResearch: string[],
-  callAI: (opts: any) => Promise<any>
-): Promise<FormatSpecification> {
-  const prompt = `
-YOU ARE A PUBLISHING PROFESSIONAL AND INSTRUCTIONAL DESIGNER.
-
-A creative work needs to be structured and designed for its intended format.
-
-TITLE: ${title}
-CONTENT TYPE: ${contentType}
-TARGET AUDIENCE: ${targetAudience}
-
-KEY RESEARCH CONTEXT:
-${sourceResearch.slice(0, 3).join('\n')}
-
-TASK:
-Design the complete structure, layout, and production specifications for this work.
-
-For NOVELS: narrative structure, pacing, chapter breaks, emotional beats
-For ILLUSTRATED MANUALS: instructional flow, visual support, callout boxes, sidebars
-For TRAINING COURSES: learning objectives, module structure, assessment points, interactive elements
-For SUBJECT BIBLES: organizational logic, reference sections, index systems, cross-referencing
-For COOKBOOKS: recipe organization, ingredient standards, visual styling, tips integration
-For ACADEMIC: research structure, citations, methodology sections, appendices
-
-Return JSON with:
-- format: The primary output format (novel, illustrated_manual, training_course, subject_bible, cookbook, academic)
-- title: The work title
-- description: Brief description of the work and its purpose
-- structure:
-  - frontMatter: Array of front matter sections (title page, preface, TOC, etc.)
-  - mainSections: Array of:
-    - title: Section name
-    - purpose: What this section accomplishes
-    - recommendedPageCount: Estimated page count
-    - designElements: Array of visual/structural elements to include
-  - backMatter: Array of back matter sections (appendix, index, etc.)
-- designRecommendations:
-  - interior: black_and_white | color | mixed
-  - visualDensity: text_heavy | moderate | illustration_rich
-  - readingLevel: e.g., "high school" or "graduate level"
-  - targetAudience: Demographics and needs
-- outputDeliverables: Array of:
-  - format: pdf | epub | markdown | html | print
-  - filename: Suggested filename
-  - description: What this deliverable is
-
-Think about the READER. Make this beautiful and functional.
-`;
-
-  const response = await callAI({
-    prompt,
-    json: true,
-    model: 'gemini-2.5-pro-preview-05-06'
-  });
-
-  return typeof response === 'string' ? JSON.parse(response) : response;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NON-FICTION ARCHITECT: Research-backed structure + visual layout intelligence
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface NonFictionArchitecture {
-  workingTitle: string;
-  thesis: string; // The central argument/insight
-  researchFoundation: string; // Why this research matters
-  structure: {
-    act: number;
-    title: string;
-    chapters: {
-      number: number;
-      title: string;
-      keyResearchPoints: string[];
-      emotionalThrough: string;
-      narrativeDevices: string[];
-      estimatedWordCount: number;
-    }[];
-  }[];
-  researchIntegration: {
-    academicSource: string;
-    keyFinding: string;
-    chapterApplication: string;
-    narrativizationMethod: string; // How to make research feel alive
-  }[];
-  visualStrategy: {
-    element: string; // e.g., "timeline", "map", "infographic"
-    purpose: string;
-    chapters: number[]; // Which chapters need this
-  }[];
-  readabilityEnhancements: {
-    technique: string; // e.g., "anecdotes", "dialogue", "scene setting"
-    frequency: string; // e.g., "once per chapter"
-    purpose: string;
-  }[];
-}
-
-export async function architectNonFiction(
-  workingTitle: string,
-  topic: string,
-  thesis: string,
-  researchSources: string[],
-  intendedAudience: string,
-  callAI: (opts: any) => Promise<any>
-): Promise<NonFictionArchitecture> {
-  const prompt = `
-YOU ARE A NON-FICTION ARCHITECT AND RESEARCH SYNTHESIS MASTER.
-
-Create a comprehensive structure for a non-fiction work that is:
-- Research-backed and academically sound
-- Beautifully written and narratively compelling
-- Visually intelligent (uses diagrams, maps, timelines effectively)
-- Deeply engaging for the intended audience
-
-WORKING TITLE: ${workingTitle}
-TOPIC: ${topic}
-THESIS: ${thesis}
-INTENDED AUDIENCE: ${intendedAudience}
-
-KEY RESEARCH SOURCES:
-${researchSources.slice(0, 5).join('\n')}
-
-TASK:
-Design a 3-act non-fiction structure that:
-1. Builds an argument progressively (Act 1: Foundation, Act 2: Complexity, Act 3: Implications)
-2. Integrates research seamlessly (not dumped, but woven into narrative)
-3. Uses visual elements strategically (timelines, maps, diagrams where they illuminate)
-4. Maintains narrative momentum (anecdotes, scene-setting, dialogue where appropriate)
-5. Makes complex ideas accessible without dumbing them down
-
-Return JSON with:
-- workingTitle: The title
-- thesis: The central argument/insight in 1-2 sentences
-- researchFoundation: Why this research matters and is urgent now
-- structure: Array of acts (1-3) with:
-  - act: Act number
-  - title: Act title
-  - chapters: Array of chapters with:
-    - number: Chapter number
-    - title: Chapter title
-    - keyResearchPoints: Array of 3-5 research findings this chapter conveys
-    - emotionalThrough: What emotional journey happens here?
-    - narrativeDevices: Array of techniques to use (anecdote, dialogue, scene-setting, etc.)
-    - estimatedWordCount: Target word count
-- researchIntegration: Array of how key research sources are used:
-  - academicSource: The source
-  - keyFinding: The specific finding
-  - chapterApplication: Which chapter uses this
-  - narrativizationMethod: How is it made compelling? (example: story, metaphor, lived experience)
-- visualStrategy: Array of visual elements:
-  - element: Type (timeline, map, infographic, diagram, etc.)
-  - purpose: What does this help the reader understand?
-  - chapters: Array of chapter numbers where this appears
-- readabilityEnhancements: Array of techniques:
-  - technique: The device (anecdotes, dialogue, scene-setting, etc.)
-  - frequency: How often (once per chapter, once per section, etc.)
-  - purpose: Why this helps readers stay engaged
-
-Make the reader think AND feel. Make complex research come alive.
-`;
-
-  const response = await callAI({
-    prompt,
-    json: true,
-    model: 'gemini-2.5-pro-preview-05-06'
-  });
-
-  return typeof response === 'string' ? JSON.parse(response) : response;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INTEGRATION HELPER: Combine multiple layers into a comprehensive project brief
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface ComprehensiveProjectBrief {
-  seedProposal: SeedProposal;
-  literaryMetrics?: ProseMetrics;
-  characters: CharacterPsychology[];
-  formatSpecification: FormatSpecification;
-  nonFictionArchitecture?: NonFictionArchitecture;
-  integratedResearch: {
-    sources: string[];
-    psychologyConnections: string[];
-    narrativeApplications: string[];
-  };
-}
-
-export async function generateComprehensiveProjectBrief(
-  seed: SeedProposal,
-  researchFindings: string[],
-  callAI: (opts: any) => Promise<any>
-): Promise<ComprehensiveProjectBrief> {
-  // Step 1: Humanize key characters
-  const characters: CharacterPsychology[] = [];
-  for (const char of seed.suggestedCharacters.slice(0, 3)) {
-    const psychology = await humanizeCharacter(
-      char.name,
-      char.backstory,
-      researchFindings,
-      seed.genre,
-      callAI
-    );
-    characters.push(psychology);
+  try {
+    return JSON.parse(result);
+  } catch {
+    throw new Error(`Failed to parse Character Psyche response: ${result}`);
   }
-
-  // Step 2: Generate format specification
-  const formatSpec = await generateFormatSpecification(
-    seed.title,
-    seed.contentType,
-    'Writers & creative professionals',
-    researchFindings,
-    callAI
-  );
-
-  // Step 3: If non-fiction, architect the research structure
-  let architecture: NonFictionArchitecture | undefined;
-  if (['non_fiction', 'subject_bible', 'coursebook'].includes(seed.contentType)) {
-    architecture = await architectNonFiction(
-      seed.title,
-      seed.genre,
-      seed.premise,
-      researchFindings,
-      'Academic & professional audience',
-      callAI
-    );
-  }
-
-  return {
-    seedProposal: seed,
-    characters,
-    formatSpecification: formatSpec,
-    nonFictionArchitecture: architecture,
-    integratedResearch: {
-      sources: researchFindings,
-      psychologyConnections: characters.flatMap(c =>
-        c.researchConnections.map(r => r.academicSource)
-      ),
-      narrativeApplications: characters.flatMap(c => c.actionableInsights)
-    }
-  };
 }
+
+// ============================================================================
+// ENGINE 4: MULTI-FORMAT DESIGNER
+// Transforms manuscript into professional outputs
+// ============================================================================
+
+export type OutputFormat =
+  | 'literary-novel'
+  | 'illustrated-manual'
+  | 'training-course'
+  | 'subject-bible'
+  | 'non-fiction';
+
+export interface MultiFormatInput {
+  manuscriptExcerpt: string;
+  format: OutputFormat;
+  targetAudience?: string;
+}
+
+export interface FormatStructure {
+  format: OutputFormat;
+  tone: string;
+  structure: string[];
+  audienceCalibration: string;
+  designNotes: string[];
+}
+
+export async function designMultiFormat(input: MultiFormatInput): Promise<FormatStructure> {
+  const formatDescriptions = {
+    'literary-novel': 'A prose-first literary fiction publication. Emphasis: character, voice, emotional depth.',
+    'illustrated-manual': 'A step-by-step procedural guide with visual integration. Emphasis: clarity, sequential logic, illustrations.',
+    'training-course': 'A modular educational curriculum with objectives and assessments. Emphasis: learning outcomes, scaffolding.',
+    'subject-bible': 'A comprehensive reference work. Emphasis: indexing, cross-referencing, quick-lookup, authority.',
+    'non-fiction': 'A research-integrated narrative. Emphasis: evidence, citations, readability, authority.',
+  };
+
+  const prompt = `You are a book designer and publishing expert. Design a professional structure for transforming this manuscript excerpt into a ${input.format}.
+
+MANUSCRIPT EXCERPT:
+"${input.manuscriptExcerpt}"
+
+${input.targetAudience ? `TARGET AUDIENCE: ${input.targetAudience}` : ''}
+
+FORMAT BRIEF: ${formatDescriptions[input.format]}
+
+Provide a JSON response with:
+{
+  "format": "${input.format}",
+  "tone": "The voice/tone appropriate for this format (e.g., authoritative, intimate, instructional)",
+  "structure": [
+    "Section 1 name and purpose",
+    "Section 2 name and purpose",
+    "Section 3 name and purpose",
+    "... (5-7 sections total)"
+  ],
+  "audienceCalibration": "How to pitch language, depth, and pacing for your target audience",
+  "designNotes": [
+    "Design principle 1 (layout, typography, visuals)",
+    "Design principle 2",
+    "Design principle 3",
+    "Design principle 4"
+  ]
+}
+
+Be specific. Show how the content structure changes based on format. Include design thinking.`;
+
+  const result = await callAI({
+    prompt,
+    model: 'gemini-2.0-flash',
+    json: true,
+    maxTokens: 1200,
+  });
+
+  try {
+    return JSON.parse(result);
+  } catch {
+    throw new Error(`Failed to parse Multi-Format Designer response: ${result}`);
+  }
+}
+
+// ============================================================================
+// ENGINE 5: NON-FICTION ARCHITECT
+// Weaves research into compelling narrative
+// ============================================================================
+
+export interface NonFictionInput {
+  topic: string;
+  manuscriptExcerpt?: string;
+  researchNotes?: string[];
+  authorVoice?: string;
+}
+
+export interface NonFictionOutput {
+  thesisStatement: string;
+  narrativeFramework: string[];
+  researchWeaving: string;
+  citationArchitecture: string;
+  readabilityGuidance: string;
+  authorityBuilding: string[];
+  nextChapters: string[];
+}
+
+export async function architectNonFiction(input: NonFictionInput): Promise<NonFictionOutput> {
+  const prompt = `You are a non-fiction architect. Design a research-woven narrative that is both academically rigorous and beautifully readable.
+
+TOPIC: ${input.topic}
+${input.manuscriptExcerpt ? `MANUSCRIPT EXCERPT: "${input.manuscriptExcerpt}"` : ''}
+${input.researchNotes && input.researchNotes.length > 0 ? `RESEARCH NOTES:\n${input.researchNotes.join('\n')}` : ''}
+${input.authorVoice ? `AUTHOR VOICE: ${input.authorVoice}` : ''}
+
+Design a non-fiction architecture in JSON:
+{
+  "thesisStatement": "A clear, compelling thesis that anchors the entire work",
+  "narrativeFramework": [
+    "Chapter 1: Hook with story/observation that leads to the question",
+    "Chapter 2: Historical/contextual foundation",
+    "Chapter 3: Research deep-dive (integrated, not lectured)",
+    "Chapter 4: Apply research to reader's life/world",
+    "Chapter 5: Counter-arguments and nuance",
+    "Chapter 6: Synthesis and implications",
+    "Conclusion: Why this matters now"
+  ],
+  "researchWeaving": "How to integrate citations/evidence into narrative prose without it feeling like a textbook",
+  "citationArchitecture": "Recommend endnotes, footnotes, or bibliography? How to structure for credibility and readability?",
+  "readabilityGuidance": "Tone, sentence structure, metaphors, pacing for general educated readers",
+  "authorityBuilding": [
+    "Credibility strategy 1",
+    "Credibility strategy 2",
+    "Credibility strategy 3"
+  ],
+  "nextChapters": [
+    "Suggested next chapter title & focus",
+    "Suggested next chapter title & focus"
+  ]
+}
+
+Make it practical. Show how to be rigorous without being dry.`;
+
+  const result = await callAI({
+    prompt,
+    model: 'gemini-2.0-flash',
+    json: true,
+    maxTokens: 1500,
+  });
+
+  try {
+    return JSON.parse(result);
+  } catch {
+    throw new Error(`Failed to parse Non-Fiction Architect response: ${result}`);
+  }
+}
+
+// ============================================================================
+// ENGINE 6: RESEARCH INTEGRATION HUB
+// Connects research to all engines
+// ============================================================================
+
+export interface ResearchContextInput {
+  topic: string;
+  researchEntries: ResearchEntry[];
+  characters?: Character[];
+  useCase: 'character-enrichment' | 'plot-grounding' | 'thematic-depth';
+}
+
+export interface ResearchContext {
+  relevantSources: Array<{
+    source: string;
+    relevance: string;
+    application: string;
+  }>;
+  characterResearchLinks: Record<string, string[]>;
+  plotElements: string[];
+  thematicConnections: string[];
+}
+
+export async function integrateResearch(input: ResearchContextInput): Promise<ResearchContext> {
+  const researchSummary = input.researchEntries
+    .map(
+      (r) =>
+        `- "${r.title}" (${r.source}): ${r.summary || r.content.substring(0, 200)}`
+    )
+    .join('\n');
+
+  const characterNames = input.characters?.map((c) => c.name).join(', ') || 'N/A';
+
+  const prompt = `You are a research architect integrating sources into creative writing. Map research to narrative elements.
+
+TOPIC: ${input.topic}
+USE CASE: ${input.useCase}
+CHARACTERS: ${characterNames}
+
+RESEARCH SOURCES:
+${researchSummary}
+
+Respond in JSON:
+{
+  "relevantSources": [
+    { "source": "Source Title", "relevance": "Why this matters for the narrative", "application": "How to use it in the story" },
+    ...
+  ],
+  "characterResearchLinks": {
+    "CharacterName": ["Research insight 1", "Research insight 2"]
+  },
+  "plotElements": [
+    "Plot point grounded in research",
+    "Plot point grounded in research"
+  ],
+  "thematicConnections": [
+    "Theme connected to research",
+    "Theme connected to research"
+  ]
+}
+
+Be creative. Show how research informs story, not just decorates it.`;
+
+  const result = await callAI({
+    prompt,
+    model: 'gemini-2.0-flash',
+    json: true,
+    maxTokens: 1200,
+  });
+
+  try {
+    return JSON.parse(result);
+  } catch {
+    throw new Error(`Failed to parse Research Integration response: ${result}`);
+  }
+}
+
+// ============================================================================
+// EXPORT FOR UI
+// ============================================================================
+
+export const creativeEngineServices = {
+  seedToStory,
+  analyzeLiteraryExcellence,
+  analyzeCharacterPsyche,
+  designMultiFormat,
+  architectNonFiction,
+  integrateResearch,
+};

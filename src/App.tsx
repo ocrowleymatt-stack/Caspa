@@ -40,7 +40,7 @@ import {
   AlertTriangle,
   Ghost,
   Feather,
-  Navigation2
+  Navigation2,
   Wand2,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';

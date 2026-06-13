@@ -1,753 +1,879 @@
 /**
- * EnhancedResearchDesk.tsx
+ * EnhancedResearchDesk_Production.tsx
  * 
- * Comprehensive creative research & ideation interface for Caspa
- * Layers: Deep Research + Seed Ingestion + Literary Excellence + Humanizing + Multi-Format Output
+ * PRODUCTION-WIRED UI for Creative Engine
+ * Handles async API calls with loading states, error handling, result display
  * 
- * Mobile-optimized, responsive, production-ready
+ * Integrates:
+ * - Seed Lab (raw idea → story proposal)
+ * - Literary Excellence Engine (6-dimension prose scoring)
+ * - Character Psyche Engine (psychology-fed depth)
+ * - Multi-Format Designer (novel/manual/course/subject bible/non-fiction)
+ * - Non-Fiction Architect (research weaving)
+ * - Research Integration Hub (link research to narrative)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
+import type { Character, ResearchEntry, Project } from '../types';
 import {
-  BookOpen, Sparkles, Zap, Users, Layers, FileText, Download,
-  Plus, Trash2, Check, Loader2, ChevronDown, ChevronUp,
-  Award, Heart, Brain, Palette, TrendingUp, Settings,
-  AlertCircle, Eye, EyeOff, Archive, Share2
-} from 'lucide-react';
+  creativeEngineServices,
+  type SeedLabInput,
+  type LiteraryAnalysisInput,
+  type CharacterInput,
+  type MultiFormatInput,
+  type NonFictionInput,
+  type ResearchContextInput,
+  type OutputFormat,
+} from '../services/CreativeEngineCore';
 
-// ── Types ──────────────────────────────────────────────────────────────────
-
-interface Tab {
-  id: 'research' | 'seeds' | 'excellence' | 'characters' | 'formats' | 'library';
-  label: string;
-  icon: React.ReactNode;
-  description: string;
+interface EnhancedResearchDeskProps {
+  project?: Project;
+  characters?: Character[];
+  research?: ResearchEntry[];
 }
 
-interface SeedIdea {
-  id: string;
-  rawInput: string;
-  type: 'text' | 'image' | 'voice' | 'url';
-  proposal?: any; // SeedProposal
-  createdAt: Date;
+interface TabState {
+  activeTab: 'seed' | 'excellence' | 'psyche' | 'format' | 'nonfiction' | 'research';
+  isLoading: boolean;
+  error: string | null;
+  result: any;
 }
 
-interface CharacterPsyche {
-  id: string;
-  name: string;
-  brief: string;
-  psychology?: any; // CharacterPsychology
-  loading?: boolean;
-}
+export const EnhancedResearchDesk: React.FC<EnhancedResearchDeskProps> = ({
+  project,
+  characters = [],
+  research = [],
+}) => {
+  const [state, setState] = useState<TabState>({
+    activeTab: 'seed',
+    isLoading: false,
+    error: null,
+    result: null,
+  });
 
-// ── Component ──────────────────────────────────────────────────────────────
+  // Form inputs
+  const [seedInput, setSeedInput] = useState<SeedLabInput>({
+    idea: '',
+    genre: '',
+    targetAudience: '',
+  });
 
-export const EnhancedResearchDesk: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<Tab['id']>('research');
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [excellenceInput, setExcellenceInput] = useState<LiteraryAnalysisInput>({
+    excerpt: '',
+    genre: '',
+  });
 
-  // Research
-  const [topicSearch, setTopicSearch] = useState('');
-  const [researchDepth, setResearchDepth] = useState<'surface' | 'intermediate' | 'deep'>('intermediate');
-  const [researchResults, setResearchResults] = useState<any[]>([]);
-  const [researchLoading, setResearchLoading] = useState(false);
+  const [psycheInput, setPsycheInput] = useState<CharacterInput>({
+    name: '',
+    role: '',
+    backgroundSummary: '',
+    currentChallenge: '',
+  });
 
-  // Seeds
-  const [seeds, setSeeds] = useState<SeedIdea[]>([]);
-  const [seedInput, setSeedInput] = useState('');
-  const [seedType, setSeedType] = useState<'text' | 'image' | 'voice' | 'url'>('text');
+  const [formatInput, setFormatInput] = useState<MultiFormatInput>({
+    manuscriptExcerpt: '',
+    format: 'literary-novel',
+    targetAudience: '',
+  });
 
-  // Excellence Scoring
-  const [textToScore, setTextToScore] = useState('');
-  const [proseMetrics, setProseMetrics] = useState<any>(null);
-  const [scoringLoading, setScoringSLoading] = useState(false);
+  const [nonfictionInput, setNonfictionInput] = useState<NonFictionInput>({
+    topic: '',
+    manuscriptExcerpt: '',
+    researchNotes: [],
+    authorVoice: '',
+  });
 
-  // Characters
-  const [characters, setCharacters] = useState<CharacterPsyche[]>([]);
-  const [newCharName, setNewCharName] = useState('');
-  const [newCharBrief, setNewCharBrief] = useState('');
+  const [researchQuery, setResearchQuery] = useState('');
 
-  // Mobile handler
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  // Handlers
+  const handleSeedLab = async () => {
+    if (!seedInput.idea.trim()) {
+      setState((s) => ({ ...s, error: 'Please enter an idea.' }));
+      return;
+    }
 
-  // ── Handlers ────────────────────────────────────────────────────────────
-
-  const handleSearchResearch = async () => {
-    if (!topicSearch.trim()) return;
-    setResearchLoading(true);
+    setState((s) => ({ ...s, isLoading: true, error: null }));
     try {
-      // Mock API call
-      await new Promise(r => setTimeout(r, 1500));
-      setResearchResults([
-        {
-          id: '1',
-          title: `Research: ${topicSearch}`,
-          source: 'Academic Database',
-          depth: researchDepth,
-          summary: `Deep research on "${topicSearch}" at ${researchDepth} level...`,
-          content: 'Lorem ipsum dolor sit amet...',
-          timestamp: new Date()
-        }
-      ]);
-    } finally {
-      setResearchLoading(false);
+      const result = await creativeEngineServices.seedToStory(seedInput);
+      setState((s) => ({ ...s, isLoading: false, result, error: null }));
+    } catch (err: any) {
+      setState((s) => ({
+        ...s,
+        isLoading: false,
+        error: err.message || 'Seed Lab failed. Check API connection.',
+      }));
     }
   };
 
-  const handleAddSeed = () => {
-    if (!seedInput.trim()) return;
-    const newSeed: SeedIdea = {
-      id: Math.random().toString(36).slice(2, 10),
-      rawInput: seedInput,
-      type: seedType,
-      createdAt: new Date()
-    };
-    setSeeds([newSeed, ...seeds]);
-    setSeedInput('');
+  const handleLiteraryExcellence = async () => {
+    if (!excellenceInput.excerpt.trim()) {
+      setState((s) => ({ ...s, error: 'Please paste an excerpt.' }));
+      return;
+    }
+
+    setState((s) => ({ ...s, isLoading: true, error: null }));
+    try {
+      const result = await creativeEngineServices.analyzeLiteraryExcellence(excellenceInput);
+      setState((s) => ({ ...s, isLoading: false, result, error: null }));
+    } catch (err: any) {
+      setState((s) => ({
+        ...s,
+        isLoading: false,
+        error: err.message || 'Literary Excellence analysis failed.',
+      }));
+    }
   };
 
-  const handleScoreProse = async () => {
-    if (!textToScore.trim()) return;
-    setScoringSLoading(true);
+  const handleCharacterPsyche = async () => {
+    if (!psycheInput.name.trim()) {
+      setState((s) => ({ ...s, error: 'Please enter a character name.' }));
+      return;
+    }
+
+    setState((s) => ({ ...s, isLoading: true, error: null }));
     try {
-      // Mock API call
-      await new Promise(r => setTimeout(r, 2000));
-      setProseMetrics({
-        clarity: 78,
-        originality: 85,
-        emotionalResonance: 72,
-        narrativeStrength: 80,
-        characterDepth: 82,
-        proseQuality: 76,
-        overallScore: 79,
-        prizeWorthinessLevel: 'shortlist',
-        strengthAreas: ['Unique voice', 'Emotional depth', 'Character complexity'],
-        developmentAreas: ['Pacing in Act 2', 'Dialogue naturalism'],
-        recommendations: [
-          'Cut 10% of exposition in chapter 5',
-          'Strengthen the antagonist\'s motivation',
-          'Add sensory details in the final act'
-        ]
+      const result = await creativeEngineServices.analyzeCharacterPsyche(psycheInput);
+      setState((s) => ({ ...s, isLoading: false, result, error: null }));
+    } catch (err: any) {
+      setState((s) => ({
+        ...s,
+        isLoading: false,
+        error: err.message || 'Character Psyche analysis failed.',
+      }));
+    }
+  };
+
+  const handleMultiFormat = async () => {
+    if (!formatInput.manuscriptExcerpt.trim()) {
+      setState((s) => ({ ...s, error: 'Please paste a manuscript excerpt.' }));
+      return;
+    }
+
+    setState((s) => ({ ...s, isLoading: true, error: null }));
+    try {
+      const result = await creativeEngineServices.designMultiFormat(formatInput);
+      setState((s) => ({ ...s, isLoading: false, result, error: null }));
+    } catch (err: any) {
+      setState((s) => ({
+        ...s,
+        isLoading: false,
+        error: err.message || 'Multi-Format Designer failed.',
+      }));
+    }
+  };
+
+  const handleNonfiction = async () => {
+    if (!nonfictionInput.topic.trim()) {
+      setState((s) => ({ ...s, error: 'Please enter a topic.' }));
+      return;
+    }
+
+    setState((s) => ({ ...s, isLoading: true, error: null }));
+    try {
+      const result = await creativeEngineServices.architectNonFiction(nonfictionInput);
+      setState((s) => ({ ...s, isLoading: false, result, error: null }));
+    } catch (err: any) {
+      setState((s) => ({
+        ...s,
+        isLoading: false,
+        error: err.message || 'Non-Fiction Architect failed.',
+      }));
+    }
+  };
+
+  const handleResearchIntegration = async () => {
+    if (!researchQuery.trim()) {
+      setState((s) => ({ ...s, error: 'Please describe what you want research to inform.' }));
+      return;
+    }
+
+    setState((s) => ({ ...s, isLoading: true, error: null }));
+    try {
+      const result = await creativeEngineServices.integrateResearch({
+        topic: researchQuery,
+        researchEntries: research,
+        characters,
+        useCase: 'character-enrichment',
       });
-    } finally {
-      setScoringSLoading(false);
+      setState((s) => ({ ...s, isLoading: false, result, error: null }));
+    } catch (err: any) {
+      setState((s) => ({
+        ...s,
+        isLoading: false,
+        error: err.message || 'Research Integration failed.',
+      }));
     }
   };
 
-  const handleAddCharacter = () => {
-    if (!newCharName.trim()) return;
-    const newChar: CharacterPsyche = {
-      id: Math.random().toString(36).slice(2, 10),
-      name: newCharName,
-      brief: newCharBrief,
-      loading: false
-    };
-    setCharacters([newChar, ...characters]);
-    setNewCharName('');
-    setNewCharBrief('');
-  };
+  const clearResult = () => setState((s) => ({ ...s, result: null, error: null }));
 
-  const handleHumanizeCharacter = async (id: string) => {
-    setCharacters(chars =>
-      chars.map(c =>
-        c.id === id ? { ...c, loading: true } : c
-      )
-    );
-    try {
-      // Mock API call
-      await new Promise(r => setTimeout(r, 2000));
-      setCharacters(chars =>
-        chars.map(c =>
-          c.id === id
-            ? {
-              ...c,
-              loading: false,
-              psychology: {
-                primaryWound: 'Fear of abandonment',
-                defenseMechanism: 'Emotional distance',
-                desireVsNeed: {
-                  surfaceDesire: 'To be alone',
-                  deepNeed: 'To be loved unconditionally'
-                },
-                psychologicalMotivations: [
-                  'Attachment insecurity',
-                  'Control needs',
-                  'Self-protection'
-                ],
-                actionableInsights: [
-                  'Write them contradicting their own desires',
-                  'Show physical reactions to emotional triggers',
-                  'Reveal vulnerability only in private moments'
-                ]
-              }
-            }
-            : c
-        )
-      );
-    } finally {
-      setCharacters(chars =>
-        chars.map(c => c.id === id ? { ...c, loading: false } : c)
-      );
-    }
-  };
-
-  // ── Tabs ────────────────────────────────────────────────────────────────
-
-  const tabs: Tab[] = [
-    {
-      id: 'research',
-      label: 'Deep Research',
-      icon: <BookOpen className="w-4 h-4" />,
-      description: 'Research topics across 6+ dimensions'
-    },
-    {
-      id: 'seeds',
-      label: 'Seed Ideas',
-      icon: <Sparkles className="w-4 h-4" />,
-      description: 'Transform raw ideas into story proposals'
-    },
-    {
-      id: 'excellence',
-      label: 'Literary Excellence',
-      icon: <Award className="w-4 h-4" />,
-      description: 'Score prose quality & prize-worthiness'
-    },
-    {
-      id: 'characters',
-      label: 'Characters',
-      icon: <Brain className="w-4 h-4" />,
-      description: 'Humanize characters with psychology'
-    },
-    {
-      id: 'formats',
-      label: 'Output Formats',
-      icon: <Palette className="w-4 h-4" />,
-      description: 'Design novels, manuals, training materials'
-    },
-    {
-      id: 'library',
-      label: 'Reference Library',
-      icon: <Archive className="w-4 h-4" />,
-      description: 'Save & organize all findings'
-    }
-  ];
+  // ============================================================================
+  // RENDER TABS
+  // ============================================================================
 
   return (
-    <div className="enhanced-research-desk flex flex-col h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <div className="sticky top-0 z-40 border-b border-slate-700 bg-slate-900/95 backdrop-blur px-4 py-3 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-2 bg-teal-500/20 rounded-lg">
-              <Sparkles className="w-5 h-5 text-teal-400" />
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-bold text-white">Enhanced Research Desk</h1>
-              <p className="text-xs text-slate-400">Research • Ideation • Excellence • Humanizing</p>
-            </div>
-            <h1 className="sm:hidden text-base font-bold text-white">Research Desk</h1>
-          </div>
-          <div className="flex gap-2">
-            <button className="p-2 hover:bg-slate-700 rounded-lg transition text-slate-400 hover:text-slate-200">
-              <Settings className="w-5 h-5" />
-            </button>
-            <button className="p-2 hover:bg-slate-700 rounded-lg transition text-slate-400 hover:text-slate-200">
-              <Share2 className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Navigation - Horizontal Scroll on Mobile */}
-        <div className="mt-4 -mx-4 sm:mx-0 px-4 sm:px-0 overflow-x-auto sm:overflow-x-visible">
-          <div className="flex gap-2 sm:gap-1 pb-2 sm:pb-0 min-w-min sm:min-w-0">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium
-                  transition duration-200
-                  ${activeTab === tab.id
-                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/50'
-                    : 'bg-slate-700/40 text-slate-400 hover:text-slate-300 border border-slate-600/30'
-                  }
-                `}
-              >
-                {tab.icon}
-                <span className="hidden sm:inline">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+    <div className="creative-studio-container" style={styles.container}>
+      {/* HEADER */}
+      <div style={styles.header}>
+        <h1 style={styles.title}>🎬 Creative Studio</h1>
+        <p style={styles.subtitle}>
+          Prize-worthy literary fiction, humanized characters, multi-format publishing
+        </p>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
+      {/* TAB NAVIGATION */}
+      <div style={styles.tabNav}>
+        {(
+          [
+            { id: 'seed', label: '🌱 Seed Lab', icon: '🌱' },
+            { id: 'excellence', label: '🏆 Literary Excellence', icon: '🏆' },
+            { id: 'psyche', label: '🧠 Character Psyche', icon: '🧠' },
+            { id: 'format', label: '📚 Multi-Format', icon: '📚' },
+            { id: 'nonfiction', label: '🔬 Non-Fiction', icon: '🔬' },
+            { id: 'research', label: '🔗 Research Hub', icon: '🔗' },
+          ] as const
+        ).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              setState((s) => ({ ...s, activeTab: tab.id, result: null, error: null }));
+            }}
+            style={{
+              ...styles.tabButton,
+              ...(state.activeTab === tab.id ? styles.tabButtonActive : {}),
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-          {/* RESEARCH TAB */}
-          {activeTab === 'research' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-teal-400" />
-                  Deep Research Desk
-                </h2>
-
-                <div className="space-y-4">
-                  {/* Topic Input */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Research Topic
-                    </label>
-                    <input
-                      type="text"
-                      value={topicSearch}
-                      onChange={e => setTopicSearch(e.target.value)}
-                      placeholder="e.g., 'The psychology of shame' or 'Victorian shipping routes'"
-                      className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-teal-500/50 focus:bg-slate-700"
-                    />
-                  </div>
-
-                  {/* Depth Selector */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Research Depth
-                    </label>
-                    <div className="flex gap-2">
-                      {(['surface', 'intermediate', 'deep'] as const).map(depth => (
-                        <button
-                          key={depth}
-                          onClick={() => setResearchDepth(depth)}
-                          className={`
-                            flex-1 px-3 py-2 rounded-lg text-sm font-medium transition
-                            ${researchDepth === depth
-                              ? 'bg-teal-500/30 text-teal-300 border border-teal-500/50'
-                              : 'bg-slate-700/30 text-slate-400 border border-slate-600/30'
-                            }
-                          `}
-                        >
-                          {depth.charAt(0).toUpperCase() + depth.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Search Button */}
-                  <button
-                    onClick={handleSearchResearch}
-                    disabled={researchLoading || !topicSearch.trim()}
-                    className="w-full px-4 py-3 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold transition flex items-center justify-center gap-2"
-                  >
-                    {researchLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Researching...
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-4 h-4" />
-                        Search Research
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Results */}
-                {researchResults.length > 0 && (
-                  <div className="mt-6 space-y-3 border-t border-slate-700 pt-6">
-                    {researchResults.map(result => (
-                      <div key={result.id} className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-4">
-                        <h3 className="font-semibold text-white text-sm sm:text-base">{result.title}</h3>
-                        <p className="text-xs text-slate-400 mt-1">{result.source} • {result.depth} depth</p>
-                        <p className="text-sm text-slate-300 mt-2">{result.summary}</p>
-                        <button className="mt-3 text-xs text-teal-400 hover:text-teal-300 font-medium">
-                          → Add to Library
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* SEEDS TAB */}
-          {activeTab === 'seeds' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-yellow-400" />
-                  Seed Ingestion
-                </h2>
-
-                <div className="space-y-4">
-                  {/* Input Type */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Input Type
-                    </label>
-                    <div className="flex gap-2 flex-wrap">
-                      {(['text', 'image', 'voice', 'url'] as const).map(type => (
-                        <button
-                          key={type}
-                          onClick={() => setSeedType(type)}
-                          className={`
-                            px-3 py-2 rounded-lg text-sm font-medium transition
-                            ${seedType === type
-                              ? 'bg-yellow-500/30 text-yellow-300 border border-yellow-500/50'
-                              : 'bg-slate-700/30 text-slate-400 border border-slate-600/30'
-                            }
-                          `}
-                        >
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Seed Input */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Your Idea (Raw Input)
-                    </label>
-                    <textarea
-                      value={seedInput}
-                      onChange={e => setSeedInput(e.target.value)}
-                      placeholder="Paste text, describe an image, summarize a voice memo, or enter a URL..."
-                      rows={4}
-                      className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500/50 resize-none"
-                    />
-                  </div>
-
-                  {/* Add Seed Button */}
-                  <button
-                    onClick={handleAddSeed}
-                    disabled={!seedInput.trim()}
-                    className="w-full px-4 py-3 rounded-lg bg-yellow-600 hover:bg-yellow-700 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold transition flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Transform into Story Proposal
-                  </button>
-                </div>
-
-                {/* Seed List */}
-                {seeds.length > 0 && (
-                  <div className="mt-6 space-y-3 border-t border-slate-700 pt-6">
-                    {seeds.map(seed => (
-                      <div key={seed.id} className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-slate-400 mb-1 font-mono">{seed.type.toUpperCase()}</p>
-                            <p className="text-sm text-slate-300 break-words">{seed.rawInput.slice(0, 150)}...</p>
-                          </div>
-                          <button className="text-red-400 hover:text-red-300 flex-shrink-0">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {seed.proposal && (
-                          <div className="mt-3 pt-3 border-t border-slate-600/30">
-                            <p className="text-sm font-semibold text-teal-300">{seed.proposal.title}</p>
-                            <p className="text-xs text-slate-400 mt-1">{seed.proposal.genre} • {seed.proposal.contentType}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* EXCELLENCE TAB */}
-          {activeTab === 'excellence' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Award className="w-5 h-5 text-purple-400" />
-                  Literary Excellence Scoring
-                </h2>
-
-                <div className="space-y-4">
-                  {/* Text to Score */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Paste Text to Score
-                    </label>
-                    <textarea
-                      value={textToScore}
-                      onChange={e => setTextToScore(e.target.value)}
-                      placeholder="Paste a chapter, scene, or excerpt for prose quality evaluation..."
-                      rows={6}
-                      className="w-full px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 resize-none text-sm"
-                    />
-                  </div>
-
-                  {/* Score Button */}
-                  <button
-                    onClick={handleScoreProse}
-                    disabled={scoringLoading || !textToScore.trim()}
-                    className="w-full px-4 py-3 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold transition flex items-center justify-center gap-2"
-                  >
-                    {scoringLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Evaluating...
-                      </>
-                    ) : (
-                      <>
-                        <TrendingUp className="w-4 h-4" />
-                        Score Literary Quality
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Metrics Display */}
-                {proseMetrics && (
-                  <div className="mt-6 border-t border-slate-700 pt-6 space-y-4">
-                    {/* Overall Score */}
-                    <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-lg p-4">
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-4xl font-bold text-purple-300">{proseMetrics.overallScore}</span>
-                        <div>
-                          <p className="text-sm text-slate-300">Overall Literary Quality</p>
-                          <p className="text-xs text-purple-300 font-semibold mt-1">
-                            Prize Level: {proseMetrics.prizeWorthinessLevel.toUpperCase()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Dimension Scores */}
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { key: 'clarity', label: 'Clarity', icon: '✓' },
-                        { key: 'originality', label: 'Originality', icon: '★' },
-                        { key: 'emotionalResonance', label: 'Emotion', icon: '❤' },
-                        { key: 'narrativeStrength', label: 'Narrative', icon: '→' },
-                        { key: 'characterDepth', label: 'Characters', icon: '👤' },
-                        { key: 'proseQuality', label: 'Prose', icon: '✨' }
-                      ].map(dimension => (
-                        <div key={dimension.key} className="bg-slate-700/30 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-slate-300">{dimension.label}</span>
-                            <span className="text-sm font-bold text-purple-300">{proseMetrics[dimension.key]}</span>
-                          </div>
-                          <div className="w-full h-1.5 bg-slate-600 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
-                              style={{ width: `${proseMetrics[dimension.key]}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Strengths & Recommendations */}
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-                        <h4 className="font-semibold text-green-300 text-sm mb-2">Strengths</h4>
-                        <ul className="text-xs text-slate-300 space-y-1">
-                          {proseMetrics.strengthAreas.map((area: string, i: number) => (
-                            <li key={i} className="flex gap-2">
-                              <Check className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" />
-                              {area}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                        <h4 className="font-semibold text-blue-300 text-sm mb-2">Recommendations</h4>
-                        <ul className="text-xs text-slate-300 space-y-1">
-                          {proseMetrics.recommendations.slice(0, 3).map((rec: string, i: number) => (
-                            <li key={i} className="flex gap-2">
-                              <span className="text-blue-400 flex-shrink-0">→</span>
-                              {rec}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* CHARACTERS TAB */}
-          {activeTab === 'characters' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-pink-400" />
-                  Character Humanizer
-                </h2>
-
-                <div className="space-y-4">
-                  {/* New Character Input */}
-                  <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-4 space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">
-                        Character Name
-                      </label>
-                      <input
-                        type="text"
-                        value={newCharName}
-                        onChange={e => setNewCharName(e.target.value)}
-                        placeholder="e.g., 'Marcus Webb' or 'The Postmaster'"
-                        className="w-full px-4 py-2 rounded-lg bg-slate-700/50 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">
-                        Brief Description
-                      </label>
-                      <textarea
-                        value={newCharBrief}
-                        onChange={e => setNewCharBrief(e.target.value)}
-                        placeholder="A grieving architect obsessed with precision and haunted by a construction accident from his past..."
-                        rows={3}
-                        className="w-full px-4 py-2 rounded-lg bg-slate-700/50 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-pink-500/50 resize-none text-sm"
-                      />
-                    </div>
-
-                    <button
-                      onClick={handleAddCharacter}
-                      disabled={!newCharName.trim()}
-                      className="w-full px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-700 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold transition text-sm"
-                    >
-                      + Add Character
-                    </button>
-                  </div>
-
-                  {/* Character List */}
-                  {characters.length > 0 && (
-                    <div className="space-y-3 border-t border-slate-700 pt-6">
-                      {characters.map(char => (
-                        <div key={char.id} className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-4">
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div>
-                              <h3 className="font-bold text-white text-sm sm:text-base">{char.name}</h3>
-                              <p className="text-xs text-slate-400 mt-1">{char.brief}</p>
-                            </div>
-                            <button
-                              onClick={() => handleHumanizeCharacter(char.id)}
-                              disabled={char.loading}
-                              className="px-3 py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/30 text-xs font-medium transition flex items-center gap-1.5 flex-shrink-0"
-                            >
-                              {char.loading ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  Analyzing...
-                                </>
-                              ) : (
-                                <>
-                                  <Heart className="w-3 h-3" />
-                                  Humanize
-                                </>
-                              )}
-                            </button>
-                          </div>
-
-                          {/* Psychology Display */}
-                          {char.psychology && (
-                            <div className="bg-slate-700/50 rounded-lg p-3 space-y-2 text-xs">
-                              <div>
-                                <p className="text-slate-400 font-semibold">Primary Wound</p>
-                                <p className="text-slate-300 mt-0.5">{char.psychology.primaryWound}</p>
-                              </div>
-                              <div className="grid sm:grid-cols-2 gap-3">
-                                <div>
-                                  <p className="text-slate-400 font-semibold">Defense Mechanism</p>
-                                  <p className="text-slate-300 mt-0.5">{char.psychology.defenseMechanism}</p>
-                                </div>
-                                <div>
-                                  <p className="text-slate-400 font-semibold">Deep Need</p>
-                                  <p className="text-slate-300 mt-0.5">{char.psychology.desireVsNeed?.deepNeed}</p>
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-slate-400 font-semibold">Key Insights</p>
-                                <ul className="text-slate-300 mt-1 space-y-0.5">
-                                  {char.psychology.actionableInsights?.slice(0, 2).map((insight: string, i: number) => (
-                                    <li key={i}>• {insight}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* FORMATS TAB */}
-          {activeTab === 'formats' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Palette className="w-5 h-5 text-blue-400" />
-                  Output Format Designer
-                </h2>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {[
-                    { type: 'Novel', icon: '📖', color: 'blue' },
-                    { type: 'Illustrated Manual', icon: '📘', color: 'green' },
-                    { type: 'Training Course', icon: '🎓', color: 'amber' },
-                    { type: 'Subject Bible', icon: '📚', color: 'purple' },
-                    { type: 'Cookbook', icon: '👨‍🍳', color: 'orange' },
-                    { type: 'Academic Paper', icon: '🔬', color: 'cyan' }
-                  ].map(format => (
-                    <button
-                      key={format.type}
-                      className={`p-4 rounded-lg border transition text-left group bg-slate-700/30 border-slate-600/50 hover:bg-slate-700/50 hover:border-${format.color}-500/30`}
-                    >
-                      <p className="text-2xl mb-2">{format.icon}</p>
-                      <p className="font-semibold text-white text-sm group-hover:text-teal-300">{format.type}</p>
-                      <p className="text-xs text-slate-400 mt-1">Generate structure & layout</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* LIBRARY TAB */}
-          {activeTab === 'library' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Archive className="w-5 h-5 text-green-400" />
-                  Reference Library
-                </h2>
-
-                <div className="text-center py-12">
-                  <Archive className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                  <p className="text-slate-400 text-sm">Save research, seeds, characters, and analyses here</p>
-                  <button className="mt-4 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium transition">
-                    Get Started
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
+      {/* ERROR DISPLAY */}
+      {state.error && (
+        <div style={styles.errorBox}>
+          <strong>⚠️ Error:</strong> {state.error}
         </div>
+      )}
+
+      {/* TAB CONTENT */}
+      <div style={styles.tabContent}>
+        {/* SEED LAB */}
+        {state.activeTab === 'seed' && (
+          <div>
+            <h2 style={styles.tabTitle}>🌱 Seed Lab: Raw Idea → Story Proposal</h2>
+            <p style={styles.tabDescription}>
+              Transform a single idea into a complete story proposal with characters, structure, and
+              prize positioning.
+            </p>
+
+            <div style={styles.form}>
+              <label style={styles.label}>
+                <strong>Core Idea *</strong>
+                <p style={styles.hint}>A single sentence or premise (e.g., "A woman finds her twin
+                in an alternate timeline")</p>
+              </label>
+              <textarea
+                value={seedInput.idea}
+                onChange={(e) => setSeedInput((s) => ({ ...s, idea: e.target.value }))}
+                placeholder="Enter your raw idea..."
+                style={styles.textarea}
+              />
+
+              <label style={styles.label}>
+                <strong>Genre (Optional)</strong>
+              </label>
+              <input
+                type="text"
+                value={seedInput.genre || ''}
+                onChange={(e) => setSeedInput((s) => ({ ...s, genre: e.target.value }))}
+                placeholder="e.g., Literary Fiction, Science Fiction, Historical..."
+                style={styles.input}
+              />
+
+              <label style={styles.label}>
+                <strong>Target Audience (Optional)</strong>
+              </label>
+              <input
+                type="text"
+                value={seedInput.targetAudience || ''}
+                onChange={(e) => setSeedInput((s) => ({ ...s, targetAudience: e.target.value }))}
+                placeholder="e.g., Adult readers seeking literary depth..."
+                style={styles.input}
+              />
+
+              <button
+                onClick={handleSeedLab}
+                disabled={state.isLoading}
+                style={{
+                  ...styles.button,
+                  ...(state.isLoading ? styles.buttonDisabled : {}),
+                }}
+              >
+                {state.isLoading ? '✨ Generating proposal...' : '✨ Generate Story Proposal'}
+              </button>
+            </div>
+
+            {state.result && state.activeTab === 'seed' && (
+              <ResultDisplay result={state.result} onClear={clearResult} />
+            )}
+          </div>
+        )}
+
+        {/* LITERARY EXCELLENCE */}
+        {state.activeTab === 'excellence' && (
+          <div>
+            <h2 style={styles.tabTitle}>🏆 Literary Excellence Engine</h2>
+            <p style={styles.tabDescription}>
+              Score your prose on 6 dimensions: prose quality, narrative arc, character depth,
+              emotional resonance, originality, and overall prize-calibre tier.
+            </p>
+
+            <div style={styles.form}>
+              <label style={styles.label}>
+                <strong>Manuscript Excerpt *</strong>
+                <p style={styles.hint}>Paste 300-800 words of your best prose</p>
+              </label>
+              <textarea
+                value={excellenceInput.excerpt}
+                onChange={(e) => setExcellenceInput((s) => ({ ...s, excerpt: e.target.value }))}
+                placeholder="Paste your manuscript excerpt..."
+                style={{ ...styles.textarea, minHeight: '300px' }}
+              />
+
+              <label style={styles.label}>
+                <strong>Genre (Optional)</strong>
+              </label>
+              <input
+                type="text"
+                value={excellenceInput.genre || ''}
+                onChange={(e) => setExcellenceInput((s) => ({ ...s, genre: e.target.value }))}
+                placeholder="e.g., Literary Fiction, Science Fiction..."
+                style={styles.input}
+              />
+
+              <button
+                onClick={handleLiteraryExcellence}
+                disabled={state.isLoading}
+                style={{
+                  ...styles.button,
+                  ...(state.isLoading ? styles.buttonDisabled : {}),
+                }}
+              >
+                {state.isLoading ? '🏆 Analyzing prose...' : '🏆 Analyze Literary Excellence'}
+              </button>
+            </div>
+
+            {state.result && state.activeTab === 'excellence' && (
+              <ResultDisplay result={state.result} onClear={clearResult} />
+            )}
+          </div>
+        )}
+
+        {/* CHARACTER PSYCHE */}
+        {state.activeTab === 'psyche' && (
+          <div>
+            <h2 style={styles.tabTitle}>🧠 Character Psyche Engine</h2>
+            <p style={styles.tabDescription}>
+              Build psychological depth grounded in attachment theory, trauma, and resilience
+              science.
+            </p>
+
+            <div style={styles.form}>
+              <label style={styles.label}>
+                <strong>Character Name *</strong>
+              </label>
+              <input
+                type="text"
+                value={psycheInput.name}
+                onChange={(e) => setPsycheInput((s) => ({ ...s, name: e.target.value }))}
+                placeholder="e.g., Eleanor Voss"
+                style={styles.input}
+              />
+
+              <label style={styles.label}>
+                <strong>Role / Position *</strong>
+              </label>
+              <input
+                type="text"
+                value={psycheInput.role}
+                onChange={(e) => setPsycheInput((s) => ({ ...s, role: e.target.value }))}
+                placeholder="e.g., Protagonist, Mentor, Antagonist..."
+                style={styles.input}
+              />
+
+              <label style={styles.label}>
+                <strong>Background Summary (Optional)</strong>
+              </label>
+              <textarea
+                value={psycheInput.backgroundSummary || ''}
+                onChange={(e) =>
+                  setPsycheInput((s) => ({ ...s, backgroundSummary: e.target.value }))
+                }
+                placeholder="Family history, upbringing, formative events..."
+                style={styles.textarea}
+              />
+
+              <label style={styles.label}>
+                <strong>Current Challenge (Optional)</strong>
+              </label>
+              <textarea
+                value={psycheInput.currentChallenge || ''}
+                onChange={(e) =>
+                  setPsycheInput((s) => ({ ...s, currentChallenge: e.target.value }))
+                }
+                placeholder="What are they facing right now in the story?"
+                style={styles.textarea}
+              />
+
+              <button
+                onClick={handleCharacterPsyche}
+                disabled={state.isLoading}
+                style={{
+                  ...styles.button,
+                  ...(state.isLoading ? styles.buttonDisabled : {}),
+                }}
+              >
+                {state.isLoading ? '🧠 Analyzing psyche...' : '🧠 Analyze Character Psyche'}
+              </button>
+            </div>
+
+            {state.result && state.activeTab === 'psyche' && (
+              <ResultDisplay result={state.result} onClear={clearResult} />
+            )}
+          </div>
+        )}
+
+        {/* MULTI-FORMAT DESIGNER */}
+        {state.activeTab === 'format' && (
+          <div>
+            <h2 style={styles.tabTitle}>📚 Multi-Format Designer</h2>
+            <p style={styles.tabDescription}>
+              Transform a manuscript into professional output: novel, manual, training course,
+              subject bible, or non-fiction.
+            </p>
+
+            <div style={styles.form}>
+              <label style={styles.label}>
+                <strong>Output Format *</strong>
+              </label>
+              <select
+                value={formatInput.format}
+                onChange={(e) =>
+                  setFormatInput((s) => ({ ...s, format: e.target.value as OutputFormat }))
+                }
+                style={styles.input}
+              >
+                <option value="literary-novel">📖 Literary Novel</option>
+                <option value="illustrated-manual">🎨 Illustrated Manual</option>
+                <option value="training-course">🎓 Training Course</option>
+                <option value="subject-bible">📋 Subject Bible</option>
+                <option value="non-fiction">🔬 Non-Fiction</option>
+              </select>
+
+              <label style={styles.label}>
+                <strong>Manuscript Excerpt *</strong>
+              </label>
+              <textarea
+                value={formatInput.manuscriptExcerpt}
+                onChange={(e) => setFormatInput((s) => ({ ...s, manuscriptExcerpt: e.target.value }))}
+                placeholder="Paste the content you want to transform..."
+                style={styles.textarea}
+              />
+
+              <label style={styles.label}>
+                <strong>Target Audience (Optional)</strong>
+              </label>
+              <input
+                type="text"
+                value={formatInput.targetAudience || ''}
+                onChange={(e) => setFormatInput((s) => ({ ...s, targetAudience: e.target.value }))}
+                placeholder="e.g., Product designers, software engineers, business leaders..."
+                style={styles.input}
+              />
+
+              <button
+                onClick={handleMultiFormat}
+                disabled={state.isLoading}
+                style={{
+                  ...styles.button,
+                  ...(state.isLoading ? styles.buttonDisabled : {}),
+                }}
+              >
+                {state.isLoading ? '📚 Designing format...' : '📚 Design Format Structure'}
+              </button>
+            </div>
+
+            {state.result && state.activeTab === 'format' && (
+              <ResultDisplay result={state.result} onClear={clearResult} />
+            )}
+          </div>
+        )}
+
+        {/* NON-FICTION ARCHITECT */}
+        {state.activeTab === 'nonfiction' && (
+          <div>
+            <h2 style={styles.tabTitle}>🔬 Non-Fiction Architect</h2>
+            <p style={styles.tabDescription}>
+              Weave research into compelling narrative with proper citation architecture and
+              authority building.
+            </p>
+
+            <div style={styles.form}>
+              <label style={styles.label}>
+                <strong>Topic *</strong>
+              </label>
+              <input
+                type="text"
+                value={nonfictionInput.topic}
+                onChange={(e) => setNonfictionInput((s) => ({ ...s, topic: e.target.value }))}
+                placeholder="e.g., The neuroscience of creativity, Victorian social reform..."
+                style={styles.input}
+              />
+
+              <label style={styles.label}>
+                <strong>Manuscript Excerpt (Optional)</strong>
+              </label>
+              <textarea
+                value={nonfictionInput.manuscriptExcerpt || ''}
+                onChange={(e) =>
+                  setNonfictionInput((s) => ({ ...s, manuscriptExcerpt: e.target.value }))
+                }
+                placeholder="Any draft material to review..."
+                style={styles.textarea}
+              />
+
+              <label style={styles.label}>
+                <strong>Author Voice (Optional)</strong>
+              </label>
+              <input
+                type="text"
+                value={nonfictionInput.authorVoice || ''}
+                onChange={(e) => setNonfictionInput((s) => ({ ...s, authorVoice: e.target.value }))}
+                placeholder="e.g., Conversational and witty, deeply academic, accessible to general readers..."
+                style={styles.input}
+              />
+
+              <button
+                onClick={handleNonfiction}
+                disabled={state.isLoading}
+                style={{
+                  ...styles.button,
+                  ...(state.isLoading ? styles.buttonDisabled : {}),
+                }}
+              >
+                {state.isLoading ? '🔬 Architecting...' : '🔬 Architect Non-Fiction'}
+              </button>
+            </div>
+
+            {state.result && state.activeTab === 'nonfiction' && (
+              <ResultDisplay result={state.result} onClear={clearResult} />
+            )}
+          </div>
+        )}
+
+        {/* RESEARCH INTEGRATION HUB */}
+        {state.activeTab === 'research' && (
+          <div>
+            <h2 style={styles.tabTitle}>🔗 Research Integration Hub</h2>
+            <p style={styles.tabDescription}>
+              Connect your research to characters, plot, and themes. Linked sources: {research.length}
+            </p>
+
+            <div style={styles.form}>
+              <label style={styles.label}>
+                <strong>What should research inform? *</strong>
+              </label>
+              <textarea
+                value={researchQuery}
+                onChange={(e) => setResearchQuery(e.target.value)}
+                placeholder="e.g., Character Eleanor's trauma response, the plot's historical accuracy, the theme of resilience..."
+                style={styles.textarea}
+              />
+
+              <button
+                onClick={handleResearchIntegration}
+                disabled={state.isLoading || research.length === 0}
+                style={{
+                  ...styles.button,
+                  ...(state.isLoading || research.length === 0 ? styles.buttonDisabled : {}),
+                }}
+              >
+                {state.isLoading
+                  ? '🔗 Integrating...'
+                  : research.length === 0
+                    ? '🔗 Add Research First'
+                    : '🔗 Integrate Research'}
+              </button>
+
+              {research.length === 0 && (
+                <p style={styles.hint}>
+                  💡 Start by adding research sources in the Research Desk. They'll appear here
+                  ready to integrate.
+                </p>
+              )}
+            </div>
+
+            {state.result && state.activeTab === 'research' && (
+              <ResultDisplay result={state.result} onClear={clearResult} />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* FOOTER */}
+      <div style={styles.footer}>
+        <p>
+          💡 <strong>Tip:</strong> Results are fully editable. Use engine output as a starting
+          point, not a finished product.
+        </p>
       </div>
     </div>
   );
+};
+
+// ============================================================================
+// RESULT DISPLAY COMPONENT
+// ============================================================================
+
+interface ResultDisplayProps {
+  result: any;
+  onClear: () => void;
+}
+
+const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, onClear }) => {
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = () => {
+    const text = JSON.stringify(result, null, 2);
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div style={styles.resultBox}>
+      <div style={styles.resultHeader}>
+        <h3 style={styles.resultTitle}>✨ Engine Result</h3>
+        <div style={styles.resultActions}>
+          <button
+            onClick={copyToClipboard}
+            style={{
+              ...styles.smallButton,
+              backgroundColor: copied ? '#4CAF50' : '#2196F3',
+            }}
+          >
+            {copied ? '✓ Copied' : 'Copy'}
+          </button>
+          <button onClick={onClear} style={styles.smallButton}>
+            New Analysis
+          </button>
+        </div>
+      </div>
+      <pre style={styles.resultContent}>{JSON.stringify(result, null, 2)}</pre>
+    </div>
+  );
+};
+
+// ============================================================================
+// STYLES
+// ============================================================================
+
+const styles = {
+  container: {
+    maxWidth: '1000px',
+    margin: '0 auto',
+    padding: '20px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    backgroundColor: '#fafafa',
+    borderRadius: '8px',
+    marginBottom: '40px',
+  } as React.CSSProperties,
+
+  header: {
+    marginBottom: '30px',
+    borderBottom: '2px solid #e0e0e0',
+    paddingBottom: '20px',
+  } as React.CSSProperties,
+
+  title: {
+    fontSize: '32px',
+    fontWeight: 'bold',
+    margin: '0 0 8px 0',
+    color: '#1a1a1a',
+  } as React.CSSProperties,
+
+  subtitle: {
+    fontSize: '16px',
+    color: '#666',
+    margin: '0',
+  } as React.CSSProperties,
+
+  tabNav: {
+    display: 'flex',
+    gap: '8px',
+    marginBottom: '20px',
+    flexWrap: 'wrap',
+  } as React.CSSProperties,
+
+  tabButton: {
+    padding: '10px 16px',
+    border: '1px solid #ddd',
+    backgroundColor: '#fff',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500',
+    transition: 'all 0.2s',
+    color: '#666',
+  } as React.CSSProperties,
+
+  tabButtonActive: {
+    backgroundColor: '#2196F3',
+    color: '#fff',
+    borderColor: '#1976D2',
+  } as React.CSSProperties,
+
+  tabContent: {
+    backgroundColor: '#fff',
+    padding: '30px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+  } as React.CSSProperties,
+
+  tabTitle: {
+    fontSize: '24px',
+    fontWeight: 'bold',
+    margin: '0 0 12px 0',
+  } as React.CSSProperties,
+
+  tabDescription: {
+    fontSize: '14px',
+    color: '#666',
+    marginBottom: '24px',
+  } as React.CSSProperties,
+
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  } as React.CSSProperties,
+
+  label: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    fontSize: '14px',
+    fontWeight: '500',
+  } as React.CSSProperties,
+
+  hint: {
+    fontSize: '12px',
+    color: '#999',
+    fontWeight: 'normal',
+    margin: '0',
+  } as React.CSSProperties,
+
+  input: {
+    padding: '10px 12px',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontFamily: 'inherit',
+  } as React.CSSProperties,
+
+  textarea: {
+    padding: '10px 12px',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontFamily: 'monospace',
+    resize: 'vertical',
+    minHeight: '120px',
+  } as React.CSSProperties,
+
+  button: {
+    padding: '12px 20px',
+    backgroundColor: '#2196F3',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+  } as React.CSSProperties,
+
+  buttonDisabled: {
+    backgroundColor: '#ccc',
+    cursor: 'not-allowed',
+  } as React.CSSProperties,
+
+  smallButton: {
+    padding: '6px 12px',
+    backgroundColor: '#2196F3',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  } as React.CSSProperties,
+
+  errorBox: {
+    padding: '12px 16px',
+    backgroundColor: '#ffebee',
+    color: '#c62828',
+    borderRadius: '6px',
+    marginBottom: '20px',
+    fontSize: '14px',
+  } as React.CSSProperties,
+
+  resultBox: {
+    backgroundColor: '#f5f5f5',
+    padding: '20px',
+    borderRadius: '6px',
+    marginTop: '20px',
+    border: '1px solid #e0e0e0',
+  } as React.CSSProperties,
+
+  resultHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid #e0e0e0',
+  } as React.CSSProperties,
+
+  resultTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    margin: '0',
+  } as React.CSSProperties,
+
+  resultActions: {
+    display: 'flex',
+    gap: '8px',
+  } as React.CSSProperties,
+
+  resultContent: {
+    backgroundColor: '#fff',
+    padding: '12px',
+    borderRadius: '4px',
+    fontSize: '12px',
+    overflow: 'auto',
+    maxHeight: '400px',
+    margin: '0',
+    border: '1px solid #ddd',
+  } as React.CSSProperties,
+
+  footer: {
+    padding: '20px',
+    backgroundColor: '#e3f2fd',
+    borderRadius: '6px',
+    fontSize: '13px',
+    color: '#1976D2',
+  } as React.CSSProperties,
 };
 
 export default EnhancedResearchDesk;
