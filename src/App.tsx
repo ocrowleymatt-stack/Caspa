@@ -93,6 +93,7 @@ import PublishView from './components/PublishView';
 import PrizeView from './components/PrizeView';
 import ReaderView from './components/ReaderView';
 import ReviewVault from './components/ReviewVault';
+import EvidenceArchive from './components/EvidenceArchive';
 import PinGate from './components/PinGate';
 import ScalpelModule from './components/ScalpelModule';
 import AutoDrafter from './components/AutoDrafter';
@@ -1938,16 +1939,11 @@ export default function App() {
               </div>
             )}
             {currentView === 'upload' && (
-              <div className="flex-1 flex flex-col min-h-0 p-2 md:p-4 lg:p-3">
-                <IntelligenceLab 
+              <div className="flex-1 flex flex-col min-h-0">
+                <EvidenceArchive
                   key={project.id}
                   project={project}
-                  research={research}
-                  chapters={chapters}
                   sourceMaterials={sourceMaterials}
-                  onAddResearch={upsertResearch}
-                  onDeleteResearch={(id) => deleteSubDoc('research', id)}
-                  onAddChapter={upsertChapter}
                   onAddSource={upsertSourceMaterial}
                   onDeleteSource={(id) => deleteSubDoc('sourceMaterials', id)}
                   onNotify={(msg, type) => addNotification(msg, type || 'info')}
