@@ -24,7 +24,7 @@
     "noEmit": true
   },
   "exclude": [
-    "Shakespeare",
+    "Caspa",
     "src_backup",
     "node_modules",
     "dist"
