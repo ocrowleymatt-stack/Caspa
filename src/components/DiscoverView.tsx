@@ -148,7 +148,7 @@ export default function DiscoverView({
   const [error, setError] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>('characters');
-  const [activeTab, setActiveTab] = useState<'ingest' | 'library'>('ingest');
+  const [activeTab, setActiveTab] = useState<'ingest' | 'library' | 'prize'>('ingest');
   const [searchTerm, setSearchTerm] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
