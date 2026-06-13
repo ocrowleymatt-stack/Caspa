@@ -1,3 +1,4 @@
+import PrizeCalibrationDashboard from './PrizeCalibrationDashboard';
 import React, { useState, useRef, useCallback } from 'react';
 import {
   Project, ResearchNote, Chapter, SourceMaterial, Character, PlotNode
@@ -332,6 +333,12 @@ export default function DiscoverView({
           >
             Library ({research.length + sourceMaterials.length})
           </button>
+            <button
+              onClick={() => setActiveTab('prize')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'prize' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              🏆 Prize Calibration
+            </button>
         </div>
       </div>
 
@@ -624,6 +631,12 @@ export default function DiscoverView({
               <p>{searchTerm ? 'Nothing matches your search' : 'No research yet — upload some files to get started'}</p>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'prize' && (
+        <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-y-auto p-4">
+          <PrizeCalibrationDashboard />
         </div>
       )}
     </div>
