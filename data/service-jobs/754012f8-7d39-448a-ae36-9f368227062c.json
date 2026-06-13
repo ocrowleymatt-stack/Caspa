@@ -1,0 +1,17 @@
+{
+  "jobId": "754012f8-7d39-448a-ae36-9f368227062c",
+  "status": "failed",
+  "submittedAt": "2026-06-13T20:49:29.459Z",
+  "documentCount": 1,
+  "processed": 0,
+  "failed": 1,
+  "results": {
+    "test": {
+      "documentId": "test",
+      "status": "failed",
+      "error": "Failed to launch the browser process:  Code: 127\n\nstderr:\n/root/.cache/puppeteer/chrome/linux-147.0.7727.57/chrome-linux64/chrome: error while loading shared libraries: libnspr4.so: cannot open shared object file: No such file or directory\n\nTROUBLESHOOTING: https://pptr.dev/troubleshooting\n"
+    }
+  },
+  "startedAt": "2026-06-13T20:49:29.460Z",
+  "completedAt": "2026-06-13T20:49:29.475Z"
+}

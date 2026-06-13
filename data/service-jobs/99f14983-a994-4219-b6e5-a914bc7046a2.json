@@ -1,0 +1,16 @@
+{
+  "jobId": "99f14983-a994-4219-b6e5-a914bc7046a2",
+  "status": "failed",
+  "submittedAt": "2026-06-13T20:47:17.567Z",
+  "documentCount": 1,
+  "processed": 0,
+  "failed": 0,
+  "results": {
+    "novel-1": {
+      "documentId": "novel-1",
+      "status": "pending"
+    }
+  },
+  "error": "result is not defined",
+  "startedAt": "2026-06-13T20:47:17.568Z"
+}

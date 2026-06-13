@@ -1,0 +1,22 @@
+{
+  "jobId": "371643a6-f6ed-4701-bed3-c4adbc7e2c41",
+  "status": "failed",
+  "submittedAt": "2026-06-13T20:48:52.462Z",
+  "documentCount": 2,
+  "processed": 0,
+  "failed": 2,
+  "results": {
+    "story-1": {
+      "documentId": "story-1",
+      "status": "failed",
+      "error": "this.pdfService.assemblePDF is not a function"
+    },
+    "story-2": {
+      "documentId": "story-2",
+      "status": "failed",
+      "error": "this.pdfService.assemblePDF is not a function"
+    }
+  },
+  "startedAt": "2026-06-13T20:48:52.463Z",
+  "completedAt": "2026-06-13T20:48:52.473Z"
+}

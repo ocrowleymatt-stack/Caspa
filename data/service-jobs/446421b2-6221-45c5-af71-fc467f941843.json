@@ -1,0 +1,16 @@
+{
+  "jobId": "446421b2-6221-45c5-af71-fc467f941843",
+  "status": "failed",
+  "submittedAt": "2026-06-13T20:46:30.805Z",
+  "documentCount": 1,
+  "processed": 0,
+  "failed": 0,
+  "results": {
+    "doc-001": {
+      "documentId": "doc-001",
+      "status": "pending"
+    }
+  },
+  "error": "result is not defined",
+  "startedAt": "2026-06-13T20:46:30.808Z"
+}

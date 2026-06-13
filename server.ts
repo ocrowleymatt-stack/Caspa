@@ -7,6 +7,7 @@ import { analyzeContent, generateGrokPrompts, validateProductionReadiness, gener
 import { createGrokImagineService, type GenerationRequest, type GenerationResult } from './src/services/GrokImagineService';
 import pdfRoutes from './src/services/pdf-assembly-routes';
 import { createBookMetadataRoutes } from './src/services/book-metadata-routes';
+import serviceApiRoutes from './src/services/service-api-routes';
 
 dotenv.config();
 
@@ -860,6 +861,7 @@ app.post('/api/content/estimate-cost', async (req, res) => {
 
 // Mount PDF Assembly routes (BEFORE Vite middleware)
 app.use("/api/metadata", createBookMetadataRoutes(process.env.GEMINI_API_KEY!));
+app.use("/api/service", serviceApiRoutes);
 app.use("/api", pdfRoutes);
 
 async function run() {
