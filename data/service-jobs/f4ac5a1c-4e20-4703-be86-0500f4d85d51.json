@@ -1,0 +1,17 @@
+{
+  "jobId": "f4ac5a1c-4e20-4703-be86-0500f4d85d51",
+  "status": "failed",
+  "submittedAt": "2026-06-13T21:18:27.790Z",
+  "documentCount": 1,
+  "processed": 0,
+  "failed": 1,
+  "results": {
+    "test-chromium-1": {
+      "documentId": "test-chromium-1",
+      "status": "failed",
+      "error": "Failed to launch the browser process:  Code: 127\n\nstderr:\n/root/.cache/puppeteer/chrome/linux-147.0.7727.57/chrome-linux64/chrome: error while loading shared libraries: libatk-1.0.so.0: cannot open shared object file: No such file or directory\n\nTROUBLESHOOTING: https://pptr.dev/troubleshooting\n"
+    }
+  },
+  "startedAt": "2026-06-13T21:18:27.792Z",
+  "completedAt": "2026-06-13T21:18:27.807Z"
+}

@@ -1,0 +1,17 @@
+{
+  "jobId": "a92d8e54-79a9-408a-adad-b42ac5f921b3",
+  "status": "failed",
+  "submittedAt": "2026-06-13T21:22:13.580Z",
+  "documentCount": 1,
+  "processed": 0,
+  "failed": 1,
+  "results": {
+    "pdf-gen-test": {
+      "documentId": "pdf-gen-test",
+      "status": "failed",
+      "error": "Cannot read properties of undefined (reading 'map')"
+    }
+  },
+  "startedAt": "2026-06-13T21:22:13.582Z",
+  "completedAt": "2026-06-13T21:22:14.214Z"
+}

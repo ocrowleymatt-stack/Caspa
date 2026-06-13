@@ -1,0 +1,18 @@
+{
+  "jobId": "437dafd9-baed-4f45-9ae0-d8d541dcdaf1",
+  "status": "completed",
+  "submittedAt": "2026-06-13T21:24:37.488Z",
+  "documentCount": 1,
+  "processed": 1,
+  "failed": 0,
+  "results": {
+    "pdf-test-1": {
+      "documentId": "pdf-test-1",
+      "status": "completed",
+      "pdfPath": "437dafd9-baed-4f45-9ae0-d8d541dcdaf1/pdf-test-1.pdf",
+      "processingTime": 2487
+    }
+  },
+  "startedAt": "2026-06-13T21:24:37.490Z",
+  "completedAt": "2026-06-13T21:24:39.983Z"
+}

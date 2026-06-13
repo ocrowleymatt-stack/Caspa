@@ -221,22 +221,10 @@ export class ServiceAPIManager {
         const pdfFullPath = path.join(RESULTS_DIR, pdfRelPath);
         await fs.mkdir(path.dirname(pdfFullPath), { recursive: true });
 
-        // Use the correct PDF generation method
+        // Generate PDF using simple methods
         const pdfResult = request.outputFormat === 'professional'
-          ? await this.pdfService.generateProfessionalPDF({
-              html: `<h1>${manuscript.title}</h1><p>${manuscript.content}</p>`,
-              filename: `${manuscript.id}.pdf`,
-              width: 210,
-              height: 297,
-              designProfile: { layout: { columnCount: 1, margin: 20 } },
-            })
-          : await this.pdfService.generateScreenPDF({
-              html: `<h1>${manuscript.title}</h1><p>${manuscript.content}</p>`,
-              filename: `${manuscript.id}.pdf`,
-              width: 800,
-              height: 600,
-              designProfile: { layout: { columnCount: 1, margin: 10 } },
-            });
+          ? await this.pdfService.generateSimpleProfessionalPDF(manuscript.title, manuscript.content)
+          : await this.pdfService.generateSimpleScreenPDF(manuscript.title, manuscript.content);
 
         await fs.writeFile(pdfFullPath, pdfResult.buffer);
 

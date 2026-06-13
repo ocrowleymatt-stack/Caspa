@@ -70,6 +70,7 @@ class PDFAssemblyService {
   async initBrowser(): Promise<void> {
     if (!this.browser) {
       this.browser = await puppeteer.launch({
+        executablePath: '/usr/bin/chromium-browser',
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
@@ -414,6 +415,61 @@ class PDFAssemblyService {
       this.browser = null;
     }
   }
+
+  /**
+   * Simple text-based PDF generation for service API
+   */
+  async generateSimpleScreenPDF(title: string, content: string): Promise<{ buffer: Buffer; output: PDFOutput }> {
+    await this.initBrowser();
+    if (!this.browser) throw new Error('Browser initialization failed');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: Georgia, serif; line-height: 1.6; margin: 20mm; color: #333; }
+          h1 { font-size: 28pt; margin: 0 0 20px 0; }
+          p { font-size: 12pt; margin: 8px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>${title}</h1>
+        <div>${content}</div>
+      </body>
+      </html>
+    `;
+
+    const page = await this.browser.newPage();
+    try {
+      await page.setContent(html, { waitUntil: 'networkidle2' });
+      const buffer = await page.pdf({
+        format: 'A4',
+        margin: { top: '20mm', bottom: '20mm', left: '25mm', right: '20mm' },
+        printBackground: true,
+      });
+
+      return {
+        buffer,
+        output: {
+          format: 'PDF',
+          colorSpace: 'sRGB',
+          resolution: 72,
+          pageCount: 1,
+          fileSize: buffer.length,
+        },
+      };
+    } finally {
+      await page.close();
+    }
+  }
+
+  async generateSimpleProfessionalPDF(title: string, content: string): Promise<{ buffer: Buffer; output: PDFOutput }> {
+    // Phase 4a uses screen; Phase 4b adds CMYK
+    return this.generateSimpleScreenPDF(title, content);
+  }
+
 }
 
 export default new PDFAssemblyService();
