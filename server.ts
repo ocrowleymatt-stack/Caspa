@@ -745,30 +745,30 @@ You challenge weak ideas, celebrate bold ones, and always push toward a better s
 - Your reply text and any block are separate — text explains and justifies, JSON contains data.
 
 ━━━ CURRENT BOOK STATE ━━━
-Title: \${project?.title || 'Untitled'}
-Genre: \${project?.genre || 'Unknown'}
-Type: \${project?.type || 'novel'}
-Premise: \${project?.premise || 'Not set'}
-Tone: \${project?.tone || 'Not set'}
+Title: ${project?.title || 'Untitled'}
+Genre: ${project?.genre || 'Unknown'}
+Type: ${project?.type || 'novel'}
+Premise: ${project?.premise || 'Not set'}
+Tone: ${project?.tone || 'Not set'}
 
-CHARACTERS (\${characters.length}):
-\${characters.map((c: any) => `- [\${c.id}] \${c.name} (\${c.role}): \${c.backstory?.slice(0,200) || ''}`).join('\n') || 'None'}
+CHARACTERS (${characters.length}):
+${characters.map((c: any) => `- [${c.id}] ${c.name} (${c.role}): ${c.backstory?.slice(0,200) || ''}`).join('\n') || 'None'}
 
-PLOT THREADS (\${plotNodes.length}):
-\${plotNodes.map((n: any) => `- [\${n.id}] \${n.title} (\${n.type}/\${n.status}): \${n.description?.slice(0,150) || ''}`).join('\n') || 'None'}
+PLOT THREADS (${plotNodes.length}):
+${plotNodes.map((n: any) => `- [${n.id}] ${n.title} (${n.type}/${n.status}): ${n.description?.slice(0,150) || ''}`).join('\n') || 'None'}
 
-CHAPTERS (\${chapters.length}):
-\${chapters.map((ch: any) => `- [\${ch.id}] Ch.\${ch.order+1} "\${ch.title}": \${ch.summary?.slice(0,150) || ''}`).join('\n') || 'None'}
+CHAPTERS (${chapters.length}):
+${chapters.map((ch: any) => `- [${ch.id}] Ch.${ch.order+1} "${ch.title}": ${ch.summary?.slice(0,150) || ''}`).join('\n') || 'None'}
 
-RESEARCH (\${research.length}):
-\${research.map((r: any) => `- [\${r.id}] [\${r.category}] \${r.title}: \${r.content?.slice(0,100) || ''}`).join('\n') || 'None'}`;
+RESEARCH (${research.length}):
+${research.map((r: any) => `- [${r.id}] [${r.category}] ${r.title}: ${r.content?.slice(0,100) || ''}`).join('\n') || 'None'}`;
 
-    // ── Helper: call AI ──────────────────────────────────────────────────────
+    // ── Helper: call AI ───────────────────────────────────────────────────────
     const callAI = async (msgs: any[], useWebSearch = false): Promise<string> => {
       if (grokKey) {
         try {
           const body: any = {
-            model: useWebSearch ? 'grok-3' : 'grok-3',
+            model: 'grok-3',
             messages: msgs,
             temperature: useWebSearch ? 0.3 : 0.9,
             max_tokens: useWebSearch ? 4000 : 3000,
@@ -778,7 +778,7 @@ RESEARCH (\${research.length}):
           }
           const r = await fetch('https://api.x.ai/v1/chat/completions', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer \${grokKey}` },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${grokKey}` },
             body: JSON.stringify(body),
           });
           if (r.ok) {
@@ -791,7 +791,7 @@ RESEARCH (\${research.length}):
       if (openaiKey) {
         const r = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer \${openaiKey}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
           body: JSON.stringify({
             model: 'gpt-4o',
             messages: msgs,
@@ -807,7 +807,7 @@ RESEARCH (\${research.length}):
       return '';
     };
 
-    // ── Helper: parse blocks ─────────────────────────────────────────────────
+    // ── Helper: parse [CHANGES] blocks ───────────────────────────────────────
     const parseChanges = (raw: string): { changes: any[]; clean: string } => {
       const m = raw.match(/\[CHANGES\]\s*([\s\S]*?)\s*\[\/CHANGES\]/);
       if (!m) return { changes: [], clean: raw.trim() };
@@ -816,6 +816,7 @@ RESEARCH (\${research.length}):
       return { changes, clean: raw.replace(/\[CHANGES\][\s\S]*?\[\/CHANGES\]/g, '').trim() };
     };
 
+    // ── Helper: parse [RESEARCH] blocks ──────────────────────────────────────
     const parseResearch = (raw: string): { queries: string[]; reason: string; clean: string } | null => {
       const m = raw.match(/\[RESEARCH\]\s*([\s\S]*?)\s*\[\/RESEARCH\]/);
       if (!m) return null;
@@ -826,7 +827,7 @@ RESEARCH (\${research.length}):
       } catch { return null; }
     };
 
-    // ── Step 1: Initial AI call ──────────────────────────────────────────────
+    // ── Step 1: Initial AI call ───────────────────────────────────────────────
     const history = messages.map((m: any) => ({
       role: m.role === 'ai' ? 'assistant' : m.role,
       content: m.content,
@@ -835,20 +836,19 @@ RESEARCH (\${research.length}):
     let raw = await callAI([{ role: 'system', content: systemPrompt }, ...history]);
     if (!raw) return res.status(502).json({ error: 'No AI provider available' });
 
-    // ── Step 2: Check if AI requested research ───────────────────────────────
+    // ── Step 2: Check if AI requested research ────────────────────────────────
     const researchReq = parseResearch(raw);
 
     if (researchReq && researchReq.queries.length > 0) {
-      const introReply = researchReq.clean || `Let me look that up — running \${researchReq.queries.length} search\${researchReq.queries.length > 1 ? 'es' : ''} now.`;
+      const introReply = researchReq.clean || `Let me look that up — running ${researchReq.queries.length} search${researchReq.queries.length > 1 ? 'es' : ''} now.`;
 
-      // Fire a Grok web-search call per query (max 3)
       const queries = researchReq.queries.slice(0, 3);
       const researchChanges: any[] = [];
 
       for (const query of queries) {
-        const searchPrompt = `Search for: "\${query}"
-Context: This research is for a \${project?.genre || ''} \${project?.type || 'novel'} called "\${project?.title || 'Untitled'}".
-Reason: \${researchReq.reason}
+        const searchPrompt = `Search for: "${query}"
+Context: This research is for a ${project?.genre || ''} ${project?.type || 'novel'} called "${project?.title || 'Untitled'}".
+Reason: ${researchReq.reason}
 
 Return a detailed research note with:
 1. A clear title for the research topic
@@ -859,19 +859,21 @@ Return a detailed research note with:
 Format your response as a well-structured research note, not a list of bullet points.`;
 
         const searchRaw = await callAI([
-          { role: 'system', content: `You are a research assistant for fiction writers. When given a query, search the web and return detailed, accurate, source-grounded information.` },
+          { role: 'system', content: 'You are a research assistant for fiction writers. When given a query, search the web and return detailed, accurate, source-grounded information.' },
           { role: 'user', content: searchPrompt },
         ], true);
 
         if (searchRaw) {
+          const changeId = `res-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const dataId = `res-${Date.now()}-${Math.random().toString(36).slice(2)}`;
           researchChanges.push({
-            id: `res-\${Date.now()}-\${Math.random().toString(36).slice(2)}`,
+            id: changeId,
             type: 'research_add',
             title: query,
-            description: `Live research: \${query}`,
+            description: `Live research: ${query}`,
             impact: 'medium',
             data: {
-              id: `res-\${Date.now()}-\${Math.random().toString(36).slice(2)}`,
+              id: dataId,
               title: query,
               content: searchRaw,
               category: 'Pilot Seat Research',
@@ -882,21 +884,14 @@ Format your response as a well-structured research note, not a list of bullet po
         }
       }
 
-      // Step 3: Feed research results back to AI for a synthesis reply
+      // Step 3: Feed research back to AI for synthesis
       const synthesisMessages = [
         { role: 'system', content: systemPrompt },
         ...history,
         { role: 'assistant', content: introReply },
         {
           role: 'user',
-          content: `[SYSTEM: Research complete. Results below. Use these to continue the conversation naturally — synthesise the key points relevant to the story, then keep the discussion going.]
-
-\${researchChanges.map((c, i) => `RESULT \${i+1} — \${c.data.title}:
-\${c.data.content?.slice(0, 800)}`).join('
-
----
-
-')}`,
+          content: `[SYSTEM: Research complete. Results below. Synthesise the key points relevant to the story, then keep the discussion going.]\n\n${researchChanges.map((c, i) => `RESULT ${i + 1} — ${c.data.title}:\n${c.data.content?.slice(0, 800)}`).join('\n\n---\n\n')}`,
         },
       ];
 
@@ -906,12 +901,12 @@ Format your response as a well-structured research note, not a list of bullet po
       return res.json({
         reply: introReply,
         researching: true,
-        researchReply: synthesisReply || `Found \${researchChanges.length} research note\${researchChanges.length !== 1 ? 's' : ''} — staged above.`,
+        researchReply: synthesisReply || `Found ${researchChanges.length} research note${researchChanges.length !== 1 ? 's' : ''} — staged above.`,
         changes: [...researchChanges, ...extraChanges],
       });
     }
 
-    // ── Step 3: Normal reply — parse changes ─────────────────────────────────
+    // ── Step 3: Normal reply — parse changes ──────────────────────────────────
     const { changes, clean: reply } = parseChanges(raw);
     return res.json({ reply, changes: changes.length ? changes : undefined });
 
@@ -920,6 +915,7 @@ Format your response as a well-structured research note, not a list of bullet po
     return res.status(500).json({ error: e.message || 'Internal error' });
   }
 });
+
 
 app.post('/api/ai/pilot-directive', async (req, res) => {
   try {
@@ -999,7 +995,7 @@ Rules:
       try {
         const r = await fetch('https://api.x.ai/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization':  },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + grokKey },
           body: JSON.stringify({
             model: 'grok-3',
             messages: [
@@ -1021,7 +1017,7 @@ Rules:
     if (!raw && openaiKey) {
       const r = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization':  },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + openaiKey },
         body: JSON.stringify({
           model: 'gpt-4o',
           messages: [
