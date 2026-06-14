@@ -37,7 +37,7 @@ async function callGeminiAssistant(prompt: string, context: string = ''): Promis
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.0-advanced',
       contents: fullPrompt,
       config: {
         systemInstruction: 'You are a snobbish, excellence-obsessed literary editor. Provide raw, high-fidelity suggestions that elevate prose.',
