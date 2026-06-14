@@ -1,298 +1,244 @@
 /**
- * EnhancedResearchDesk - Fixed Production Version
- * Simplified, battle-tested Creative Studio UI
+ * Creative Studio — Nexus Strategist Design System
+ * Follows O'Crowley Systems brand guidelines
  */
 
 import React, { useState } from 'react';
-import type { Character, ResearchEntry, Project } from '../types';
-import { creativeEngineServices } from '../services/CreativeEngineCore';
+import './EnhancedResearchDesk.module.css';
 
-interface EnhancedResearchDeskProps {
-  project?: Project;
-  characters?: Character[];
-  chapters?: any[];
-  research?: ResearchEntry[];
-  sourceMaterials?: any[];
-  services?: any;
-  onNavigate?: (view: string) => void;
-  onNotify?: (msg: string, type: string) => void;
-  onError?: (msg: string) => void;
-  onSaveProject?: (proj: any) => void;
-  onSaveCharacter?: (char: any) => void;
-  onUpdateChapters?: (chaps: any[]) => void;
+interface TabContent {
+  seedLab: { idea: string; genre: string; audience: string };
+  literaryExcellence: { manuscript: string };
 }
 
-export const EnhancedResearchDesk: React.FC<EnhancedResearchDeskProps> = ({
-  project,
-  characters = [],
-  chapters = [],
-  research = [],
-  sourceMaterials = [],
-  services = creativeEngineServices,
-  onNavigate,
-  onNotify,
-  onError,
-  onSaveProject,
-  onSaveCharacter,
-  onUpdateChapters,
-}) => {
-  const [activeTab, setActiveTab] = useState<'seed' | 'excellence' | 'psyche' | 'format' | 'nonfiction' | 'research'>('seed');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
+interface ApiResponse {
+  type: string;
+  data?: unknown;
+  error?: string;
+}
 
-  // Form states
-  const [seedInput, setSeedInput] = useState({ idea: '', genre: '', targetAudience: '' });
-  const [excellenceInput, setExcellenceInput] = useState({ excerpt: '', genre: '' });
+const EnhancedResearchDesk: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('seed-lab');
+  const [forms, setForms] = useState<TabContent>({
+    seedLab: { idea: '', genre: '', audience: '' },
+    literaryExcellence: { manuscript: '' },
+  });
+  const [results, setResults] = useState<Record<string, ApiResponse | null>>({});
+  const [loading, setLoading] = useState(false);
 
-  const handleSeedLab = async () => {
-    if (!seedInput.idea.trim()) {
-      onError?.('Please enter a core idea');
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/ai/call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          function: 'seedLab',
-          input: seedInput,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResult(data.result);
-      onNotify?.('Story proposal generated! ✨', 'success');
-    } catch (err: any) {
-      const msg = err.message || 'Error generating proposal';
-      setError(msg);
-      onError?.(msg);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleFormChange = (
+    tab: keyof TabContent,
+    field: string,
+    value: string
+  ) => {
+    setForms(prev => ({
+      ...prev,
+      [tab]: { ...prev[tab], [field]: value },
+    }));
   };
 
-  const handleExcellence = async () => {
-    if (!excellenceInput.excerpt.trim()) {
-      onError?.('Please paste manuscript excerpt');
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
+  const callApi = async (endpoint: string, payload: object) => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/ai/call', {
+      const response = await fetch('/api/ai/call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          function: 'literaryAnalysis',
-          input: excellenceInput,
-        }),
+        body: JSON.stringify({ endpoint, ...payload }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResult(data.result);
-      onNotify?.('Literary analysis complete! 🏆', 'success');
-    } catch (err: any) {
-      const msg = err.message || 'Error analyzing prose';
-      setError(msg);
-      onError?.(msg);
-    } finally {
-      setIsLoading(false);
+      const data = await response.json();
+      setResults(prev => ({
+        ...prev,
+        [endpoint]: data,
+      }));
+    } catch (err) {
+      setResults(prev => ({
+        ...prev,
+        [endpoint]: { type: 'error', error: String(err) },
+      }));
     }
+    setLoading(false);
   };
 
-  const tabs = [
-    { id: 'seed' as const, label: '🌱 Seed Lab', icon: '🌱' },
-    { id: 'excellence' as const, label: '🏆 Literary Excellence', icon: '🏆' },
-    { id: 'psyche' as const, label: '🧠 Character Psyche', icon: '🧠' },
-    { id: 'format' as const, label: '📚 Multi-Format', icon: '📚' },
-    { id: 'nonfiction' as const, label: '🔬 Non-Fiction', icon: '🔬' },
-    { id: 'research' as const, label: '🔗 Research Hub', icon: '🔗' },
-  ];
+  const handleSeedLabSubmit = () => {
+    callApi('generate_story_proposal', {
+      idea: forms.seedLab.idea,
+      genre: forms.seedLab.genre,
+      targetAudience: forms.seedLab.audience,
+    });
+  };
+
+  const handleLiteraryExcellenceSubmit = () => {
+    callApi('evaluate_prose', {
+      manuscript: forms.literaryExcellence.manuscript,
+    });
+  };
+
+  const renderResult = (key: string) => {
+    const result = results[key];
+    if (!result) return null;
+
+    if (result.error) {
+      return (
+        <div className="nexus-alert nexus-alert-error">
+          <span className="nexus-alert-icon">⚠</span>
+          <span>{result.error}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="nexus-result">
+        <div className="nexus-result-header">
+          <span className="nexus-result-title">Analysis Complete</span>
+          <button
+            className="nexus-btn-copy"
+            onClick={() =>
+              navigator.clipboard.writeText(JSON.stringify(result, null, 2))
+            }
+          >
+            Copy
+          </button>
+        </div>
+        <pre className="nexus-result-content">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </div>
+    );
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#f9fafb', overflowY: 'auto' }}>
-      {/* HEADER */}
-      <div style={{ padding: '24px 32px', borderBottom: '1px solid #e5e7eb', backgroundColor: '#fff' }}>
-        <h1 style={{ margin: '0 0 8px 0', fontSize: '28px', fontWeight: 'bold', color: '#111827' }}>
-          🎬 Creative Studio
-        </h1>
-        <p style={{ margin: '0', fontSize: '14px', color: '#6b7280' }}>
-          Prize-worthy literary fiction, humanized characters, multi-format publishing
-        </p>
+    <div className="nexus-creative-studio">
+      {/* Header */}
+      <div className="nexus-header">
+        <div className="nexus-crest">◎</div>
+        <div className="nexus-header-text">
+          <h1 className="nexus-title">CREATIVE STUDIO</h1>
+          <p className="nexus-subtitle">
+            Autonomous Knowledge Transformation Engine
+          </p>
+        </div>
       </div>
 
-      {/* TAB NAVIGATION */}
-      <div style={{ display: 'flex', gap: '4px', padding: '12px 24px', borderBottom: '1px solid #e5e7eb', backgroundColor: '#fff', overflowX: 'auto', flexWrap: 'wrap' }}>
-        {tabs.map((tab) => (
+      {/* Tabs */}
+      <div className="nexus-tabs">
+        {[
+          { id: 'seed-lab', label: 'Seed Lab' },
+          { id: 'literary-excellence', label: 'Literary Excellence' },
+          { id: 'character-psyche', label: 'Character Psyche' },
+          { id: 'multi-format', label: 'Multi-Format' },
+        ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => { setActiveTab(tab.id); setResult(null); setError(null); }}
-            style={{
-              padding: '8px 12px',
-              fontSize: '13px',
-              fontWeight: '500',
-              border: activeTab === tab.id ? '2px solid #2563eb' : '1px solid #d1d5db',
-              backgroundColor: activeTab === tab.id ? '#dbeafe' : '#fff',
-              color: activeTab === tab.id ? '#1e40af' : '#4b5563',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => { if (activeTab !== tab.id) e.currentTarget.style.backgroundColor = '#f3f4f6'; }}
-            onMouseLeave={(e) => { if (activeTab !== tab.id) e.currentTarget.style.backgroundColor = '#fff'; }}
+            className={`nexus-tab ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* CONTENT */}
-      <div style={{ flex: 1, padding: '24px 32px', overflowY: 'auto' }}>
-        {/* ERROR */}
-        {error && (
-          <div style={{ padding: '12px 16px', backgroundColor: '#fee2e2', border: '1px solid #fecaca', borderRadius: '6px', color: '#991b1b', marginBottom: '16px', fontSize: '14px' }}>
-            ⚠️ {error}
-          </div>
-        )}
-
-        {/* SEED LAB */}
-        {activeTab === 'seed' && (
-          <div>
-            <h2 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 'bold', color: '#111827' }}>🌱 Seed Lab</h2>
-            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#6b7280' }}>
-              Transform a single idea into a complete story proposal with characters, structure, and prize positioning.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '600px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px', color: '#111827' }}>Core Idea *</label>
-                <textarea
-                  value={seedInput.idea}
-                  onChange={(e) => setSeedInput((s) => ({ ...s, idea: e.target.value }))}
-                  placeholder="A woman finds her twin in an alternate timeline..."
-                  style={{ width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '6px', fontFamily: 'inherit', minHeight: '80px', boxSizing: 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px', color: '#111827' }}>Genre</label>
-                <input
-                  type="text"
-                  value={seedInput.genre}
-                  onChange={(e) => setSeedInput((s) => ({ ...s, genre: e.target.value }))}
-                  placeholder="Literary Fiction, Science Fiction..."
-                  style={{ width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '6px', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px', color: '#111827' }}>Target Audience</label>
-                <input
-                  type="text"
-                  value={seedInput.targetAudience}
-                  onChange={(e) => setSeedInput((s) => ({ ...s, targetAudience: e.target.value }))}
-                  placeholder="Adult readers seeking literary depth..."
-                  style={{ width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '6px', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                />
-              </div>
-              <button
-                onClick={handleSeedLab}
-                disabled={isLoading}
-                style={{
-                  padding: '10px 16px',
-                  backgroundColor: isLoading ? '#9ca3af' : '#2563eb',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => { if (!isLoading) e.currentTarget.style.backgroundColor = '#1d4ed8'; }}
-                onMouseLeave={(e) => { if (!isLoading) e.currentTarget.style.backgroundColor = '#2563eb'; }}
-              >
-                {isLoading ? '✨ Generating...' : '✨ Generate Story Proposal'}
-              </button>
+      {/* Content */}
+      <div className="nexus-content">
+        {activeTab === 'seed-lab' && (
+          <div className="nexus-panel">
+            <div className="nexus-section">
+              <label className="nexus-label">Story Idea</label>
+              <textarea
+                className="nexus-textarea"
+                placeholder="Describe your story concept, theme, or premise..."
+                value={forms.seedLab.idea}
+                onChange={e =>
+                  handleFormChange('seedLab', 'idea', e.target.value)
+                }
+              />
             </div>
-          </div>
-        )}
 
-        {/* LITERARY EXCELLENCE */}
-        {activeTab === 'excellence' && (
-          <div>
-            <h2 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 'bold', color: '#111827' }}>🏆 Literary Excellence Engine</h2>
-            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#6b7280' }}>
-              Score your prose on 6 dimensions: quality, narrative arc, character depth, emotional resonance, originality, and prize tier.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '600px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px', color: '#111827' }}>Manuscript Excerpt *</label>
-                <textarea
-                  value={excellenceInput.excerpt}
-                  onChange={(e) => setExcellenceInput((s) => ({ ...s, excerpt: e.target.value }))}
-                  placeholder="Paste 300-800 words of your best prose..."
-                  style={{ width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '6px', fontFamily: 'monospace', minHeight: '200px', boxSizing: 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px', color: '#111827' }}>Genre (Optional)</label>
+            <div className="nexus-row">
+              <div className="nexus-section">
+                <label className="nexus-label">Genre</label>
                 <input
                   type="text"
-                  value={excellenceInput.genre}
-                  onChange={(e) => setExcellenceInput((s) => ({ ...s, genre: e.target.value }))}
-                  placeholder="Literary Fiction, Mystery..."
-                  style={{ width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid #d1d5db', borderRadius: '6px', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                  className="nexus-input"
+                  placeholder="e.g., Literary Fiction, Science Fiction"
+                  value={forms.seedLab.genre}
+                  onChange={e =>
+                    handleFormChange('seedLab', 'genre', e.target.value)
+                  }
                 />
               </div>
-              <button
-                onClick={handleExcellence}
-                disabled={isLoading}
-                style={{
-                  padding: '10px 16px',
-                  backgroundColor: isLoading ? '#9ca3af' : '#2563eb',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => { if (!isLoading) e.currentTarget.style.backgroundColor = '#1d4ed8'; }}
-                onMouseLeave={(e) => { if (!isLoading) e.currentTarget.style.backgroundColor = '#2563eb'; }}
-              >
-                {isLoading ? '🏆 Scoring...' : '🏆 Score Prose'}
-              </button>
+
+              <div className="nexus-section">
+                <label className="nexus-label">Target Audience</label>
+                <input
+                  type="text"
+                  className="nexus-input"
+                  placeholder="e.g., 18-35, Academic, General"
+                  value={forms.seedLab.audience}
+                  onChange={e =>
+                    handleFormChange('seedLab', 'audience', e.target.value)
+                  }
+                />
+              </div>
             </div>
-          </div>
-        )}
 
-        {/* PLACEHOLDER TABS */}
-        {(activeTab === 'psyche' || activeTab === 'format' || activeTab === 'nonfiction' || activeTab === 'research') && (
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#6b7280' }}>
-            <p style={{ fontSize: '16px', margin: '0' }}>
-              {activeTab === 'psyche' && '🧠 Character Psyche — Coming Soon'}
-              {activeTab === 'format' && '📚 Multi-Format Designer — Coming Soon'}
-              {activeTab === 'nonfiction' && '🔬 Non-Fiction Architect — Coming Soon'}
-              {activeTab === 'research' && '🔗 Research Integration — Coming Soon'}
-            </p>
-          </div>
-        )}
-
-        {/* RESULT */}
-        {result && (
-          <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f0f9ff', border: '1px solid #bfdbfe', borderRadius: '8px' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600', color: '#0369a1' }}>✨ Result</h3>
-            <pre style={{ margin: '0', fontSize: '12px', color: '#111827', overflow: 'auto', maxHeight: '300px', backgroundColor: '#fff', padding: '12px', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
-              {JSON.stringify(result, null, 2)}
-            </pre>
             <button
-              onClick={() => setResult(null)}
-              style={{ marginTop: '12px', padding: '6px 12px', fontSize: '12px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              className="nexus-btn-primary"
+              onClick={handleSeedLabSubmit}
+              disabled={loading}
             >
-              Clear
+              {loading ? '○' : '→'} Generate Proposal
             </button>
+
+            {renderResult('generate_story_proposal')}
+          </div>
+        )}
+
+        {activeTab === 'literary-excellence' && (
+          <div className="nexus-panel">
+            <div className="nexus-section">
+              <label className="nexus-label">Manuscript Excerpt</label>
+              <textarea
+                className="nexus-textarea"
+                placeholder="Paste a passage from your manuscript for literary analysis..."
+                value={forms.literaryExcellence.manuscript}
+                onChange={e =>
+                  handleFormChange('literaryExcellence', 'manuscript', e.target.value)
+                }
+                rows={8}
+              />
+            </div>
+
+            <button
+              className="nexus-btn-primary"
+              onClick={handleLiteraryExcellenceSubmit}
+              disabled={loading}
+            >
+              {loading ? '○' : '→'} Evaluate Prose
+            </button>
+
+            {renderResult('evaluate_prose')}
+          </div>
+        )}
+
+        {activeTab === 'character-psyche' && (
+          <div className="nexus-panel">
+            <div className="nexus-coming-soon">
+              <p className="nexus-coming-soon-text">Coming Soon</p>
+              <p className="nexus-coming-soon-desc">
+                Character psychology validation engine
+              </p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'multi-format' && (
+          <div className="nexus-panel">
+            <div className="nexus-coming-soon">
+              <p className="nexus-coming-soon-text">Coming Soon</p>
+              <p className="nexus-coming-soon-desc">
+                Multi-format document transformation
+              </p>
+            </div>
           </div>
         )}
       </div>

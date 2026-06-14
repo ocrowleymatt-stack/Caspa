@@ -1,0 +1,436 @@
+/* Nexus Strategist Design System - Creative Studio */
+
+/* ========================================
+   01. COLOR SYSTEM
+   ======================================== */
+
+:root {
+  --nexus-obsidian: #0f1419;
+  --nexus-deep-slate: #1a1f2e;
+  --nexus-steel: #2a3241;
+  --nexus-gold: #d4af37;
+  --nexus-gold-hover: #e5c158;
+  --nexus-purple: #6b5b9d;
+  --nexus-nebula: #8b6db8;
+  --nexus-arctic: #f5f7fa;
+  --nexus-text-primary: #f5f7fa;
+  --nexus-text-secondary: #b0b5c1;
+  --nexus-border: rgba(212, 175, 55, 0.15);
+  --nexus-border-hover: rgba(212, 175, 55, 0.35);
+  --nexus-success: #42a574;
+  --nexus-warning: #d4a537;
+  --nexus-error: #c74949;
+  --nexus-glass: rgba(26, 31, 46, 0.6);
+}
+
+/* ========================================
+   02. TYPOGRAPHY SYSTEM
+   ======================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@400;600;700&display=swap');
+
+body {
+  font-family: 'Inter', sans-serif;
+  color: var(--nexus-text-primary);
+  background: var(--nexus-obsidian);
+  line-height: 1.6;
+  letter-spacing: 0.5px;
+}
+
+h1, h2, h3 { font-family: 'Cinzel', serif; font-weight: 600; letter-spacing: 1px; }
+h1 { font-size: 1.8rem; }
+h2 { font-size: 1.4rem; }
+h3 { font-size: 1.1rem; }
+
+/* ========================================
+   03. ROOT CONTAINER
+   ======================================== */
+
+.nexus-creative-studio {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, var(--nexus-obsidian) 0%, var(--nexus-deep-slate) 50%, var(--nexus-obsidian) 100%);
+  background-attachment: fixed;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Constellation background effect */
+.nexus-creative-studio::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 50%, rgba(212, 175, 55, 0.03) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(107, 91, 157, 0.03) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+/* ========================================
+   04. HEADER
+   ======================================== */
+
+.nexus-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--nexus-border);
+  background: rgba(15, 20, 25, 0.7);
+  backdrop-filter: blur(10px);
+  z-index: 10;
+}
+
+.nexus-crest {
+  font-size: 2rem;
+  color: var(--nexus-gold);
+  font-weight: bold;
+  text-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+  animation: crescent-glow 3s ease-in-out infinite;
+}
+
+@keyframes crescent-glow {
+  0%, 100% { text-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
+  50% { text-shadow: 0 0 40px rgba(212, 175, 55, 0.7); }
+}
+
+.nexus-header-text { flex: 1; }
+.nexus-title {
+  margin: 0;
+  color: var(--nexus-gold);
+  font-size: 1.5rem;
+  letter-spacing: 2px;
+}
+.nexus-subtitle {
+  margin: 0.25rem 0 0 0;
+  color: var(--nexus-text-secondary);
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+}
+
+/* ========================================
+   05. TAB NAVIGATION
+   ======================================== */
+
+.nexus-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 2rem;
+  border-bottom: 1px solid var(--nexus-border);
+  background: rgba(26, 31, 46, 0.4);
+  overflow-x: auto;
+}
+
+.nexus-tab {
+  padding: 1rem 1.5rem;
+  border: none;
+  background: transparent;
+  color: var(--nexus-text-secondary);
+  font-family: 'Cinzel', serif;
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.nexus-tab:hover {
+  color: var(--nexus-gold);
+}
+
+.nexus-tab.active {
+  color: var(--nexus-gold);
+  border-bottom-color: var(--nexus-gold);
+  background: rgba(212, 175, 55, 0.05);
+}
+
+/* ========================================
+   06. MAIN CONTENT AREA
+   ======================================== */
+
+.nexus-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem;
+}
+
+/* Custom scrollbar */
+.nexus-content::-webkit-scrollbar {
+  width: 8px;
+}
+.nexus-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nexus-content::-webkit-scrollbar-thumb {
+  background: var(--nexus-border);
+  border-radius: 4px;
+}
+.nexus-content::-webkit-scrollbar-thumb:hover {
+  background: var(--nexus-border-hover);
+}
+
+/* ========================================
+   07. PANEL LAYOUT
+   ======================================== */
+
+.nexus-panel {
+  max-width: 800px;
+  margin: 0 auto;
+  background: var(--nexus-glass);
+  border: 1px solid var(--nexus-border);
+  border-radius: 8px;
+  padding: 2rem;
+  backdrop-filter: blur(20px);
+  animation: slide-up 0.4s ease;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================================
+   08. FORM SECTIONS
+   ======================================== */
+
+.nexus-section {
+  margin-bottom: 1.5rem;
+}
+
+.nexus-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--nexus-gold);
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.nexus-input,
+.nexus-textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 20, 25, 0.5);
+  border: 1px solid var(--nexus-border);
+  border-radius: 4px;
+  color: var(--nexus-text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.nexus-input:focus,
+.nexus-textarea:focus {
+  outline: none;
+  border-color: var(--nexus-border-hover);
+  background: rgba(15, 20, 25, 0.7);
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.15);
+}
+
+.nexus-textarea {
+  resize: vertical;
+  min-height: 120px;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ========================================
+   09. ROW LAYOUT
+   ======================================== */
+
+.nexus-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .nexus-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========================================
+   10. BUTTONS
+   ======================================== */
+
+.nexus-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 2rem;
+  background: linear-gradient(135deg, var(--nexus-gold) 0%, var(--nexus-gold-hover) 100%);
+  color: var(--nexus-obsidian);
+  border: none;
+  border-radius: 4px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nexus-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(212, 175, 55, 0.3);
+}
+
+.nexus-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.nexus-btn-copy {
+  padding: 0.5rem 1rem;
+  background: var(--nexus-steel);
+  color: var(--nexus-gold);
+  border: 1px solid var(--nexus-border);
+  border-radius: 3px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nexus-btn-copy:hover {
+  background: var(--nexus-border-hover);
+  border-color: var(--nexus-gold);
+}
+
+/* ========================================
+   11. ALERTS
+   ======================================== */
+
+.nexus-alert {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.nexus-alert-error {
+  background: rgba(199, 73, 73, 0.15);
+  border: 1px solid var(--nexus-error);
+  color: #ff8a8a;
+}
+
+.nexus-alert-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+/* ========================================
+   12. RESULTS
+   ======================================== */
+
+.nexus-result {
+  margin-top: 2rem;
+  background: rgba(15, 20, 25, 0.8);
+  border: 1px solid var(--nexus-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.nexus-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--nexus-border);
+  background: rgba(26, 31, 46, 0.5);
+}
+
+.nexus-result-title {
+  color: var(--nexus-gold);
+  font-family: 'Cinzel', serif;
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+}
+
+.nexus-result-content {
+  padding: 1.5rem;
+  color: var(--nexus-text-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* ========================================
+   13. COMING SOON
+   ======================================== */
+
+.nexus-coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 1rem;
+}
+
+.nexus-coming-soon-text {
+  color: var(--nexus-gold);
+  font-family: 'Cinzel', serif;
+  font-size: 1.5rem;
+  letter-spacing: 2px;
+  margin: 0;
+}
+
+.nexus-coming-soon-desc {
+  color: var(--nexus-text-secondary);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+/* ========================================
+   14. RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+  .nexus-header {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .nexus-title {
+    font-size: 1.2rem;
+  }
+
+  .nexus-tabs {
+    padding: 0 1rem;
+  }
+
+  .nexus-tab {
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+  }
+
+  .nexus-content {
+    padding: 1rem;
+  }
+
+  .nexus-panel {
+    padding: 1.5rem;
+  }
+
+  .nexus-btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
