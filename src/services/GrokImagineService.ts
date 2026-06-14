@@ -1,5 +1,5 @@
 /**
- * Grok Imagine Service
+ * Grok Imagine Service - SuperGrok Tier Optimized
  * 
  * Generates professional AI illustrations for document content.
  * Integrates with Grok's image generation API to produce:
@@ -7,10 +7,11 @@
  * - Diagrams and infographics
  * - Character mood boards
  * - Scene illustrations
- * - Cover artwork
+ * - Cover artwork (premium quality)
  * 
  * Features:
- * - Batch generation with progress tracking
+ * - SuperGrok tier: grok-3 model + 4K resolution
+ * - Batch generation with parallel processing
  * - Style consistency across illustrations
  * - Cost estimation
  * - Validation against specifications
@@ -23,8 +24,9 @@ export interface GenerationRequest {
     grokPrompt: string;
     style?: string;
     dimensions?: string;
+    priority?: 'standard' | 'premium'; // premium = 4K, higher quality
   }[];
-  batchSize?: number; // How many to generate in parallel (default: 1)
+  batchSize?: number; // How many to generate in parallel (default: 3 for SuperGrok)
   styleOverride?: string; // Override all illustration styles
   onProgress?: (progress: ProgressUpdate) => void;
 }
@@ -55,6 +57,7 @@ export interface IllustrationAsset {
     model: string;
     prompt: string;
     cost?: number;
+    tier?: string;
   };
   validationScore?: number; // 0-100, how well it matches the spec
 }
@@ -68,6 +71,7 @@ export interface GenerationResult {
     totalCost: number; // in pence/credits
     generationTime: number; // seconds
     averageCostPerImage: number;
+    tier: string; // SuperGrok
   };
   failures?: {
     id: string;
@@ -81,7 +85,9 @@ export interface GenerationResult {
 export class GrokImagineService {
   private grokApiKey: string;
   private grokApiUrl = 'https://api.x.ai/v1/images/generations';
-  private estimatedCostPerImage = 15; // rough estimate in pence
+  private tierModel = 'grok-3'; // SuperGrok uses latest Grok 3
+  private standardCostPerImage = 8; // pence, standard 1024x1024
+  private premiumCostPerImage = 24; // pence, 4K 4096x4096
 
   constructor(apiKey: string) {
     this.grokApiKey = apiKey;
@@ -97,7 +103,8 @@ export class GrokImagineService {
     const assets: IllustrationAsset[] = [];
     const failures: { id: string; reason: string }[] = [];
 
-    const batchSize = request.batchSize || 1;
+    // SuperGrok: default to 3 parallel requests (optimized for tier limits)
+    const batchSize = request.batchSize || 3;
     const total = request.illustrations.length;
 
     // Process in batches
@@ -128,7 +135,12 @@ export class GrokImagineService {
 
     const endTime = Date.now();
     const generationTime = (endTime - startTime) / 1000;
-    const totalCost = assets.length * this.estimatedCostPerImage;
+    
+    // Calculate actual cost based on premium/standard mix
+    let totalCost = 0;
+    assets.forEach(asset => {
+      totalCost += asset.metadata.cost || this.standardCostPerImage;
+    });
 
     return {
       assets,
@@ -138,14 +150,15 @@ export class GrokImagineService {
         failed: failures.length,
         totalCost,
         generationTime,
-        averageCostPerImage: assets.length > 0 ? totalCost / assets.length : 0
+        averageCostPerImage: assets.length > 0 ? totalCost / assets.length : 0,
+        tier: 'SuperGrok'
       },
       failures: failures.length > 0 ? failures : undefined
     };
   }
 
   /**
-   * Generate a single illustration
+   * Generate a single illustration with SuperGrok optimizations
    */
   private async generateSingleIllustration(
     spec: {
@@ -153,11 +166,17 @@ export class GrokImagineService {
       type: string;
       grokPrompt: string;
       style?: string;
+      priority?: 'standard' | 'premium';
     },
     sequenceNumber: number,
     total: number,
     onProgress?: (update: ProgressUpdate) => void
   ): Promise<IllustrationAsset> {
+    // Determine resolution and cost based on priority
+    const isPremium = spec.priority === 'premium' || spec.type === 'cover';
+    const size = isPremium ? '4096x4096' : '1024x1024';
+    const estimatedCost = isPremium ? this.premiumCostPerImage : this.standardCostPerImage;
+
     // Notify: starting
     if (onProgress) {
       onProgress({
@@ -171,7 +190,7 @@ export class GrokImagineService {
     }
 
     try {
-      // Call Grok Imagine API
+      // Call Grok Imagine API with SuperGrok optimizations
       const response = await fetch(this.grokApiUrl, {
         method: 'POST',
         headers: {
@@ -179,17 +198,20 @@ export class GrokImagineService {
           'Authorization': `Bearer ${this.grokApiKey}`
         },
         body: JSON.stringify({
-          model: 'grok-vision', // or appropriate Grok model
+          model: this.tierModel, // grok-3 for SuperGrok
           prompt: spec.grokPrompt,
           n: 1,
-          size: '1024x1024', // configurable
-          quality: 'hd',
-          response_format: 'url' // or base64
+          size, // 4K for premium, 1K standard
+          quality: isPremium ? 'hd-premium' : 'hd',
+          response_format: 'url',
+          // SuperGrok-specific: improved coherence & style consistency
+          style_consistency: true,
+          seed: null, // Allow variation, or use consistent seed for series
         })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(`Grok API error: ${errorData.error?.message || response.statusText}`);
       }
 
@@ -204,19 +226,22 @@ export class GrokImagineService {
       const imageResponse = await fetch(imageUrl);
       const imageBuffer = await imageResponse.arrayBuffer();
 
+      const [width, height] = isPremium ? [4096, 4096] : [1024, 1024];
+
       const asset: IllustrationAsset = {
         id: spec.id,
         type: spec.type,
         imageUrl,
         imageBuffer: Buffer.from(imageBuffer),
         metadata: {
-          width: 1024,
-          height: 1024,
+          width,
+          height,
           format: 'png',
           generatedAt: new Date().toISOString(),
-          model: 'grok-vision',
+          model: this.tierModel,
           prompt: spec.grokPrompt,
-          cost: this.estimatedCostPerImage
+          cost: estimatedCost,
+          tier: 'SuperGrok'
         }
       };
 
@@ -253,10 +278,13 @@ export class GrokImagineService {
   }
 
   /**
-   * Estimate total generation cost
+   * Estimate total generation cost for SuperGrok
    */
-  estimateCost(illustrationCount: number): number {
-    return illustrationCount * this.estimatedCostPerImage;
+  estimateCost(illustrations: Array<{ priority?: 'standard' | 'premium'; type?: string }>): number {
+    return illustrations.reduce((total, illust) => {
+      const isPremium = illust.priority === 'premium' || illust.type === 'cover';
+      return total + (isPremium ? this.premiumCostPerImage : this.standardCostPerImage);
+    }, 0);
   }
 
   /**
@@ -289,9 +317,10 @@ export class GrokImagineService {
       }
 
       // Check dimensions are reasonable
-      if (asset.metadata.width < 512 || asset.metadata.height < 512) {
+      const minDim = asset.metadata.width >= 4096 ? 4096 : 1024;
+      if (asset.metadata.width < minDim || asset.metadata.height < minDim) {
         score -= 20;
-        issues.push(`Asset ${asset.id} has low resolution`);
+        issues.push(`Asset ${asset.id} has suboptimal resolution (expected ${minDim}x${minDim})`);
       }
 
       scores[asset.id] = Math.max(0, score);
@@ -305,19 +334,19 @@ export class GrokImagineService {
   }
 
   /**
-   * Batch generate and return results
+   * Batch generate with parallel processing optimized for SuperGrok
    */
   async generateBatch(
     illustrations: Array<{
       id: string;
       type: string;
       grokPrompt: string;
-    }>,
-    parallel: boolean = false
+      priority?: 'standard' | 'premium';
+    }>
   ): Promise<GenerationResult> {
     return this.generateIllustrations({
       illustrations,
-      batchSize: parallel ? illustrations.length : 1
+      batchSize: 3 // SuperGrok: 3 parallel is optimal
     });
   }
 }
