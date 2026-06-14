@@ -109,6 +109,7 @@ import MemoryView from './components/MemoryView';
 import IntelligenceView from './components/IntelligenceView';
 import EnhancedResearchDesk from './components/EnhancedResearchDesk';
 import { creativeEngineServices } from './services/CreativeEngineCore';
+import CaspaRedesign from './components/CaspaRedesign';
 
 const INITIAL_PROJECT: Project = {
   id: 'default',
@@ -1347,7 +1348,7 @@ export default function App() {
     );
   }
 
-  if (isMobile && isSpatialGlassModeActive) {
+  if (false && isMobile && isSpatialGlassModeActive) {
     return (
       <>
         <SpatialGlassMode 
@@ -1387,6 +1388,21 @@ export default function App() {
       </>
     );
   }
+
+  return (
+    <CaspaRedesign
+      user={user}
+      project={project}
+      chapters={chapters}
+      characters={characters}
+      currentView={currentView}
+      setCurrentView={setCurrentView}
+      totalWords={totalWords}
+      saveToCloud={saveToCloud}
+      createNewProject={createNewProject}
+      logout={logout}
+    />
+  );
 
   return (
     <>
