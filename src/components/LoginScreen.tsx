@@ -1,16 +1,14 @@
 import { motion } from 'motion/react';
-import { Ghost, Sparkles, LogIn } from 'lucide-react';
+import { Ghost, Sparkles } from 'lucide-react';
 
 type LoginScreenProps = {
   onLoginWithGoogle: () => void;
-  onLoginAnonymously?: () => void;
   isLoading?: boolean;
   error?: string | null;
 };
 
 export default function LoginScreen({ 
   onLoginWithGoogle, 
-  onLoginAnonymously,
   isLoading = false,
   error = null 
 }: LoginScreenProps) {
@@ -74,19 +72,6 @@ export default function LoginScreen({
             <Sparkles size={18} />
             {isLoading ? 'Connecting...' : 'Sign In with Google'}
           </motion.button>
-
-          {onLoginAnonymously && (
-            <motion.button
-              onClick={onLoginAnonymously}
-              disabled={isLoading}
-              whileHover={{ scale: 1.02, translateY: -2 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full px-6 py-3 bg-slate-700/40 hover:bg-slate-700/60 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-600/50 rounded-lg font-semibold text-slate-300 uppercase tracking-wide text-xs transition-all flex items-center justify-center gap-2"
-            >
-              <LogIn size={16} />
-              Continue as Guest
-            </motion.button>
-          )}
         </div>
 
         {/* Footer */}
