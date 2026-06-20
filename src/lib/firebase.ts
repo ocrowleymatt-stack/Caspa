@@ -1,5 +1,15 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithRedirect, getRedirectResult, signInAnonymously } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  signInWithRedirect,
+  getRedirectResult,
+  signInAnonymously,
+  browserLocalPersistence,
+  setPersistence,
+} from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './firestoreUtils';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -8,7 +18,12 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// FORCED FIX: Explicitly nullify tenantId to escape the invalid-tenant-id error loop
+// Keep auth durable across popup/redirect round-trips and Safari reloads.
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.warn('Firebase auth persistence setup failed:', error);
+});
+
+// FORCED FIX: Explicitly nullify tenantId to escape the invalid-tenant-id error loop.
 // Some SDK versions or environments might persist this or pick it up from env vars automatically.
 if ((auth as any).tenantId) {
   console.log(`Clearing existing tenant ID: ${(auth as any).tenantId}`);
@@ -26,6 +41,36 @@ if ((auth as any).tenantId) {
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
+
+const isAppleWebKit = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod|Safari/i.test(ua) && !/Chrome|CriOS|Edg|OPR|Firefox|FxiOS/i.test(ua);
+};
+
+function normaliseAuthError(error: any): Error {
+  const code = error?.code || '';
+  const message = error?.message || String(error);
+
+  if (code === 'auth/unauthorized-domain') {
+    return new Error(
+      'Google sign-in is blocked because this domain is not authorised in Firebase Authentication. Add caspa.ocrowley.com to Firebase Auth > Settings > Authorised domains, and make sure the Google OAuth client allows https://caspa.ocrowley.com as a JavaScript origin.'
+    );
+  }
+
+  if (code === 'auth/operation-not-allowed') {
+    return new Error('Google sign-in is not enabled for this Firebase project. Enable Google under Firebase Authentication > Sign-in method.');
+  }
+
+  if (code === 'auth/popup-blocked') {
+    return new Error('The browser blocked the Google sign-in popup. Caspa will try redirect sign-in instead.');
+  }
+
+  return new Error(message);
+}
 
 // In-memory access token cache for Google APIs as required by Workspace Integration skill
 let cachedAccessToken: string | null = null;
@@ -52,7 +97,7 @@ async function testConnection() {
     if (error instanceof Error && error.message.includes('permission-denied')) {
       console.log('Firebase connectivity verified (Permission Denied as expected).');
     } else if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration: client is offline.");
+      console.error('Please check your Firebase configuration: client is offline.');
     }
   }
 }
@@ -65,7 +110,14 @@ export async function loginWithGoogle() {
     if ((auth as any).tenantId) {
       (auth as any).tenantId = null;
     }
-    
+
+    // Safari/iOS are much less reliable with popup auth. Use redirect there first.
+    if (isAppleWebKit()) {
+      console.log('Apple WebKit browser detected; using redirect sign-in.');
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
+
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -75,16 +127,25 @@ export async function loginWithGoogle() {
       }
       return await handleUserSync(result.user);
     } catch (popupError: any) {
-      if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-interactive-request') {
-        console.log('Popup blocked or cancelled, falling back to redirect...');
+      const fallbackCodes = new Set([
+        'auth/popup-blocked',
+        'auth/cancelled-popup-request',
+        'auth/cancelled-interactive-request',
+        'auth/popup-closed-by-user',
+      ]);
+
+      if (fallbackCodes.has(popupError.code)) {
+        console.log('Popup failed or was cancelled; falling back to redirect...', popupError.code);
         await signInWithRedirect(auth, googleProvider);
         return null;
       }
+
       throw popupError;
     }
   } catch (error) {
-    console.error('Sign in error:', error);
-    throw error;
+    const normalised = normaliseAuthError(error);
+    console.error('Sign in error:', normalised);
+    throw normalised;
   }
 }
 
@@ -101,8 +162,9 @@ export async function handleRedirectLogin() {
     }
     return null;
   } catch (error) {
-    console.error('Redirect result error:', error);
-    throw error;
+    const normalised = normaliseAuthError(error);
+    console.error('Redirect result error:', normalised);
+    throw normalised;
   }
 }
 
@@ -116,19 +178,19 @@ async function handleUserSync(user: any) {
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
       throw error;
     }
-    
+
     const userData = {
       email: user.email || '',
       displayName: user.displayName || '',
       photoURL: user.photoURL || '',
-      lastLoginAt: Date.now()
+      lastLoginAt: Date.now(),
     };
-    
+
     try {
       if (!userSnap || !userSnap.exists()) {
         await setDoc(userRef, {
           ...userData,
-          createdAt: Date.now()
+          createdAt: Date.now(),
         });
       } else {
         await setDoc(userRef, userData, { merge: true });
