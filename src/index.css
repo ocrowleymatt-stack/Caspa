@@ -1,0 +1,279 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400;1,600&family=Space+Grotesk:wght@300;400;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", "Charter", "Bitstream Charter", "Georgia", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-brand-primary: #d4af37; /* Soft Gold */
+  --color-brand-accent: #e2c057; /* Light Gold */
+  --color-brand-dark: #27210e; /* Deep Gold Shadow */
+  
+  --color-surface-bg: #141618; /* Warm Charcoal */
+  --color-surface-card: #1c1f24; /* Muted Graphite */
+  --color-surface-muted: #252a30; /* Medium Graphite */
+  --color-border-subtle: rgba(212, 175, 55, 0.08); /* Soft Gold Border Whisper */
+  --color-text-primary: #f3f0e8; /* Ivory Text */
+  --color-text-secondary: #a0a4ab; /* Muted Graphite/Ivory mix */
+}
+
+@layer base {
+  html {
+    height: 100dvh;
+    height: -webkit-fill-available;
+    margin: 0; padding: 0; overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    height: 100dvh;
+    height: -webkit-fill-available;
+    margin: 0; padding: 0; overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    @apply bg-surface-bg text-text-primary antialiased;
+    background-color: var(--color-surface-bg);
+  }
+  #root {
+    height: 100dvh;
+    height: -webkit-fill-available;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Maintain safe area horizontally to prevent content running into screen corners */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  * { 
+    -webkit-tap-highlight-color: transparent; 
+  }
+  
+  /* Prevent iOS Safari from auto-zooming on focus of fields with font-size < 16px */
+  @media screen and (max-width: 768px) {
+    input, textarea, select, [contenteditable="true"] {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Buttery kinetic momentum scrolling on scroll containers on Safari */
+  .overflow-y-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll, .custom-scrollbar {
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Standard touch target responsiveness and text selection prevention on interactive items */
+  button, select, a, [role="button"] {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+@layer components {
+  /* Caspa Buttons */
+  .btn-nexus-primary {
+    @apply relative inline-flex justify-center items-center font-semibold transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs text-surface-bg bg-brand-primary tracking-wide;
+  }
+  
+  .btn-nexus-primary:-moz-focusring,
+  .btn-nexus-primary:focus {
+    outline: none;
+  }
+
+  .btn-nexus-primary:hover:not(:disabled) {
+    @apply bg-brand-accent transform -translate-y-[0.5px];
+    box-shadow: 0 2px 8px rgba(45, 212, 191, 0.15);
+  }
+  
+  .btn-nexus-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .btn-nexus-glass {
+    @apply relative inline-flex justify-center items-center font-medium text-text-primary transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs bg-transparent border border-border-subtle tracking-wide;
+  }
+
+  .btn-nexus-glass:hover:not(:disabled) {
+    @apply bg-surface-muted border-white/20 text-brand-primary;
+  }
+
+  .btn-nexus-danger {
+    @apply relative inline-flex justify-center items-center font-semibold text-white transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs bg-red-500 tracking-wide;
+  }
+
+  .btn-nexus-danger:hover:not(:disabled) {
+    @apply bg-red-600;
+  }
+
+  /* Clean Solid Panels */
+  .ethereal-panel {
+    @apply bg-surface-card border border-border-subtle rounded-xl;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-400/50 rounded-full border-4 border-transparent bg-clip-padding hover:bg-slate-400/80;
+  }
+
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+  }
+
+  .shadow-soft {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+
+  .shadow-brand {
+    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .app-shell {
+    height: 100dvh;
+    @apply flex flex-col overflow-hidden;
+  }
+
+  .app-header {
+    @apply shrink-0 bg-surface-card border-b border-border-subtle z-50;
+  }
+  
+  .studio-header {
+    @apply shrink-0 sticky top-0 z-50;
+  }
+
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+
+  .writing-scroll {
+    scroll-padding-top: 100px;
+    scroll-behavior: smooth;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full hover:bg-brand-primary/40 transition-colors cursor-pointer;
+  }
+
+  @media (max-width: 1440px) {
+    .sidebar-compact {
+      @apply w-16 opacity-100;
+    }
+  }
+}
+
+/* Animations */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@layer base {
+  @media print {
+    /* Hide non-printable elements */
+    nav, button, .no-print, header, footer:not(.print-footer), aside, [role="navigation"], [role="banner"] {
+      display: none !important;
+    }
+
+    /* Force all flex parents to expand and overflow to show */
+    html, body, #root, [class*="flex-"], main, [class*="overflow-"] {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+      display: block !important;
+      position: static !important;
+    }
+
+    /* Reset background and layout for print */
+    body {
+      background: white !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      color: black !important;
+    }
+
+    main {
+       margin: 0 !important;
+       padding: 0 !important;
+       width: 100% !important;
+    }
+
+    /* Format pages for a book feel - standard trade size */
+    @page {
+      size: 8.5in 11in;
+      margin: 1.25in;
+    }
+
+    /* Print-specific overrides for the manuscript preview */
+    .lg\:col-span-12 {
+      display: block !important;
+      width: 100% !important;
+    }
+
+    .prose {
+      max-width: none !important;
+      font-size: 12pt !important;
+      line-height: 1.6 !important;
+      color: black !important;
+      font-family: var(--font-serif) !important;
+      widows: 3;
+      orphans: 3;
+      text-align: justify;
+    }
+
+    h1, h2, h3 {
+      page-break-after: avoid;
+    }
+
+    .manuscript-page {
+      page-break-after: always;
+      display: block !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+  }
+}
+
+/* Force legibility and consistent theme coloring on option tags in drop-down menus web-wide */
+select option {
+  background-color: var(--color-surface-card) !important;
+  color: var(--color-text-primary) !important;
+}
+
