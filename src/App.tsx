@@ -58,12 +58,13 @@ import {
   Presence,
   ExternalReview
 } from './types';
-import { auth, db, loginWithGoogle, logout, loginAnonymously } from './lib/firebase';
+import { auth, db, loginWithGoogle, logout } from './lib/firebase';
 import { handleFirestoreError, OperationType } from './lib/firestoreUtils';
 import { 
   onSnapshot, 
   doc, 
   getDoc,
+  import LoginScreen from './components/LoginScreen';
   collection, 
   setDoc, 
   updateDoc, 
@@ -2180,3 +2181,4 @@ export default function App() {
     );
 }
 
+2145
