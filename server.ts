@@ -8,10 +8,10 @@ import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import JSZip from 'jszip';
-import { casperShowInABoxModel, getCasperShowInABoxPhases, getCasperShowInABoxSummary } from './src/data/casperShowInABoxModel';
-import { createShowRoadPack, musicXmlFilesForPack, runShowFactoryVirtualTest, showFactoryAgents, showFactoryApiCatalogue, showPackToMarkdown, buildLyriaInteractionPayload } from './src/data/casperShowFactoryModule';
-import { createProductionPlan, dryRunJobOutput, orchestraAgents, orchestraServices, runOrchestraVirtualTest, type OrchestraJob } from './src/data/showProductionOrchestraModule';
-import { createOvernightMusicCycle, dryRunMusicLabJob, overnightMusicAgents, overnightMusicServices, runOvernightMusicLabVirtualTest, type MusicLabJob } from './src/data/overnightMusicLabModule';
+import { casperShowInABoxModel, getCasperShowInABoxPhases, getCasperShowInABoxSummary } from './src/data/casperShowInABoxModel.ts';
+import { createShowRoadPack, musicXmlFilesForPack, runShowFactoryVirtualTest, showFactoryAgents, showFactoryApiCatalogue, showPackToMarkdown, buildLyriaInteractionPayload } from './src/data/casperShowFactoryModule.ts';
+import { createProductionPlan, dryRunJobOutput, orchestraAgents, orchestraServices, runOrchestraVirtualTest, type OrchestraJob } from './src/data/showProductionOrchestraModule.ts';
+import { createOvernightMusicCycle, dryRunMusicLabJob, overnightMusicAgents, overnightMusicServices, runOvernightMusicLabVirtualTest, type MusicLabJob } from './src/data/overnightMusicLabModule.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -917,7 +917,7 @@ app.post('/api/documents/dropbox-backup', async (req, res) => {
   }
 });
 
-const DIST_DIR = path.join(__dirname, '../dist');
+const DIST_DIR = path.join(process.cwd(), 'dist');
 app.use(express.static(DIST_DIR));
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return responseError(res, 404, 'API route not found');
