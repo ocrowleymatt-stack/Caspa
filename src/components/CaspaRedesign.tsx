@@ -53,24 +53,9 @@ type NavItem = {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
 };
 
-const fallbackChapters = [
-  { id: 'c13', title: 'The Hollow Audience', content: 'The hollow audience listened without breathing.', order: 13 },
-  { id: 'c14', title: 'A Ledger in the Dark', content: 'A ledger lay under the floorboards.', order: 14 },
-  { id: 'c15', title: 'A Door Unlatched', content: 'The old door opened inwards.', order: 15 },
-  { id: 'c16', title: 'The Gathering House', content: 'The house remembered everyone who entered.', order: 16 },
-  { id: 'c17', title: 'The Levee', content: 'The river had risen three feet by morning and would rise again before nightfall.\n\nThey called it rain, but it was the sky confessing what the city refused to remember. Water came down in sheets, drumming the zinc roofs, turning alleys into veins. The levee held—for now. But levees do not fail loudly. They soften. They weep. They forget.\n\nMaris stood where the old promenade broke into reeds and watched the current tug at the pilings, patient and sure. Behind her, the city continued its pageant. Merchants opened their stalls. Priests rehearsed their devotions. Children chased paper boats toward a horizon they had never seen.\n\nThe House had not sent for her.\n\nWhich meant it already knew.\n\nShe traced the edge of the amulet beneath her coat—cold iron, older than the charter, older than the House. It pulsed once, like a door remembering its hinge.\n\nUpstream, a bell tolled eleven times.', order: 17 },
-  { id: 'c18', title: 'The Mercy of Walls', content: 'Some walls keep people out. Others keep memories in.', order: 18 },
-] as Chapter[];
+const fallbackChapters = [] as Chapter[];
 
-const fallbackCharacters = ['Maris Vey', 'Father Solen', 'Elias Vorn', 'The House'].map((name, index) => ({
-  id: `p${index}`,
-  name,
-  role: index === 0 ? 'Protagonist' : index === 3 ? 'Shadow Faction' : 'Supporting',
-  backstory: '',
-  arc: '',
-  traits: [],
-  voiceNotes: '',
-} as Character));
+const fallbackCharacters = [] as Character[];
 
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Project Desk', detail: 'Overview and next action', icon: Home },
@@ -107,13 +92,19 @@ export default function CaspaRedesign(props: Props) {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantResult, setAssistantResult] = useState<string | null>(null);
 
-  const chapters = props.chapters.length ? [...props.chapters].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : fallbackChapters;
-  const characters = props.characters.length ? props.characters : fallbackCharacters;
-  const selectedChapter = chapters.find((c) => c.title?.toLowerCase().includes('levee')) || chapters[chapters.length - 1];
-  const computedWords = props.totalWords || chapters.reduce((acc, chapter) => acc + countWords(chapter.content), 0) || 86742;
+  const chapters = props.chapters && props.chapters.length > 0
+    ? [...props.chapters].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    : [];
+  const characters = props.characters && props.characters.length > 0
+    ? props.characters
+    : [];
+  const selectedChapter = chapters.length > 0
+    ? (chapters.find((c) => c.title?.toLowerCase().includes('levee')) || chapters[chapters.length - 1])
+    : null;
+  const computedWords = props.totalWords || (chapters.length > 0 ? chapters.reduce((acc, chapter) => acc + countWords(chapter.content), 0) : 0);
   const progress = Math.min(99, Math.max(1, Math.round((computedWords / 120000) * 100)));
-  const projectTitle = props.project?.title && props.project.title !== 'Untitled Narrative' ? props.project.title : 'The House of God';
-  const genre = props.project?.genre || 'Epic Literary Fiction';
+  const projectTitle = props.project?.title && props.project.title !== 'Untitled Narrative' ? props.project.title : 'Untitled Manuscript';
+  const genre = props.project?.genre || 'Literary Fiction';
 
   const callAssistant = async (action: string, content?: string) => {
     setAssistantLoading(true);
@@ -148,7 +139,17 @@ export default function CaspaRedesign(props: Props) {
     switch (props.currentView) {
       case 'write':
       case 'writing':
-        return <WritingRoom title={projectTitle} genre={genre} chapter={selectedChapter} chapters={chapters} characters={characters} progress={progress} computedWords={computedWords} onAssist={callAssistant} isLoading={assistantLoading} result={assistantResult} />;
+        return chapters.length === 0 ? (
+          <SimpleScreen
+            title="Writing Room"
+            text="Create your first chapter to begin writing."
+            action="New Chapter"
+            icon={PenLine}
+            onClick={() => { /* create chapter logic */ }}
+          />
+        ) : (
+          <WritingRoom title={projectTitle} genre={genre} chapter={selectedChapter!} chapters={chapters} characters={characters} progress={progress} computedWords={computedWords} onAssist={callAssistant} isLoading={assistantLoading} result={assistantResult} />
+        );
       case 'memory':
       case 'intelligence':
         return <RedPen title={projectTitle} chapters={chapters} characters={characters} computedWords={computedWords} onAnalyze={() => callAssistant('analyze-manuscript')} isLoading={assistantLoading} result={assistantResult} />;
@@ -161,7 +162,7 @@ export default function CaspaRedesign(props: Props) {
       case 'settings':
         return <SettingsScreen user={props.user} />;
       default:
-        return <ProjectDesk title={projectTitle} genre={genre} chapters={chapters} characters={characters} progress={progress} computedWords={computedWords} setCurrentView={props.setCurrentView} onAssist={() => callAssistant('draft-scene')} />;
+        return <ProjectDesk title={projectTitle} genre={genre} chapters={chapters} characters={characters} progress={progress} computedWords={computedWords} setCurrentView={props.setCurrentView} onAssist={() => callAssistant('outline-next-chapter')} />;
     }
   }, [props.currentView, projectTitle, genre, selectedChapter, chapters, characters, progress, computedWords, assistantLoading, assistantResult]);
 
@@ -295,9 +296,16 @@ function ProjectDesk({ title, genre, chapters, characters, progress, computedWor
 
         <article className="cs-card">
           <div className="cs-card__title">Recent chapters <button>View all</button></div>
-          <div className="cs-list">
-            {chapters.slice(-5).reverse().map((chapter, index) => <ChapterRow key={chapter.id || index} chapter={chapter} />)}
-          </div>
+          {chapters.length === 0 ? (
+            <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#999' }}>
+              <p style={{ marginBottom: '1rem' }}>No chapters yet. Start writing to build your story.</p>
+              <button className="cs-button cs-button--gold" onClick={() => setCurrentView('write')} style={{ fontSize: '0.875rem' }}>New Chapter</button>
+            </div>
+          ) : (
+            <div className="cs-list">
+              {chapters.slice(-5).reverse().map((chapter, index) => <ChapterRow key={chapter.id || index} chapter={chapter} />)}
+            </div>
+          )}
         </article>
 
         <article className="cs-card">
@@ -346,13 +354,17 @@ function WritingRoom({ title, genre, chapter, chapters, characters, progress, co
           <button className="cs-add-chapter"><Plus size={16} /> Add Chapter</button>
         </aside>
         <article className="cs-editor cs-card">
-          <div className="cs-toolbar"><select><option>Body Text</option></select><button>B</button><button><i>I</i></button><button><u>U</u></button><button>menu</button><button>quotes</button><button>undo</button><button>redo</button></div>
+          <div className="cs-toolbar"><select><option>Body Text</option></select><button>B</button><button><i>I</i></button><button><u>U</u></button><button>menu</button><button>quotes</button><button>—</button></div>
           <div className="cs-editor__page">
             <span className="cs-kicker">Chapter {chapter.order || 17}</span>
-            <h2>{chapter.title || 'The Levee'}</h2>
-            {(chapter.content || fallbackChapters[4].content).split('\n').filter(Boolean).map((para, index) => <p key={index}>{para}</p>)}
+            <h2>{chapter?.title || 'Untitled Chapter'}</h2>
+            {chapter?.content ? (
+              chapter.content.split('\n').filter(Boolean).map((para, index) => <p key={index}>{para}</p>)
+            ) : (
+              <p style={{ color: '#999', fontStyle: 'italic' }}>No content yet. Start writing below or use AI assistance.</p>
+            )}
           </div>
-          <div className="cs-editor__footer"><Metric value={formatNumber(countWords(chapter.content || fallbackChapters[4].content))} label="Words" /><Metric value="52m" label="Read time" /><Metric value="1 of 5" label="Scene" /><Metric value="47m" label="Focus" /></div>
+          <div className="cs-editor__footer"><Metric value={formatNumber(countWords(chapter.content || fallbackChapters[4]?.content || ''))} label="Words" /><Metric value="52m" label="Read time" /><Metric value="4" label="POV" /></div>
         </article>
         <aside className="cs-assistant">
           {result ? (
@@ -361,17 +373,17 @@ function WritingRoom({ title, genre, chapter, chapters, characters, progress, co
               <p>{result}</p>
             </div>
           ) : (
-            <div className="cs-card"><div className="cs-card__title">Caspa Assistant</div><AssistantAction title="Draft next scene" detail="Continue the story from here." onClick={() => onAssist('draft-scene')} loading={isLoading} /><AssistantAction title="Improve this scene" detail="Enhance clarity, tension and flow." onClick={() => onAssist('improve-scene')} loading={isLoading} /><AssistantAction title="Repair this chapter" detail="Strengthen structure and pacing." onClick={() => onAssist('repair-chapter')} loading={isLoading} /><AssistantAction title="Summarise this chapter" detail="Get a concise chapter summary." onClick={() => onAssist('summarize')} loading={isLoading} /></div>
+            <div className="cs-card"><div className="cs-card__title">Caspa Assistant</div><AssistantAction title="Draft next scene" detail="Continue the story from here." onClick={() => onAssist('draft-scene')} loading={isLoading} /><AssistantAction title="Tighten this chapter" detail="Improve pacing and clarity." onClick={() => onAssist('tighten-prose')} loading={isLoading} /><AssistantAction title="Find continuity risks" detail="Spot contradictions before they spread." onClick={() => onAssist('find-continuity')} loading={isLoading} /></div>
           )}
-          <div className="cs-card"><div className="cs-card__title">Continuity notes <span>3</span></div><ul className="cs-bullet-list"><li>The levee is failing slowly - foreshadowing.</li><li>The old amulet is iron and pre-House.</li><li>The House appears to know the flood is coming.</li></ul></div>
-          <div className="cs-card"><div className="cs-card__title">Character reminders <button>Manage</button></div>{characters.slice(0, 4).map((character) => <div key={character.id} className="cs-person-row"><span>{character.name.slice(0, 1)}</span><strong>{character.name}</strong><small>{character.role || 'Character'}</small></div>)}</div>
+          <div className="cs-card"><div className="cs-card__title">Continuity notes <span>3</span></div><ul className="cs-bullet-list"><li>The levee is failing slowly - foreshadowing.</li><li>The ring appears in ch. 5 and ch. 17; keep chain of custody clear.</li><li>Weather shift between chapters needs a bridge sentence.</li></ul></div>
+          <div className="cs-card"><div className="cs-card__title">Character reminders <button>Manage</button></div>{characters.slice(0, 4).map((character) => <div key={character.id} className="cs-character-reminder"><strong>{character.name}</strong><small>{character.role || 'Character'}</small></div>)}</div>
         </aside>
       </div>
     </section>
   );
 }
 
-function RedPen({ title, chapters, characters, computedWords, onAnalyze, isLoading, result }: { title: string; chapters: Chapter[]; characters: Character[]; computedWords: number; onAnalyze: () => void; isLoading: boolean; result: string | null }) {
+function RedPen({ title, chapters, characters, computedWords, onAnalyze, isLoading, result }: { title: string; chapters: Chapter[]; characters: Character[]; computedWords: number; onAnalyze: () => void; isLoading: boolean; result: string | null; }) {
   const issues = [
     ['Major', 'Character location does not match timeline', 'Character location jumps without travel time.'],
     ['Major', 'Injury changes between chapters', 'Physical continuity needs resolving.'],
@@ -380,13 +392,13 @@ function RedPen({ title, chapters, characters, computedWords, onAnalyze, isLoadi
   ];
   return (
     <section className="cs-page cs-redpen">
-      <div className="cs-hero cs-hero--compact"><div><div className="cs-kicker">Story Bible / Red Pen</div><h1>{title}</h1><p>Plan. Refine. Repair. Elevate your story.</p></div><button className="cs-button cs-button--gold" onClick={onAnalyze} disabled={isLoading}>{isLoading ? <Loader size={16} /> : <Wand2 size={16} />} Run full analysis</button></div>
+      <div className="cs-hero cs-hero--compact"><div><div className="cs-kicker">Story Bible / Red Pen</div><h1>{title}</h1><p>Plan. Refine. Repair. Elevate your story.</p></div><button className="cs-button cs-button--gold" onClick={onAnalyze} disabled={isLoading}>{isLoading ? <Loader size={16} className="spin" /> : <Wand2 size={16} />} Run full analysis</button></div>
       <div className="cs-grid cs-grid--redpen">
-        <article className="cs-card cs-character-board"><div className="cs-card__title">Character board <span>{characters.length}</span></div>{characters.slice(0, 7).map((c, i) => <div key={c.id} className="cs-character-card"><div className="cs-character-card__portrait">{c.name.slice(0, 1)}</div><strong>{c.name}</strong><small>{c.role || (i === 0 ? 'Protagonist' : 'Supporting')}</small><span className="cs-mini-bar"><i style={{ width: `${55 + i * 6}%` }} /></span></div>)}</article>
-        <article className="cs-card cs-timeline"><div className="cs-card__title">Plot timeline <button>View timeline</button></div><div className="cs-timeline__line">{['The Call','The First Lie','The Deepening','The Betrayal','The Revelation','The Reckoning'].map((label, i) => <span key={label} style={{ left: `${6 + i * 17}%` }}><b>Ch. {i * 5 + 1}</b><small>{label}</small></span>)}</div></article>
-        <article className="cs-card"><div className="cs-card__title">Themes</div><Theme label="Truth vs Power" strength="Strong" width={88} /><Theme label="Faith and Doubt" strength="Medium" width={62} /><Theme label="Redemption" strength="Medium" width={58} /><Theme label="Sacrifice" strength="Low" width={34} /></article>
-        <article className="cs-card"><div className="cs-card__title">Continuity alerts <span>12</span></div>{issues.map(([level, title, detail], i) => <div key={i} className="cs-issue-row"><span className={`cs-dot cs-dot--${level.toLowerCase()}`} /><div><strong>{title}</strong><small>{detail}</small></div><em>{level}</em></div>)}</article>
-        <article className="cs-card cs-scene-map"><div className="cs-card__title">Scene relationships</div><div className="cs-map-node cs-map-node--center">Ch. 14<br />The Betrayal</div><div className="cs-map-node n1">Ch. 12<br />Warning</div><div className="cs-map-node n2">Ch. 13<br />Confession</div><div className="cs-map-node n3">Ch. 15<br />Escape</div><div className="cs-map-node n4">Ch. 17<br />Letter</div></article>
+        <article className="cs-card cs-character-board"><div className="cs-card__title">Character board <span>{characters.length}</span></div>{characters.slice(0, 7).map((c, i) => <div key={c.id} className="cs-character-row"><span>{i + 1}</span><div><strong>{c.name}</strong><small>{c.role || 'Character'}</small></div><button>Open</button></div>)}</article>
+        <article className="cs-card cs-timeline"><div className="cs-card__title">Plot timeline <button>View timeline</button></div><div className="cs-timeline__line">{['The Call','The First Lie','The Fracture','The Levee','The Chamber'].map((beat, index) => <div key={beat} className={index === 3 ? 'is-active' : ''}><span>{index + 1}</span><small>{beat}</small></div>)}</div></article>
+        <article className="cs-card"><div className="cs-card__title">Themes</div><Theme label="Truth vs Power" strength="Strong" width={88} /><Theme label="Faith and Doubt" strength="Medium" width={63} /><Theme label="Family as Weapon" strength="Rising" width={71} /></article>
+        <article className="cs-card"><div className="cs-card__title">Continuity alerts <span>12</span></div>{issues.map(([level, issueTitle, detail], i) => <div key={i} className="cs-issue-row"><span className={`cs-pill cs-pill--${String(level).toLowerCase()}`}>{level}</span><div><strong>{issueTitle}</strong><small>{detail}</small></div><button>Fix</button></div>)}</article>
+        <article className="cs-card cs-scene-map"><div className="cs-card__title">Scene relationships</div><div className="cs-map-node cs-map-node--center">Ch. 14<br />The Betrayal</div><div className="cs-map-node cs-map-node--a">Ch. 13<br />The Hollow Audience</div><div className="cs-map-node cs-map-node--b">Ch. 17<br />The Levee</div><div className="cs-map-node cs-map-node--c">Character: Maris</div></article>
         <aside className="cs-aside-panel cs-redpen-inspector">
           {result && <div className="cs-card cs-card--result"><div className="cs-card__title">Analysis</div><p>{result}</p></div>}
           <SuggestionCard type="Issue detail" text="Character appears in two locations without travel time. Add a transition scene or adjust the chapter opening." action="Apply suggestion" />
@@ -398,17 +410,16 @@ function RedPen({ title, chapters, characters, computedWords, onAnalyze, isLoadi
   );
 }
 
-function LibraryScreen({ createNewProject }: { createNewProject: (title?: string) => void }) { return <SimpleScreen title="Library" text="Your manuscripts, shelves, public read links and local drafts live here." action="New manuscript" onClick={() => createNewProject('Untitled Manuscript')} icon={Library} />; }
-function ResearchScreen() { return <SimpleScreen title="Research Desk" text="A cleaner home for uploaded sources, notes, worldbuilding material and evidence-like references." action="Add source" icon={Search} />; }
-function PublishScreen({ title, computedWords }: { title: string; computedWords: number }) { return <SimpleScreen title="Publish" text={`${title} is at ${formatNumber(computedWords)} words. Export routes belong here: DOCX, PDF, EPUB, reader link and manuscript report.`} action="Prepare export" icon={Download} />; }
-function SettingsScreen({ user }: { user: Props['user'] }) { return <SimpleScreen title="Settings" text={`Signed in as ${user.email || user.displayName || 'local author'}. Account, privacy, storage and provider settings stay here.`} action="Review settings" icon={Settings} />; }
+function LibraryScreen({ createNewProject }: { createNewProject: (title?: string) => void }) { return <SimpleScreen title="Library" text="Your manuscripts, shelves, public read links and local drafts." action="New project" icon={Boxes} onClick={() => createNewProject('Untitled Narrative')} />; }
+function ResearchScreen() { return <SimpleScreen title="Research Desk" text="A cleaner home for uploaded sources, notes, worldbuilding material and evidence-like references." action="Add source" icon={CalendarDays} />; }
+function PublishScreen({ title, computedWords }: { title: string; computedWords: number }) { return <SimpleScreen title="Publish" text={`${title} is at ${formatNumber(computedWords)} words. Export EPUB/PDF, create private links, and prep release metadata.`} action="Generate export" icon={ShieldCheck} />; }
+function SettingsScreen({ user }: { user: Props['user'] }) { return <SimpleScreen title="Settings" text={`Signed in as ${user.email || user.displayName || 'local author'}. Account, privacy, storage and model defaults live here.`} action="Manage account" icon={Ghost} />; }
 
-function SimpleScreen({ title, text, action, icon: Icon, onClick }: { title: string; text: string; action: string; icon: React.ComponentType<{ size?: number }>; onClick?: () => void }) { return <section className="cs-page"><div className="cs-simple-screen"><GreyLadyMark /><div className="cs-kicker">Caspa Studio</div><h1>{title}</h1><p>{text}</p><button onClick={onClick} className="cs-button cs-button--gold"><Icon size={16} /> {action}</button></div></section>; }
+function SimpleScreen({ title, text, action, icon: Icon, onClick }: { title: string; text: string; action: string; icon: React.ComponentType<{ size?: number }>; onClick?: () => void }) { return <section className="cs-page"><article className="cs-card cs-simple"><div className="cs-simple__icon"><Icon size={32} /></div><h1>{title}</h1><p>{text}</p><button className="cs-button cs-button--gold" onClick={onClick}>{action}</button></article></section>; }
 
 function Metric({ value, label }: { value: string | number; label: string }) { return <span className="cs-metric"><strong>{value}</strong><small>{label}</small></span>; }
 function SuggestionCard({ type, text, action }: { type: string; text: string; action: string }) { return <article className="cs-suggestion"><div className="cs-card__title"><Sparkles size={14} /> {type}</div><p>{text}</p><button>{action}</button></article>; }
-function ChapterRow({ chapter }: { chapter: Chapter }) { return <div className="cs-row"><FileText size={17} /><div><strong>{chapter.title}</strong><small>{formatNumber(countWords(chapter.content))} words - recently edited</small></div><ChevronRight size={16} /></div>; }
+function ChapterRow({ chapter }: { chapter: Chapter }) { return <div className="cs-row"><FileText size={17} /><div><strong>{chapter.title}</strong><small>{formatNumber(countWords(chapter.content))} words</small></div><Clock3 size={15} /></div>; }
 function Task({ title, detail, date, tone }: { title: string; detail: string; date: string; tone: 'gold' | 'violet' }) { return <div className="cs-task"><span className={`cs-task__dot cs-task__dot--${tone}`} /><div><strong>{title}</strong><small>{detail}</small></div><time>{date}</time></div>; }
-function AssistantAction({ title, detail, onClick, loading }: { title: string; detail: string; onClick: () => void; loading: boolean }) { return <button className="cs-assistant-action" onClick={onClick} disabled={loading}>{loading ? <Loader size={17} className="spin" /> : <Feather size={17} />}<span><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={15} /></button>; }
+function AssistantAction({ title, detail, onClick, loading }: { title: string; detail: string; onClick: () => void; loading: boolean }) { return <button className="cs-assistant-action" onClick={onClick} disabled={loading}>{loading ? <Loader size={14} className="spin" /> : <Sparkles size={14} />}<span><strong>{title}</strong><small>{detail}</small></span></button>; }
 function Theme({ label, strength, width }: { label: string; strength: string; width: number }) { return <div className="cs-theme"><span>{label}<small>{strength}</small></span><b><i style={{ width: `${width}%` }} /></b></div>; }
-
