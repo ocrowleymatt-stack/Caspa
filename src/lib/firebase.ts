@@ -69,6 +69,10 @@ function normaliseAuthError(error: any): Error {
     return new Error('The browser blocked the Google sign-in popup. Caspa will try redirect sign-in instead.');
   }
 
+  if (code === 'auth/popup-closed-by-user') {
+    return new Error('Google sign-in was cancelled because the popup was closed before completion.');
+  }
+
   return new Error(message);
 }
 
@@ -127,15 +131,19 @@ export async function loginWithGoogle() {
       }
       return await handleUserSync(result.user);
     } catch (popupError: any) {
+      if (popupError?.code === 'auth/popup-closed-by-user') {
+        // User intentionally closed the popup: do not force redirect fallback.
+        throw popupError;
+      }
+
       const fallbackCodes = new Set([
         'auth/popup-blocked',
         'auth/cancelled-popup-request',
         'auth/cancelled-interactive-request',
-        'auth/popup-closed-by-user',
       ]);
 
       if (fallbackCodes.has(popupError.code)) {
-        console.log('Popup failed or was cancelled; falling back to redirect...', popupError.code);
+        console.log('Popup failed due to browser constraints; falling back to redirect...', popupError.code);
         await signInWithRedirect(auth, googleProvider);
         return null;
       }
