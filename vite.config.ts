@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   server: {
-    allowedHosts: ['novel.ocrowley.com', 'localhost', '116.202.24.63'],
+    allowedHosts: ['novel.ocrowley.com', 'caspa.ocrowley.com', 'localhost', '116.202.24.63'],
     hmr: process.env.DISABLE_HMR !== 'true',
   },
 });
