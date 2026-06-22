@@ -17,6 +17,7 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -27,7 +28,7 @@ app.get("/health", (req, res) => {
     status: "ok", 
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    env: process.env.NODE_ENV
+    env: process.env.NODE_ENV || "production (default)"
   });
 });
 
@@ -259,7 +260,7 @@ app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development'
+    env: IS_DEVELOPMENT ? "development" : "production"
   });
 });
 
@@ -863,7 +864,7 @@ app.post('/api/content/estimate-cost', async (req, res) => {
   }
 });
 
-// Mount PDF Assembly routes (BEFORE Vite middleware)
+// Mount PDF Assembly routes (BEFORE static/Vite middleware)
 app.use("/api/metadata", createBookMetadataRoutes(process.env.GEMINI_API_KEY!));
 app.use("/api/service", serviceApiRoutes);
 app.use("/api/phase6", phase6Routes);
@@ -872,13 +873,16 @@ app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
 
 async function run() {
-  if (process.env.NODE_ENV !== "production") {
+  // DEFAULT TO PRODUCTION: Only use Vite dev middleware if NODE_ENV is explicitly set to "development"
+  if (IS_DEVELOPMENT) {
+    console.log("[Server] Starting in DEVELOPMENT mode with Vite middleware");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    console.log("[Server] Starting in PRODUCTION mode with static file serving");
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
@@ -1238,21 +1242,15 @@ Rules:
   }
 });
 
-// Serve static files from dist
-app.use(express.static(path.join(__dirname, '../dist')));
-
-// SPA fallback: serve index.html for all routes except /api
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(__dirname, '../dist/index.html'));
-  } else {
-    res.status(404).json({ error: 'API route not found' });
-  }
-});
-
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is running at http://0.0.0.0:${PORT}`);
+  // Listen
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`\n📚 Caspa Studio running at http://0.0.0.0:${PORT}`);
+    console.log(`Environment: ${IS_DEVELOPMENT ? 'DEVELOPMENT' : 'PRODUCTION'}`);
+    console.log(`Dist path: ${path.join(process.cwd(), 'dist')}\n`);
   });
 }
 
-run();
+run().catch(err => {
+  console.error("Server startup error:", err);
+  process.exit(1);
+});
