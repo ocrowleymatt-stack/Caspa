@@ -134,6 +134,8 @@ export async function generate(body: {
   model?: string;
   projectId?: string;
   chapterId?: string;
+  temperature?: number;
+  maxTokens?: number;
 }): Promise<{ text: string; model: string }> {
   return apiCall('/generate', {
     method: 'POST',
