@@ -7,7 +7,7 @@ import { interpretCommand, planCommand, executeCommand } from '../api/command';
 
 function NaturalCommandContent({ projectId }: { projectId: string }) {
   const toast = useToast();
-  const [text, setText] = useState('Check quality and prepare my project for publishing');
+  const [text, setText] = useState('');
   const [result, setResult] = useState<unknown>(null);
 
   const mutation = useMutation({
@@ -24,6 +24,8 @@ function NaturalCommandContent({ projectId }: { projectId: string }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const canRun = text.trim().length > 0;
+
   return (
     <div className="space-y-4">
       <textarea
@@ -33,14 +35,19 @@ function NaturalCommandContent({ projectId }: { projectId: string }) {
         placeholder="Describe what you want CASPA to do..."
       />
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate('interpret')} className="btn-primary">
+        <button
+          type="button"
+          disabled={!canRun || mutation.isPending}
+          onClick={() => mutation.mutate('interpret')}
+          className="btn-primary"
+        >
           {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Command className="h-4 w-4" />}
-          Interpret
+          Go
         </button>
-        <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate('plan')} className="btn-secondary">
+        <button type="button" disabled={!canRun || mutation.isPending} onClick={() => mutation.mutate('plan')} className="btn-secondary">
           Plan Workflow
         </button>
-        <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate('execute')} className="btn-secondary">
+        <button type="button" disabled={!canRun || mutation.isPending} onClick={() => mutation.mutate('execute')} className="btn-secondary">
           Execute
         </button>
       </div>

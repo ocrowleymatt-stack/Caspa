@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
 import { listProjects } from '../api/projects';
 import { useAppStore } from '../store';
 
@@ -13,9 +15,19 @@ interface Props {
 
 export function ElevationWorkbench({ title, subtitle, icon, children, requireProject = true }: Props) {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const setActiveProjectId = useAppStore((s) => s.setActiveProjectId);
   const [projectId, setProjectId] = useState(activeProjectId ?? '');
 
   const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: listProjects });
+
+  useEffect(() => {
+    if (activeProjectId) setProjectId(activeProjectId);
+  }, [activeProjectId]);
+
+  function handleProjectChange(id: string) {
+    setProjectId(id);
+    setActiveProjectId(id || null);
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -32,7 +44,7 @@ export function ElevationWorkbench({ title, subtitle, icon, children, requirePro
           </div>
           <div className="w-full md:w-80">
             <label className="label">Project</label>
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input">
+            <select value={projectId} onChange={(e) => handleProjectChange(e.target.value)} className="input">
               <option value="">Select project...</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.title}</option>
@@ -43,8 +55,14 @@ export function ElevationWorkbench({ title, subtitle, icon, children, requirePro
       </section>
 
       {requireProject && !projectId ? (
-        <div className="rounded-[2rem] border border-[#eadfca] bg-white/85 py-14 text-center shadow-paper">
-          <p className="text-muted">Select a project to get started.</p>
+        <div className="rounded-[2rem] border border-[#eadfca] bg-white/85 px-6 py-14 text-center shadow-paper">
+          <p className="text-muted">Select a project above to run this tool.</p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link to="/projects" className="btn-primary">
+              <Plus className="h-4 w-4" /> New project
+            </Link>
+            <Link to="/casper" className="btn-secondary">Open Casper</Link>
+          </div>
         </div>
       ) : (
         children({ projectId, setProjectId })

@@ -230,7 +230,13 @@ export default function Dashboard() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#171a22]/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-[2rem] border border-[#eadfca] bg-white p-6 shadow-room">
+          <form
+            className="w-full max-w-lg rounded-[2rem] border border-[#eadfca] bg-white p-6 shadow-room"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createMutation.mutate();
+            }}
+          >
             <h2 className="font-serif text-3xl font-semibold text-[#171a22]">New project</h2>
             <p className="mt-1 text-sm text-muted">Create the room first. Leave the title blank for an Untitled Room.</p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -304,15 +310,14 @@ export default function Dashboard() {
                 Cancel
               </button>
               <button
-                type="button"
+                type="submit"
                 disabled={createMutation.isPending}
-                onClick={() => createMutation.mutate()}
                 className="btn-primary"
               >
                 {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create and open'}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>

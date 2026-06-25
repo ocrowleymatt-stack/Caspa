@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Database } from 'lucide-react';
 import { ElevationWorkbench, JsonPreview, ResultCard } from '../components/ElevationWorkbench';
@@ -14,9 +15,10 @@ function SourcesContent({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-4">
       {sources.length === 0 ? (
-        <p className="text-muted text-center py-12">
-          No sources yet. Analyse content in Forge & Intake to populate the ledger.
-        </p>
+        <div className="py-12 text-center">
+          <p className="text-muted">No sources yet. Analyse content in Forge &amp; Intake to populate the ledger.</p>
+          <Link to="/forge" className="btn-primary mt-6 inline-flex">Open Forge &amp; Intake</Link>
+        </div>
       ) : (
         <ResultCard title={`Source Ledger (${sources.length})`}>
           <JsonPreview data={sources} />

@@ -1,7 +1,8 @@
-import { ChangeEvent, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
+  ArrowRight,
   BookOpen,
   Check,
   ChevronDown,
@@ -13,7 +14,6 @@ import {
   Music,
   PenLine,
   Play,
-  Plus,
   Sparkles,
   UploadCloud,
   Wand2,
@@ -282,14 +282,23 @@ export default function CasperFreestyle() {
     }
   }
 
+  function startProject(override?: CreateOverride) {
+    createMutation.mutate(override);
+  }
+
   function startMode(nextMode: CasperMode, nextOutput = output) {
     setMode(nextMode);
     setOutput(nextOutput);
-    createMutation.mutate({ mode: nextMode, output: nextOutput });
+    startProject({ mode: nextMode, output: nextOutput });
+  }
+
+  function handleIdeaSubmit(event: FormEvent) {
+    event.preventDefault();
+    startProject();
   }
 
   return (
-    <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8">
+    <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <header className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-end">
           <div className="space-y-6">
@@ -321,7 +330,7 @@ export default function CasperFreestyle() {
         </header>
 
         <section className="rounded-[2.2rem] border border-[#eadfca] bg-white p-4 shadow-[0_30px_100px_rgba(75,55,21,0.13)] md:p-6">
-          <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+          <form onSubmit={handleIdeaSubmit} className="grid gap-5 lg:grid-cols-[1fr_280px]">
             <div className="space-y-3">
               <label className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">The idea</label>
               <textarea
@@ -330,6 +339,17 @@ export default function CasperFreestyle() {
                 className="min-h-[148px] w-full resize-y rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-6 text-2xl leading-snug text-[#171a22] shadow-inner outline-none transition placeholder:text-[#b8aa91] focus:border-[#caa044] focus:ring-4 focus:ring-[#d4af37]/20 md:text-3xl"
                 placeholder="Describe the idea — or leave blank for an empty room."
               />
+              <p className="text-sm leading-6 text-[#766b58]">
+                Pick a format on the right, or start now — a blank premise is fine.
+              </p>
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="flex w-full items-center justify-center gap-2 rounded-[1.35rem] bg-[#f5d37a] px-6 py-4 text-base font-bold text-[#171a22] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#ffe39a] disabled:opacity-60"
+              >
+                {createMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
+                Start project
+              </button>
             </div>
 
             <div className="grid gap-3 self-stretch">
@@ -343,6 +363,24 @@ export default function CasperFreestyle() {
                 <strong className="block">Script</strong>
                 <span className="text-sm text-[#766b58]">Stage, screen, radio</span>
               </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => startMode('musical', 'Song list and lyrics')} disabled={createMutation.isPending} className="rounded-2xl border border-[#e7d8b9] bg-[#fffdf8] px-3 py-3 text-left text-sm text-[#171a22] transition hover:border-[#d4af37] disabled:opacity-60">
+                  <Music className="mb-2 h-4 w-4 text-[#98711d]" />
+                  <strong className="block">Musical</strong>
+                </button>
+                <button type="button" onClick={() => startMode('adaptation', 'Project bible')} disabled={createMutation.isPending} className="rounded-2xl border border-[#e7d8b9] bg-[#fffdf8] px-3 py-3 text-left text-sm text-[#171a22] transition hover:border-[#d4af37] disabled:opacity-60">
+                  <FileText className="mb-2 h-4 w-4 text-[#98711d]" />
+                  <strong className="block">Adaptation</strong>
+                </button>
+                <button type="button" onClick={() => startMode('polish', 'Project bible')} disabled={createMutation.isPending} className="rounded-2xl border border-[#e7d8b9] bg-[#fffdf8] px-3 py-3 text-left text-sm text-[#171a22] transition hover:border-[#d4af37] disabled:opacity-60">
+                  <Wand2 className="mb-2 h-4 w-4 text-[#98711d]" />
+                  <strong className="block">Polish</strong>
+                </button>
+                <button type="button" onClick={() => startMode('chaos', 'One-page concept')} disabled={createMutation.isPending} className="rounded-2xl border border-[#e7d8b9] bg-[#fffdf8] px-3 py-3 text-left text-sm text-[#171a22] transition hover:border-[#d4af37] disabled:opacity-60">
+                  <Sparkles className="mb-2 h-4 w-4 text-[#98711d]" />
+                  <strong className="block">Chaos</strong>
+                </button>
+              </div>
               <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-[1.35rem] border border-[#e7d8b9] bg-[#fffdf8] px-5 py-4 text-left text-[#171a22] transition hover:-translate-y-0.5 hover:border-[#d4af37]">
                 <UploadCloud className="mb-3 h-5 w-5 text-[#98711d]" />
                 <strong className="block">Upload Manuscript</strong>
@@ -350,7 +388,7 @@ export default function CasperFreestyle() {
               </button>
               <input ref={fileInputRef} type="file" accept=".txt,.md,.markdown,.rtf,.html,.htm,text/plain,text/markdown,text/html" className="hidden" onChange={handleUpload} />
             </div>
-          </div>
+          </form>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[1fr_330px]">
@@ -376,9 +414,9 @@ export default function CasperFreestyle() {
                 <PenLine className="h-4 w-4" /> Casper can
               </div>
               <div className="space-y-3">
-                <button type="button" onClick={() => createMutation.mutate({})} disabled={createMutation.isPending} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] transition hover:bg-[#ffe39a] disabled:opacity-60">
-                  {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  Create and open project
+                <button type="button" onClick={() => startProject()} disabled={createMutation.isPending} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] transition hover:bg-[#ffe39a] disabled:opacity-60">
+                  {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                  Start project
                 </button>
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10">
                   <UploadCloud className="h-4 w-4 text-[#f5d37a]" /> Upload manuscript
@@ -391,7 +429,7 @@ export default function CasperFreestyle() {
                   {playing ? 'Playing demo...' : 'Play demo music'}
                 </button>
                 <button type="button" onClick={() => { setMode('polish'); setOutput('Project bible'); }} className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10">
-                  <Wand2 className="h-4 w-4 text-[#f5d37a]" /> Polish this page
+                  <Wand2 className="h-4 w-4 text-[#f5d37a]" /> Switch to polish mode
                 </button>
               </div>
             </div>
@@ -449,6 +487,18 @@ export default function CasperFreestyle() {
             </div>
           </aside>
         </section>
+
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#eadfca] bg-[#fffdf8]/95 p-4 backdrop-blur md:hidden">
+          <button
+            type="button"
+            onClick={() => startProject()}
+            disabled={createMutation.isPending}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] disabled:opacity-60"
+          >
+            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+            Start project
+          </button>
+        </div>
       </div>
     </div>
   );

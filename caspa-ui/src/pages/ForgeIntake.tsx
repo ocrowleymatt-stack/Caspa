@@ -38,9 +38,19 @@ function ForgeContent({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
-      <textarea value={content} onChange={(e) => setContent(e.target.value)} className="input min-h-[120px]" />
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        className="input min-h-[120px]"
+        placeholder="Paste notes, transcripts, or raw material to classify..."
+      />
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={analyseMutation.isPending} onClick={() => analyseMutation.mutate()} className="btn-primary">
+        <button
+          type="button"
+          disabled={!content.trim() || analyseMutation.isPending}
+          onClick={() => analyseMutation.mutate()}
+          className="btn-primary"
+        >
           {analyseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Analyse Source'}
         </button>
         {projectId && (

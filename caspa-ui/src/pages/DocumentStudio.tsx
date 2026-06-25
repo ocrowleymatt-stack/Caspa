@@ -27,7 +27,7 @@ function DocumentStudioContent() {
   return (
     <div className="space-y-4">
       <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Paste Markdown to preview…" className="input min-h-[200px] font-mono text-xs" />
-      <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate()} className="btn-primary">
+      <button type="button" disabled={!content.trim() || mutation.isPending} onClick={() => mutation.mutate()} className="btn-primary">
         {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Render Preview'}
       </button>
       {html && (

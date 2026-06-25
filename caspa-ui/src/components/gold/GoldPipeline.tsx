@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { listChapters } from '../../api/chapters';
+import { listProjects } from '../../api/projects';
 import { getGoldReport, runGoldPipeline, type GoldRunOptions } from '../../api/gold';
 import {
   executeGoldPipelineStream,
@@ -34,6 +36,12 @@ import {
 export default function GoldPipelinePanel() {
   const toast = useToast();
   const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const setActiveProjectId = useAppStore((s) => s.setActiveProjectId);
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: listProjects,
+  });
 
   const [selectedDepth, setSelectedDepth] = useState<NonNullable<PassDepth>>('structural');
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
@@ -357,11 +365,32 @@ export default function GoldPipelinePanel() {
             Local High-Fidelity Prose Deep Optimisation Suite
           </p>
         </div>
-        <div className="bg-[#161B22] border border-slate-800/60 rounded-xl p-12 text-center">
+        <div className="bg-[#161B22] border border-slate-800/60 rounded-xl p-12 text-center space-y-6">
           <p className="text-sm text-slate-400 font-serif tracking-wide">
-            Select an active project in the sidebar to calibrate and run the Gold pipeline.
+            Choose a project to calibrate and run the Gold pipeline.
           </p>
-          <p className="text-xs text-slate-600 font-mono mt-2">No project bound · pipeline idle</p>
+          <div className="mx-auto max-w-md text-left">
+            <label className="text-xs font-medium text-slate-400">Project</label>
+            <select
+              value=""
+              onChange={(event) => setActiveProjectId(event.target.value || null)}
+              className="mt-2 w-full rounded-lg border border-slate-800 bg-[#0B0F19] px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-500/60"
+            >
+              <option value="">Select project...</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.title}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link to="/projects" className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-[#0B0F19] transition hover:bg-amber-400">
+              New project
+            </Link>
+            <Link to="/casper" className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-amber-500/60">
+              Open Casper
+            </Link>
+          </div>
+          <p className="text-xs text-slate-600 font-mono">No project bound · pipeline idle</p>
         </div>
       </div>
     );
