@@ -47,7 +47,7 @@ export async function geminiGenerate(req: AIRequest): Promise<AIResponse> {
   }
 
   const start = Date.now();
-  const model = req.model ?? 'gemini-1.5-flash';
+  const model = req.model ?? 'gemini-2.0-flash';
   const prompt = buildPrompt(req);
 
   const response = await fetch(
@@ -92,7 +92,7 @@ export async function grokGenerate(req: AIRequest): Promise<AIResponse> {
   }
 
   const start = Date.now();
-  const model = req.model ?? 'grok-beta';
+  const model = req.model ?? 'grok-2-latest';
   const prompt = buildPrompt(req);
 
   const response = await fetch('https://api.x.ai/v1/chat/completions', {

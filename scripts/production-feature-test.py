@@ -72,21 +72,48 @@ def main() -> int:
     if not token:
         print('\n==> Cannot run authenticated tests')
     else:
+        project_id = None
+        try:
+            projects = req('GET', '/api/projects', token=token)
+            if projects.get('success'):
+                items = projects.get('data') or []
+                record(results, 'GET /api/projects', True, f'{len(items)} projects')
+                if items:
+                    project_id = items[0].get('id')
+            else:
+                record(results, 'GET /api/projects', False, projects.get('error', 'unknown'))
+        except urllib.error.HTTPError as error:
+            record(results, 'GET /api/projects', False, f'HTTP {error.code}: {error.read().decode()[:120]}')
+        except Exception as error:
+            record(results, 'GET /api/projects', False, str(error))
+
         tests: list[tuple[str, str, str, dict | None]] = [
-            ('GET /api/projects', 'GET', '/api/projects', None),
             ('GET /providers', 'GET', '/providers', None),
             ('GET /api/casper/status', 'GET', '/api/casper/status', None),
             ('GET show-catalogue show-factory', 'GET', '/api/show-catalogue/show-factory', None),
             ('GET show-catalogue orchestra', 'GET', '/api/show-catalogue/orchestra', None),
             ('GET show-catalogue music-lab', 'GET', '/api/show-catalogue/music-lab', None),
             ('POST command interpret', 'POST', '/api/command/interpret', {'text': 'Summarise my novel project'}),
-            ('POST intake analyse', 'POST', '/api/intake/analyse', {'projectId': 'demo', 'text': 'Research note about Milton Keynes theatre.'}),
+            ('POST intake analyse', 'POST', '/api/intake/analyse', {
+                'content': 'Research note about Milton Keynes theatre.',
+                'projectId': project_id,
+                'filename': 'notes.txt',
+            }),
             ('POST quality ai-smell', 'POST', '/api/quality/ai-smell', {'text': 'Sample marketing copy for a stage comedy.'}),
             ('POST music-prompt interpret', 'POST', '/api/music-prompt/interpret', {'prompt': 'Upbeat panto opening number'}),
             ('POST casper freestyle', 'POST', '/api/casper/freestyle', {'prompt': 'A Dick Turpin comedy', 'mode': 'script'}),
-            ('POST publish-confidence', 'POST', '/api/publish-confidence/check', {'projectId': 'demo', 'sections': []}),
-            ('POST document-render preview', 'POST', '/api/document-render/preview', {'projectId': 'demo', 'format': 'markdown'}),
         ]
+
+        if project_id:
+            tests.append(('POST publish-confidence', 'POST', '/api/publish-confidence/check', {'projectId': project_id}))
+        else:
+            record(results, 'POST publish-confidence', False, 'skipped — no project id')
+
+        tests.append(('POST document-render preview', 'POST', '/api/document-render/preview', {
+            'title': 'Preview',
+            'content': '# Sample\n\nA short manuscript excerpt for render preview.',
+            'format': 'markdown',
+        }))
         for name, method, path, body in tests:
             try:
                 out = req(method, path, body, token)
