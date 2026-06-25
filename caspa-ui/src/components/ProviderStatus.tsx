@@ -49,7 +49,7 @@ export function ProviderStatus({ compact = false, className }: ProviderStatusPro
           </div>
           <p className="mt-2 text-sm leading-6 text-muted">
             {readyCount
-              ? 'Cloud keys are detected and ready to use. Keys stay server-side.'
+              ? 'Keys and local Ollama are configured. If writing fails, check billing, quotas, or pull a local model with ollama pull mistral.'
               : 'No configured AI engine is reporting ready yet.'}
           </p>
         </div>

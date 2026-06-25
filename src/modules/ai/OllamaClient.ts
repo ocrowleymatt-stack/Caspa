@@ -49,15 +49,31 @@ async function ollamaFetch(path: string, init?: RequestInit, timeoutMs = OLLAMA_
 export class OllamaClient {
   async isAvailable(): Promise<boolean> {
     try {
-      const response = await withTimeout(
-        fetch(`${config.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(AVAILABILITY_TIMEOUT_MS) }),
-        AVAILABILITY_TIMEOUT_MS,
-        new Error('Ollama availability check timed out'),
-      );
-      return response.ok;
+      const models = await this.listModels();
+      return models.length > 0;
     } catch {
       return false;
     }
+  }
+
+  async resolveModel(requested?: string): Promise<string> {
+    const models = await this.listModels();
+    if (models.length === 0) {
+      throw new Error('No Ollama models installed. Run: ollama pull mistral');
+    }
+
+    const preferred = requested ?? config.ollamaModel;
+    if (models.includes(preferred)) {
+      return preferred;
+    }
+
+    const tagged = models.find((name) => name.startsWith(`${preferred}:`));
+    if (tagged) {
+      return tagged;
+    }
+
+    logger.warn(`Ollama model "${preferred}" not found; falling back to "${models[0]}"`);
+    return models[0];
   }
 
   async listModels(): Promise<string[]> {
@@ -72,7 +88,7 @@ export class OllamaClient {
 
   async generate(req: AIRequest): Promise<AIResponse> {
     const start = Date.now();
-    const model = req.model ?? config.ollamaModel;
+    const model = await this.resolveModel(req.model);
     const prompt = req.context ? `${req.context}\n\n${req.prompt}` : req.prompt;
 
     const response = await ollamaFetch('/api/generate', {
@@ -106,7 +122,7 @@ export class OllamaClient {
     model?: string,
   ): Promise<AIResponse> {
     const start = Date.now();
-    const resolvedModel = model ?? config.ollamaModel;
+    const resolvedModel = await this.resolveModel(model);
 
     const response = await ollamaFetch('/api/chat', {
       method: 'POST',
@@ -140,7 +156,7 @@ export class OllamaClient {
     onChunk: (text: string) => void,
   ): Promise<AIResponse> {
     const start = Date.now();
-    const model = req.model ?? config.ollamaModel;
+    const model = await this.resolveModel(req.model);
     const prompt = req.context ? `${req.context}\n\n${req.prompt}` : req.prompt;
 
     const response = await ollamaFetch('/api/generate', {

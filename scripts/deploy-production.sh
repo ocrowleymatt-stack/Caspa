@@ -32,6 +32,11 @@ if ! grep -q '^AUTH_ENABLED=true' .env 2>/dev/null; then
   echo "==> Enabled AUTH_ENABLED=true in .env"
 fi
 
+if ! grep -q '^OLLAMA_MODEL=' .env 2>/dev/null; then
+  echo 'OLLAMA_MODEL=mistral:latest' >> .env
+  echo "==> Set OLLAMA_MODEL=mistral:latest in .env"
+fi
+
 echo "==> Building UI + backend"
 mkdir -p public
 npm run deploy

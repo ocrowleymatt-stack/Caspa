@@ -92,7 +92,7 @@ export async function grokGenerate(req: AIRequest): Promise<AIResponse> {
   }
 
   const start = Date.now();
-  const model = req.model ?? 'grok-2-latest';
+  const model = req.model ?? 'grok-4.3';
   const prompt = buildPrompt(req);
 
   const response = await fetch('https://api.x.ai/v1/chat/completions', {

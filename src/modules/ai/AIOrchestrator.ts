@@ -28,8 +28,11 @@ const MAX_CONTEXT_TOKENS = 4000;
 const CHARS_PER_TOKEN = 4;
 
 export class NoProviderAvailableError extends Error {
-  constructor() {
-    super('No AI provider is available. Configure Ollama or a cloud API key.');
+  constructor(details: string[] = []) {
+    const summary = details.length
+      ? `No AI provider could complete the request. ${details.slice(0, 3).join(' · ')}`
+      : 'No AI provider is available. Configure Ollama or a cloud API key.';
+    super(summary);
     this.name = 'NoProviderAvailableError';
   }
 }
@@ -123,7 +126,7 @@ export class AIOrchestrator {
       }
     }
 
-    throw new NoProviderAvailableError();
+    throw new NoProviderAvailableError(errors);
   }
 
   async generateWithContext(req: AIRequest, projectId: string): Promise<AIResponse> {

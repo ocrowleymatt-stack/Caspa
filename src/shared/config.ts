@@ -70,7 +70,7 @@ export function getConfig(): CASPAConfig {
     port: parsePort(process.env.PORT, 3000),
     dataDir: process.env.DATA_DIR ?? './data',
     ollamaUrl: process.env.OLLAMA_URL ?? 'http://localhost:11434',
-    ollamaModel: process.env.OLLAMA_MODEL ?? 'llama3.2',
+    ollamaModel: process.env.OLLAMA_MODEL ?? 'mistral:latest',
     geminiApiKey: process.env.GEMINI_API_KEY,
     openaiApiKey: process.env.OPENAI_API_KEY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
