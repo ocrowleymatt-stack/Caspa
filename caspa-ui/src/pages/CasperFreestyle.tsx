@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { createProject } from '../api/projects';
 import { createChapter } from '../api/chapters';
+import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
 import { useAppStore } from '../store';
 import { useToast } from '../components/Toast';
 
@@ -71,17 +72,6 @@ function titleFromPremise(premise: string, mode: CasperMode) {
   const clean = premise.trim().replace(/\s+/g, ' ');
   if (!clean) return `New ${getMode(mode).title}`;
   return clean.length > 74 ? `${clean.slice(0, 71)}...` : clean;
-}
-
-function stripBasicMarkup(text: string) {
-  return text
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\\'[a-z0-9]+ ?/gi, ' ')
-    .replace(/[{}]/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
 
 function buildMusicSketch(premise: string, tone: string) {
@@ -261,16 +251,13 @@ export default function CasperFreestyle() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const supported = /\.(txt|md|markdown|rtf|html?)$/i.test(file.name) || file.type.startsWith('text/');
-    if (!supported) {
+    if (!isSupportedManuscriptFile(file)) {
       toast.error('Quick upload currently supports .txt, .md, .rtf and .html. Convert PDF/DOCX to text or paste it into the white page.');
       event.target.value = '';
       return;
     }
 
-    const raw = await file.text();
-    const text = stripBasicMarkup(raw);
-    const title = file.name.replace(/\.[^.]+$/, '');
+    const { title, text } = await readManuscriptFile(file);
     setUploadedName(file.name);
     setPremise(`Uploaded manuscript: ${title}`);
     setMode('polish');

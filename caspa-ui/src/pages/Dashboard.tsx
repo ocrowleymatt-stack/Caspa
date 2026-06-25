@@ -1,18 +1,24 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { ChangeEvent, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import { BookOpen, Loader2, Plus, Search, Trash2, UploadCloud } from 'lucide-react';
+import { createChapter } from '../api/chapters';
 import { createProject, deleteProject, listProjects } from '../api/projects';
+import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
 import { useAppStore } from '../store';
 import { formatRelative } from '../lib/utils';
 import { useToast } from '../components/Toast';
 
 export default function Dashboard() {
   const toast = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setActiveProjectId = useAppStore((s) => s.setActiveProjectId);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [uploadedName, setUploadedName] = useState<string | null>(null);
+  const [manuscriptText, setManuscriptText] = useState('');
   const [form, setForm] = useState({
     title: '',
     genre: 'Novel',
@@ -26,16 +32,57 @@ export default function Dashboard() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => createProject(form),
+    mutationFn: async () => {
+      const project = await createProject(form);
+      if (manuscriptText.trim()) {
+        await createChapter(project.id, {
+          title: uploadedName ? `Uploaded manuscript: ${uploadedName}` : 'Imported manuscript',
+          order: 1,
+          content: manuscriptText,
+          status: 'draft',
+        });
+      }
+      return project;
+    },
     onSuccess: (project) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
       setActiveProjectId(project.id);
       setShowModal(false);
       setForm({ title: '', genre: 'Novel', description: '', targetWordCount: 80000 });
+      setUploadedName(null);
+      setManuscriptText('');
       toast.success(`Created "${project.title}"`);
+      navigate(`/projects/${project.id}`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  async function handleManuscriptUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!isSupportedManuscriptFile(file)) {
+      toast.error('Quick upload supports .txt, .md, .rtf and .html. Convert PDF/DOCX to text or paste into Casper.');
+      event.target.value = '';
+      return;
+    }
+
+    const { title, text } = await readManuscriptFile(file);
+    setUploadedName(file.name);
+    setManuscriptText(text);
+    setForm((current) => ({
+      ...current,
+      title: current.title.trim() ? current.title : title,
+      genre: 'Manuscript Polish',
+      description: current.description.trim()
+        ? current.description
+        : `Uploaded manuscript: ${title}`,
+      targetWordCount: Math.max(current.targetWordCount, text.split(/\s+/).filter(Boolean).length),
+    }));
+    toast.success('Manuscript loaded — create the room to import it.');
+    event.target.value = '';
+  }
 
   const deleteMutation = useMutation({
     mutationFn: deleteProject,
@@ -173,6 +220,27 @@ export default function Dashboard() {
           <div className="w-full max-w-lg rounded-[2rem] border border-[#eadfca] bg-white p-6 shadow-room">
             <h2 className="font-serif text-3xl font-semibold text-[#171a22]">New project</h2>
             <p className="mt-1 text-sm text-muted">Create the room first. Shape it after.</p>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => uploadInputRef.current?.click()}
+                className="btn-secondary"
+              >
+                <UploadCloud className="h-4 w-4" /> Upload manuscript
+              </button>
+              {uploadedName && (
+                <span className="rounded-full bg-[#fff1c9] px-3 py-1 text-xs font-semibold text-[#7c5b12]">
+                  Loaded: {uploadedName}
+                </span>
+              )}
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept=".txt,.md,.markdown,.rtf,.html,.htm,text/*"
+                className="hidden"
+                onChange={handleManuscriptUpload}
+              />
+            </div>
             <div className="mt-6 space-y-4">
               <div>
                 <label className="label">Title</label>
@@ -190,7 +258,7 @@ export default function Dashboard() {
                   onChange={(e) => setForm({ ...form, genre: e.target.value })}
                   className="input"
                 >
-                  {['Novel', 'Script', 'Musical / Show', 'Adaptation', 'Memoir', 'Thriller', 'Comedy', 'Historical', 'Experimental'].map(
+                  {['Novel', 'Script', 'Musical / Show', 'Manuscript Polish', 'Adaptation', 'Memoir', 'Thriller', 'Comedy', 'Historical', 'Experimental'].map(
                     (g) => (
                       <option key={g} value={g}>
                         {g}

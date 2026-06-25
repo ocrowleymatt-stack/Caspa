@@ -36,6 +36,7 @@ import { musicPromptRouter } from './src/modules/music-prompt-lab/index';
 import { documentRenderRouter } from './src/modules/document-renderer/index';
 import { publishConfidenceRouter } from './src/modules/publish-confidence/index';
 import { outputsRouter } from './src/modules/outputs/index';
+import { showCatalogueRouter } from './src/modules/show-catalogue/index';
 import { runMigrations } from './src/services/db';
 
 runMigrations();
@@ -91,6 +92,7 @@ app.use(musicPromptRouter);
 app.use(documentRenderRouter);
 app.use(publishConfidenceRouter);
 app.use(outputsRouter);
+app.use(showCatalogueRouter);
 
 const publicDir = path.join(process.cwd(), 'public');
 app.use(
