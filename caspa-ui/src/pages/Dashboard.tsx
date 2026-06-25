@@ -15,7 +15,7 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
     title: '',
-    genre: 'Literary Fiction',
+    genre: 'Novel',
     description: '',
     targetWordCount: 80000,
   });
@@ -31,7 +31,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setActiveProjectId(project.id);
       setShowModal(false);
-      setForm({ title: '', genre: 'Literary Fiction', description: '', targetWordCount: 80000 });
+      setForm({ title: '', genre: 'Novel', description: '', targetWordCount: 80000 });
       toast.success(`Created "${project.title}"`);
     },
     onError: (err: Error) => toast.error(err.message),
@@ -58,77 +58,92 @@ export default function Dashboard() {
   }, [projects, search]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Projects</h1>
-          <p className="text-muted text-sm mt-1">Your manuscripts and creative works</p>
+    <div className="mx-auto max-w-7xl space-y-7">
+      <section className="rounded-[2.4rem] border border-[#eadfca] bg-white p-7 shadow-room md:p-10">
+        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
+              <BookOpen className="h-4 w-4" /> Library
+            </div>
+            <h1 className="mt-5 font-serif text-5xl font-semibold leading-none tracking-[-0.045em] text-[#171a22] md:text-7xl">
+              Your rooms of work.
+            </h1>
+            <p className="mt-4 text-lg leading-8 text-muted">
+              Novels, scripts, shows, source material and half-glorious chaos. Open a room and keep writing.
+            </p>
+          </div>
+          <button type="button" onClick={() => setShowModal(true)} className="btn-primary self-start md:self-auto">
+            <Plus className="h-4 w-4" /> New Project
+          </button>
         </div>
-        <button type="button" onClick={() => setShowModal(true)} className="btn-primary">
-          <Plus className="h-4 w-4" /> New Project
-        </button>
-      </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search projects..."
-          className="input pl-10"
-        />
-      </div>
+        <div className="relative mt-7">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#98711d]" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search projects, genres, notes..."
+            className="input pl-11 text-base"
+          />
+        </div>
+      </section>
 
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-accent" />
+          <Loader2 className="h-8 w-8 animate-spin text-[#98711d]" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card flex flex-col items-center py-16 text-center">
-          <BookOpen className="h-12 w-12 text-muted mb-4 opacity-40" />
-          <h2 className="text-lg font-medium mb-2">
-            {search ? 'No matching projects' : 'No projects yet'}
+        <div className="rounded-[2.2rem] border border-[#eadfca] bg-white/85 px-8 py-16 text-center shadow-paper">
+          <BookOpen className="mx-auto mb-5 h-14 w-14 text-[#98711d] opacity-60" />
+          <h2 className="font-serif text-3xl font-semibold text-[#171a22]">
+            {search ? 'No matching rooms' : 'No projects yet'}
           </h2>
-          <p className="text-muted text-sm mb-6 max-w-sm">
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted">
             {search
-              ? 'Try a different search term'
-              : 'Create your first manuscript to get started with CASPA Studio'}
+              ? 'Try another word, title, genre or bit of chaos.'
+              : 'Create the first room. Casper can help with the mess once the door exists.'}
           </p>
           {!search && (
-            <button type="button" onClick={() => setShowModal(true)} className="btn-primary">
+            <button type="button" onClick={() => setShowModal(true)} className="btn-primary mt-6">
               <Plus className="h-4 w-4" /> Create Project
             </button>
           )}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((project) => {
             const progress = Math.min(
               100,
               Math.round((project.currentWordCount / (project.targetWordCount || 1)) * 100),
             );
             return (
-              <div key={project.id} className="card group relative hover:border-accent/30 transition-colors">
+              <div
+                key={project.id}
+                className="group relative overflow-hidden rounded-[2rem] border border-[#eadfca] bg-white p-5 shadow-paper transition-all hover:-translate-y-1 hover:border-accent hover:shadow-room"
+              >
                 <Link
                   to={`/projects/${project.id}`}
                   onClick={() => setActiveProjectId(project.id)}
                   className="block"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold truncate">{project.title}</h3>
-                    <span className="badge bg-accent/10 text-accent shrink-0">{project.genre}</span>
+                  <div className="mb-5 flex items-start justify-between gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff1c9] text-[#98711d]">
+                      <BookOpen className="h-5 w-5" />
+                    </div>
+                    <span className="badge shrink-0">{project.genre}</span>
                   </div>
-                  <p className="mt-2 text-sm text-muted line-clamp-2 min-h-[2.5rem]">
-                    {project.description || 'No description'}
+                  <h3 className="truncate font-serif text-2xl font-semibold text-[#171a22]">{project.title}</h3>
+                  <p className="mt-2 line-clamp-3 min-h-[4.25rem] text-sm leading-6 text-muted">
+                    {project.description || 'No description yet. Open the room and let it start talking.'}
                   </p>
-                  <div className="mt-4 space-y-2">
-                    <div className="flex justify-between text-xs text-muted">
+                  <div className="mt-5 space-y-3">
+                    <div className="flex justify-between text-xs font-semibold text-muted">
                       <span>{project.currentWordCount.toLocaleString()} words</span>
                       <span>{progress}% of goal</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-2 overflow-hidden rounded-full bg-[#f1e6d2]">
                       <div
-                        className="h-full rounded-full bg-accent transition-all"
+                        className="h-full rounded-full bg-[#171a22] transition-all"
                         style={{ width: `${progress}%` }}
                       />
                     </div>
@@ -142,7 +157,8 @@ export default function Dashboard() {
                       deleteMutation.mutate(project.id);
                     }
                   }}
-                  className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 btn-ghost p-1.5 text-red-400"
+                  className="absolute right-4 top-4 rounded-full bg-white/90 p-2 text-red-500 opacity-0 shadow-sm transition group-hover:opacity-100 hover:bg-red-50"
+                  title="Delete project"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -153,27 +169,28 @@ export default function Dashboard() {
       )}
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="card w-full max-w-md">
-            <h2 className="text-lg font-semibold mb-4">New Project</h2>
-            <div className="space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#171a22]/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-[2rem] border border-[#eadfca] bg-white p-6 shadow-room">
+            <h2 className="font-serif text-3xl font-semibold text-[#171a22]">New project</h2>
+            <p className="mt-1 text-sm text-muted">Create the room first. Shape it after.</p>
+            <div className="mt-6 space-y-4">
               <div>
                 <label className="label">Title</label>
                 <input
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   className="input"
-                  placeholder="My Novel"
+                  placeholder="A Dick Turpin stage comedy set in Milton Keynes"
                 />
               </div>
               <div>
-                <label className="label">Genre</label>
+                <label className="label">Kind of work</label>
                 <select
                   value={form.genre}
                   onChange={(e) => setForm({ ...form, genre: e.target.value })}
                   className="input"
                 >
-                  {['Literary Fiction', 'Thriller', 'Romance', 'Sci-Fi', 'Fantasy', 'Memoir', 'Historical'].map(
+                  {['Novel', 'Script', 'Musical / Show', 'Adaptation', 'Memoir', 'Thriller', 'Comedy', 'Historical', 'Experimental'].map(
                     (g) => (
                       <option key={g} value={g}>
                         {g}
@@ -196,8 +213,8 @@ export default function Dashboard() {
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="input min-h-[80px] resize-y"
-                  placeholder="Brief synopsis..."
+                  className="input min-h-[110px] resize-y"
+                  placeholder="The rough shape, the voice, the thing it might become..."
                 />
               </div>
             </div>
