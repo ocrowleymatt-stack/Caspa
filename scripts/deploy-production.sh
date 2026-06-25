@@ -8,6 +8,12 @@ PM2_NAME="${PM2_NAME:-caspa-server}"
 
 cd "$APP_DIR"
 
+echo "==> Stopping legacy /opt/caspa service if it is holding port 3000"
+if systemctl is-active --quiet caspa.service 2>/dev/null; then
+  systemctl stop caspa.service
+  systemctl disable caspa.service
+fi
+
 echo "==> Fetching origin/$BRANCH"
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
