@@ -33,7 +33,20 @@ export default function Dashboard() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const project = await createProject(form);
+      const fallbackTitle = uploadedName
+        ? uploadedName.replace(/\.[^.]+$/, '')
+        : 'Untitled Room';
+      const cleanTitle = form.title.trim() || fallbackTitle;
+      const cleanDescription = form.description.trim() || (uploadedName ? `Uploaded manuscript: ${fallbackTitle}` : 'A fresh blank room.');
+      const targetWordCount = Number.isFinite(form.targetWordCount) && form.targetWordCount > 0 ? form.targetWordCount : 80000;
+
+      const project = await createProject({
+        ...form,
+        title: cleanTitle,
+        description: cleanDescription,
+        targetWordCount,
+      });
+
       if (manuscriptText.trim()) {
         await createChapter(project.id, {
           title: uploadedName ? `Uploaded manuscript: ${uploadedName}` : 'Imported manuscript',
@@ -44,9 +57,9 @@ export default function Dashboard() {
       }
       return project;
     },
-    onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
+    onSuccess: async (project) => {
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
       setActiveProjectId(project.id);
       setShowModal(false);
       setForm({ title: '', genre: 'Novel', description: '', targetWordCount: 80000 });
@@ -219,7 +232,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#171a22]/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-[2rem] border border-[#eadfca] bg-white p-6 shadow-room">
             <h2 className="font-serif text-3xl font-semibold text-[#171a22]">New project</h2>
-            <p className="mt-1 text-sm text-muted">Create the room first. Shape it after.</p>
+            <p className="mt-1 text-sm text-muted">Create the room first. Leave the title blank for an Untitled Room.</p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -292,11 +305,11 @@ export default function Dashboard() {
               </button>
               <button
                 type="button"
-                disabled={!form.title.trim() || createMutation.isPending}
+                disabled={createMutation.isPending}
                 onClick={() => createMutation.mutate()}
                 className="btn-primary"
               >
-                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create and open'}
               </button>
             </div>
           </div>
