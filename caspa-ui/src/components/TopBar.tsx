@@ -6,6 +6,7 @@ import { getProject } from '../api/projects';
 import { getChapter } from '../api/chapters';
 import { useAppStore } from '../store';
 import { AIPanelToggle } from './AIPanel';
+import { ProviderStatus } from './ProviderStatus';
 
 const pageTitles: Record<string, string> = {
   '/': 'Projects',
@@ -80,6 +81,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-2">
+        <ProviderStatus compact className="hidden lg:inline-flex" />
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
