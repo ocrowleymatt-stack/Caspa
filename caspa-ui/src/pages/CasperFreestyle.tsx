@@ -21,6 +21,10 @@ import {
 import { createProject } from '../api/projects';
 import { createChapter } from '../api/chapters';
 import { generate } from '../api/assistant';
+import {
+  buildNovelWriteProAutoWritePrompt,
+  buildNovelWriteProOpenWebUIPrompt,
+} from '../lib/novelWritePro';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
 import { useAppStore } from '../store';
 import { useToast } from '../components/Toast';
@@ -76,12 +80,12 @@ function titleFromPremise(premise: string, mode: CasperMode) {
 }
 
 function firstDraftTitle(mode: CasperMode, output: string) {
-  if (mode === 'script') return output === 'Act One' ? 'Act One — Auto Draft' : 'Opening Scene — Auto Draft';
+  if (mode === 'script') return output === 'Act One' ? 'Act One — Novel Write Pro Draft' : 'Opening Scene — Novel Write Pro Draft';
   if (mode === 'musical') return 'Opening Number / Show Draft';
-  if (mode === 'adaptation') return 'Adaptation Opening — Auto Draft';
+  if (mode === 'adaptation') return 'Adaptation Opening — Novel Write Pro Draft';
   if (mode === 'polish') return 'Award Pass Rewrite';
-  if (mode === 'chaos') return 'High-Voltage Opening — Auto Draft';
-  return 'Chapter One — Auto Draft';
+  if (mode === 'chaos') return 'High-Voltage Opening — Novel Write Pro Draft';
+  return 'Chapter One — Novel Write Pro Draft';
 }
 
 function buildMusicSketch(premise: string, tone: string) {
@@ -119,76 +123,6 @@ Tack piano or clean piano, light percussion, bass, strings or synth pad, brass o
 
 ## Secondary export prompt
 Theatrical story song, 126 BPM, D minor to F major, strong title hook, character-led vocal, clean demo arrangement, dramatic lift, playable stage/show sketch.`;
-}
-
-function buildOpenWebUIPrompt(mode: CasperMode, premise: string, tone: string, output: string, whitePage: string) {
-  return `You are Casper, Matthew O'Crowley's private creative production room.
-
-PROJECT
-Mode: ${mode}
-Premise: ${premise || '[No premise supplied]'}
-Tone: ${tone || 'Clear, vivid, witty, production-minded'}
-Required output: ${output}
-
-CURRENT WHITE PAGE / MANUSCRIPT
-${whitePage || '[Blank page]'}
-
-RULES
-- Start from the page, not generic advice.
-- Produce usable material immediately.
-- Aim above competence: prize-list, review-proof, audience-grabbing, award-target work.
-- For scripts: give scenes, beats, dialogue and staging.
-- For novels: give chapters, prose, structure and continuity.
-- For musicals/music: give concrete music material — tempo, key, chords, structure, lyric hook, melody contour and arrangement. A prompt is only a secondary export, not the product.
-- Preserve weirdness, ambition and voice. Do not sand the magic off.
-
-TASK
-Drive this project forward now.`;
-}
-
-function buildAutoWritePrompt(mode: CasperMode, premise: string, tone: string, output: string, whitePage: string, uploadedName: string | null) {
-  const selected = getMode(mode);
-  const brief = premise.trim() || (uploadedName ? `Improve and develop the uploaded manuscript: ${uploadedName}` : 'Invent a fresh original premise and begin immediately.');
-  const source = whitePage.trim();
-  const sourceExcerpt = source.length > 7000 ? `${source.slice(0, 7000)}\n\n[Source excerpt truncated for initial auto-write.]` : source;
-
-  return `You are Caspa Auto-Writer: an elite creative writing engine.
-
-Your job is not to create a placeholder. Your job is to write usable, ambitious, award-target draft material immediately.
-
-PROJECT TYPE
-${selected.title} / ${selected.genre}
-
-USER BRIEF
-${brief}
-
-TARGET OUTPUT
-${output}
-
-TONE / TASTE
-${tone || 'Clear, vivid, witty, production-minded, emotionally precise.'}
-
-SOURCE PAGE OR MANUSCRIPT
-${sourceExcerpt || '[No source text supplied. Create original material.]'}
-
-QUALITY BAR
-- Aim for award-winning, not merely functional.
-- Produce actual draft material now, not advice about how to write it.
-- Make the opening feel intentional, vivid, and hooky from the first line.
-- Include character, conflict, image, rhythm, and forward motion.
-- Avoid generic AI texture. Use specific nouns, dramatic pressure, and memorable turns of phrase.
-- Keep the user's likely voice and ambition. Do not flatten eccentricity.
-- If the brief is blank, create a strong original opening without apologising or mentioning that the brief was blank.
-
-FORMAT RULES
-- For a novel: write a title, a short logline, then Chapter One prose.
-- For a script: write a title, premise note, then a properly formatted opening scene with stage/screen directions and dialogue.
-- For a musical/show: write title, show premise, opening scene setup, first song title, lyric draft, tempo/key/chords, and staging.
-- For polish/adaptation: preserve source intent, then produce a stronger award-pass draft.
-- For chaos mode: make it bold, strange, coherent, and stageable/readable.
-
-OUTPUT NOW
-Return only the creative material. Do not explain the process.`;
 }
 
 async function playBrowserMusicDemo() {
@@ -243,8 +177,17 @@ export default function CasperFreestyle() {
   const SelectedIcon = selectedMode.icon;
 
   const openWebUIPrompt = useMemo(
-    () => buildOpenWebUIPrompt(mode, premise, tone, output, whitePage),
-    [mode, premise, tone, output, whitePage],
+    () => buildNovelWriteProOpenWebUIPrompt({
+      mode,
+      modeTitle: selectedMode.title,
+      genre: selectedMode.genre,
+      premise,
+      tone,
+      output,
+      sourceText: whitePage,
+      uploadedName,
+    }),
+    [mode, selectedMode.title, selectedMode.genre, premise, tone, output, whitePage, uploadedName],
   );
 
   const createMutation = useMutation({
@@ -256,10 +199,10 @@ export default function CasperFreestyle() {
       const title = titleFromPremise(uploadedName || finalPremise, finalMode);
       const trimmedPremise = finalPremise.trim();
       const description = trimmedPremise
-        ? `${trimmedPremise}\n\nCaspa auto-write target: award-level ${finalOutput}`
+        ? `${trimmedPremise}\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`
         : uploadedName
-          ? `Uploaded manuscript: ${uploadedName}\n\nCaspa auto-write target: award-level ${finalOutput}`
-          : `A fresh blank room.\n\nCaspa auto-write target: award-level ${finalOutput}`;
+          ? `Uploaded manuscript: ${uploadedName}\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`
+          : `A fresh blank room.\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`;
 
       const project = await createProject({
         title,
@@ -278,17 +221,27 @@ export default function CasperFreestyle() {
         });
       }
 
-      const autoWritePrompt = buildAutoWritePrompt(finalMode, finalPremise, tone, finalOutput, whitePage, uploadedName);
+      const autoWritePrompt = buildNovelWriteProAutoWritePrompt({
+        mode: finalMode,
+        modeTitle: finalModeCard.title,
+        genre: finalModeCard.genre,
+        premise: finalPremise,
+        tone,
+        output: finalOutput,
+        sourceText: whitePage,
+        uploadedName,
+      });
+
       const response = await generate({
         prompt: autoWritePrompt,
         projectId: project.id,
-        temperature: 0.9,
-        maxTokens: 4200,
+        temperature: 0.88,
+        maxTokens: 5200,
       });
 
       const generated = response.text.trim();
       if (!generated) {
-        throw new Error('Caspa connected to an AI engine, but it returned no writing. Try again or check provider logs.');
+        throw new Error('Caspa connected to an AI engine, but Novel Write Pro returned no writing. Try again or check provider logs.');
       }
 
       const chapter = await createChapter(project.id, {
@@ -304,7 +257,7 @@ export default function CasperFreestyle() {
       setActiveProjectId(project.id);
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
-      toast.success(model ? `Caspa wrote the first draft with ${model}` : 'Caspa wrote the first draft');
+      toast.success(model ? `Novel Write Pro drafted with ${model}` : 'Novel Write Pro drafted the first pass');
       navigate(`/projects/${project.id}/chapters/${chapter.id}`);
     },
     onError: (error: Error) => toast.error(error.message),
@@ -319,7 +272,7 @@ export default function CasperFreestyle() {
     if (!file) return;
 
     if (!isSupportedManuscriptFile(file)) {
-      toast.error('Quick upload currently supports .txt, .md, .rtf and .html. Convert PDF/DOCX to text or paste it into the white page.');
+      toast.error('Quick upload currently supports .txt, .md, .rtf and .html. Convert PDF/DOCX to text or paste it into the source page.');
       event.target.value = '';
       return;
     }
@@ -330,7 +283,7 @@ export default function CasperFreestyle() {
     setMode('polish');
     setOutput('Project bible');
     handleWhitePageChange(text);
-    toast.success('Manuscript loaded. Press Auto-write to create an award pass.');
+    toast.success('Manuscript loaded. Press Auto-write to run Novel Write Pro.');
     event.target.value = '';
   }
 
@@ -345,7 +298,7 @@ export default function CasperFreestyle() {
     setMode('musical');
     setOutput('Playable music sketch');
     handleWhitePageChange(whitePage.trim() ? `${whitePage.trim()}\n\n---\n\n${sketch}` : sketch);
-    toast.success('Music sketch written to white page');
+    toast.success('Music sketch written to source page');
   }
 
   async function handlePlayMusic() {
@@ -374,7 +327,7 @@ export default function CasperFreestyle() {
     startProject();
   }
 
-  const pendingLabel = 'Caspa is writing...';
+  const pendingLabel = 'Novel Write Pro is drafting...';
 
   return (
     <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">
@@ -382,14 +335,14 @@ export default function CasperFreestyle() {
         <header className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-end">
           <div className="space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
-              <Sparkles className="h-4 w-4" /> Casper Auto-Writer
+              <Sparkles className="h-4 w-4" /> Casper · Novel Write Pro
             </div>
             <div className="space-y-4">
               <h1 className="max-w-4xl font-serif text-5xl font-semibold leading-[0.95] tracking-[-0.045em] text-[#171a22] md:text-7xl lg:text-8xl">
                 What are we writing?
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-[#68604f]">
-                Give Casper a spark, upload a manuscript, or leave it blank. It will create the room and write the first award-target draft automatically.
+                Give Casper a spark, upload a manuscript, or leave it blank. Novel Write Pro creates the room and writes the first award-target draft automatically.
               </p>
             </div>
           </div>
@@ -416,10 +369,10 @@ export default function CasperFreestyle() {
                 value={premise}
                 onChange={(event) => setPremise(event.target.value)}
                 className="min-h-[148px] w-full resize-y rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-6 text-2xl leading-snug text-[#171a22] shadow-inner outline-none transition placeholder:text-[#b8aa91] focus:border-[#caa044] focus:ring-4 focus:ring-[#d4af37]/20 md:text-3xl"
-                placeholder="Describe the book, script, show, song or idea — or leave blank and let Casper invent the opening."
+                placeholder="Describe the book, script, show, song or idea — or leave blank and let Novel Write Pro invent the opening."
               />
               <p className="text-sm leading-6 text-[#766b58]">
-                Primary action: create the project, generate the first draft, and open the writing page.
+                Primary action: create the project, run the critic room silently, generate the first draft, and open the writing page.
               </p>
               <button
                 type="submit"
@@ -475,7 +428,7 @@ export default function CasperFreestyle() {
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Source / Scratch Page</div>
-                <h2 className="mt-2 font-serif text-3xl font-semibold text-[#171a22]">Give Casper raw material.</h2>
+                <h2 className="mt-2 font-serif text-3xl font-semibold text-[#171a22]">Give Novel Write Pro raw material.</h2>
               </div>
               {uploadedName && <span className="rounded-full bg-[#fff1c9] px-3 py-1 text-xs font-semibold text-[#7c5b12]">Loaded: {uploadedName}</span>}
             </div>
@@ -483,14 +436,14 @@ export default function CasperFreestyle() {
               value={whitePage}
               onChange={(event) => handleWhitePageChange(event.target.value)}
               className="min-h-[560px] w-full resize-y rounded-[1.7rem] border border-[#eee3d0] bg-[#fffdf8] p-7 font-serif text-xl leading-9 text-[#20202a] shadow-inner outline-none transition placeholder:text-[#b8aa91] focus:border-[#caa044] focus:ring-4 focus:ring-[#d4af37]/20"
-              placeholder="Paste rough notes, a chapter, lyrics, scene fragments, or leave blank. Auto-write will create a first draft from whatever is here."
+              placeholder="Paste rough notes, a chapter, lyrics, scene fragments, or leave blank. Novel Write Pro will create a first draft from whatever is here."
             />
           </article>
 
           <aside className="space-y-4">
             <div className="rounded-[2rem] border border-[#e7d8b9] bg-[#171a22] p-5 text-white shadow-[0_25px_70px_rgba(23,26,34,0.20)]">
               <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#f5d37a]">
-                <PenLine className="h-4 w-4" /> Auto-writer
+                <PenLine className="h-4 w-4" /> Novel Write Pro
               </div>
               <div className="space-y-3">
                 <button type="button" onClick={() => startProject()} disabled={createMutation.isPending} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] transition hover:bg-[#ffe39a] disabled:opacity-60">
