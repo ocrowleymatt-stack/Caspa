@@ -15,6 +15,7 @@ import {
 import { listProjects } from '../api/projects';
 import { getCasperStatus } from '../api/casper';
 import { useAppStore } from '../store';
+import { ProviderStatus } from '../components/ProviderStatus';
 
 const quickLinks = [
   { to: '/casper', label: 'Start with Casper', icon: Ghost, desc: 'Open the room: novel, script, manuscript, show or song.' },
@@ -38,8 +39,11 @@ export default function CommandCentre() {
       <section className="overflow-hidden rounded-[2.4rem] border border-[#eadfca] bg-white shadow-room">
         <div className="grid gap-0 lg:grid-cols-[1.08fr_0.92fr]">
           <div className="space-y-7 p-7 md:p-10 lg:p-12">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
-              <Sparkles className="h-4 w-4" /> The Studio
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
+                <Sparkles className="h-4 w-4" /> The Studio
+              </div>
+              <ProviderStatus compact />
             </div>
             <div>
               <h1 className="max-w-3xl font-serif text-5xl font-semibold leading-[0.96] tracking-[-0.045em] text-[#171a22] md:text-7xl">
@@ -62,26 +66,31 @@ export default function CommandCentre() {
                 </Link>
               )}
             </div>
-            {casperStatus && (
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-[#fff8e8] px-3 py-1.5 text-xs font-semibold text-[#766b58]">
-                <span className={`h-2 w-2 rounded-full ${casperStatus.available ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                Casper {casperStatus.available ? 'online' : 'offline'} — v{casperStatus.version}
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {casperStatus && (
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-[#fff8e8] px-3 py-1.5 text-xs font-semibold text-[#766b58]">
+                  <span className={`h-2 w-2 rounded-full ${casperStatus.available ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                  Casper {casperStatus.available ? 'online' : 'offline'} — v{casperStatus.version}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="border-t border-[#eadfca] bg-[#f7f1e6] p-7 md:p-10 lg:border-l lg:border-t-0 lg:p-12">
-            <div className="rounded-[2rem] border border-[#eadfca] bg-[#fffdf8] p-6 shadow-paper">
-              <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Today’s page</div>
-              <div className="mt-5 space-y-5 font-serif text-xl leading-9 text-[#2a2520]">
-                <p>Start with a premise.</p>
-                <p>Open a room.</p>
-                <p>Write badly if necessary.</p>
-                <p>Casper can tidy it after the spark has arrived.</p>
+            <div className="space-y-4">
+              <div className="rounded-[2rem] border border-[#eadfca] bg-[#fffdf8] p-6 shadow-paper">
+                <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Today’s page</div>
+                <div className="mt-5 space-y-5 font-serif text-xl leading-9 text-[#2a2520]">
+                  <p>Start with a premise.</p>
+                  <p>Open a room.</p>
+                  <p>Write badly if necessary.</p>
+                  <p>Casper can tidy it after the spark has arrived.</p>
+                </div>
+                <div className="mt-8 rounded-2xl bg-[#171a22] p-4 text-sm leading-6 text-white/78">
+                  The tools are still here. They have simply been told to stop standing in front of the work.
+                </div>
               </div>
-              <div className="mt-8 rounded-2xl bg-[#171a22] p-4 text-sm leading-6 text-white/78">
-                The tools are still here. They have simply been told to stop standing in front of the work.
-              </div>
+              <ProviderStatus />
             </div>
           </div>
         </div>
