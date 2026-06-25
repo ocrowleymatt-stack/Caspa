@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { createProject } from '../api/projects';
 import { createChapter } from '../api/chapters';
+import { generate } from '../api/assistant';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
 import { useAppStore } from '../store';
 import { useToast } from '../components/Toast';
@@ -74,6 +75,15 @@ function titleFromPremise(premise: string, mode: CasperMode) {
   return clean.length > 74 ? `${clean.slice(0, 71)}...` : clean;
 }
 
+function firstDraftTitle(mode: CasperMode, output: string) {
+  if (mode === 'script') return output === 'Act One' ? 'Act One — Auto Draft' : 'Opening Scene — Auto Draft';
+  if (mode === 'musical') return 'Opening Number / Show Draft';
+  if (mode === 'adaptation') return 'Adaptation Opening — Auto Draft';
+  if (mode === 'polish') return 'Award Pass Rewrite';
+  if (mode === 'chaos') return 'High-Voltage Opening — Auto Draft';
+  return 'Chapter One — Auto Draft';
+}
+
 function buildMusicSketch(premise: string, tone: string) {
   return `# Playable Music Sketch
 
@@ -126,6 +136,7 @@ ${whitePage || '[Blank page]'}
 RULES
 - Start from the page, not generic advice.
 - Produce usable material immediately.
+- Aim above competence: prize-list, review-proof, audience-grabbing, award-target work.
 - For scripts: give scenes, beats, dialogue and staging.
 - For novels: give chapters, prose, structure and continuity.
 - For musicals/music: give concrete music material — tempo, key, chords, structure, lyric hook, melody contour and arrangement. A prompt is only a secondary export, not the product.
@@ -133,6 +144,51 @@ RULES
 
 TASK
 Drive this project forward now.`;
+}
+
+function buildAutoWritePrompt(mode: CasperMode, premise: string, tone: string, output: string, whitePage: string, uploadedName: string | null) {
+  const selected = getMode(mode);
+  const brief = premise.trim() || (uploadedName ? `Improve and develop the uploaded manuscript: ${uploadedName}` : 'Invent a fresh original premise and begin immediately.');
+  const source = whitePage.trim();
+  const sourceExcerpt = source.length > 7000 ? `${source.slice(0, 7000)}\n\n[Source excerpt truncated for initial auto-write.]` : source;
+
+  return `You are Caspa Auto-Writer: an elite creative writing engine.
+
+Your job is not to create a placeholder. Your job is to write usable, ambitious, award-target draft material immediately.
+
+PROJECT TYPE
+${selected.title} / ${selected.genre}
+
+USER BRIEF
+${brief}
+
+TARGET OUTPUT
+${output}
+
+TONE / TASTE
+${tone || 'Clear, vivid, witty, production-minded, emotionally precise.'}
+
+SOURCE PAGE OR MANUSCRIPT
+${sourceExcerpt || '[No source text supplied. Create original material.]'}
+
+QUALITY BAR
+- Aim for award-winning, not merely functional.
+- Produce actual draft material now, not advice about how to write it.
+- Make the opening feel intentional, vivid, and hooky from the first line.
+- Include character, conflict, image, rhythm, and forward motion.
+- Avoid generic AI texture. Use specific nouns, dramatic pressure, and memorable turns of phrase.
+- Keep the user's likely voice and ambition. Do not flatten eccentricity.
+- If the brief is blank, create a strong original opening without apologising or mentioning that the brief was blank.
+
+FORMAT RULES
+- For a novel: write a title, a short logline, then Chapter One prose.
+- For a script: write a title, premise note, then a properly formatted opening scene with stage/screen directions and dialogue.
+- For a musical/show: write title, show premise, opening scene setup, first song title, lyric draft, tempo/key/chords, and staging.
+- For polish/adaptation: preserve source intent, then produce a stronger award-pass draft.
+- For chaos mode: make it bold, strange, coherent, and stageable/readable.
+
+OUTPUT NOW
+Return only the creative material. Do not explain the process.`;
 }
 
 async function playBrowserMusicDemo() {
@@ -200,10 +256,11 @@ export default function CasperFreestyle() {
       const title = titleFromPremise(uploadedName || finalPremise, finalMode);
       const trimmedPremise = finalPremise.trim();
       const description = trimmedPremise
-        ? `${trimmedPremise}\n\nCasper output target: ${finalOutput}`
+        ? `${trimmedPremise}\n\nCaspa auto-write target: award-level ${finalOutput}`
         : uploadedName
-          ? `Uploaded manuscript: ${uploadedName}`
-          : `A fresh blank room.\n\nCasper output target: ${finalOutput}`;
+          ? `Uploaded manuscript: ${uploadedName}\n\nCaspa auto-write target: award-level ${finalOutput}`
+          : `A fresh blank room.\n\nCaspa auto-write target: award-level ${finalOutput}`;
+
       const project = await createProject({
         title,
         genre: finalModeCard.genre,
@@ -214,21 +271,41 @@ export default function CasperFreestyle() {
 
       if (whitePage.trim()) {
         await createChapter(project.id, {
-          title: uploadedName ? `Uploaded manuscript: ${uploadedName}` : 'White Page Draft',
+          title: uploadedName ? `Source manuscript: ${uploadedName}` : 'Source White Page',
           order: 1,
           content: whitePage,
           status: finalMode === 'polish' ? 'draft' : 'outline',
         });
       }
 
-      return project;
+      const autoWritePrompt = buildAutoWritePrompt(finalMode, finalPremise, tone, finalOutput, whitePage, uploadedName);
+      const response = await generate({
+        prompt: autoWritePrompt,
+        projectId: project.id,
+        temperature: 0.9,
+        maxTokens: 4200,
+      });
+
+      const generated = response.text.trim();
+      if (!generated) {
+        throw new Error('Caspa connected to an AI engine, but it returned no writing. Try again or check provider logs.');
+      }
+
+      const chapter = await createChapter(project.id, {
+        title: firstDraftTitle(finalMode, finalOutput),
+        order: whitePage.trim() ? 2 : 1,
+        content: generated,
+        status: 'draft',
+      });
+
+      return { project, chapter, model: response.model };
     },
-    onSuccess: async (project) => {
+    onSuccess: async ({ project, chapter, model }) => {
       setActiveProjectId(project.id);
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
-      toast.success('Project created');
-      navigate(`/projects/${project.id}`);
+      toast.success(model ? `Caspa wrote the first draft with ${model}` : 'Caspa wrote the first draft');
+      navigate(`/projects/${project.id}/chapters/${chapter.id}`);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -253,7 +330,7 @@ export default function CasperFreestyle() {
     setMode('polish');
     setOutput('Project bible');
     handleWhitePageChange(text);
-    toast.success('Manuscript loaded into the white page');
+    toast.success('Manuscript loaded. Press Auto-write to create an award pass.');
     event.target.value = '';
   }
 
@@ -297,26 +374,28 @@ export default function CasperFreestyle() {
     startProject();
   }
 
+  const pendingLabel = 'Caspa is writing...';
+
   return (
     <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <header className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-end">
           <div className="space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
-              <Sparkles className="h-4 w-4" /> Casper
+              <Sparkles className="h-4 w-4" /> Casper Auto-Writer
             </div>
             <div className="space-y-4">
               <h1 className="max-w-4xl font-serif text-5xl font-semibold leading-[0.95] tracking-[-0.045em] text-[#171a22] md:text-7xl lg:text-8xl">
-                What are we making?
+                What are we writing?
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-[#68604f]">
-                Give Casper the thing. A novel, a script, a messy manuscript, a show, a song, a bad idea with good shoes. The tools can wait outside.
+                Give Casper a spark, upload a manuscript, or leave it blank. It will create the room and write the first award-target draft automatically.
               </p>
             </div>
           </div>
 
           <div className="rounded-[2rem] border border-[#eadfca] bg-white/75 p-5 shadow-[0_24px_70px_rgba(75,55,21,0.10)] backdrop-blur">
-            <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Current room</div>
+            <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Current writing room</div>
             <div className="mt-3 flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fff1c9] text-[#8a6717]">
                 <SelectedIcon className="h-5 w-5" />
@@ -332,15 +411,15 @@ export default function CasperFreestyle() {
         <section className="rounded-[2.2rem] border border-[#eadfca] bg-white p-4 shadow-[0_30px_100px_rgba(75,55,21,0.13)] md:p-6">
           <form onSubmit={handleIdeaSubmit} className="grid gap-5 lg:grid-cols-[1fr_280px]">
             <div className="space-y-3">
-              <label className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">The idea</label>
+              <label className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">The spark</label>
               <textarea
                 value={premise}
                 onChange={(event) => setPremise(event.target.value)}
                 className="min-h-[148px] w-full resize-y rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-6 text-2xl leading-snug text-[#171a22] shadow-inner outline-none transition placeholder:text-[#b8aa91] focus:border-[#caa044] focus:ring-4 focus:ring-[#d4af37]/20 md:text-3xl"
-                placeholder="Describe the idea — or leave blank for an empty room."
+                placeholder="Describe the book, script, show, song or idea — or leave blank and let Casper invent the opening."
               />
               <p className="text-sm leading-6 text-[#766b58]">
-                Pick a format on the right, or start now — a blank premise is fine.
+                Primary action: create the project, generate the first draft, and open the writing page.
               </p>
               <button
                 type="submit"
@@ -348,20 +427,20 @@ export default function CasperFreestyle() {
                 className="flex w-full items-center justify-center gap-2 rounded-[1.35rem] bg-[#f5d37a] px-6 py-4 text-base font-bold text-[#171a22] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#ffe39a] disabled:opacity-60"
               >
                 {createMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
-                Start project
+                {createMutation.isPending ? pendingLabel : 'Auto-write award draft'}
               </button>
             </div>
 
             <div className="grid gap-3 self-stretch">
-              <button type="button" onClick={() => startMode('novel', 'Project bible')} disabled={createMutation.isPending} className="rounded-[1.35rem] bg-[#171a22] px-5 py-4 text-left text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#262b38] disabled:opacity-60">
+              <button type="button" onClick={() => startMode('novel', 'Full chapter')} disabled={createMutation.isPending} className="rounded-[1.35rem] bg-[#171a22] px-5 py-4 text-left text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#262b38] disabled:opacity-60">
                 <BookOpen className="mb-3 h-5 w-5 text-[#f5d37a]" />
-                <strong className="block">Blank Novel</strong>
-                <span className="text-sm text-white/65">Create the room</span>
+                <strong className="block">Novel</strong>
+                <span className="text-sm text-white/65">Auto-write Chapter One</span>
               </button>
               <button type="button" onClick={() => startMode('script', 'Act One')} disabled={createMutation.isPending} className="rounded-[1.35rem] border border-[#e7d8b9] bg-[#fff8e8] px-5 py-4 text-left text-[#171a22] transition hover:-translate-y-0.5 hover:border-[#d4af37] disabled:opacity-60">
                 <Clapperboard className="mb-3 h-5 w-5 text-[#98711d]" />
                 <strong className="block">Script</strong>
-                <span className="text-sm text-[#766b58]">Stage, screen, radio</span>
+                <span className="text-sm text-[#766b58]">Auto-write Act One</span>
               </button>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => startMode('musical', 'Song list and lyrics')} disabled={createMutation.isPending} className="rounded-2xl border border-[#e7d8b9] bg-[#fffdf8] px-3 py-3 text-left text-sm text-[#171a22] transition hover:border-[#d4af37] disabled:opacity-60">
@@ -384,7 +463,7 @@ export default function CasperFreestyle() {
               <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-[1.35rem] border border-[#e7d8b9] bg-[#fffdf8] px-5 py-4 text-left text-[#171a22] transition hover:-translate-y-0.5 hover:border-[#d4af37]">
                 <UploadCloud className="mb-3 h-5 w-5 text-[#98711d]" />
                 <strong className="block">Upload Manuscript</strong>
-                <span className="text-sm text-[#766b58]">txt, md, rtf, html</span>
+                <span className="text-sm text-[#766b58]">Then auto-write an award pass</span>
               </button>
               <input ref={fileInputRef} type="file" accept=".txt,.md,.markdown,.rtf,.html,.htm,text/plain,text/markdown,text/html" className="hidden" onChange={handleUpload} />
             </div>
@@ -395,8 +474,8 @@ export default function CasperFreestyle() {
           <article className="rounded-[2.2rem] border border-[#eadfca] bg-white p-5 shadow-[0_25px_80px_rgba(75,55,21,0.10)] md:p-7">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">The White Page</div>
-                <h2 className="mt-2 font-serif text-3xl font-semibold text-[#171a22]">Write here first.</h2>
+                <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Source / Scratch Page</div>
+                <h2 className="mt-2 font-serif text-3xl font-semibold text-[#171a22]">Give Casper raw material.</h2>
               </div>
               {uploadedName && <span className="rounded-full bg-[#fff1c9] px-3 py-1 text-xs font-semibold text-[#7c5b12]">Loaded: {uploadedName}</span>}
             </div>
@@ -404,25 +483,25 @@ export default function CasperFreestyle() {
               value={whitePage}
               onChange={(event) => handleWhitePageChange(event.target.value)}
               className="min-h-[560px] w-full resize-y rounded-[1.7rem] border border-[#eee3d0] bg-[#fffdf8] p-7 font-serif text-xl leading-9 text-[#20202a] shadow-inner outline-none transition placeholder:text-[#b8aa91] focus:border-[#caa044] focus:ring-4 focus:ring-[#d4af37]/20"
-              placeholder="Start writing, paste a chapter, dump the mess, or upload a manuscript. This is the page Casper works from."
+              placeholder="Paste rough notes, a chapter, lyrics, scene fragments, or leave blank. Auto-write will create a first draft from whatever is here."
             />
           </article>
 
           <aside className="space-y-4">
             <div className="rounded-[2rem] border border-[#e7d8b9] bg-[#171a22] p-5 text-white shadow-[0_25px_70px_rgba(23,26,34,0.20)]">
               <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#f5d37a]">
-                <PenLine className="h-4 w-4" /> Casper can
+                <PenLine className="h-4 w-4" /> Auto-writer
               </div>
               <div className="space-y-3">
                 <button type="button" onClick={() => startProject()} disabled={createMutation.isPending} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] transition hover:bg-[#ffe39a] disabled:opacity-60">
                   {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                  Start project
+                  {createMutation.isPending ? pendingLabel : 'Auto-write now'}
                 </button>
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10">
                   <UploadCloud className="h-4 w-4 text-[#f5d37a]" /> Upload manuscript
                 </button>
                 <button type="button" onClick={handleMusicSketch} className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10">
-                  <Music className="h-4 w-4 text-[#f5d37a]" /> Make music material
+                  <Music className="h-4 w-4 text-[#f5d37a]" /> Draft music scaffold
                 </button>
                 <button type="button" onClick={handlePlayMusic} disabled={playing} className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60">
                   {playing ? <Loader2 className="h-4 w-4 animate-spin text-[#f5d37a]" /> : <Play className="h-4 w-4 text-[#f5d37a]" />}
@@ -496,7 +575,7 @@ export default function CasperFreestyle() {
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] disabled:opacity-60"
           >
             {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Start project
+            {createMutation.isPending ? pendingLabel : 'Auto-write award draft'}
           </button>
         </div>
       </div>
