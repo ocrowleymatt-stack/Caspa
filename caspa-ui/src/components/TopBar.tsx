@@ -9,6 +9,9 @@ import { AIPanelToggle } from './AIPanel';
 
 const pageTitles: Record<string, string> = {
   '/': 'Projects',
+  '/home': 'The Studio',
+  '/casper': 'Casper',
+  '/command': 'Natural Command',
   '/show-factory': 'Show Factory',
   '/music-lab': 'Music Lab',
   '/production': 'Production',
@@ -39,7 +42,7 @@ export function TopBar() {
     const baseTitle = pageTitles[location.pathname] ?? '';
 
     if (projectId && project) {
-      crumbs.push({ label: 'Projects', to: '/' });
+      crumbs.push({ label: 'Projects', to: '/projects' });
       crumbs.push({ label: project.title, to: `/projects/${projectId}` });
       if (location.pathname.includes('/characters')) {
         crumbs.push({ label: 'Characters' });
@@ -60,17 +63,17 @@ export function TopBar() {
   }, [location.pathname, projectId, project, chapter]);
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-white/10 bg-background/50 backdrop-blur-sm px-6">
-      <div className="flex items-center gap-2 min-w-0">
+    <header className="flex h-16 items-center justify-between border-b border-[#eadfca] bg-[#fffaf0]/82 px-4 shadow-sm backdrop-blur md:px-6">
+      <div className="flex min-w-0 items-center gap-2">
         {breadcrumbs.map((crumb, i) => (
-          <div key={i} className="flex items-center gap-2 min-w-0">
-            {i > 0 && <ChevronRight className="h-4 w-4 text-muted shrink-0" />}
+          <div key={i} className="flex min-w-0 items-center gap-2">
+            {i > 0 && <ChevronRight className="h-4 w-4 shrink-0 text-[#b89b56]" />}
             {crumb.to ? (
-              <Link to={crumb.to} className="text-sm text-muted hover:text-accent truncate">
+              <Link to={crumb.to} className="truncate text-sm font-medium text-muted hover:text-[#98711d]">
                 {crumb.label}
               </Link>
             ) : (
-              <span className="text-sm font-medium truncate">{crumb.label}</span>
+              <span className="truncate font-serif text-lg font-semibold text-foreground">{crumb.label}</span>
             )}
           </div>
         ))}
@@ -80,11 +83,11 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="btn-secondary text-xs hidden sm:flex"
+          className="btn-secondary hidden text-xs sm:flex"
         >
           <Search className="h-3.5 w-3.5" />
           Search
-          <kbd className="ml-1 rounded border border-white/10 px-1 text-[10px]">⌘K</kbd>
+          <kbd className="ml-1 rounded border border-[#eadfca] bg-white px-1 text-[10px] text-muted">⌘K</kbd>
         </button>
         <AIPanelToggle />
       </div>
