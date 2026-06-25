@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -15,6 +15,7 @@ import {
   FileText,
   Music2,
   PenLine,
+  Plus,
   Search,
   Sparkles,
   UploadCloud,
@@ -72,7 +73,7 @@ const modeCards: ModeCard[] = [
   {
     mode: 'musical',
     title: 'Build a Musical / Show',
-    subtitle: 'Book, scenes, songs, running order, score brief and production pack.',
+    subtitle: 'Book, scenes, songs, running order, score brief and a playable demo sketch.',
     route: 'creative',
     type: 'stageplay',
     icon: Music2,
@@ -120,6 +121,8 @@ const outputs = [
   'Scene-by-scene outline',
   'Act One draft',
   'Full chapter draft',
+  'Playable music sketch',
+  'Song list and lyrics',
   'Pitch pack',
   'Production pack',
 ];
@@ -136,6 +139,10 @@ function modeLabel(mode: CreativeMode) {
 }
 
 function buildOpenWebUIPrompt(project: Project, mode: CreativeMode, whitePage: string, desiredOutput: string) {
+  const musicalInstruction = mode === 'musical'
+    ? '\nMUSIC REQUIREMENT\n- Do not merely output a prompt. Produce concrete music material: song structure, tempo, key, chord progression, lyrics, melody contour, arrangement notes, and a DAW/Suno/Udio export block only as a secondary handoff.'
+    : '';
+
   return `You are Caspa, Matthew O'Crowley's private creative production room.
 
 PROJECT
@@ -153,12 +160,58 @@ ${whitePage.trim() || '[Blank page. Start by proposing the strongest opening mov
 OPERATING METHOD
 - Start from the current page/canvas, not generic writing advice.
 - Preserve the weirdness and ambition; do not sand the magic off.
-- Make it usable immediately: scenes, beats, chapters, song list, production tasks, or revised text.
+- Make it usable immediately: scenes, beats, chapters, song list, production tasks, revised text, or music material.
 - Challenge weak structure directly, but keep the user's voice alive.
-- When useful, give the next concrete draft section rather than a lecture.
+- When useful, give the next concrete draft section rather than a lecture.${musicalInstruction}
 
 TASK
 Drive this project forward now.`;
+}
+
+function createMusicSketch(idea: string, tone: string) {
+  return `# Music Sketch
+
+Working title: ${idea || 'Untitled show number'}
+Style: theatrical pop / panto-rock / comic patter song
+Tempo: 126 BPM
+Key: D minor moving to F major for the release
+Tone: ${tone || 'Comic, theatrical, sharp, with a big chorus'}
+
+## Structure
+Intro: 4 bars - cheeky pizzicato strings and muted brass stab
+Verse 1: 16 bars - patter delivery, comic exposition
+Pre-chorus: 8 bars - rising panic / civic outrage
+Chorus: 16 bars - big hook, ensemble response
+Middle 8: 8 bars - villain/hero reversal
+Final chorus: 24 bars - key lift, full company, button ending
+
+## Chords
+Intro: Dm | Bb | C | A7
+Verse: Dm | Dm/C | Bb | A7
+Pre: Gm | Bb | F | A7
+Chorus: F | C/E | Dm | Bb | Gm | C | F | A7
+Middle 8: Bb | C | Am | Dm | Gm | C | F | F
+
+## Melody contour
+Verse: fast repeated notes around A-C, with comic leaps on punchlines.
+Pre-chorus: climb C-D-E-F-G to build theatrical panic.
+Chorus hook: land strongly on F, then leap to A on the title phrase.
+
+## First lyric hook
+Round and round the roundabout, nobody knows why,
+Dick Turpin lost his horse outside the retail park by five.
+Stand and deliver? Darling, not in lane three —
+Milton Keynes has swallowed him and charged him parking fee.
+
+## Arrangement
+Drums: brushed snare into full kit by chorus.
+Bass: bouncy quavers, comic swagger.
+Keys: tack piano doubled with theatre organ.
+Brass: short stabs after jokes.
+Strings: pizzicato for sneaking, full tremolo for mock peril.
+
+## Export prompt for Suno/Udio/DAW assistant
+Theatrical British comedy patter song, 126 BPM, D minor to F major, panto-rock energy, witty camp lyrics, brass stabs, tack piano, ensemble chorus, comic highwayman lost in modern Milton Keynes, catchy chorus, West End demo style.`;
 }
 
 export default function Dashboard({
@@ -166,6 +219,7 @@ export default function Dashboard({
   chapters,
   characters,
   plotNodes,
+  createNewProject,
   updateProject,
   setView,
   saveToCloud,
@@ -177,6 +231,8 @@ export default function Dashboard({
   const [tone, setTone] = useState(project.tone || 'Funny, vivid, slightly dangerous, but structurally disciplined.');
   const [whitePage, setWhitePage] = useState('');
   const [copied, setCopied] = useState(false);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const whitePageKey = `caspa.whitePage.${project.id}`;
 
@@ -219,10 +275,117 @@ export default function Dashboard({
     setView(route);
   };
 
+  const handleNewProject = (mode: CreativeMode = selectedMode) => {
+    const card = modeCards.find(item => item.mode === mode) || activeCard;
+    const title = `New ${modeLabel(mode)}`;
+    createNewProject(title);
+    setSelectedMode(mode);
+    setIdea('');
+    setTone(mode === 'musical' ? 'Theatrical, melodic, witty, with a proper hook.' : 'Clear, vivid and production-minded.');
+    setDesiredOutput(mode === 'musical' ? 'Playable music sketch' : 'Project bible');
+    setWhitePage('');
+    setTimeout(() => {
+      updateProject({
+        title,
+        type: card.type,
+        premise: '',
+        tone: mode === 'musical' ? 'Theatrical, melodic, witty, with a proper hook.' : 'Clear, vivid and production-minded.',
+        genre: mode === 'musical' ? 'Musical theatre / show' : mode === 'script' ? 'Stage comedy / dramatic script' : 'Creative fiction',
+        lastModified: Date.now(),
+      });
+    }, 0);
+  };
+
+  const handleUploadManuscript = async (file: File | undefined) => {
+    if (!file) return;
+    const supported = /\.(txt|md|markdown|rtf|html?)$/i.test(file.name) || file.type.startsWith('text/');
+    if (!supported) {
+      alert('For this quick uploader, use .txt, .md, .rtf or .html. For PDF/DOCX, paste the text into the white page for now.');
+      return;
+    }
+
+    const text = await file.text();
+    const title = file.name.replace(/\.[^.]+$/, '') || 'Uploaded manuscript';
+    createNewProject(title);
+    setWhitePage(text);
+    setIdea(`Uploaded manuscript: ${title}`);
+    setSelectedMode('gold');
+    setDesiredOutput('Structure pass, line edit and ruthless final cut.');
+    updateProject({
+      title,
+      premise: `Uploaded manuscript: ${title}`,
+      type: 'novel',
+      genre: 'Uploaded manuscript',
+      tone: tone || 'Preserve authorial voice while improving structure, clarity and force.',
+      stats: {
+        ...(project.stats || { narrativeStreak: 0, aiContributions: 0, lastActiveDay: new Date().toISOString().slice(0, 10) }),
+        totalWords: text.split(/\s+/).filter(Boolean).length,
+      },
+      lastModified: Date.now(),
+    });
+  };
+
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(openWebUIPrompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
+  };
+
+  const playMusicDemo = async () => {
+    setMusicPlaying(true);
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) {
+      alert('This browser cannot play the built-in demo synth. Use the generated music sketch/export prompt instead.');
+      setMusicPlaying(false);
+      return;
+    }
+
+    const ctx = new AudioContextClass();
+    const master = ctx.createGain();
+    master.gain.value = 0.18;
+    master.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    const bpm = 126;
+    const beat = 60 / bpm;
+    const progression = [293.66, 233.08, 261.63, 220.0, 349.23, 261.63, 293.66, 440.0];
+
+    progression.forEach((freq, index) => {
+      const start = now + index * beat * 2;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = index % 2 ? 'triangle' : 'sawtooth';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.22, start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + beat * 1.8);
+      osc.connect(gain).connect(master);
+      osc.start(start);
+      osc.stop(start + beat * 2);
+
+      const top = ctx.createOscillator();
+      const topGain = ctx.createGain();
+      top.type = 'square';
+      top.frequency.value = freq * (index % 3 === 0 ? 2 : 1.5);
+      topGain.gain.setValueAtTime(0.0001, start + beat * 0.5);
+      topGain.gain.exponentialRampToValueAtTime(0.08, start + beat * 0.55);
+      topGain.gain.exponentialRampToValueAtTime(0.0001, start + beat * 1.4);
+      top.connect(topGain).connect(master);
+      top.start(start + beat * 0.5);
+      top.stop(start + beat * 1.5);
+    });
+
+    setTimeout(() => {
+      ctx.close();
+      setMusicPlaying(false);
+    }, progression.length * beat * 2000 + 400);
+  };
+
+  const addMusicSketch = () => {
+    const sketch = createMusicSketch(idea, tone);
+    setWhitePage(prev => prev.trim() ? `${prev.trim()}\n\n---\n\n${sketch}` : sketch);
+    setSelectedMode('musical');
+    setDesiredOutput('Playable music sketch');
   };
 
   return (
@@ -231,8 +394,23 @@ export default function Dashboard({
         <section className="rounded-[2rem] border border-[#e1d5bd] bg-white shadow-[0_24px_80px_rgba(42,31,14,0.10)] overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="p-6 md:p-10 space-y-7">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#d9c89f] bg-[#fffaf0] px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-[#8b6b18] font-semibold">
-                <Sparkles size={14} /> Caspa Launchpad
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#d9c89f] bg-[#fffaf0] px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-[#8b6b18] font-semibold">
+                  <Sparkles size={14} /> Caspa Launchpad
+                </div>
+                <button onClick={() => handleNewProject()} className="inline-flex items-center gap-2 rounded-full border border-[#d9c89f] bg-white px-3 py-1.5 text-xs font-semibold text-[#1c2433] hover:bg-[#fff7df] transition">
+                  <Plus size={14} /> New project
+                </button>
+                <button onClick={() => uploadInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-full border border-[#d9c89f] bg-white px-3 py-1.5 text-xs font-semibold text-[#1c2433] hover:bg-[#fff7df] transition">
+                  <UploadCloud size={14} /> Upload manuscript
+                </button>
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept=".txt,.md,.markdown,.rtf,.html,.htm,text/plain,text/markdown,text/html"
+                  className="hidden"
+                  onChange={(event) => handleUploadManuscript(event.target.files?.[0])}
+                />
               </div>
 
               <div className="space-y-3">
@@ -240,8 +418,26 @@ export default function Dashboard({
                   What are we making today?
                 </h1>
                 <p className="text-base md:text-lg text-[#687184] max-w-2xl leading-relaxed">
-                  Start with the thing you want to create, not the machine that creates it. Novel, script, musical, adaptation, polish job or glorious nonsense — pick the beast, then Caspa opens the right room.
+                  Start a new project, upload a manuscript, make a script, build a show, or generate actual music material — not just a lonely prompt in a velvet waistcoat.
                 </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button onClick={() => handleNewProject('novel')} className="rounded-2xl border border-[#e2d6bd] bg-[#fffdf8] p-4 text-left hover:border-[#d4af37] hover:shadow-md transition">
+                  <BookOpen size={19} className="text-[#8b6b18] mb-2" />
+                  <strong className="block">Blank novel</strong>
+                  <span className="text-xs text-[#687184]">Start clean</span>
+                </button>
+                <button onClick={() => handleNewProject('script')} className="rounded-2xl border border-[#e2d6bd] bg-[#fffdf8] p-4 text-left hover:border-[#d4af37] hover:shadow-md transition">
+                  <Clapperboard size={19} className="text-[#8b6b18] mb-2" />
+                  <strong className="block">New script</strong>
+                  <span className="text-xs text-[#687184]">Stage/screen/radio</span>
+                </button>
+                <button onClick={() => handleNewProject('musical')} className="rounded-2xl border border-[#e2d6bd] bg-[#fffdf8] p-4 text-left hover:border-[#d4af37] hover:shadow-md transition">
+                  <Music2 size={19} className="text-[#8b6b18] mb-2" />
+                  <strong className="block">New music/show</strong>
+                  <span className="text-xs text-[#687184]">Playable demo sketch</span>
+                </button>
               </div>
 
               <div className="space-y-3">
@@ -299,6 +495,12 @@ export default function Dashboard({
                 >
                   Open white page <PenLine size={16} />
                 </button>
+                <button
+                  onClick={addMusicSketch}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#d8c89e] bg-[#fffaf0] px-5 py-3 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff4d7] transition"
+                >
+                  Create music sketch <Music2 size={16} />
+                </button>
               </div>
             </div>
 
@@ -307,7 +509,7 @@ export default function Dashboard({
                 <div className="text-xs uppercase tracking-[0.22em] text-[#d4af37] font-semibold">Active project</div>
                 <div>
                   <h2 className="text-3xl font-serif font-semibold leading-tight">{project.title || 'Untitled project'}</h2>
-                  <p className="mt-3 text-sm text-slate-300 leading-relaxed">{project.premise || 'No premise fixed yet. Use the launchpad to give the project a real spine.'}</p>
+                  <p className="mt-3 text-sm text-slate-300 leading-relaxed">{project.premise || 'No premise fixed yet. Use New Project or Upload Manuscript to give the thing a spine.'}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -317,8 +519,8 @@ export default function Dashboard({
                 <Metric label="Threads" value={plotNodes.length.toString()} />
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                <strong className="block text-white mb-1">White-page rule</strong>
-                Write first. Tools second. No more pipeline cupboard as the emotional front door.
+                <strong className="block text-white mb-1">Rule</strong>
+                A project must be creatable, ingestible, writable, and exportable. Anything less is a haunted brochure.
               </div>
             </aside>
           </div>
@@ -352,6 +554,24 @@ export default function Dashboard({
           })}
         </section>
 
+        {selectedMode === 'musical' && (
+          <section className="rounded-[1.5rem] bg-[#17120c] border border-[#3a2b16] p-5 md:p-7 text-white shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] text-[#d4af37] font-semibold">Music Lab</div>
+                <h2 className="text-2xl font-serif font-semibold">Make music, not just a prompt</h2>
+                <p className="mt-2 text-sm text-[#cdbf9e] max-w-3xl">This creates a playable browser synth demo and writes a structured song sketch into the white page. Full studio-quality audio still needs a provider such as Suno/Udio/DAW export, but Casper now produces actual music material rather than pretending a prompt is a song.</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={playMusicDemo} disabled={musicPlaying} className="rounded-xl bg-[#d4af37] px-4 py-2.5 text-sm font-semibold text-[#17120c] hover:bg-[#e7c65d] transition disabled:opacity-60">
+                  {musicPlaying ? 'Playing demo...' : 'Play demo music'}
+                </button>
+                <button onClick={addMusicSketch} className="rounded-xl border border-[#d4af37]/50 px-4 py-2.5 text-sm font-semibold text-[#ffe5a5] hover:bg-white/5 transition">Write music sketch</button>
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="grid grid-cols-1 xl:grid-cols-[1fr_0.95fr] gap-6">
           <article className="rounded-[1.5rem] bg-white border border-[#e4dac8] p-5 md:p-7 shadow-sm">
             <div className="flex items-center justify-between gap-4 mb-4">
@@ -365,12 +585,13 @@ export default function Dashboard({
               value={whitePage}
               onChange={(event) => setWhitePage(event.target.value)}
               className="w-full min-h-[430px] rounded-2xl border border-[#e0d6c4] bg-[#fffdf8] p-6 text-base leading-8 text-[#1c2433] focus:outline-none focus:ring-2 focus:ring-[#d4af37]/30"
-              placeholder="Start here. Scene, chapter, song list, production brief, character voice, fragments, mad idea, whatever. This feeds the Open WebUI driver prompt."
+              placeholder="Start here, paste a manuscript, or upload .txt/.md/.rtf/.html. Music mode writes song structure, chords and lyrics here."
             />
             <div className="mt-4 flex flex-wrap gap-3">
               <button onClick={() => setView('write')} className="rounded-xl bg-[#1c2433] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2e394d] transition">Open writing room</button>
               <button onClick={() => setView('memory')} className="rounded-xl border border-[#d8c89e] px-4 py-2.5 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff7df] transition">Story bible</button>
               <button onClick={() => setView('intelligence')} className="rounded-xl border border-[#d8c89e] px-4 py-2.5 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff7df] transition">Red Pen</button>
+              <button onClick={() => uploadInputRef.current?.click()} className="rounded-xl border border-[#d8c89e] px-4 py-2.5 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff7df] transition">Upload manuscript</button>
             </div>
           </article>
 
