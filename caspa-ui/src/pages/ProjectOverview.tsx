@@ -53,17 +53,17 @@ function SortableChapter({
     <div
       ref={setNodeRef}
       style={style}
-      className="card flex items-center gap-3 py-3 hover:border-accent/30 transition-colors"
+      className="group flex items-center gap-3 rounded-[1.6rem] border border-[#eadfca] bg-white px-4 py-3 shadow-paper transition-all hover:-translate-y-0.5 hover:border-accent"
     >
-      <button type="button" className="cursor-grab text-muted hover:text-foreground" {...attributes} {...listeners}>
+      <button type="button" className="cursor-grab rounded-xl p-2 text-muted hover:bg-[#fff8e8] hover:text-foreground" {...attributes} {...listeners}>
         <GripVertical className="h-4 w-4" />
       </button>
-      <Link to={`/projects/${projectId}/chapters/${chapter.id}`} className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-medium truncate">{chapter.title}</span>
-          <span className="badge bg-white/5 text-muted capitalize shrink-0">{chapter.status}</span>
+      <Link to={`/projects/${projectId}/chapters/${chapter.id}`} className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="truncate font-serif text-xl font-semibold text-[#171a22]">{chapter.title}</span>
+          <span className="badge shrink-0 capitalize">{chapter.status}</span>
         </div>
-        <p className="text-xs text-muted mt-1">
+        <p className="mt-1 text-xs text-muted">
           {chapter.wordCount.toLocaleString()} words · {formatRelative(chapter.updatedAt)}
         </p>
       </Link>
@@ -141,13 +141,13 @@ export default function ProjectOverview() {
   if (projectLoading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#98711d]" />
       </div>
     );
   }
 
   if (!project) {
-    return <p className="text-muted text-center py-20">Project not found</p>;
+    return <p className="py-20 text-center text-muted">Project not found</p>;
   }
 
   const progress = Math.min(
@@ -158,88 +158,97 @@ export default function ProjectOverview() {
   const firstDraftChapter = chapters.find((c) => c.status !== 'final') ?? chapters[0];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="card bg-gradient-to-br from-surface to-accent/5">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div>
-            <span className="badge bg-accent/10 text-accent mb-2">{project.genre}</span>
-            <h1 className="text-3xl font-bold">{project.title}</h1>
-            <p className="text-muted mt-2 max-w-xl">{project.description}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {firstDraftChapter && (
-              <Link
-                to={`/projects/${id}/chapters/${firstDraftChapter.id}`}
-                className="btn-primary"
-              >
-                <PenLine className="h-4 w-4" /> Continue Writing
+    <div className="mx-auto max-w-6xl space-y-7">
+      <section className="overflow-hidden rounded-[2.4rem] border border-[#eadfca] bg-white shadow-room">
+        <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
+          <div className="p-7 md:p-10">
+            <span className="badge mb-4">{project.genre}</span>
+            <h1 className="font-serif text-5xl font-semibold leading-none tracking-[-0.045em] text-[#171a22] md:text-6xl">
+              {project.title}
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
+              {project.description || 'No description yet. This room is waiting for its first proper sentence.'}
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              {firstDraftChapter && (
+                <Link to={`/projects/${id}/chapters/${firstDraftChapter.id}`} className="btn-primary">
+                  <PenLine className="h-4 w-4" /> Continue Writing
+                </Link>
+              )}
+              <button type="button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending} className="btn-secondary">
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                New Chapter
+              </button>
+              <Link to="/show-factory" className="btn-secondary">
+                <Theater className="h-4 w-4" /> Show Pack
               </Link>
-            )}
-            <Link to="/show-factory" className="btn-secondary">
-              <Theater className="h-4 w-4" /> Show Pack
-            </Link>
-            <Link to="/publish" className="btn-secondary">
-              <Upload className="h-4 w-4" /> Export
-            </Link>
+              <Link to="/publish" className="btn-secondary">
+                <Upload className="h-4 w-4" /> Export
+              </Link>
+            </div>
+          </div>
+
+          <div className="border-t border-[#eadfca] bg-[#f7f1e6] p-7 lg:border-l lg:border-t-0">
+            <div className="rounded-[1.8rem] border border-[#eadfca] bg-[#fffdf8] p-5 shadow-paper">
+              <div className="mb-4 text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Progress</div>
+              <div className="text-5xl font-semibold text-[#171a22]">{progress}%</div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#f1e6d2]">
+                <div className="h-full rounded-full bg-[#171a22]" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Words', value: stats?.wordCount ?? project.currentWordCount },
+                  { label: 'Chapters', value: stats?.chapterCount ?? chapters.length },
+                  { label: 'Characters', value: stats?.characterCount ?? 0 },
+                  { label: 'Notes', value: stats?.noteCount ?? 0 },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-2xl bg-white p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#98711d]">{stat.label}</p>
+                    <p className="mt-1 text-xl font-semibold text-[#171a22]">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Words', value: stats?.wordCount ?? project.currentWordCount },
-            { label: 'Chapters', value: stats?.chapterCount ?? chapters.length },
-            { label: 'Characters', value: stats?.characterCount ?? 0 },
-            { label: 'Progress', value: `${progress}%` },
-          ].map((stat) => (
-            <div key={stat.label} className="rounded-lg bg-white/5 px-4 py-3">
-              <p className="text-xs text-muted uppercase tracking-wide">{stat.label}</p>
-              <p className="text-xl font-semibold mt-1">{stat.value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      </section>
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <FileText className="h-5 w-5 text-accent" /> Chapters
-        </h2>
-        <button
-          type="button"
-          onClick={() => createMutation.mutate()}
-          disabled={createMutation.isPending}
-          className="btn-primary"
-        >
-          {createMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          Add Chapter
-        </button>
-      </div>
-
-      {chaptersLoading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-accent" />
-        </div>
-      ) : chapters.length === 0 ? (
-        <div className="card text-center py-12">
-          <FileText className="h-10 w-10 mx-auto text-muted mb-3 opacity-40" />
-          <p className="text-muted mb-4">No chapters yet. Start writing your first chapter.</p>
-          <button type="button" onClick={() => createMutation.mutate()} className="btn-primary">
-            <Plus className="h-4 w-4" /> Create First Chapter
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Manuscript</div>
+            <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Chapters</h2>
+          </div>
+          <button type="button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending} className="btn-primary">
+            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Add Chapter
           </button>
         </div>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={chapters.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2">
-              {chapters.map((chapter) => (
-                <SortableChapter key={chapter.id} chapter={chapter} projectId={id!} />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      )}
+
+        {chaptersLoading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-[#98711d]" />
+          </div>
+        ) : chapters.length === 0 ? (
+          <div className="rounded-[2rem] border border-[#eadfca] bg-white/85 py-14 text-center shadow-paper">
+            <FileText className="mx-auto mb-4 h-12 w-12 text-[#98711d] opacity-60" />
+            <p className="mb-5 text-muted">No chapters yet. Start with the first page.</p>
+            <button type="button" onClick={() => createMutation.mutate()} className="btn-primary">
+              <Plus className="h-4 w-4" /> Create First Chapter
+            </button>
+          </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={chapters.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {chapters.map((chapter) => (
+                  <SortableChapter key={chapter.id} chapter={chapter} projectId={id!} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+      </section>
     </div>
   );
 }
