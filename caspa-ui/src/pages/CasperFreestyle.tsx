@@ -78,18 +78,18 @@ function buildMusicSketch(premise: string, tone: string) {
   return `# Playable Music Sketch
 
 Working title: ${premise || 'Untitled show number'}
-Style: British theatrical comedy / panto-rock / patter song
+Style: theatrical demo / story-led composition
 Tempo: 126 BPM
 Key: D minor, lifting to F major for the chorus
 Tone: ${tone || 'Comic, theatrical, sharp and melodic'}
 
 ## Structure
-Intro: 4 bars — pizzicato strings, tack piano, muted brass sting
-Verse 1: 16 bars — patter exposition, tight comic rhymes
-Pre-chorus: 8 bars — rising civic panic
-Chorus: 16 bars — big hook, ensemble response
-Middle 8: 8 bars — hero/villain reversal
-Final chorus: 24 bars — key lift, full company, button ending
+Intro: 4 bars — small motif, simple hook, clear entry point
+Verse 1: 16 bars — story setup and character voice
+Pre-chorus: 8 bars — rising pressure or emotional turn
+Chorus: 16 bars — clear title hook and repeatable refrain
+Middle 8: 8 bars — reversal, confession, joke, or reveal
+Final chorus: 24 bars — bigger arrangement, button ending
 
 ## Chords
 Intro: Dm | Bb | C | A7
@@ -99,16 +99,16 @@ Chorus: F | C/E | Dm | Bb | Gm | C | F | A7
 Middle 8: Bb | C | Am | Dm | Gm | C | F | F
 
 ## First lyric hook
-Round and round the roundabout, nobody knows why,
-Dick Turpin lost his horse outside the retail park by five.
-Stand and deliver? Darling, not in lane three —
-Milton Keynes has swallowed him and charged him parking fee.
+[Write the title hook here]
+[Answer it with a second line that lands the joke, wound, or wish]
+[Repeatable phrase]
+[Button line]
 
 ## Arrangement
-Tack piano, theatre organ, brass stabs after jokes, bouncy bass, brushed snare into full kit, pizzicato strings for sneaking, ensemble chorus for the button.
+Tack piano or clean piano, light percussion, bass, strings or synth pad, brass or guitar stabs after jokes, ensemble or backing vocals for the final chorus.
 
 ## Secondary export prompt
-Theatrical British comedy patter song, 126 BPM, D minor to F major, panto-rock, witty camp lyrics, brass stabs, tack piano, ensemble chorus, highwayman lost in modern Milton Keynes, West End demo style.`;
+Theatrical story song, 126 BPM, D minor to F major, strong title hook, character-led vocal, clean demo arrangement, dramatic lift, playable stage/show sketch.`;
 }
 
 function buildOpenWebUIPrompt(mode: CasperMode, premise: string, tone: string, output: string, whitePage: string) {
@@ -163,21 +163,6 @@ async function playBrowserMusicDemo() {
     osc.stop(start + beat * 0.95);
   });
 
-  const bassNotes = [146.83, 116.54, 130.81, 110.0];
-  bassNotes.forEach((freq, index) => {
-    const start = now + index * beat * 3;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.14, start + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + beat * 2.6);
-    osc.connect(gain).connect(master);
-    osc.start(start);
-    osc.stop(start + beat * 2.8);
-  });
-
   window.setTimeout(() => void ctx.close(), 7200);
 }
 
@@ -189,8 +174,8 @@ export default function CasperFreestyle() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [mode, setMode] = useState<CasperMode>('script');
-  const [premise, setPremise] = useState('A Dick Turpin stage comedy set in Milton Keynes');
-  const [tone, setTone] = useState('Sharp, theatrical, funny, a bit camp, but structurally solid.');
+  const [premise, setPremise] = useState('');
+  const [tone, setTone] = useState('Clear, vivid, witty, production-minded.');
   const [output, setOutput] = useState('Act One');
   const [whitePage, setWhitePage] = useState(() => localStorage.getItem('casper.whitePage') || '');
   const [uploadedName, setUploadedName] = useState<string | null>(null);
@@ -199,6 +184,7 @@ export default function CasperFreestyle() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const selectedMode = getMode(mode);
+  const SelectedIcon = selectedMode.icon;
 
   const openWebUIPrompt = useMemo(
     () => buildOpenWebUIPrompt(mode, premise, tone, output, whitePage),
@@ -212,10 +198,11 @@ export default function CasperFreestyle() {
       const finalOutput = override?.output ?? output;
       const finalModeCard = getMode(finalMode);
       const title = titleFromPremise(uploadedName || finalPremise, finalMode);
+      const description = finalPremise || uploadedName || finalModeCard.helper;
       const project = await createProject({
         title,
         genre: finalModeCard.genre,
-        description: `${finalPremise || uploadedName || finalModeCard.helper}\n\nCasper output target: ${finalOutput}`,
+        description: `${description}\n\nCasper output target: ${finalOutput}`,
         targetWordCount: finalModeCard.targetWordCount,
         status: 'draft',
       });
@@ -306,7 +293,6 @@ export default function CasperFreestyle() {
             <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
               <Sparkles className="h-4 w-4" /> Casper
             </div>
-
             <div className="space-y-4">
               <h1 className="max-w-4xl font-serif text-5xl font-semibold leading-[0.95] tracking-[-0.045em] text-[#171a22] md:text-7xl lg:text-8xl">
                 What are we making?
@@ -321,7 +307,7 @@ export default function CasperFreestyle() {
             <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Current room</div>
             <div className="mt-3 flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fff1c9] text-[#8a6717]">
-                <selectedMode.icon className="h-5 w-5" />
+                <SelectedIcon className="h-5 w-5" />
               </div>
               <div>
                 <h2 className="font-serif text-2xl font-semibold text-[#171a22]">{selectedMode.title}</h2>
@@ -339,36 +325,22 @@ export default function CasperFreestyle() {
                 value={premise}
                 onChange={(event) => setPremise(event.target.value)}
                 className="min-h-[148px] w-full resize-y rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-6 text-2xl leading-snug text-[#171a22] shadow-inner outline-none transition placeholder:text-[#b8aa91] focus:border-[#caa044] focus:ring-4 focus:ring-[#d4af37]/20 md:text-3xl"
-                placeholder="A Dick Turpin stage comedy set in Milton Keynes..."
+                placeholder="Describe the thing you want to make..."
               />
             </div>
 
             <div className="grid gap-3 self-stretch">
-              <button
-                type="button"
-                onClick={() => startMode('novel', 'Project bible')}
-                disabled={createMutation.isPending}
-                className="rounded-[1.35rem] bg-[#171a22] px-5 py-4 text-left text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#262b38] disabled:opacity-60"
-              >
+              <button type="button" onClick={() => startMode('novel', 'Project bible')} disabled={createMutation.isPending} className="rounded-[1.35rem] bg-[#171a22] px-5 py-4 text-left text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[#262b38] disabled:opacity-60">
                 <BookOpen className="mb-3 h-5 w-5 text-[#f5d37a]" />
                 <strong className="block">Blank Novel</strong>
                 <span className="text-sm text-white/65">Create the room</span>
               </button>
-              <button
-                type="button"
-                onClick={() => startMode('script', 'Act One')}
-                disabled={createMutation.isPending}
-                className="rounded-[1.35rem] border border-[#e7d8b9] bg-[#fff8e8] px-5 py-4 text-left text-[#171a22] transition hover:-translate-y-0.5 hover:border-[#d4af37] disabled:opacity-60"
-              >
+              <button type="button" onClick={() => startMode('script', 'Act One')} disabled={createMutation.isPending} className="rounded-[1.35rem] border border-[#e7d8b9] bg-[#fff8e8] px-5 py-4 text-left text-[#171a22] transition hover:-translate-y-0.5 hover:border-[#d4af37] disabled:opacity-60">
                 <Clapperboard className="mb-3 h-5 w-5 text-[#98711d]" />
                 <strong className="block">Script</strong>
                 <span className="text-sm text-[#766b58]">Stage, screen, radio</span>
               </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-[1.35rem] border border-[#e7d8b9] bg-[#fffdf8] px-5 py-4 text-left text-[#171a22] transition hover:-translate-y-0.5 hover:border-[#d4af37]"
-              >
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-[1.35rem] border border-[#e7d8b9] bg-[#fffdf8] px-5 py-4 text-left text-[#171a22] transition hover:-translate-y-0.5 hover:border-[#d4af37]">
                 <UploadCloud className="mb-3 h-5 w-5 text-[#98711d]" />
                 <strong className="block">Upload Manuscript</strong>
                 <span className="text-sm text-[#766b58]">txt, md, rtf, html</span>
@@ -401,12 +373,7 @@ export default function CasperFreestyle() {
                 <PenLine className="h-4 w-4" /> Casper can
               </div>
               <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => createMutation.mutate({})}
-                  disabled={createMutation.isPending}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] transition hover:bg-[#ffe39a] disabled:opacity-60"
-                >
+                <button type="button" onClick={() => createMutation.mutate({})} disabled={createMutation.isPending} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] transition hover:bg-[#ffe39a] disabled:opacity-60">
                   {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                   Create and open project
                 </button>
@@ -433,12 +400,7 @@ export default function CasperFreestyle() {
                   const Icon = card.icon;
                   const active = card.id === mode;
                   return (
-                    <button
-                      key={card.id}
-                      type="button"
-                      onClick={() => setMode(card.id)}
-                      className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${active ? 'border-[#caa044] bg-[#fff1c9] text-[#171a22]' : 'border-[#eee3d0] bg-[#fffdf8] text-[#665d4d] hover:border-[#d4af37]'}`}
-                    >
+                    <button key={card.id} type="button" onClick={() => setMode(card.id)} className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${active ? 'border-[#caa044] bg-[#fff1c9] text-[#171a22]' : 'border-[#eee3d0] bg-[#fffdf8] text-[#665d4d] hover:border-[#d4af37]'}`}>
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <Icon className="h-4 w-4 text-[#98711d]" />
                         {active && <Check className="h-3.5 w-3.5 text-[#98711d]" />}
