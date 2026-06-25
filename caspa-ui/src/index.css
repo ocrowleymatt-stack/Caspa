@@ -88,6 +88,126 @@
   }
 }
 
+/* Legacy dashboard compatibility layer.
+   Older pages still carry dark utility classes directly in JSX. These overrides
+   warm those pages without touching their specialist behaviour. */
+.bg-background,
+.bg-background\/50,
+.bg-background\/60,
+.bg-background\/70,
+.bg-background\/80,
+.bg-background\/90 {
+  background-color: rgba(247, 241, 230, 0.92) !important;
+}
+
+.bg-surface,
+.bg-surface\/40,
+.bg-surface\/50,
+.bg-surface\/60,
+.bg-surface\/70,
+.bg-surface\/80,
+.bg-surface\/90 {
+  background-color: rgba(255, 250, 240, 0.88) !important;
+}
+
+.bg-white\/5,
+.bg-white\/10,
+.bg-white\/15,
+.bg-white\/20 {
+  background-color: rgba(255, 253, 248, 0.72) !important;
+}
+
+.hover\:bg-white\/5:hover,
+.hover\:bg-white\/10:hover,
+.hover\:bg-white\/15:hover,
+.hover\:bg-white\/20:hover {
+  background-color: rgba(255, 248, 232, 0.95) !important;
+}
+
+.border-white\/5,
+.border-white\/10,
+.border-white\/20,
+.border-white\/30,
+.border-white\/40 {
+  border-color: #eadfca !important;
+}
+
+.text-muted {
+  color: #766b58 !important;
+}
+
+.text-foreground,
+.hover\:text-foreground:hover {
+  color: #171a22 !important;
+}
+
+.text-accent,
+.hover\:text-accent:hover {
+  color: #98711d !important;
+}
+
+.bg-accent,
+.hover\:bg-accent:hover,
+.hover\:bg-accent\/90:hover {
+  background-color: #171a22 !important;
+  color: #fffaf0 !important;
+}
+
+.bg-accent\/5,
+.bg-accent\/10,
+.bg-accent\/15,
+.bg-accent\/20,
+.bg-accent\/25,
+.bg-accent\/30 {
+  background-color: rgba(255, 241, 201, 0.8) !important;
+}
+
+.border-accent\/10,
+.border-accent\/20,
+.border-accent\/30,
+.border-accent\/40,
+.hover\:border-accent\/30:hover,
+.hover\:border-accent\/40:hover {
+  border-color: rgba(212, 175, 55, 0.55) !important;
+}
+
+.shadow-black\/10,
+.shadow-black\/20,
+.shadow-black\/30,
+.shadow-black\/40,
+.shadow-black\/50 {
+  --tw-shadow-color: rgba(75, 55, 21, 0.10) !important;
+  --tw-shadow: var(--tw-shadow-colored) !important;
+}
+
+.from-accent\/10,
+.from-accent\/20,
+.via-surface,
+.to-purple-950\/40,
+.to-purple-950\/30,
+.to-black\/20,
+.bg-gradient-to-br,
+.bg-gradient-to-r {
+  background-image: linear-gradient(135deg, rgba(255, 253, 248, 0.96), rgba(255, 248, 232, 0.92)) !important;
+}
+
+.rounded-lg {
+  border-radius: 0.9rem;
+}
+
+.rounded-xl {
+  border-radius: 1.35rem;
+}
+
+.rounded-2xl {
+  border-radius: 1.65rem;
+}
+
+pre,
+code {
+  color: #2f2a22;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
