@@ -1,4 +1,6 @@
 import { Router, type Request, type Response } from 'express';
+import { config } from '../../shared';
+import { AuthError } from '../auth/errors';
 import type { UserPublic } from '../auth/types';
 import { ChapterService } from './ChapterService';
 import { CharacterService } from './CharacterService';
@@ -25,7 +27,12 @@ function sendSuccess(res: Response, data: unknown, status = 200): void {
 
 function sendError(res: Response, error: unknown, status = 500): void {
   const message = error instanceof Error ? error.message : 'Unknown error';
-  const code = error instanceof NotFoundError ? 404 : status;
+  let code = status;
+  if (error instanceof NotFoundError) {
+    code = 404;
+  } else if (error instanceof AuthError) {
+    code = error.statusCode;
+  }
   const body: ApiResponse = { success: false, error: message };
   res.status(code).json(body);
 }
@@ -46,8 +53,23 @@ function param(req: Request, name: string): string {
   return value ?? '';
 }
 
+const LOCAL_USER: UserPublic = {
+  id: 'local',
+  email: 'local@caspa.local',
+  displayName: 'Local User',
+  role: 'admin',
+  status: 'active',
+  createdAt: new Date(0).toISOString(),
+};
+
 function getUser(req: Request): UserPublic {
-  return req.user!;
+  if (req.user) {
+    return req.user;
+  }
+  if (!config.authEnabled) {
+    return LOCAL_USER;
+  }
+  throw new AuthError('Authentication required');
 }
 
 export const manuscriptRouter = Router();

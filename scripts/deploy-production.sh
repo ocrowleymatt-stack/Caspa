@@ -23,13 +23,22 @@ echo "==> Installing dependencies"
 npm install
 (cd caspa-ui && npm install)
 
+if ! grep -q '^AUTH_ENABLED=true' .env 2>/dev/null; then
+  if grep -q '^AUTH_ENABLED=' .env 2>/dev/null; then
+    sed -i 's/^AUTH_ENABLED=.*/AUTH_ENABLED=true/' .env
+  else
+    echo 'AUTH_ENABLED=true' >> .env
+  fi
+  echo "==> Enabled AUTH_ENABLED=true in .env"
+fi
+
 echo "==> Building UI + backend"
 mkdir -p public
 npm run deploy
 
 echo "==> Restarting $PM2_NAME"
 if pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
-  pm2 restart "$PM2_NAME"
+  pm2 restart "$PM2_NAME" --update-env
 else
   NODE_ENV=production pm2 start dist/server.js --name "$PM2_NAME"
 fi
