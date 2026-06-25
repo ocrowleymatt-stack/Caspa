@@ -17,20 +17,22 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 export const auth = getAuth(app);
+auth.useDeviceLanguage();
 
 // Keep auth durable across popup/redirect round-trips and Safari reloads.
-setPersistence(auth, browserLocalPersistence).catch((error) => {
+const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch((error) => {
   console.warn('Firebase auth persistence setup failed:', error);
 });
 
 // FORCED FIX: Explicitly nullify tenantId to escape the invalid-tenant-id error loop.
 // Some SDK versions or environments might persist this or pick it up from env vars automatically.
-if ((auth as any).tenantId) {
-  console.log(`Clearing existing tenant ID: ${(auth as any).tenantId}`);
-  (auth as any).tenantId = null;
-} else {
-  console.log('Initial auth.tenantId is null/undefined as expected.');
+function clearTenantId() {
+  if ((auth as any).tenantId) {
+    console.log(`Clearing existing tenant ID: ${(auth as any).tenantId}`);
+    (auth as any).tenantId = null;
+  }
 }
+clearTenantId();
 
 // Support for multi-tenancy - DISABLED COMPLETELY to fix auth/invalid-tenant-id
 // const tenantId = (import.meta as any).env.VITE_FIREBASE_TENANT_ID;
@@ -39,10 +41,22 @@ if ((auth as any).tenantId) {
 //   console.log(`Firebase Tenant ID set to: ${tenantId}`);
 // }
 
+// Plain Google login provider: keep sign-in simple and reliable.
+// Do not request Drive here. Extra OAuth scopes can break login when the OAuth consent screen/origins are not fully configured.
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
 googleProvider.setCustomParameters({
   prompt: 'select_account',
+});
+
+// Separate Drive provider for a future explicit "Connect Google Drive" action.
+export const googleDriveProvider = new GoogleAuthProvider();
+googleDriveProvider.addScope('profile');
+googleDriveProvider.addScope('email');
+googleDriveProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleDriveProvider.setCustomParameters({
+  prompt: 'select_account consent',
 });
 
 const isAppleWebKit = () => {
@@ -53,11 +67,11 @@ const isAppleWebKit = () => {
 
 function normaliseAuthError(error: any): Error {
   const code = error?.code || '';
-  const message = error?.message || String(error);
+  const rawMessage = error?.message || String(error);
 
   if (code === 'auth/unauthorized-domain') {
     return new Error(
-      'Google sign-in is blocked because this domain is not authorised in Firebase Authentication. Add caspa.ocrowley.com to Firebase Auth > Settings > Authorised domains, and make sure the Google OAuth client allows https://caspa.ocrowley.com as a JavaScript origin.'
+      'Google sign-in is blocked because this domain is not authorised in Firebase Authentication. Add localhost, 127.0.0.1, caspa.ocrowley.com and novelwrite-27763.firebaseapp.com under Firebase Authentication > Settings > Authorised domains. Also make sure the Google OAuth client allows https://caspa.ocrowley.com and http://localhost:3000 as JavaScript origins.'
     );
   }
 
@@ -66,14 +80,26 @@ function normaliseAuthError(error: any): Error {
   }
 
   if (code === 'auth/popup-blocked') {
-    return new Error('The browser blocked the Google sign-in popup. Caspa will try redirect sign-in instead.');
+    return new Error('The browser blocked the Google sign-in popup. Caspa is switching to redirect sign-in.');
   }
 
   if (code === 'auth/popup-closed-by-user') {
     return new Error('Google sign-in was cancelled because the popup was closed before completion.');
   }
 
-  return new Error(message);
+  if (code === 'auth/invalid-api-key') {
+    return new Error('Firebase rejected the API key. Check firebase-applet-config.json against the Firebase web app configuration.');
+  }
+
+  if (code === 'auth/invalid-tenant-id') {
+    return new Error('Firebase is still receiving an invalid tenant id. Clear VITE_FIREBASE_TENANT_ID from the environment and rebuild.');
+  }
+
+  if (code === 'auth/network-request-failed') {
+    return new Error('Google sign-in could not reach Firebase/Google. Check network, content blockers and Safari privacy settings.');
+  }
+
+  return new Error(code ? `${code}: ${rawMessage}` : rawMessage);
 }
 
 // In-memory access token cache for Google APIs as required by Workspace Integration skill
@@ -108,28 +134,37 @@ async function testConnection() {
 
 testConnection();
 
+async function completeGoogleResult(result: any, cacheDriveToken = false) {
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (cacheDriveToken && credential?.accessToken) {
+    setCachedAccessToken(credential.accessToken);
+    console.log('Google Drive access token successfully retrieved and cached.');
+  }
+  return await handleUserSync(result.user);
+}
+
+async function startRedirect(provider: GoogleAuthProvider) {
+  await authPersistenceReady;
+  clearTenantId();
+  await signInWithRedirect(auth, provider);
+  return null;
+}
+
 export async function loginWithGoogle() {
   console.log('Attempting Google Login... Auth Tenant ID:', (auth as any).tenantId);
   try {
-    if ((auth as any).tenantId) {
-      (auth as any).tenantId = null;
-    }
+    await authPersistenceReady;
+    clearTenantId();
 
     // Safari/iOS are much less reliable with popup auth. Use redirect there first.
     if (isAppleWebKit()) {
       console.log('Apple WebKit browser detected; using redirect sign-in.');
-      await signInWithRedirect(auth, googleProvider);
-      return null;
+      return await startRedirect(googleProvider);
     }
 
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setCachedAccessToken(credential.accessToken);
-        console.log('Access token successfully retrieved and cached from popup.');
-      }
-      return await handleUserSync(result.user);
+      return await completeGoogleResult(result, false);
     } catch (popupError: any) {
       if (popupError?.code === 'auth/popup-closed-by-user') {
         // User intentionally closed the popup: do not force redirect fallback.
@@ -140,12 +175,13 @@ export async function loginWithGoogle() {
         'auth/popup-blocked',
         'auth/cancelled-popup-request',
         'auth/cancelled-interactive-request',
+        'auth/redirect-cancelled-by-user',
+        'auth/network-request-failed',
       ]);
 
       if (fallbackCodes.has(popupError.code)) {
         console.log('Popup failed due to browser constraints; falling back to redirect...', popupError.code);
-        await signInWithRedirect(auth, googleProvider);
-        return null;
+        return await startRedirect(googleProvider);
       }
 
       throw popupError;
@@ -157,16 +193,33 @@ export async function loginWithGoogle() {
   }
 }
 
+export async function connectGoogleDrive() {
+  console.log('Attempting Google Drive connection...');
+  try {
+    await authPersistenceReady;
+    clearTenantId();
+
+    if (isAppleWebKit()) {
+      return await startRedirect(googleDriveProvider);
+    }
+
+    const result = await signInWithPopup(auth, googleDriveProvider);
+    return await completeGoogleResult(result, true);
+  } catch (error) {
+    const normalised = normaliseAuthError(error);
+    console.error('Google Drive connection error:', normalised);
+    throw normalised;
+  }
+}
+
 export async function handleRedirectLogin() {
   try {
+    await authPersistenceReady;
+    clearTenantId();
     const result = await getRedirectResult(auth);
     if (result) {
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setCachedAccessToken(credential.accessToken);
-        console.log('Access token successfully retrieved and cached from redirect result.');
-      }
-      return await handleUserSync(result.user);
+      // Login redirects use simple auth scopes. Drive connection can be re-run explicitly if needed.
+      return await completeGoogleResult(result, false);
     }
     return null;
   } catch (error) {
