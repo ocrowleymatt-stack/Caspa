@@ -11,7 +11,7 @@ import {
   Gem,
   Ghost,
   Hammer,
-  LayoutDashboard,
+  Home,
   LogOut,
   Map,
   MapPin,
@@ -39,16 +39,16 @@ import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
 
 const simpleNavItems = [
-  { to: '/home', label: 'Command Centre', icon: LayoutDashboard },
-  { to: '/command', label: 'Natural Command', icon: Command },
+  { to: '/home', label: 'Studio', icon: Home },
   { to: '/casper', label: 'Casper', icon: Ghost },
   { to: '/projects', label: 'Projects', icon: BookOpen },
+  { to: '/command', label: 'Ask', icon: Command },
   { to: '/forge', label: 'Forge', icon: Hammer },
   { to: '/music-prompt', label: 'Music', icon: Music2 },
   { to: '/documents', label: 'Documents', icon: FileText },
-  { to: '/confidence', label: 'Publish Confidence', icon: ShieldCheck },
+  { to: '/confidence', label: 'Confidence', icon: ShieldCheck },
   { to: '/outputs', label: 'Outputs', icon: Package },
-  { to: '/production', label: 'Jobs', icon: Clapperboard },
+  { to: '/production', label: 'Production', icon: Clapperboard },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -105,17 +105,19 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex h-full flex-col border-r border-white/10 bg-surface/80 backdrop-blur-sm transition-all duration-200',
-        collapsed ? 'w-16' : 'w-60',
+        'flex h-full flex-col border-r border-[#eadfca] bg-[#fffaf0]/90 shadow-[12px_0_45px_rgba(75,55,21,0.08)] backdrop-blur transition-all duration-200',
+        collapsed ? 'w-16' : 'w-64',
       )}
     >
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+      <div className="flex items-center justify-between border-b border-[#eadfca] px-4 py-5">
         {!collapsed && (
           <div>
-            <h1 className="text-lg font-bold tracking-tight">
-              <span className="text-accent">CASPA</span> Studio
+            <h1 className="font-serif text-xl font-semibold tracking-tight text-[#171a22]">
+              <span className="text-[#98711d]">CASPA</span> Studio
             </h1>
-            <p className="text-xs text-muted">{simpleMode ? 'Simple Mode' : 'Expert Mode'}</p>
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8661]">
+              {simpleMode ? 'Writer mode' : 'Producer mode'}
+            </p>
           </div>
         )}
         <button type="button" onClick={toggle} className="btn-ghost p-1.5">
@@ -124,14 +126,14 @@ export function Sidebar() {
       </div>
 
       {!collapsed && (
-        <div className="border-b border-white/10 p-3 space-y-2">
+        <div className="space-y-3 border-b border-[#eadfca] p-3">
           <button
             type="button"
             onClick={toggleSimpleMode}
-            className="flex w-full items-center justify-between rounded-lg border border-accent/20 bg-accent/5 px-3 py-2 text-xs hover:bg-accent/10"
+            className="flex w-full items-center justify-between rounded-2xl border border-[#e7d8b9] bg-white/75 px-3 py-2.5 text-xs font-semibold text-[#5e5445] shadow-sm transition hover:border-accent hover:bg-[#fff8e8]"
           >
-            <span>{simpleMode ? 'Simple' : 'Expert'} Mode</span>
-            <span className="text-accent">{simpleMode ? '→ Expert' : '→ Simple'}</span>
+            <span>{simpleMode ? 'Writer' : 'Producer'} Mode</span>
+            <span className="text-[#98711d]">{simpleMode ? '→ Producer' : '→ Writer'}</span>
           </button>
           <div>
             <label className="label">Active Project</label>
@@ -155,7 +157,7 @@ export function Sidebar() {
         </div>
       )}
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+      <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto p-2">
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -163,10 +165,10 @@ export function Sidebar() {
             end={to === '/home' || to === '/projects'}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
+                'flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all',
                 isActive
-                  ? 'bg-accent/15 text-accent font-medium'
-                  : 'text-muted hover:bg-white/5 hover:text-foreground',
+                  ? 'bg-[#171a22] text-white shadow-lg shadow-[#171a22]/10'
+                  : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
                 collapsed && 'justify-center px-2',
               )
             }
@@ -178,9 +180,9 @@ export function Sidebar() {
         ))}
 
         {!simpleMode && !collapsed && (
-          <div className="pt-4 mt-2">
-            <p className="px-3 mb-2 text-xs font-medium uppercase tracking-wide text-muted">
-              ✨ Elevation
+          <div className="mt-3 border-t border-[#eadfca] pt-4">
+            <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-[#98711d]">
+              Elevation
             </p>
             {elevationItems.map(({ to, label, icon: Icon }) => (
               <NavLink
@@ -188,8 +190,8 @@ export function Sidebar() {
                 to={to}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                    isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-white/5',
+                    'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
+                    isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
                   )
                 }
               >
@@ -205,8 +207,8 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center justify-center rounded-lg px-2 py-2.5 text-sm transition-colors',
-                isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-white/5',
+                'flex items-center justify-center rounded-2xl px-2 py-2.5 text-sm transition-all',
+                isActive ? 'bg-[#171a22] text-white' : 'text-[#6d6354] hover:bg-[#fff8e8]',
               )
             }
             title={label}
@@ -216,16 +218,16 @@ export function Sidebar() {
         ))}
 
         {activeProjectId && !collapsed && (
-          <div className="pt-4 mt-4 border-t border-white/10">
-            <p className="px-3 mb-2 text-xs font-medium uppercase tracking-wide text-muted">
+          <div className="mt-4 border-t border-[#eadfca] pt-4">
+            <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-[#98711d]">
               Manuscript
             </p>
             <NavLink
               to={`/projects/${activeProjectId}`}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                  isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-white/5',
+                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
+                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
                 )
               }
             >
@@ -235,8 +237,8 @@ export function Sidebar() {
               to={`/projects/${activeProjectId}/characters`}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                  isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-white/5',
+                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
+                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
                 )
               }
             >
@@ -246,8 +248,8 @@ export function Sidebar() {
               to={`/projects/${activeProjectId}/plot`}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                  isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-white/5',
+                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
+                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
                 )
               }
             >
@@ -257,8 +259,8 @@ export function Sidebar() {
               to={`/projects/${activeProjectId}/research`}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                  isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-white/5',
+                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
+                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
                 )
               }
             >
@@ -269,20 +271,20 @@ export function Sidebar() {
       </nav>
 
       {!collapsed && (
-        <div className="border-t border-white/10 p-3 space-y-2">
+        <div className="space-y-2 border-t border-[#eadfca] p-3">
           {user && (
-            <div className="rounded-lg border border-white/10 px-3 py-2 space-y-2">
+            <div className="space-y-2 rounded-2xl border border-[#eadfca] bg-white/70 px-3 py-2 shadow-sm">
               <div className="min-w-0">
-                <p className="text-xs font-medium truncate">{user.displayName}</p>
-                <p className="text-[10px] text-muted truncate">{user.email}</p>
+                <p className="truncate text-xs font-semibold text-[#171a22]">{user.displayName}</p>
+                <p className="truncate text-[10px] text-muted">{user.email}</p>
               </div>
               {isAdmin() && (
                 <NavLink
                   to="/admin/users"
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors',
-                      isActive ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-white/5',
+                      'flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs transition-colors',
+                      isActive ? 'bg-[#171a22] text-white' : 'text-muted hover:bg-[#fff8e8]',
                     )
                   }
                 >
@@ -292,7 +294,7 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-white/5 hover:text-foreground"
+                className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-muted hover:bg-[#fff8e8] hover:text-foreground"
               >
                 <LogOut className="h-3 w-3" /> Sign out
               </button>
@@ -301,11 +303,11 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => useAppStore.getState().setCommandPaletteOpen(true)}
-            className="flex w-full items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-muted hover:bg-white/5"
+            className="flex w-full items-center gap-2 rounded-2xl border border-[#eadfca] bg-white/70 px-3 py-2 text-xs font-semibold text-muted shadow-sm hover:bg-[#fff8e8]"
           >
-            <Sparkles className="h-3 w-3" />
+            <Sparkles className="h-3 w-3 text-[#98711d]" />
             <span className="flex-1 text-left">Command palette</span>
-            <kbd className="rounded border border-white/10 px-1">⌘K</kbd>
+            <kbd className="rounded border border-[#eadfca] bg-white px-1">⌘K</kbd>
           </button>
         </div>
       )}
