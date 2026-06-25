@@ -416,7 +416,7 @@ export default function CasperFreestyle() {
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => createMutation.mutate()}
+                  onClick={() => createMutation.mutate({})}
                   disabled={createMutation.isPending}
                   className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#f5d37a] px-4 py-3 text-sm font-bold text-[#171a22] transition hover:bg-[#ffe39a] disabled:opacity-60"
                 >
