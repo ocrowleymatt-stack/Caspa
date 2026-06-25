@@ -261,7 +261,7 @@ export default function Dashboard() {
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   className="input"
-                  placeholder="A Dick Turpin stage comedy set in Milton Keynes"
+                  placeholder="Optional — what is this room about?"
                 />
               </div>
               <div>

@@ -177,7 +177,7 @@ export default function CasperFreestyle() {
   const [premise, setPremise] = useState('');
   const [tone, setTone] = useState('Clear, vivid, witty, production-minded.');
   const [output, setOutput] = useState('Act One');
-  const [whitePage, setWhitePage] = useState(() => localStorage.getItem('casper.whitePage') || '');
+  const [whitePage, setWhitePage] = useState('');
   const [uploadedName, setUploadedName] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -198,11 +198,16 @@ export default function CasperFreestyle() {
       const finalOutput = override?.output ?? output;
       const finalModeCard = getMode(finalMode);
       const title = titleFromPremise(uploadedName || finalPremise, finalMode);
-      const description = finalPremise || uploadedName || finalModeCard.helper;
+      const trimmedPremise = finalPremise.trim();
+      const description = trimmedPremise
+        ? `${trimmedPremise}\n\nCasper output target: ${finalOutput}`
+        : uploadedName
+          ? `Uploaded manuscript: ${uploadedName}`
+          : `A fresh blank room.\n\nCasper output target: ${finalOutput}`;
       const project = await createProject({
         title,
         genre: finalModeCard.genre,
-        description: `${description}\n\nCasper output target: ${finalOutput}`,
+        description,
         targetWordCount: finalModeCard.targetWordCount,
         status: 'draft',
       });
@@ -220,7 +225,6 @@ export default function CasperFreestyle() {
     },
     onSuccess: async (project) => {
       setActiveProjectId(project.id);
-      localStorage.setItem('casper.whitePage', whitePage);
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
       toast.success('Project created');
@@ -231,7 +235,6 @@ export default function CasperFreestyle() {
 
   function handleWhitePageChange(value: string) {
     setWhitePage(value);
-    localStorage.setItem('casper.whitePage', value);
   }
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -325,7 +328,7 @@ export default function CasperFreestyle() {
                 value={premise}
                 onChange={(event) => setPremise(event.target.value)}
                 className="min-h-[148px] w-full resize-y rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-6 text-2xl leading-snug text-[#171a22] shadow-inner outline-none transition placeholder:text-[#b8aa91] focus:border-[#caa044] focus:ring-4 focus:ring-[#d4af37]/20 md:text-3xl"
-                placeholder="Describe the thing you want to make..."
+                placeholder="Describe the idea — or leave blank for an empty room."
               />
             </div>
 

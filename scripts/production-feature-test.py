@@ -101,7 +101,7 @@ def main() -> int:
             }),
             ('POST quality ai-smell', 'POST', '/api/quality/ai-smell', {'text': 'Sample marketing copy for a stage comedy.'}),
             ('POST music-prompt interpret', 'POST', '/api/music-prompt/interpret', {'prompt': 'Upbeat panto opening number'}),
-            ('POST casper freestyle', 'POST', '/api/casper/freestyle', {'prompt': 'A Dick Turpin comedy', 'mode': 'script'}),
+            ('POST casper freestyle', 'POST', '/api/casper/freestyle', {'prompt': 'A stage comedy script', 'mode': 'script'}),
         ]
 
         if project_id:

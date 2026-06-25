@@ -9,9 +9,7 @@ import { recommendProducts } from '../api/productForge';
 
 function ForgeContent({ projectId }: { projectId: string }) {
   const toast = useToast();
-  const [content, setContent] = useState(
-    'Chapter excerpt: The Grey Lady appeared on the castle ramparts at dusk, her veil trailing like mist over the Severn valley.',
-  );
+  const [content, setContent] = useState('');
   const [result, setResult] = useState<unknown>(null);
 
   const { data: sources = [], refetch } = useQuery({

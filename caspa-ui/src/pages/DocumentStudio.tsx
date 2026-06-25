@@ -5,25 +5,15 @@ import { ElevationWorkbench, ResultCard } from '../components/ElevationWorkbench
 import { useToast } from '../components/Toast';
 import { previewDocument } from '../api/documentRender';
 
-const SAMPLE = `# The Grey Lady of Bridgnorth
-
-## Chapter One
-
-The mist rolled up from the Severn as **Margaret Holloway** climbed the castle steps.
-She had heard the stories since childhood — a woman in grey, forever searching the ramparts.
-
-> "Some ghosts aren't looking for peace," her grandmother had said. "They're looking for justice."
-`;
-
 function DocumentStudioContent() {
   const toast = useToast();
-  const [content, setContent] = useState(SAMPLE);
+  const [content, setContent] = useState('');
   const [html, setHtml] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: () =>
       previewDocument({
-        title: 'The Grey Lady of Bridgnorth',
+        title: 'Untitled document',
         content,
         format: 'markdown',
       }),
@@ -36,7 +26,7 @@ function DocumentStudioContent() {
 
   return (
     <div className="space-y-4">
-      <textarea value={content} onChange={(e) => setContent(e.target.value)} className="input min-h-[200px] font-mono text-xs" />
+      <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Paste Markdown to preview…" className="input min-h-[200px] font-mono text-xs" />
       <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate()} className="btn-primary">
         {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Render Preview'}
       </button>

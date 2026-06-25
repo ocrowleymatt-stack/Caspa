@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import fs from 'fs';
 import path from 'path';
 import { config, logger } from './src/shared/index';
-import { ensureDemoProject } from './src/shared/demoSeed';
 import { storageRouter } from './src/modules/storage/index';
 import { manuscriptRouter } from './src/modules/manuscript/index';
 import { aiRouter } from './src/modules/ai/index';
@@ -136,7 +135,6 @@ app.use(errorHandler);
 
 async function start(): Promise<void> {
   await bootstrapAuth();
-  await ensureDemoProject();
   jobWorker.start();
   app.listen(config.port, () => {
     logger.info(`CASPA Studio running on port ${config.port}`);
