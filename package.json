@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "tsc --noEmit",
-    "deploy:ui": "cd caspa-ui && npm run build && rm -rf ../public/* && cp -r dist/* ../public/",
+    "deploy:ui": "cd caspa-ui && npm run build && mkdir -p ../public && rm -rf ../public/* && cp -r dist/* ../public/",
     "deploy": "npm run deploy:ui && npm run build",
     "casper": "tsx src/cli/casper.ts"
   },

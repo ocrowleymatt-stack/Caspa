@@ -18,6 +18,7 @@ npm install
 (cd caspa-ui && npm install)
 
 echo "==> Building UI + backend"
+mkdir -p public
 npm run deploy
 
 echo "==> Restarting $PM2_NAME"
