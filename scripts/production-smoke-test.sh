@@ -4,6 +4,27 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://caspa.ocrowley.com}"
+
+load_env_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -n "$line" && "$line" == *=* ]] || continue
+    local key="${line%%=*}"
+    local value="${line#*=}"
+    if [[ -z "${!key:-}" ]]; then
+      export "$key=$value"
+    fi
+  done < "$file"
+}
+
+if [[ -z "${ADMIN_EMAIL:-}" || -z "${ADMIN_PASSWORD:-}" ]]; then
+  load_env_file ".env"
+fi
+
 ADMIN_EMAIL="${ADMIN_EMAIL:-}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 
