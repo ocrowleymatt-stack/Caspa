@@ -5,15 +5,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#0f0f13',
-        surface: '#1a1a24',
-        accent: '#14b8a6',
-        muted: '#64748b',
-        foreground: '#e2e8f0',
+        background: '#f7f1e6',
+        surface: '#fffaf0',
+        accent: '#d4af37',
+        muted: '#766b58',
+        foreground: '#171a22',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         serif: ['Lora', 'Georgia', 'serif'],
+      },
+      boxShadow: {
+        room: '0 30px 100px rgba(75, 55, 21, 0.13)',
+        paper: '0 18px 60px rgba(75, 55, 21, 0.10)',
       },
     },
   },
