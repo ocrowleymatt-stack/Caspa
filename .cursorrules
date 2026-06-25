@@ -1,0 +1,98 @@
+# CASPA Studio — Frontend Architecture & UI/UX Design Rules
+
+You are an expert Frontend Engineer and UI/UX Designer specialized in building distraction-free, local-first single-user workflows. You are generating a React 18 + Vite + TypeScript application for **CASPA Studio**, styled strictly with Tailwind CSS.
+
+---
+
+## 1. Core Architectural Constraints (The Wiring)
+
+*   **Zero Authentication:** This is a local-first, single-user system running entirely on `localhost:3000`. Do not generate login screens, multi-user permissions, role checks, admin pages, or social login logic.
+*   **API Isolation Rule:** Under no circumstances should any UI component contain raw `fetch` statements or hardcoded URLs. All networking logic must go through isolated modules inside `src/api/*`.
+*   **Centralized Configuration:** The base URL lives exclusively in one file: `src/config.ts`.
+*   **Standard Envelope:** Every API function wraps responses in an envelope matching this structure:
+```typescript
+    export interface ApiResponse<T> { success: boolean; data?: T; error?: string; }
+    ```
+
+### Required Configuration Schema
+```typescript
+// src/config.ts
+export const API_BASE = import.meta.env.VITE_API_URL ?? '';
+export interface ApiResponse<T> { success: boolean; data?: T; error?: string; }
+
+```
+
+---
+
+## 2. Visual Design System ("Midnight Velvet")
+
+Maintain an ultra-premium, low-friction, dark-themed writing environment reminiscent of high-end developer interfaces (e.g., Linear, Vercel) mixed with minimalist writing hubs.
+
+### A. Color Palette
+
+* **App Canvas Base:** Deep matte slate-charcoal (`bg-[#0B0F19]`) to eliminate late-night eye strain.
+* **Elevated Surfaces:** Surface cards, drop-downs, and sidebar selections use a slightly elevated tone (`bg-[#161B22]`) bounded by razor-thin borders (`border border-slate-800/60`).
+* **Accent Channels:**
+* ✨ *Gold Pipeline:* Warm, metallic gold/amber (`#D97706` / `text-amber-500`).
+* 🎼 *Orchestra/Music:* Deep electric purple/cyan (`#8B5CF6`).
+* 👤 *Structural/Content:* Calm, muted sage greens and muted slate variations.
+
+
+
+### B. Typography ("The Two-Mind System")
+
+* **Management Mind (UI Navigation):** Use a high-legibility geometric sans-serif (e.g., Inter, system-sans) for statistics, buttons, cards, list headers, and tags. Use clean monospace text (`font-mono`) for metadata tokens and status tracking.
+* **Creative Mind (The Editor Canvas):** When a writer opens a chapter canvas, the interface text area *must* drop down into a wide-tracking serif font (`font-serif`, line height `leading-loose`, tracking `tracking-wide`) to shift the cognitive state toward deep prose composition.
+
+---
+
+## 3. Interaction Mechanics & UX Guardrails
+
+* **Modals & Drawers Over Routing:** Never navigate to a brand-new route for forms, item creation, or text modification. Utilize context-preserving slide-over panels or centered modals over the existing page.
+* **Glassmorphic Focus Backdrop:** All overlay drawers or modals must overlay the screen using a heavy backdrop blur (`backdrop-blur-md bg-[#0B0F19]/60`) so the manuscript canvas remains softly visible in the background, keeping the writer structurally grounded.
+* **Absolute Navigation Truth:** Every layout must be wrapped in a `<PageShell />` containing a top-bar breadcrumb network that dynamically parses the active path string into highly responsive, clickable navigation fragments.
+* **Breathing SSE Statuses:** Pages using Server-Sent Events (SSE) (Gold Pipeline, Orchestra, Jobs Dashboard) must feel alive. Do not use frantic, looping load wheels. Instead, code a subtle, pulsing glow state (`animate-pulse` or an opacity ping) directly next to running steps to mimic the steady execution rhythm of the local machine.
+* **Evocative Empty States:** Never output empty lists or white canvases. If list content returns empty, render clean, typographic writing prompts centered on screen with low-opacity abstract icons.
+
+---
+
+## 4. File Layout Mapping
+
+Ensure all components and page additions drop accurately into this structural schema:
+
+```
+src/
+├── config.ts         # API_BASE definition
+├── api/              # Single file per target endpoint module
+│   ├── chapters.ts
+│   ├── characters.ts
+│   └── jobs.ts       # Etc.
+├── components/       # Reusable UI fragments (PageShell, SlideOverDrawer)
+├── pages/            # View components mapped to React Router v6 paths
+└── main.tsx
+
+```
+
+---
+
+## 5. Sidebar Navigation Matrix (Strict 15 Nodes)
+
+Every page execution must persistently mount the left sidebar rendering these 15 discrete navigation links in order, complete with an **Active Project Badge** locked permanently into the footer block of the sidebar frame:
+
+1. Dashboard (`/dashboard`)
+2. Projects (`/projects`)
+3. Manuscript (`/manuscript`)
+4. Characters (`/characters`)
+5. Plot Points (`/plot`)
+6. Research Notes (`/research`)
+7. Gold Pipeline (`/gold`) *[Highlight: Amber]*
+8. Wonder (Motifs) (`/wonder`)
+9. Show Factory (`/show-factory`)
+10. Orchestra (`/orchestra`)
+11. Music Lab (`/music-lab`)
+12. Taste Profiles (`/taste`)
+13. Audience Personas (`/audience`)
+14. Jobs Dashboard (`/jobs`)
+15. Top-bar Indicator: AI Health Dot (Fetches status asynchronously from `GET /api/health`)
+
+When writing code blocks or designing visual states for this workspace, stick strictly to these structural guardrails. Keep text fields spacious, lines light, and transitions clean.

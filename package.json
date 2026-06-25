@@ -1,0 +1,41 @@
+{
+  "name": "caspa-studio",
+  "version": "1.0.0",
+  "description": "CASPA Studio — Creative Authoring & Show Production Application",
+  "private": true,
+  "main": "server.ts",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "tsc --noEmit",
+    "deploy:ui": "cd caspa-ui && npm run build && rm -rf ../public/* && cp -r dist/* ../public/",
+    "deploy": "npm run deploy:ui && npm run build",
+    "casper": "tsx src/cli/casper.ts"
+  },
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "extract-zip": "^2.0.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "nanoid": "^5.1.5",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "^8.0.0",
+    "@types/bcrypt": "^6.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^22.15.30",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

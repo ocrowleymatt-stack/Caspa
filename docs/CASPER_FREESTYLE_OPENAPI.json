@@ -1,0 +1,111 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Casper Freestyle API",
+    "version": "1.0.0",
+    "description": "Natural language command routing for CASPA Studio"
+  },
+  "servers": [{ "url": "http://localhost:3000" }],
+  "paths": {
+    "/api/casper/freestyle": {
+      "post": {
+        "summary": "Process freestyle input or start session",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "input": { "type": "string" },
+                  "sessionId": { "type": "string" },
+                  "projectId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/casper/freestyle/stream": {
+      "post": {
+        "summary": "Stream freestyle response (SSE)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "text/event-stream" } }
+      }
+    },
+    "/api/casper/sessions": {
+      "get": {
+        "summary": "List freestyle sessions",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Success" } }
+      }
+    },
+    "/api/casper/session/{id}": {
+      "get": {
+        "summary": "Get session by ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Success" } }
+      }
+    },
+    "/api/casper/session/{id}/continue": {
+      "post": {
+        "summary": "Continue session with new input",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["input"],
+                "properties": { "input": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Success" } }
+      }
+    },
+    "/api/casper/tools": {
+      "get": {
+        "summary": "List available tools",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Success" } }
+      }
+    },
+    "/api/casper/status": {
+      "get": {
+        "summary": "Engine status",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Success" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" }
+    },
+    "schemas": {
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {},
+          "error": { "type": "string" }
+        }
+      }
+    }
+  }
+}

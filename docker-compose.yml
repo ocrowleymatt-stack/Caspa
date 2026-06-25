@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  caspa:
+    build: .
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+      - ./exports:/app/exports
+      - ./public:/app/public
+    environment:
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2
+      - BACKUP_DIR=/app/backups
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:

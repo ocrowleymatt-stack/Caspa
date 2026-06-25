@@ -1,0 +1,14 @@
+node_modules/
+caspa-ui/node_modules/
+dist/
+public/
+data/
+backups/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
