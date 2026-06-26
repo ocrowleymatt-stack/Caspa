@@ -211,6 +211,16 @@ try:
     assert swarm.get("outputId")
     print("SWARM:", swarm["swarmId"][:8], "agents", len(swarm["agentReports"]))
 
+    gold = req("POST", "/api/gold/run", {
+        "projectId": pid,
+        "source": chapter["content"][:2000],
+        "stage": "revision",
+    }, token=token, timeout=300)
+    assert gold.get("synthesis"), "gold run must return synthesis"
+    assert gold.get("outputId")
+    assert gold["synthesis"].get("revisionPlan"), "synthesis needs revision plan"
+    print("GOLD SYNTHESIS:", gold["synthesis"]["judgeAssessment"][:60], "output", gold["outputId"][:8])
+
     projects_before = req("GET", "/api/projects", token=token)
     count_before = len(projects_before)
 

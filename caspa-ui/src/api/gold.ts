@@ -30,12 +30,33 @@ export interface GoldPassResult {
   outputId: string;
   improved: string;
   critique: string;
-  report: GoldReport;
+  report?: GoldReport;
+  synthesis?: {
+    judgeAssessment: string;
+    structuralAssessment: { summary: string; risks: string[] };
+    proseAssessment: Record<string, number>;
+    researchAssessment: { summary: string; gaps: string[] };
+    antiFillerReport: { warnings: string[]; summary: string };
+    revisionPlan: string[];
+    sourcesUsed: Record<string, boolean>;
+    disclaimer: string;
+    improvedText?: string;
+  };
 }
 
-export async function runGoldPass(projectId: string, source?: string) {
+export async function runGoldPass(
+  projectId: string,
+  source?: string,
+  options?: {
+    improveText?: boolean;
+    stage?: 'draft' | 'revision' | 'submission';
+    swarmOutputId?: string;
+    awardAssessmentOutputId?: string;
+    includeElevationSteps?: boolean;
+  },
+) {
   return apiCall<GoldPassResult>('/api/gold/run', {
     method: 'POST',
-    body: JSON.stringify({ projectId, source }),
+    body: JSON.stringify({ projectId, source, ...options }),
   });
 }

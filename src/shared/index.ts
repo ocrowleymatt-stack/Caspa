@@ -5,6 +5,7 @@ export * from './pierBuilder';
 export * from './researchDesk';
 export * from './awardsShelf';
 export * from './agentSwarm';
+export * from './goldSynthesis';
 export * from './config';
 export * from './eventBus';
 export * from './db';

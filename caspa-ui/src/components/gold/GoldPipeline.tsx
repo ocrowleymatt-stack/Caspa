@@ -246,18 +246,34 @@ export default function GoldPipelinePanel() {
     setIsProcessing(true);
     setPipelineError(null);
     try {
-      const result = await runGoldPass(activeProjectId, source);
+      const result = await runGoldPass(activeProjectId, source, {
+        improveText: selectedDepth === 'deep',
+        stage: 'revision',
+      });
+      const synthesis = result.synthesis;
       setPipelineOutput({
         finalText: result.improved,
         changeLog: result.critique,
         beforeAfter: result.improved,
-        riskNotes: `Quality score: ${result.report.overallScore} · ${result.report.overallStatus}`,
+        riskNotes: synthesis
+          ? [
+              synthesis.judgeAssessment,
+              `Structure: ${synthesis.structuralAssessment.summary}`,
+              `Research: ${synthesis.researchAssessment.summary}`,
+              synthesis.antiFillerReport.warnings.length
+                ? `Filler warnings: ${synthesis.antiFillerReport.warnings.join('; ')}`
+                : synthesis.antiFillerReport.summary,
+              `Sources: ${Object.entries(synthesis.sourcesUsed).filter(([, v]) => v).map(([k]) => k).join(', ') || 'manuscript only'}`,
+            ].join('\n\n')
+          : result.report
+            ? `Elevation score: ${result.report.overallScore} · ${result.report.overallStatus}`
+            : 'Gold synthesis complete',
         exportPack: result.improved,
         exportAvailable: false,
-        exportReason: `Quick pass saved to Outputs hub (${result.outputId.slice(0, 8)})`,
+        exportReason: `Synthesis saved to Outputs (${result.outputId.slice(0, 8)})`,
       });
       setRunId(result.jobId);
-      toast.success(`Gold Pass saved · output ${result.outputId.slice(0, 8)}`);
+      toast.success(`Gold synthesis saved · ${result.outputId.slice(0, 8)}`);
     } catch (err) {
       failPipeline(err instanceof Error ? err.message : 'Gold Pass failed');
     } finally {

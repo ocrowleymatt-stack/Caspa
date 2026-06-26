@@ -1,53 +1,104 @@
 import { asyncHandler, createElevationRouter, param, sendError, sendSuccess } from '../../shared/routeHelpers';
+import { config } from '../../shared';
 import { findById } from '../../shared/db';
 import type { GoldReport } from '../../shared';
+import type { GoldSynthesisStage } from '../../shared/goldSynthesis';
+import type { UserPublic } from '../auth/types';
+import { ProjectService } from '../manuscript/ProjectService';
 import { outputRegistry } from '../outputs';
 import { goldPipeline } from './GoldPipeline';
+import { goldSynthesisService } from './GoldSynthesisService';
 
 const COLLECTION = 'gold-reports';
 
 export const goldRouter = createElevationRouter();
 
+const projectService = new ProjectService();
+
+const LOCAL_USER: UserPublic = {
+  id: 'local',
+  email: 'local@caspa.local',
+  displayName: 'Local User',
+  role: 'admin',
+  status: 'active',
+  createdAt: new Date(0).toISOString(),
+};
+
+function getUser(req: { user?: UserPublic }): UserPublic {
+  if (req.user) return req.user;
+  if (!config.authEnabled) return LOCAL_USER;
+  throw new Error('Authentication required');
+}
+
 goldRouter.post('/api/gold/run/:projectId', asyncHandler(async (req, res) => {
+  await projectService.getProject(param(req, 'projectId'), getUser(req));
   sendSuccess(res, await goldPipeline.run(param(req, 'projectId')));
 }));
 
 goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
-  const { projectId, source } = req.body as { projectId?: string; source?: string };
-  if (!projectId?.trim()) {
+  const body = req.body as {
+    projectId?: string;
+    source?: string;
+    improveText?: boolean;
+    stage?: GoldSynthesisStage;
+    swarmOutputId?: string;
+    awardAssessmentOutputId?: string;
+    includeElevationSteps?: boolean;
+  };
+  if (!body.projectId?.trim()) {
     sendError(res, new Error('projectId is required'), 400);
     return;
   }
 
-  const report = await goldPipeline.run(projectId, { sourceText: source });
-  const polishStep = report.steps.find((step) => step.step === 'final-polish');
-  const improved = polishStep?.summary ?? report.recommendations.join('\n');
-  const critique = report.steps
-    .slice(0, 6)
-    .map((step) => `${step.label}: ${step.summary} (${step.status}, score ${step.score})`)
-    .join('\n');
+  await projectService.getProject(body.projectId, getUser(req));
+
+  const synthesis = await goldSynthesisService.synthesize({
+    projectId: body.projectId,
+    sourceText: body.source,
+    improveText: body.improveText,
+    stage: body.stage,
+    swarmOutputId: body.swarmOutputId,
+    awardAssessmentOutputId: body.awardAssessmentOutputId,
+    includeElevationSteps: body.includeElevationSteps,
+  }, getUser(req));
+
+  let report: GoldReport | undefined;
+  if (body.includeElevationSteps) {
+    report = await goldPipeline.run(body.projectId, { sourceText: body.source });
+  }
+
+  const improved = synthesis.improvedText
+    ?? synthesis.revisionPlan.join('\n');
+  const critique = [
+    synthesis.judgeAssessment,
+    `Structure: ${synthesis.structuralAssessment.summary}`,
+    `Research: ${synthesis.researchAssessment.summary}`,
+    `Anti-filler: ${synthesis.antiFillerReport.summary}`,
+  ].join('\n\n');
 
   const record = await outputRegistry.register({
-    projectId,
+    projectId: body.projectId,
     type: 'gold-pass',
-    title: `Gold Pipeline — ${new Date(report.completedAt ?? report.startedAt).toLocaleString()}`,
+    title: `Gold synthesis — ${synthesis.stage}`,
     path: '',
     metadata: {
-      kind: 'gold-pass',
+      kind: 'gold-synthesis',
       text: improved,
       critique,
-      sourceExcerpt: source?.slice(0, 500) ?? '',
-      sourceScope: source?.trim() ? 'provided-text' : 'full-project',
-      reportId: report.id,
-      overallScore: report.overallScore,
-      overallStatus: report.overallStatus,
+      synthesis,
+      reportId: report?.id,
+      overallScore: report?.overallScore,
+      overallStatus: report?.overallStatus,
+      sourceExcerpt: body.source?.slice(0, 500) ?? '',
+      sourceScope: body.source?.trim() ? 'provided-text' : 'full-project',
     },
   });
 
   sendSuccess(res, {
-    jobId: report.id,
+    jobId: report?.id ?? record.id,
     status: 'complete',
     outputId: record.id,
+    synthesis,
     report,
     improved,
     critique,
@@ -72,5 +123,6 @@ goldRouter.get('/api/gold/progress/:jobId', asyncHandler(async (req, res) => {
 }));
 
 goldRouter.get('/api/gold/report/:projectId', asyncHandler(async (req, res) => {
+  await projectService.getProject(param(req, 'projectId'), getUser(req));
   sendSuccess(res, await goldPipeline.getLatestReport(param(req, 'projectId')));
 }));
