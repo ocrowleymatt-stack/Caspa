@@ -20,9 +20,8 @@ import {
 } from 'lucide-react';
 import { createProject } from '../api/projects';
 import { createChapter } from '../api/chapters';
-import { generate } from '../api/assistant';
+import { runNovelWritePro } from '../api/casper';
 import {
-  buildNovelWriteProAutoWritePrompt,
   buildNovelWriteProOpenWebUIPrompt,
 } from '../lib/novelWritePro';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
@@ -221,43 +220,38 @@ export default function CasperFreestyle() {
         });
       }
 
-      const autoWritePrompt = buildNovelWriteProAutoWritePrompt({
+      const draft = await runNovelWritePro({
+        projectId: project.id,
         mode: finalMode,
         modeTitle: finalModeCard.title,
         genre: finalModeCard.genre,
-        premise: finalPremise,
+        spark: finalPremise,
+        source: whitePage,
         tone,
         output: finalOutput,
-        sourceText: whitePage,
         uploadedName,
       });
 
-      const response = await generate({
-        prompt: autoWritePrompt,
-        projectId: project.id,
-        temperature: 0.88,
-        maxTokens: 5200,
-      });
-
-      const generated = response.text.trim();
+      const generated = draft.text.trim();
       if (!generated) {
-        throw new Error('Caspa connected to an AI engine, but Novel Write Pro returned no writing. Try again or check provider logs.');
+        throw new Error('Novel Write Pro returned no writing. Check Ollama on the server or try again.');
       }
 
       const chapter = await createChapter(project.id, {
-        title: firstDraftTitle(finalMode, finalOutput),
+        title: draft.title || firstDraftTitle(finalMode, finalOutput),
         order: whitePage.trim() ? 2 : 1,
         content: generated,
         status: 'draft',
       });
 
-      return { project, chapter, model: response.model };
+      return { project, chapter, draft };
     },
-    onSuccess: async ({ project, chapter, model }) => {
+    onSuccess: async ({ project, chapter, draft }) => {
       setActiveProjectId(project.id);
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
-      toast.success(model ? `Novel Write Pro drafted with ${model}` : 'Novel Write Pro drafted the first pass');
+      await queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      toast.success(`Novel Write Pro drafted with ${draft.provider}/${draft.model} · saved output ${draft.outputId.slice(0, 8)}`);
       navigate(`/projects/${project.id}/chapters/${chapter.id}`);
     },
     onError: (error: Error) => toast.error(error.message),

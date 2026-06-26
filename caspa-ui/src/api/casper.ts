@@ -30,3 +30,31 @@ export function continueCasperSession(id: string, input: string) {
 export function getCasperStatus() {
   return apiCall<{ available: boolean; version: string; message: string }>('/api/casper/status');
 }
+
+export interface NovelWriteProResult {
+  outputId: string;
+  projectId?: string;
+  title: string;
+  kind: 'novel-write-pro';
+  text: string;
+  provider: string;
+  model: string;
+  createdAt: string;
+}
+
+export function runNovelWritePro(body: {
+  projectId?: string;
+  mode?: string;
+  output?: string;
+  spark?: string;
+  source?: string;
+  tone?: string;
+  uploadedName?: string | null;
+  modeTitle?: string;
+  genre?: string;
+}) {
+  return apiCall<NovelWriteProResult>('/api/casper/novel-write-pro', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}

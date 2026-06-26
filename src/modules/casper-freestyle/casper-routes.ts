@@ -2,8 +2,29 @@ import { asyncHandler, createElevationRouter, param, sendError, sendSuccess } fr
 import { toolRegistry } from '../command-orchestrator/ToolRegistry';
 import { casperFreestyleEngine } from './CasperFreestyleEngine';
 import { freestyleSessionStore } from './FreestyleSessionStore';
+import { novelWriteProService } from './NovelWriteProService';
+import type { NovelWriteProMode } from './novelWritePro';
 
 export const casperRouter = createElevationRouter();
+
+casperRouter.post(
+  '/api/casper/novel-write-pro',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      mode?: NovelWriteProMode;
+      output?: string;
+      spark?: string;
+      source?: string;
+      tone?: string;
+      uploadedName?: string | null;
+      modeTitle?: string;
+      genre?: string;
+    };
+
+    sendSuccess(res, await novelWriteProService.generate(body), 201);
+  }),
+);
 
 casperRouter.post(
   '/api/casper/freestyle',

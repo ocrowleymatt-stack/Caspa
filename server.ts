@@ -6,7 +6,7 @@ import path from 'path';
 import { config, logger } from './src/shared/index';
 import { storageRouter } from './src/modules/storage/index';
 import { manuscriptRouter } from './src/modules/manuscript/index';
-import { aiRouter } from './src/modules/ai/index';
+import { aiRouter, ollamaRouter } from './src/modules/ai/index';
 import { showFactoryRouter } from './src/modules/show-factory/index';
 import { musicLabRouter } from './src/modules/music-lab/index';
 import { orchestraRouter, jobWorker } from './src/modules/orchestra/index';
@@ -135,6 +135,7 @@ if (config.authEnabled) {
 app.use(storageRouter);
 app.use(manuscriptRouter);
 app.use(aiRouter);
+app.use(ollamaRouter);
 app.use(showFactoryRouter);
 app.use(musicLabRouter);
 app.use(orchestraRouter);

@@ -7,6 +7,8 @@ export type OutputType =
   | 'product_plan'
   | 'illustration_brief'
   | 'command_result'
+  | 'novel-write-pro'
+  | 'gold-pass'
   | 'other';
 
 export interface OutputRecord {

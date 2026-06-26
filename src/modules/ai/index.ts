@@ -10,3 +10,4 @@ export {
 export { AIOrchestrator, NoProviderAvailableError, aiOrchestrator } from './AIOrchestrator';
 export { WritingAssistant, writingAssistant } from './WritingAssistant';
 export { aiRouter } from './ai-routes';
+export { ollamaRouter } from './ollama-routes';
