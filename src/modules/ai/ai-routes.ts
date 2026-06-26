@@ -99,7 +99,7 @@ aiRouter.post('/generate/stream', async (req: Request, res: Response) => {
 });
 
 aiRouter.get('/providers', async (_req: Request, res: Response) => {
-  await handleRoute(res, () => aiOrchestrator.getAvailableProviders());
+  await handleRoute(res, () => aiOrchestrator.getProviderRuntimeStatus());
 });
 
 aiRouter.get('/models', async (_req: Request, res: Response) => {

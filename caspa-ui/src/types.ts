@@ -105,6 +105,19 @@ export interface AIProvider {
   name: string;
   available: boolean;
   isLocal: boolean;
+  configured?: boolean;
+  reachable?: boolean;
+  canGenerate?: boolean;
+  status?:
+    | 'ready'
+    | 'configured'
+    | 'unreachable'
+    | 'quota_failed'
+    | 'model_missing'
+    | 'auth_failed'
+    | 'not_configured';
+  detail?: string;
+  model?: string;
 }
 
 export interface CommercialReadinessReport {

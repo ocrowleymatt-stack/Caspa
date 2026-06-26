@@ -18,6 +18,19 @@ function providerLabel(name: string): string {
   return name;
 }
 
+function statusLabel(status?: string): string {
+  switch (status) {
+    case 'ready': return 'Ready';
+    case 'quota_failed': return 'Quota / billing';
+    case 'auth_failed': return 'Auth failed';
+    case 'model_missing': return 'Model missing';
+    case 'unreachable': return 'Unreachable';
+    case 'configured': return 'Configured';
+    case 'not_configured': return 'Not configured';
+    default: return 'Unknown';
+  }
+}
+
 export function ProviderStatus({ compact = false, className }: ProviderStatusProps) {
   const { data: providers = [], isLoading, isError } = useQuery({
     queryKey: ['ai-providers'],
@@ -26,16 +39,23 @@ export function ProviderStatus({ compact = false, className }: ProviderStatusPro
     staleTime: 30_000,
   });
 
-  const available = providers.filter((provider) => provider.available);
-  const cloudProviders = available.filter((provider) => !provider.isLocal);
-  const localProviders = available.filter((provider) => provider.isLocal);
-  const readyCount = available.length;
+  const ready = providers.filter((p) => p.canGenerate ?? p.available);
+  const ollama = providers.find((p) => p.name.toLowerCase().includes('ollama'));
+  const readyCount = ready.length;
 
   if (compact) {
     return (
       <div className={cn('inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-white/80 px-3 py-1.5 text-xs font-semibold text-muted shadow-sm', className)}>
         {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#98711d]" /> : <span className={cn('h-2 w-2 rounded-full', readyCount ? 'bg-emerald-500' : 'bg-amber-400')} />}
-        <span>{readyCount ? `${readyCount} AI ${readyCount === 1 ? 'engine' : 'engines'} ready` : isError ? 'AI status unknown' : 'AI standby'}</span>
+        <span>
+          {readyCount
+            ? `${readyCount} engine${readyCount === 1 ? '' : 's'} ready`
+            : ollama?.status === 'quota_failed' || providers.some((p) => p.status === 'quota_failed')
+              ? 'Cloud quota blocked — check Ollama'
+              : isError
+                ? 'AI status unknown'
+                : 'No engine can generate'}
+        </span>
       </div>
     );
   }
@@ -49,42 +69,44 @@ export function ProviderStatus({ compact = false, className }: ProviderStatusPro
           </div>
           <p className="mt-2 text-sm leading-6 text-muted">
             {readyCount
-              ? 'Keys and local Ollama are configured. If writing fails, check billing, quotas, or pull a local model with ollama pull mistral.'
-              : 'No configured AI engine is reporting ready yet.'}
+              ? 'At least one engine can generate right now. Ollama is the first-class local fallback.'
+              : 'No engine can generate yet. Ollama should be ready locally; cloud failures below explain billing, auth, or model issues.'}
           </p>
         </div>
         {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-[#98711d]" /> : <Cloud className="h-5 w-5 text-[#98711d]" />}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-2">
         {providers.length === 0 && !isLoading ? (
           <span className="badge">No providers returned</span>
         ) : (
-          providers.map((provider) => (
-            <span
-              key={`${provider.name}-${provider.isLocal ? 'local' : 'cloud'}`}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold',
-                provider.available
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-[#eadfca] bg-[#fff8e8] text-[#8a7657]',
-              )}
-              title={provider.isLocal ? 'Local model/provider' : 'Cloud provider configured via server environment'}
-            >
-              <span className={cn('h-2 w-2 rounded-full', provider.available ? 'bg-emerald-500' : 'bg-amber-400')} />
-              {providerLabel(provider.name)}
-            </span>
-          ))
+          providers.map((provider) => {
+            const canGenerate = provider.canGenerate ?? provider.available;
+            return (
+              <div
+                key={`${provider.name}-${provider.isLocal ? 'local' : 'cloud'}`}
+                className={cn(
+                  'rounded-2xl border px-3 py-2 text-xs',
+                  canGenerate
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                    : 'border-[#eadfca] bg-[#fff8e8] text-[#5f5648]',
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2 font-semibold">
+                  <span className={cn('h-2 w-2 rounded-full', canGenerate ? 'bg-emerald-500' : 'bg-amber-400')} />
+                  {providerLabel(provider.name)}
+                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                    {statusLabel(provider.status)}
+                  </span>
+                  {provider.model && <span className="font-mono text-[10px]">{provider.model}</span>}
+                </div>
+                {provider.detail && (
+                  <p className="mt-1 text-[11px] leading-5 opacity-90">{provider.detail}</p>
+                )}
+              </div>
+            );
+          })
         )}
-      </div>
-
-      <div className="mt-4 grid gap-2 text-xs text-muted sm:grid-cols-2">
-        <div className="rounded-2xl bg-[#fffdf8] p-3">
-          <strong className="text-[#171a22]">Cloud:</strong> {cloudProviders.length || 'none ready'}
-        </div>
-        <div className="rounded-2xl bg-[#fffdf8] p-3">
-          <strong className="text-[#171a22]">Local:</strong> {localProviders.length || 'none ready'}
-        </div>
       </div>
     </div>
   );

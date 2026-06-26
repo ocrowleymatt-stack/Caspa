@@ -62,6 +62,7 @@ function truncateToTokenLimit(text: string, maxTokens: number): string {
 export class AIOrchestrator {
   private readonly ollama: OllamaClient;
   private readonly providers: ProviderEntry[];
+  private lastProviderFailures = new Map<ProviderName, string>();
 
   constructor(ollama: OllamaClient = ollamaClient) {
     this.ollama = ollama;
@@ -117,12 +118,14 @@ export class AIOrchestrator {
       try {
         logger.info(`AI generate using provider: ${provider.label}`);
         const response = await provider.generate(req);
+        this.lastProviderFailures.delete(provider.name);
         emitEvent('ai:response', response);
         return response;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger.warn(`Provider ${provider.label} failed: ${message}`);
         errors.push(`${provider.label}: ${message}`);
+        this.lastProviderFailures.set(provider.name, message);
       }
     }
 
@@ -167,14 +170,177 @@ export class AIOrchestrator {
   async getAvailableProviders(): Promise<
     { name: string; available: boolean; isLocal: boolean }[]
   > {
+    const statuses = await this.getProviderRuntimeStatus();
+    return statuses.map((s) => ({
+      name: s.name,
+      available: s.canGenerate,
+      isLocal: s.isLocal,
+    }));
+  }
+
+  async getProviderRuntimeStatus(): Promise<
+    {
+      name: string;
+      isLocal: boolean;
+      configured: boolean;
+      reachable: boolean;
+      canGenerate: boolean;
+      status:
+        | 'ready'
+        | 'configured'
+        | 'unreachable'
+        | 'quota_failed'
+        | 'model_missing'
+        | 'auth_failed'
+        | 'not_configured';
+      detail?: string;
+      model?: string;
+    }[]
+  > {
     const results = await Promise.all(
-      this.providers.map(async (provider) => ({
-        name: provider.label,
-        available: await provider.isConfigured(),
-        isLocal: provider.isLocal,
-      })),
+      this.providers.map((provider) => this.probeProvider(provider)),
     );
     return results;
+  }
+
+  private classifyError(message: string): {
+    status: 'quota_failed' | 'auth_failed' | 'model_missing' | 'unreachable' | 'configured';
+    detail: string;
+  } {
+    const lower = message.toLowerCase();
+    if (lower.includes('quota') || lower.includes('billing') || lower.includes('insufficient') || lower.includes('exceeded')) {
+      return { status: 'quota_failed', detail: message };
+    }
+    if (lower.includes('api key') || lower.includes('unauthorized') || lower.includes('authentication') || lower.includes('401')) {
+      return { status: 'auth_failed', detail: message };
+    }
+    if (lower.includes('model') && (lower.includes('not found') || lower.includes('missing') || lower.includes('no ollama models'))) {
+      return { status: 'model_missing', detail: message };
+    }
+    if (lower.includes('econnrefused') || lower.includes('fetch failed') || lower.includes('timed out') || lower.includes('not reachable')) {
+      return { status: 'unreachable', detail: message };
+    }
+    return { status: 'configured', detail: message };
+  }
+
+  private async probeProvider(provider: ProviderEntry): Promise<{
+    name: string;
+    isLocal: boolean;
+    configured: boolean;
+    reachable: boolean;
+    canGenerate: boolean;
+    status:
+      | 'ready'
+      | 'configured'
+      | 'unreachable'
+      | 'quota_failed'
+      | 'model_missing'
+      | 'auth_failed'
+      | 'not_configured';
+    detail?: string;
+    model?: string;
+  }> {
+    const base = {
+      name: provider.label,
+      isLocal: provider.isLocal,
+      configured: false,
+      reachable: false,
+      canGenerate: false,
+      status: 'not_configured' as const,
+    };
+
+    let configured = false;
+    try {
+      configured = await provider.isConfigured();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const classified = this.classifyError(message);
+      return { ...base, configured: false, detail: classified.detail, status: classified.status };
+    }
+
+    if (!configured) {
+      return { ...base, configured: false, status: 'not_configured', detail: `${provider.label} is not configured.` };
+    }
+
+    if (provider.name === 'ollama') {
+      try {
+        const models = await this.ollama.listModels();
+        const model = await this.ollama.resolveModel();
+        if (models.length === 0) {
+          return {
+            ...base,
+            configured: true,
+            reachable: true,
+            canGenerate: false,
+            status: 'model_missing',
+            detail: 'Ollama is running but no models are installed. Run: ollama pull mistral',
+          };
+        }
+        return {
+          ...base,
+          configured: true,
+          reachable: true,
+          canGenerate: true,
+          status: 'ready',
+          model,
+          detail: `Local Ollama ready (${model})`,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const classified = this.classifyError(message);
+        return {
+          ...base,
+          configured: true,
+          reachable: false,
+          canGenerate: false,
+          status: classified.status === 'configured' ? 'unreachable' : classified.status,
+          detail: classified.detail,
+        };
+      }
+    }
+
+    return this.cloudProbeStatus(provider, configured);
+  }
+
+  private cloudProbeStatus(provider: ProviderEntry, configured: boolean): {
+    name: string;
+    isLocal: boolean;
+    configured: boolean;
+    reachable: boolean;
+    canGenerate: boolean;
+    status:
+      | 'ready'
+      | 'configured'
+      | 'unreachable'
+      | 'quota_failed'
+      | 'model_missing'
+      | 'auth_failed'
+      | 'not_configured';
+    detail?: string;
+    model?: string;
+  } {
+    const base = {
+      name: provider.label,
+      isLocal: provider.isLocal,
+      configured,
+      reachable: configured,
+      canGenerate: false,
+      status: 'configured' as const,
+      detail: `${provider.label} key present. Runtime health checked on last write attempt.`,
+    };
+
+    const lastFailure = this.lastProviderFailures.get(provider.name);
+    if (!lastFailure) {
+      return base;
+    }
+
+    const classified = this.classifyError(lastFailure);
+    return {
+      ...base,
+      canGenerate: false,
+      status: classified.status,
+      detail: lastFailure,
+    };
   }
 
   private async buildProjectContext(projectId: string): Promise<string> {
