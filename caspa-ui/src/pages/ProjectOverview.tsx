@@ -29,6 +29,7 @@ import {
   Plus,
   Sparkles,
   Theater,
+  Trophy,
   Upload,
   Wand2,
 } from 'lucide-react';
@@ -303,6 +304,9 @@ export default function ProjectOverview() {
               </Link>
               <Link to={`/projects/${id}/research`} className="btn-secondary">
                 <BookMarked className="h-4 w-4" /> Research Desk
+              </Link>
+              <Link to="/awards" className="btn-secondary">
+                <Trophy className="h-4 w-4" /> Awards Shelf
               </Link>
               <Link to="/outputs" className="btn-secondary">
                 Open Outputs

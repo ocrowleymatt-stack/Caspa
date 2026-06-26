@@ -179,6 +179,24 @@ try:
     assert depth.get("summary")
     print("RESEARCH DEPTH:", depth["topic"])
 
+    catalog = req("GET", "/api/awards", token=token)
+    assert len(catalog) >= 10, "awards catalog should include built-in lenses"
+    print("AWARDS CATALOG:", len(catalog))
+
+    shelf = req("PATCH", f"/api/projects/{pid}/awards", {"awardIds": [catalog[0]["id"], catalog[1]["id"]]}, token=token)
+    assert len(shelf.get("selectedAwardIds", [])) == 2
+    print("AWARDS SHELF:", shelf["selectedAwardIds"])
+
+    assessment = req("POST", "/api/awards/assess", {
+        "projectId": pid,
+        "awardIds": shelf["selectedAwardIds"],
+        "stage": "draft",
+    }, token=token, timeout=180)
+    assert assessment.get("overallReadiness") is not None
+    assert len(assessment.get("awardFit", [])) == 2
+    assert assessment.get("outputId")
+    print("AWARDS ASSESS:", assessment["overallReadiness"], "output", assessment["outputId"][:8])
+
     projects_before = req("GET", "/api/projects", token=token)
     count_before = len(projects_before)
 

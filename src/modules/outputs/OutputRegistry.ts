@@ -14,6 +14,7 @@ export type OutputType =
   | 'manuscript-improvement'
   | 'pier-boards'
   | 'pier-stretch'
+  | 'award-assessment'
   | 'other';
 
 export interface OutputRecord {

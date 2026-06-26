@@ -5,3 +5,4 @@ export { artisticStatementGenerator } from './ArtisticStatementGenerator';
 export { judgesBriefGenerator } from './JudgesBriefGenerator';
 export { pullQuoteSelector } from './PullQuoteSelector';
 export { awardsRouter } from './awards-routes';
+export { awardsShelfService } from './AwardsShelfService';
