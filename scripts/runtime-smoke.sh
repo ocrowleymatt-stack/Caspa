@@ -87,7 +87,7 @@ try:
 
     plain = req("POST", "/api/manuscript/import/analyse", {
         "filename": "notes.txt",
-        "rawText": "A long unbroken manuscript with no headings at all. " * 80,
+        "rawText": ("A long unbroken manuscript with no headings at all. " * 200),
     }, token=token)
     assert plain.get("recommendedImportMode") == "whole-manuscript-source", plain.get("recommendedImportMode")
     print("IMPORT PLAIN:", plain["recommendedImportMode"])
@@ -104,10 +104,10 @@ try:
     print("IMPORT PLAY:", play["detectedWorkType"], len(play["detectedUnits"]), "units", sorted(play_types))
 
     screenplay_text = (
-        "INT. KITCHEN - DAY\\n\\nJohn pours coffee.\\n\\n"
-        "EXT. STREET - NIGHT\\n\\nRain on the cobbles.\\n\\n"
-        "INT. OFFICE - MORNING\\n\\nFiles everywhere.\\n\\n"
-        "EXT. ROOFTOP - DUSK\\n\\nCity lights flicker."
+        "INT. KITCHEN - DAY\n\nJohn pours coffee.\n\n"
+        "EXT. STREET - NIGHT\n\nRain on the cobbles.\n\n"
+        "INT. OFFICE - MORNING\n\nFiles everywhere.\n\n"
+        "EXT. ROOFTOP - DUSK\n\nCity lights flicker."
     )
     script = req("POST", "/api/manuscript/import/analyse", {
         "filename": "script.fountain",
@@ -117,7 +117,7 @@ try:
     assert len(script.get("detectedUnits", [])) >= 3, "screenplay should detect scene units from sluglines"
     print("IMPORT SCREENPLAY:", script["detectedWorkType"], len(script["detectedUnits"]), "units")
 
-    nonfiction_text = "Part One\\n\\nChapter 1\\n\\nThe argument begins here.\\n\\nChapter 2\\n\\nEvidence accumulates slowly."
+    nonfiction_text = "Part One\n\nChapter 1\n\nThe argument begins here.\n\nChapter 2\n\nEvidence accumulates slowly."
     nonfiction = req("POST", "/api/manuscript/import/analyse", {
         "filename": "nonfiction.txt",
         "rawText": nonfiction_text,
@@ -126,7 +126,7 @@ try:
     assert len(nonfiction.get("detectedUnits", [])) >= 2, "nonfiction should detect multiple units"
     print("IMPORT NONFICTION:", nonfiction["detectedWorkType"], len(nonfiction["detectedUnits"]), "units")
 
-    poetry_text = "### First Light\\n\\nCold dawn on the pier.\\n\\n### Second Silence\\n\\nNothing moves but tide.\\n\\n### Third Bell\\n\\nThe harbour answers back."
+    poetry_text = "### First Light\n\nCold dawn on the pier.\n\n### Second Silence\n\nNothing moves but tide.\n\n### Third Bell\n\nThe harbour answers back."
     poetry = req("POST", "/api/manuscript/import/analyse", {
         "filename": "poems.md",
         "rawText": poetry_text,
