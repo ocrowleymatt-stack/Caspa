@@ -16,6 +16,14 @@ import PublishConfidence from './pages/PublishConfidence';
 import Outputs from './pages/Outputs';
 import OutputDetail from './pages/OutputDetail';
 import ProjectBible from './pages/ProjectBible';
+import { ProjectWorkbenchShell } from './components/workbench/ProjectWorkbenchShell';
+import ProjectStructure from './pages/workbench/ProjectStructure';
+import ProjectManuscript from './pages/workbench/ProjectManuscript';
+import ProjectAgentSwarm from './pages/workbench/ProjectAgentSwarm';
+import ProjectAwards from './pages/workbench/ProjectAwards';
+import ProjectGoldPass from './pages/workbench/ProjectGoldPass';
+import ProjectOutputs from './pages/workbench/ProjectOutputs';
+import ProjectExport from './pages/workbench/ProjectExport';
 import ProjectOverview from './pages/ProjectOverview';
 import ChapterEditor from './pages/ChapterEditor';
 import Characters from './pages/Characters';
@@ -58,11 +66,21 @@ export default function App() {
               <Route path="command" element={<NaturalCommand />} />
               <Route path="casper" element={<CasperFreestyle />} />
               <Route path="projects" element={<Dashboard />} />
-              <Route path="projects/:id" element={<ProjectOverview />} />
-              <Route path="projects/:id/characters" element={<Characters />} />
-              <Route path="projects/:id/plot" element={<PlotBoard />} />
-              <Route path="projects/:id/pier" element={<PierBuilder />} />
-              <Route path="projects/:id/research" element={<Research />} />
+              <Route path="projects/:id" element={<ProjectWorkbenchShell />}>
+                <Route index element={<ProjectOverview />} />
+                <Route path="structure" element={<ProjectStructure />} />
+                <Route path="manuscript" element={<ProjectManuscript />} />
+                <Route path="pier" element={<PierBuilder />} />
+                <Route path="research" element={<Research />} />
+                <Route path="swarm" element={<ProjectAgentSwarm />} />
+                <Route path="awards" element={<ProjectAwards />} />
+                <Route path="gold" element={<ProjectGoldPass />} />
+                <Route path="outputs" element={<ProjectOutputs />} />
+                <Route path="export" element={<ProjectExport />} />
+                <Route path="characters" element={<Characters />} />
+                <Route path="plot" element={<PlotBoard />} />
+                <Route path="bible" element={<ProjectBible />} />
+              </Route>
               <Route path="forge" element={<ForgeIntake />} />
               <Route path="product-plan" element={<ProductPlan />} />
               <Route path="sources" element={<Sources />} />
@@ -71,7 +89,6 @@ export default function App() {
               <Route path="confidence" element={<PublishConfidence />} />
               <Route path="outputs" element={<Outputs />} />
               <Route path="outputs/:id" element={<OutputDetail />} />
-              <Route path="projects/:id/bible" element={<ProjectBible />} />
               <Route path="show-factory" element={<ShowFactory />} />
               <Route path="music-lab" element={<MusicLab />} />
               <Route path="production" element={<Production />} />

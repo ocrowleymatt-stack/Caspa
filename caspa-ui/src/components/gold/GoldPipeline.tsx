@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { listChapters } from '../../api/chapters';
@@ -12,6 +12,7 @@ import {
 } from '../../api/goldPipeline';
 import { useToast } from '../Toast';
 import { useAppStore } from '../../store';
+import { useWorkbenchSourceText } from '../../hooks/useWorkbenchSourceText';
 import type { GoldReport } from '../../types';
 import StatusStream from './StatusStream';
 import {
@@ -33,10 +34,14 @@ import {
   type ScopeOption,
 } from './types';
 
-export default function GoldPipelinePanel() {
+export default function GoldPipelinePanel({ embedded = false }: { embedded?: boolean }) {
   const toast = useToast();
+  const { id: routeProjectId } = useParams<{ id?: string }>();
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const setActiveProjectId = useAppStore((s) => s.setActiveProjectId);
+  const workbenchSource = useAppStore((s) => s.workbenchSource);
+  const projectId = routeProjectId ?? activeProjectId;
+  const { text: workbenchText } = useWorkbenchSourceText(projectId ?? undefined, workbenchSource);
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
@@ -61,15 +66,15 @@ export default function GoldPipelinePanel() {
   const streamCompleteRef = useRef(false);
 
   const { data: chapters = [], isLoading: chaptersLoading } = useQuery({
-    queryKey: ['gold-chapters', activeProjectId],
-    queryFn: () => listChapters(activeProjectId!),
-    enabled: !!activeProjectId,
+    queryKey: ['gold-chapters', projectId],
+    queryFn: () => listChapters(projectId!),
+    enabled: !!projectId,
   });
 
   const { data: existingReport, isLoading: reportLoading } = useQuery({
-    queryKey: ['gold-report', activeProjectId],
-    queryFn: () => getGoldReport(activeProjectId!),
-    enabled: !!activeProjectId,
+    queryKey: ['gold-report', projectId],
+    queryFn: () => getGoldReport(projectId!),
+    enabled: !!projectId,
   });
 
   const scopeOptions: ScopeOption[] = useMemo(() => {
@@ -237,16 +242,18 @@ export default function GoldPipelinePanel() {
   };
 
   const runQuickGoldPass = async () => {
-    if (!activeProjectId) {
+    if (!projectId) {
       toast.error('Select active project in sidebar');
       return;
     }
     const scopeChapter = chapters.find((ch) => selectedChapters.includes(ch.id));
-    const source = scopeChapter?.content ?? chapters.map((ch) => ch.content).join('\n\n').slice(0, 12000);
+    const fallbackSource =
+      scopeChapter?.content ?? chapters.map((ch) => ch.content).join('\n\n').slice(0, 12000);
+    const source = workbenchText.trim() || fallbackSource;
     setIsProcessing(true);
     setPipelineError(null);
     try {
-      const result = await runGoldPass(activeProjectId, source, {
+      const result = await runGoldPass(projectId, source, {
         improveText: selectedDepth === 'deep',
         stage: 'revision',
       });
@@ -282,7 +289,7 @@ export default function GoldPipelinePanel() {
   };
 
   const executeGoldPipeline = async () => {
-    if (!activeProjectId) {
+    if (!projectId) {
       const msg = 'Select active project in sidebar';
       setPipelineError(msg);
       toast.error(msg);
@@ -319,7 +326,7 @@ export default function GoldPipelinePanel() {
     streamCompleteRef.current = false;
 
     const streamBody = {
-      projectId: activeProjectId,
+      projectId: projectId,
       config: options,
       chapters: options.chapterIds ?? [],
     };
@@ -336,12 +343,12 @@ export default function GoldPipelinePanel() {
       );
 
       if (!streamCompleteRef.current && !controller.signal.aborted) {
-        const report = await getGoldReport(activeProjectId);
+        const report = await getGoldReport(projectId);
         if (report) {
           streamCompleteRef.current = true;
           finishPipeline(report, scopeLabel, options);
         } else {
-          await runSyncFallback(activeProjectId, scopeLabel, options);
+          await runSyncFallback(projectId, scopeLabel, options);
         }
       }
     } catch (err) {
@@ -349,7 +356,7 @@ export default function GoldPipelinePanel() {
 
       try {
         toast.info('SSE unavailable — falling back to sync pipeline');
-        await runSyncFallback(activeProjectId, scopeLabel, options);
+        await runSyncFallback(projectId, scopeLabel, options);
       } catch (fallbackErr) {
         failPipeline(
           fallbackErr instanceof Error ? fallbackErr.message : 'Gold pipeline failed',
@@ -399,7 +406,7 @@ export default function GoldPipelinePanel() {
     }
   };
 
-  if (!activeProjectId) {
+  if (!projectId && !embedded) {
     return (
       <div className="max-w-6xl mx-auto animate-fadeIn">
         <div className="mb-6">
@@ -613,7 +620,7 @@ export default function GoldPipelinePanel() {
             <button
               type="button"
               onClick={runQuickGoldPass}
-              disabled={isProcessing || !activeProjectId}
+              disabled={isProcessing || !projectId}
               className="mt-2 w-full py-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
             >
               Run Gold Pass (save output)

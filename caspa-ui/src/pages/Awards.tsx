@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Scale, Sparkles, Trophy } from 'lucide-react';
 import { ElevationWorkbench, JsonPreview, ResultCard } from '../components/ElevationWorkbench';
 import { useToast } from '../components/Toast';
+import { useAppStore } from '../store';
+import { useWorkbenchSourceText } from '../hooks/useWorkbenchSourceText';
 import {
   artistStatement,
   awardsReadiness,
@@ -34,6 +36,8 @@ const categoryLabels: Record<string, string> = {
 function AwardsShelfContent({ projectId }: { projectId: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const workbenchSource = useAppStore((s) => s.workbenchSource);
+  const { text: workbenchText } = useWorkbenchSourceText(projectId, workbenchSource);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [assessmentStage, setAssessmentStage] = useState<'draft' | 'revision' | 'submission'>('draft');
   const [sourceText, setSourceText] = useState('');
@@ -89,7 +93,7 @@ function AwardsShelfContent({ projectId }: { projectId: string }) {
       runAwardAssessment({
         projectId,
         awardIds: selectedIds,
-        sourceText: sourceText || undefined,
+        sourceText: sourceText.trim() || workbenchText || undefined,
         stage: assessmentStage,
       }),
     onSuccess: (result) => {
@@ -371,6 +375,8 @@ function AwardsShelfContent({ projectId }: { projectId: string }) {
     </div>
   );
 }
+
+export { AwardsShelfContent };
 
 export default function Awards() {
   return (

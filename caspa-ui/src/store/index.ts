@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { UserPublic } from '../api/auth';
 import type { JobStatus, Project } from '../types';
+import type { WorkbenchSource } from '../lib/workbenchSource';
+import { DEFAULT_WORKBENCH_SOURCE } from '../lib/workbenchSource';
 
 export interface ToastMessage {
   id: string;
@@ -46,6 +48,10 @@ interface AppState {
 
   researchPassNoteIds: string[];
   setResearchPassNoteIds: (ids: string[]) => void;
+
+  workbenchSource: WorkbenchSource;
+  setWorkbenchSource: (source: WorkbenchSource) => void;
+  patchWorkbenchSource: (patch: Partial<WorkbenchSource>) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -101,6 +107,11 @@ export const useAppStore = create<AppState>()(
 
       researchPassNoteIds: [],
       setResearchPassNoteIds: (ids) => set({ researchPassNoteIds: ids }),
+
+      workbenchSource: DEFAULT_WORKBENCH_SOURCE,
+      setWorkbenchSource: (source) => set({ workbenchSource: source }),
+      patchWorkbenchSource: (patch) =>
+        set((state) => ({ workbenchSource: { ...state.workbenchSource, ...patch } })),
     }),
     {
       name: 'caspa-ui',
@@ -112,6 +123,7 @@ export const useAppStore = create<AppState>()(
         simpleMode: state.simpleMode,
         aiPanelOpen: state.aiPanelOpen,
         researchPassNoteIds: state.researchPassNoteIds,
+        workbenchSource: state.workbenchSource,
       }),
     },
   ),

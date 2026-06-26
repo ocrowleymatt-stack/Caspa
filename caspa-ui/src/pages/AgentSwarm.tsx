@@ -4,6 +4,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Bot, Loader2, Sparkles, Users } from 'lucide-react';
 import { ElevationWorkbench } from '../components/ElevationWorkbench';
 import { useToast } from '../components/Toast';
+import { useAppStore } from '../store';
+import { useWorkbenchSourceText } from '../hooks/useWorkbenchSourceText';
 import {
   listSwarmAgents,
   runAgentSwarm,
@@ -13,8 +15,10 @@ import {
 } from '../api/agentSwarm';
 import { getProjectAwardsShelf } from '../api/awards';
 
-function AgentSwarmContent({ projectId }: { projectId: string }) {
+function AgentSwarmContentInner({ projectId }: { projectId: string }) {
   const toast = useToast();
+  const workbenchSource = useAppStore((s) => s.workbenchSource);
+  const { text: workbenchText } = useWorkbenchSourceText(projectId, workbenchSource);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [mode, setMode] = useState<SwarmMode>('critique');
   const [sourceText, setSourceText] = useState('');
@@ -41,7 +45,7 @@ function AgentSwarmContent({ projectId }: { projectId: string }) {
     mutationFn: () =>
       runAgentSwarm({
         projectId,
-        sourceText: sourceText || undefined,
+        sourceText: sourceText.trim() || workbenchText || undefined,
         agentIds: selectedAgents,
         targetAwardIds: shelf?.selectedAwardIds,
         mode,
@@ -109,7 +113,7 @@ function AgentSwarmContent({ projectId }: { projectId: string }) {
           </label>
           <label className="block text-sm">
             <span className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[#98711d]">
-              Source text (optional — defaults to project manuscript)
+              Override text (optional — workbench source selector applies when empty)
             </span>
             <textarea
               value={sourceText}
@@ -197,6 +201,10 @@ function AgentSwarmContent({ projectId }: { projectId: string }) {
       )}
     </div>
   );
+}
+
+export function AgentSwarmContent({ projectId }: { projectId: string }) {
+  return <AgentSwarmContentInner projectId={projectId} />;
 }
 
 export default function AgentSwarm() {

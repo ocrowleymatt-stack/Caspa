@@ -2,25 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import {
   FileText,
-  GripVertical,
   Loader2,
   Anchor,
   Bot,
@@ -29,7 +11,6 @@ import {
   PenLine,
   Plus,
   Sparkles,
-  Theater,
   Trophy,
   Upload,
   Wand2,
@@ -39,11 +20,9 @@ import {
   createChapter,
   getChapter,
   listChapters,
-  reorderChapters,
 } from '../api/chapters';
 import { listOutputs } from '../api/outputs';
 import { useAppStore } from '../store';
-import { formatRelative } from '../lib/utils';
 import {
   casperImproveUrl,
   isSourceChapter,
@@ -51,56 +30,8 @@ import {
   pickImprovementSourceChapter,
 } from '../lib/manuscriptWorkflow';
 import { structureLabel, workTypeLabel } from '../lib/workModel';
-import { sourceRoleLabel, structureUnitLabel } from '../lib/structureUnit';
-import type { Chapter } from '../types';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 import { useToast } from '../components/Toast';
-
-function SortableChapter({
-  chapter,
-  projectId,
-}: {
-  chapter: Chapter;
-  projectId: string;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: chapter.id,
-  });
-  const style = { transform: CSS.Transform.toString(transform), transition };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="group flex items-center gap-3 rounded-[1.6rem] border border-[#eadfca] bg-white px-4 py-3 shadow-paper transition-all hover:-translate-y-0.5 hover:border-accent"
-    >
-      <button type="button" className="cursor-grab rounded-xl p-2 text-muted hover:bg-[#fff8e8] hover:text-foreground" {...attributes} {...listeners}>
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <Link to={`/projects/${projectId}/chapters/${chapter.id}`} className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3">
-          <span className="truncate font-serif text-xl font-semibold text-[#171a22]">{chapter.title}</span>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-            {chapter.unitType && (
-              <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#98711d]">
-                {structureUnitLabel(chapter.unitType)}
-              </span>
-            )}
-            {sourceRoleLabel(chapter.sourceRole) && (
-              <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#5f5648]">
-                {sourceRoleLabel(chapter.sourceRole)}
-              </span>
-            )}
-            <span className="badge capitalize">{chapter.status}</span>
-          </div>
-        </div>
-        <p className="mt-1 text-xs text-muted">
-          {chapter.wordCount.toLocaleString()} words · {formatRelative(chapter.updatedAt)}
-        </p>
-      </Link>
-    </div>
-  );
-}
 
 export default function ProjectOverview() {
   const { id } = useParams<{ id: string }>();
@@ -150,30 +81,6 @@ export default function ProjectOverview() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
-
-  const reorderMutation = useMutation({
-    mutationFn: (orderedIds: string[]) => reorderChapters(id!, orderedIds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chapters', id] });
-      toast.success('Chapters reordered');
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = chapters.findIndex((c) => c.id === active.id);
-    const newIndex = chapters.findIndex((c) => c.id === over.id);
-    const reordered = arrayMove(chapters, oldIndex, newIndex);
-    queryClient.setQueryData(['chapters', id], reordered);
-    reorderMutation.mutate(reordered.map((c) => c.id));
-  };
 
   const continueChapter = useMemo(() => pickContinueChapter(chapters), [chapters]);
   const defaultImproveChapter = useMemo(() => pickImprovementSourceChapter(chapters), [chapters]);
@@ -252,7 +159,7 @@ export default function ProjectOverview() {
                 </span>
               )}
             </div>
-            <h1 className="font-serif text-5xl font-semibold leading-none tracking-[-0.045em] text-[#171a22] md:text-6xl">
+            <h1 className="font-serif text-4xl font-semibold leading-none tracking-[-0.045em] text-[#171a22] md:text-5xl">
               {project.title}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
@@ -290,13 +197,12 @@ export default function ProjectOverview() {
                   <FileText className="h-4 w-4" /> Open Original
                 </Link>
               )}
-              <Link to="/gold" className="btn-secondary">
+              <Link to={`/projects/${id}/gold`} className="btn-secondary">
                 <Wand2 className="h-4 w-4" /> Run Gold Pass
               </Link>
-              <button type="button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending} className="btn-secondary">
-                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                New Chapter
-              </button>
+              <Link to={`/projects/${id}/manuscript`} className="btn-secondary">
+                <Plus className="h-4 w-4" /> Manuscript units
+              </Link>
               <Link to={`/projects/${id}/bible`} className="btn-secondary">
                 <BookOpen className="h-4 w-4" /> Project Bible
               </Link>
@@ -306,19 +212,16 @@ export default function ProjectOverview() {
               <Link to={`/projects/${id}/research`} className="btn-secondary">
                 <BookMarked className="h-4 w-4" /> Research Desk
               </Link>
-              <Link to="/awards" className="btn-secondary">
+              <Link to={`/projects/${id}/awards`} className="btn-secondary">
                 <Trophy className="h-4 w-4" /> Awards Shelf
               </Link>
-              <Link to="/agent-swarm" className="btn-secondary">
+              <Link to={`/projects/${id}/swarm`} className="btn-secondary">
                 <Bot className="h-4 w-4" /> Agent Swarm
               </Link>
-              <Link to="/outputs" className="btn-secondary">
+              <Link to={`/projects/${id}/outputs`} className="btn-secondary">
                 Open Outputs
               </Link>
-              <Link to="/show-factory" className="btn-secondary">
-                <Theater className="h-4 w-4" /> Show Pack
-              </Link>
-              <Link to="/publish" className="btn-secondary">
+              <Link to={`/projects/${id}/export`} className="btn-secondary">
                 <Upload className="h-4 w-4" /> Export
               </Link>
             </div>
@@ -387,12 +290,13 @@ export default function ProjectOverview() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Manuscript</div>
-            <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Chapters</h2>
+            <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">
+              {chapters.length} structure unit{chapters.length === 1 ? '' : 's'}
+            </h2>
           </div>
-          <button type="button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending} className="btn-primary">
-            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Add Chapter
-          </button>
+          <Link to={`/projects/${id}/manuscript`} className="btn-primary">
+            Open manuscript tab
+          </Link>
         </div>
 
         {chaptersLoading ? (
@@ -402,21 +306,20 @@ export default function ProjectOverview() {
         ) : chapters.length === 0 ? (
           <div className="rounded-[2rem] border border-[#eadfca] bg-white/85 py-14 text-center shadow-paper">
             <FileText className="mx-auto mb-4 h-12 w-12 text-[#98711d] opacity-60" />
-            <p className="mb-5 text-muted">No chapters yet. Start with the first page.</p>
+            <p className="mb-5 text-muted">No units yet. Start with the first page.</p>
             <button type="button" onClick={() => createMutation.mutate()} className="btn-primary">
               <Plus className="h-4 w-4" /> Create First Chapter
             </button>
           </div>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={chapters.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-3">
-                {chapters.map((chapter) => (
-                  <SortableChapter key={chapter.id} chapter={chapter} projectId={id!} />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
+          <div className="rounded-[2rem] border border-[#eadfca] bg-white/85 p-5 shadow-paper">
+            <p className="text-sm text-muted">
+              Reorder and edit units in the Manuscript tab. Latest:{' '}
+              <Link to={`/projects/${id}/chapters/${chapters[chapters.length - 1]?.id}`} className="font-semibold text-[#98711d]">
+                {chapters[chapters.length - 1]?.title}
+              </Link>
+            </p>
+          </div>
         )}
       </section>
     </div>

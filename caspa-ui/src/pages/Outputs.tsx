@@ -26,7 +26,7 @@ function excerpt(text: string, limit = 220): string {
   return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
 }
 
-function OutputsContent({ projectId }: { projectId: string }) {
+export function OutputsContent({ projectId }: { projectId: string }) {
   const toast = useToast();
   const navigate = useNavigate();
 
