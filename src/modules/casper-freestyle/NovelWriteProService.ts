@@ -1,9 +1,18 @@
 import { aiOrchestrator } from '../ai';
+import { projectBibleService } from '../manuscript/ProjectBibleService';
 import { outputRegistry } from '../outputs';
 import {
   buildNovelWriteProAutoWritePrompt,
   type NovelWriteProMode,
 } from './novelWritePro';
+import {
+  buildCriticPrompt,
+  buildFirstDraftPrompt,
+  buildPlanningPrompt,
+  buildRewritePrompt,
+  parseStructuredPlan,
+  type StructuredPlan,
+} from './structuredPipeline';
 
 export interface NovelWriteProRequest {
   projectId?: string;
@@ -17,6 +26,17 @@ export interface NovelWriteProRequest {
   genre?: string;
 }
 
+export interface NovelWriteProStructuredArtifacts {
+  projectBible: StructuredPlan;
+  premise: string;
+  formatDecision: string;
+  characterWoundMap: string;
+  scenePlan: string[];
+  firstDraft: string;
+  criticReport: string;
+  improvedRewrite: string;
+}
+
 export interface NovelWriteProResult {
   outputId: string;
   projectId?: string;
@@ -26,6 +46,7 @@ export interface NovelWriteProResult {
   provider: string;
   model: string;
   createdAt: string;
+  structured: NovelWriteProStructuredArtifacts;
 }
 
 const modeTitles: Record<NovelWriteProMode, string> = {
@@ -79,7 +100,7 @@ export class NovelWriteProService {
     const tone = body.tone ?? 'Clear, vivid, witty, production-minded.';
     const sourceText = body.source ?? '';
 
-    const prompt = buildNovelWriteProAutoWritePrompt({
+    const promptInput = {
       mode,
       modeTitle,
       genre,
@@ -88,24 +109,70 @@ export class NovelWriteProService {
       output,
       sourceText,
       uploadedName: body.uploadedName,
-    });
+    };
 
-    const response = await aiOrchestrator.generate({
-      prompt,
+    const generateOpts = {
       projectId: body.projectId,
       temperature: 0.88,
-      maxTokens: 5200,
+      maxTokens: 4200,
+    };
+
+    const planResponse = await aiOrchestrator.generate({
+      ...generateOpts,
+      prompt: buildPlanningPrompt(promptInput),
+      temperature: 0.45,
+      maxTokens: 2200,
     });
 
-    const text = response.text.trim();
-    if (!text) {
+    const plan = parseStructuredPlan(planResponse.text, {
+      premise: premise || 'A fresh original story with immediate pressure.',
+      genre,
+      tone,
+      formatDecision: `${modeTitle} — ${output}`,
+      characterWoundMap: 'Protagonist carries a hidden wound driving every scene.',
+      scenePlan: [`Opening beat for ${output}`, 'Escalation', 'Reversal', 'Cost', 'Resonant image ending'],
+    });
+
+    const draftResponse = await aiOrchestrator.generate({
+      ...generateOpts,
+      prompt: buildFirstDraftPrompt(promptInput, plan),
+    });
+    const firstDraft = draftResponse.text.trim();
+    if (!firstDraft) {
       throw new Error(
-        'Novel Write Pro connected to an AI engine but returned no writing. Check Ollama on the server or cloud billing.',
+        'Novel Write Pro planning succeeded but first draft was empty. Check Ollama or cloud billing.',
       );
     }
 
+    const criticResponse = await aiOrchestrator.generate({
+      ...generateOpts,
+      prompt: buildCriticPrompt(plan, firstDraft),
+      temperature: 0.35,
+      maxTokens: 1800,
+    });
+    const criticReport = criticResponse.text.trim() || 'Critic room: strengthen hook, scene turns and subtext.';
+
+    const rewriteResponse = await aiOrchestrator.generate({
+      ...generateOpts,
+      prompt: buildRewritePrompt(promptInput, plan, firstDraft, criticReport),
+    });
+    const improvedRewrite = rewriteResponse.text.trim() || firstDraft;
+
+    const model = rewriteResponse.model || draftResponse.model || planResponse.model;
+    const provider = inferProvider(model);
     const title = draftTitle(mode, output);
-    const provider = inferProvider(response.model);
+
+    const structured: NovelWriteProStructuredArtifacts = {
+      projectBible: plan,
+      premise: plan.premise,
+      formatDecision: plan.formatDecision,
+      characterWoundMap: plan.characterWoundMap,
+      scenePlan: plan.scenePlan,
+      firstDraft,
+      criticReport,
+      improvedRewrite,
+    };
+
     const record = await outputRegistry.register({
       projectId: body.projectId,
       type: 'novel-write-pro',
@@ -113,9 +180,12 @@ export class NovelWriteProService {
       path: '',
       metadata: {
         kind: 'novel-write-pro',
-        text,
+        text: improvedRewrite,
+        firstDraft,
+        criticReport,
+        structured,
         provider,
-        model: response.model,
+        model,
         mode,
         output,
         spark: premise,
@@ -123,17 +193,40 @@ export class NovelWriteProService {
       },
     });
 
+    if (body.projectId) {
+      await projectBibleService.mergeFromNovelWritePro(body.projectId, {
+        outputId: record.id,
+        premise: plan.premise,
+        genre: plan.genre || genre,
+        tone: plan.tone || tone,
+        intendedAudience: plan.intendedAudience,
+        characters: plan.characters,
+        setting: plan.setting,
+        themes: plan.themes,
+        structure: plan.structure,
+        sourceNotes: plan.sourceNotes || sourceText.slice(0, 500),
+        styleRules: plan.styleRules,
+        formatDecision: plan.formatDecision,
+        scenePlan: plan.scenePlan,
+        characterWoundMap: plan.characterWoundMap,
+      });
+    }
+
     return {
       outputId: record.id,
       projectId: body.projectId,
       title,
       kind: 'novel-write-pro',
-      text,
+      text: improvedRewrite,
       provider,
-      model: response.model,
+      model,
       createdAt: record.createdAt,
+      structured,
     };
   }
 }
 
 export const novelWriteProService = new NovelWriteProService();
+
+// Legacy single-blob prompt kept for Open WebUI handoff elsewhere
+export { buildNovelWriteProAutoWritePrompt };

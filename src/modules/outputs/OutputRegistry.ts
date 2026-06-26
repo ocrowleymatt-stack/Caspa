@@ -9,6 +9,8 @@ export type OutputType =
   | 'command_result'
   | 'novel-write-pro'
   | 'gold-pass'
+  | 'continue-writing'
+  | 'project-bible'
   | 'other';
 
 export interface OutputRecord {

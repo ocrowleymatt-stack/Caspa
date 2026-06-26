@@ -251,7 +251,7 @@ export default function CasperFreestyle() {
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
       await queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      toast.success(`Novel Write Pro drafted with ${draft.provider}/${draft.model} · saved output ${draft.outputId.slice(0, 8)}`);
+      toast.success(`Novel Write Pro drafted (${draft.structured ? 'plan → draft → critic → rewrite' : 'award pass'}) · ${draft.provider}/${draft.model} · output ${draft.outputId.slice(0, 8)}`);
       navigate(`/projects/${project.id}/chapters/${chapter.id}`);
     },
     onError: (error: Error) => toast.error(error.message),
