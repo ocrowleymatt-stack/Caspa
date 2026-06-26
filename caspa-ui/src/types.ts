@@ -12,6 +12,11 @@ import type {
   StructureUnitStatus,
   StructureUnitType,
 } from './lib/structureUnit';
+import type {
+  ResearchQueueStatus,
+  ResearchSourceType,
+  ResearchVerificationStatus,
+} from './lib/researchDesk';
 
 export interface Chapter {
   id: string;
@@ -191,7 +196,17 @@ export interface ResearchNote {
   title: string;
   content: string;
   tags: string[];
+  verificationStatus?: ResearchVerificationStatus;
+  sourceType?: ResearchSourceType;
+  queueStatus?: ResearchQueueStatus;
+  attachments?: Array<{
+    kind: 'project' | 'unit' | 'pole' | 'output' | 'character' | 'place';
+    id: string;
+    label?: string;
+  }>;
+  metadata?: Record<string, unknown>;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Cue {

@@ -142,6 +142,43 @@ try:
     assert extend.get("recommendedNextStep"), "extend must return recommendation"
     print("PIER EXTEND:", extend["recommendedNextStep"])
 
+    topics = req("POST", "/api/research/suggest-topics", {"projectId": pid, "query": "harbour history"}, token=token)
+    assert topics.get("topics"), "suggest-topics must return topics"
+    assert topics.get("disclaimer"), "must include AI disclaimer"
+    print("RESEARCH TOPICS:", len(topics["topics"]))
+
+    claims = req("POST", "/api/research/extract-claims", {
+        "projectId": pid,
+        "text": chapter["content"],
+    }, token=token)
+    assert len(claims.get("claims", [])) >= 1, "extract-claims must return claims"
+    print("RESEARCH CLAIMS:", len(claims["claims"]))
+
+    confirmed = req("POST", "/api/research", {
+        "projectId": pid,
+        "title": "Lighthouse staffing records",
+        "content": "Historical note: remote lighthouses were often single-keeper stations with monthly supply runs.",
+        "tags": ["history", "lighthouse"],
+        "verificationStatus": "confirmed",
+        "sourceType": "user",
+    }, token=token)
+    assert confirmed.get("verificationStatus") == "confirmed"
+    print("RESEARCH NOTE:", confirmed["id"], confirmed["verificationStatus"])
+
+    accuracy = req("POST", "/api/research/check-accuracy", {
+        "projectId": pid,
+        "sourceText": chapter["content"],
+    }, token=token)
+    assert len(accuracy.get("verdicts", [])) >= 1
+    print("RESEARCH ACCURACY:", accuracy["verdicts"][0]["status"])
+
+    depth = req("POST", "/api/research/depth-pass", {
+        "projectId": pid,
+        "topic": "lighthouse history",
+    }, token=token)
+    assert depth.get("summary")
+    print("RESEARCH DEPTH:", depth["topic"])
+
     projects_before = req("GET", "/api/projects", token=token)
     count_before = len(projects_before)
 

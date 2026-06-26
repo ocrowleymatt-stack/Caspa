@@ -609,6 +609,16 @@ manuscriptRouter.put(
   }),
 );
 
+manuscriptRouter.patch(
+  '/api/research/:id',
+  asyncHandler(async (req, res) => {
+    const existing = await researchService.getNote(param(req, 'id'));
+    await projectService.getProject(existing.projectId, getUser(req));
+    const note = await researchService.updateNote(param(req, 'id'), req.body);
+    sendSuccess(res, note);
+  }),
+);
+
 manuscriptRouter.delete(
   '/api/research/:id',
   asyncHandler(async (req, res) => {

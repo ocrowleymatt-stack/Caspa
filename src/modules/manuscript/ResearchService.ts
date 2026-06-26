@@ -7,20 +7,25 @@ import {
   type ResearchNote,
 } from '../../shared';
 import { NotFoundError } from './ProjectService';
+import { migrateResearchNotesModel, normalizeResearchNote } from './researchNoteMigration';
 
 const RESEARCH_NOTES = 'research-notes';
 
 export class ResearchService {
+  migrateResearchModel(): Promise<number> {
+    return migrateResearchNotesModel();
+  }
+
   async listNotes(projectId: string, tags?: string[]): Promise<ResearchNote[]> {
-    let notes = (await readCollection<ResearchNote>(RESEARCH_NOTES)).filter(
-      (note) => note.projectId === projectId,
-    );
+    let notes = (await readCollection<ResearchNote>(RESEARCH_NOTES))
+      .filter((note) => note.projectId === projectId)
+      .map(normalizeResearchNote);
 
     if (tags && tags.length > 0) {
       notes = notes.filter((note) => tags.every((tag) => note.tags.includes(tag)));
     }
 
-    return notes;
+    return notes.sort((a, b) => b.updatedAt!.localeCompare(a.updatedAt!));
   }
 
   async getNote(id: string): Promise<ResearchNote> {
@@ -28,16 +33,18 @@ export class ResearchService {
     if (!note) {
       throw new NotFoundError(`Research note not found: ${id}`);
     }
-    return note;
+    return normalizeResearchNote(note);
   }
 
-  async createNote(data: Omit<ResearchNote, 'id' | 'createdAt'>): Promise<ResearchNote> {
-    const note: ResearchNote = {
+  async createNote(data: Omit<ResearchNote, 'id' | 'createdAt' | 'updatedAt'>): Promise<ResearchNote> {
+    const now = new Date().toISOString();
+    const note = normalizeResearchNote({
       ...data,
       id: generateId(),
       tags: data.tags ?? [],
-      createdAt: new Date().toISOString(),
-    };
+      createdAt: now,
+      updatedAt: now,
+    });
 
     await upsert(RESEARCH_NOTES, note);
     return note;
@@ -45,13 +52,14 @@ export class ResearchService {
 
   async updateNote(id: string, data: Partial<ResearchNote>): Promise<ResearchNote> {
     const existing = await this.getNote(id);
-    const note: ResearchNote = {
+    const note = normalizeResearchNote({
       ...existing,
       ...data,
       id: existing.id,
       projectId: existing.projectId,
       createdAt: existing.createdAt,
-    };
+      updatedAt: new Date().toISOString(),
+    });
 
     await upsert(RESEARCH_NOTES, note);
     return note;
@@ -72,7 +80,12 @@ export class ResearchService {
     return notes.filter(
       (note) =>
         note.title.toLowerCase().includes(normalized) ||
-        note.content.toLowerCase().includes(normalized),
+        note.content.toLowerCase().includes(normalized) ||
+        note.tags.some((tag) => tag.toLowerCase().includes(normalized)),
     );
+  }
+
+  listConfirmedNotes(notes: ResearchNote[]): ResearchNote[] {
+    return notes.filter((note) => note.verificationStatus === 'confirmed');
   }
 }

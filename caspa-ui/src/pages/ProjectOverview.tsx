@@ -23,6 +23,7 @@ import {
   GripVertical,
   Loader2,
   Anchor,
+  BookMarked,
   BookOpen,
   PenLine,
   Plus,
@@ -299,6 +300,9 @@ export default function ProjectOverview() {
               </Link>
               <Link to={`/projects/${id}/pier`} className="btn-secondary">
                 <Anchor className="h-4 w-4" /> Pier Builder
+              </Link>
+              <Link to={`/projects/${id}/research`} className="btn-secondary">
+                <BookMarked className="h-4 w-4" /> Research Desk
               </Link>
               <Link to="/outputs" className="btn-secondary">
                 Open Outputs

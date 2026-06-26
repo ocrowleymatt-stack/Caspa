@@ -68,13 +68,26 @@ export interface Character {
   relationships: { characterId: string; type: string }[];
 }
 
+import type {
+  ResearchAttachment,
+  ResearchQueueStatus,
+  ResearchSourceType,
+  ResearchVerificationStatus,
+} from './researchDesk';
+
 export interface ResearchNote {
   id: string;
   projectId: string;
   title: string;
   content: string;
   tags: string[];
+  verificationStatus?: ResearchVerificationStatus;
+  sourceType?: ResearchSourceType;
+  queueStatus?: ResearchQueueStatus;
+  attachments?: ResearchAttachment[];
+  metadata?: Record<string, unknown>;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface PlotPoint {

@@ -39,9 +39,11 @@ import { showCatalogueRouter } from './src/modules/show-catalogue/index';
 import { runMigrations } from './src/services/db';
 import { ProjectService } from './src/modules/manuscript/ProjectService';
 import { ChapterService } from './src/modules/manuscript/ChapterService';
+import { ResearchService } from './src/modules/manuscript/ResearchService';
 
 const projectServiceBoot = new ProjectService();
 const chapterServiceBoot = new ChapterService();
+const researchServiceBoot = new ResearchService();
 
 runMigrations();
 void projectServiceBoot.migrateWorkModel().then((migratedWorkModel) => {
@@ -52,6 +54,11 @@ void projectServiceBoot.migrateWorkModel().then((migratedWorkModel) => {
 void chapterServiceBoot.migrateStructureModel().then((migratedStructure) => {
   if (migratedStructure > 0) {
     logger.info(`Migrated structure unit fields on ${migratedStructure} existing chapter(s)`);
+  }
+});
+void researchServiceBoot.migrateResearchModel().then((migratedResearch) => {
+  if (migratedResearch > 0) {
+    logger.info(`Migrated research desk fields on ${migratedResearch} existing note(s)`);
   }
 });
 

@@ -43,6 +43,9 @@ interface AppState {
 
   projects: Project[];
   setProjects: (projects: Project[]) => void;
+
+  researchPassNoteIds: string[];
+  setResearchPassNoteIds: (ids: string[]) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -95,6 +98,9 @@ export const useAppStore = create<AppState>()(
 
       projects: [],
       setProjects: (projects) => set({ projects }),
+
+      researchPassNoteIds: [],
+      setResearchPassNoteIds: (ids) => set({ researchPassNoteIds: ids }),
     }),
     {
       name: 'caspa-ui',
@@ -105,6 +111,7 @@ export const useAppStore = create<AppState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         simpleMode: state.simpleMode,
         aiPanelOpen: state.aiPanelOpen,
+        researchPassNoteIds: state.researchPassNoteIds,
       }),
     },
   ),
