@@ -25,7 +25,7 @@ echo
 
 if [[ -f .env ]]; then
   echo "--- PHASE 13 WORKFLOW TESTS (authenticated) ---"
-  python3 -u - <<'PY' || true
+  python3 -u - <<'PY'
 import json, pathlib, urllib.request, urllib.error
 
 def load_env():
@@ -351,9 +351,18 @@ try:
 except urllib.error.HTTPError as e:
     body = e.read().decode(errors="replace")[:500]
     print("AUTH TEST FAILED:", e.code, body or "(empty body)")
+    raise SystemExit(1)
 except Exception as e:
     print("AUTH TEST ERROR:", e)
+    raise SystemExit(1)
 PY
+  smoke_exit=$?
+  if [[ $smoke_exit -ne 0 ]]; then
+    echo "==> Authenticated workflow smoke failed (exit $smoke_exit)"
+    if [[ "${CASPA_SMOKE_STRICT:-}" == "1" ]]; then
+      exit $smoke_exit
+    fi
+  fi
   echo
 fi
 

@@ -63,3 +63,19 @@ pm2 save
 
 echo "==> Deploy complete"
 pm2 status "$PM2_NAME"
+
+if [[ "${SKIP_SMOKE:-}" == "1" ]]; then
+  echo "==> Skipping post-deploy smoke (SKIP_SMOKE=1)"
+  exit 0
+fi
+
+echo "==> Waiting for API health"
+for _ in $(seq 1 30); do
+  if curl -sf http://127.0.0.1:3000/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+echo "==> Post-deploy runtime smoke (expect ~8 min with AI workflows)"
+CASPA_SMOKE_STRICT=1 bash scripts/runtime-smoke.sh
