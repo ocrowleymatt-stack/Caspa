@@ -1,8 +1,29 @@
 import { apiCall } from './client';
 import type { Chapter, ChapterHistoryEntry } from '../types';
+import type { StructureSourceRole, StructureUnitStatus, StructureUnitType } from '../lib/structureUnit';
 
 export async function listChapters(projectId: string): Promise<Chapter[]> {
   return apiCall<Chapter[]>(`/api/projects/${projectId}/chapters`);
+}
+
+export async function getProjectStructure(projectId: string) {
+  return apiCall<{
+    projectId: string;
+    units: Array<{
+      id: string;
+      projectId: string;
+      parentId?: string;
+      unitType: StructureUnitType;
+      title: string;
+      order: number;
+      wordCount: number;
+      unitStatus?: StructureUnitStatus;
+      sourceRole?: StructureSourceRole;
+      status: Chapter['status'];
+      children: unknown[];
+    }>;
+    flatUnits: Chapter[];
+  }>(`/api/projects/${projectId}/structure`);
 }
 
 export async function getChapter(id: string): Promise<Chapter> {
@@ -11,7 +32,17 @@ export async function getChapter(id: string): Promise<Chapter> {
 
 export async function createChapter(
   projectId: string,
-  data: { title: string; order: number; content?: string; status?: Chapter['status'] },
+  data: {
+    title: string;
+    order: number;
+    content?: string;
+    status?: Chapter['status'];
+    parentId?: string;
+    unitType?: StructureUnitType;
+    unitStatus?: StructureUnitStatus;
+    sourceRole?: StructureSourceRole;
+    metadata?: Record<string, unknown>;
+  },
 ): Promise<Chapter> {
   return apiCall<Chapter>(`/api/projects/${projectId}/chapters`, {
     method: 'POST',
@@ -20,6 +51,11 @@ export async function createChapter(
       order: data.order,
       content: data.content ?? '',
       status: data.status ?? 'draft',
+      parentId: data.parentId,
+      unitType: data.unitType,
+      unitStatus: data.unitStatus,
+      sourceRole: data.sourceRole,
+      metadata: data.metadata,
     }),
   });
 }

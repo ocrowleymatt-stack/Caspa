@@ -6,6 +6,11 @@ import type {
   WorkflowStage,
   WorkType,
 } from './workModel';
+import type {
+  StructureSourceRole,
+  StructureUnitStatus,
+  StructureUnitType,
+} from './structureUnit';
 
 export interface Project {
   id: string;
@@ -35,11 +40,19 @@ export interface Project {
 export interface Chapter {
   id: string;
   projectId: string;
+  parentId?: string;
+  /** Canonical structure unit type — a scene is not stored as a chapter type. */
+  unitType?: StructureUnitType;
   title: string;
   content: string;
   wordCount: number;
   order: number;
+  /** Writing workflow status (legacy). */
   status: 'outline' | 'draft' | 'revised' | 'final';
+  /** Pier / structure lifecycle status. */
+  unitStatus?: StructureUnitStatus;
+  sourceRole?: StructureSourceRole;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }

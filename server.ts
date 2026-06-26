@@ -38,13 +38,20 @@ import { outputsRouter } from './src/modules/outputs/index';
 import { showCatalogueRouter } from './src/modules/show-catalogue/index';
 import { runMigrations } from './src/services/db';
 import { ProjectService } from './src/modules/manuscript/ProjectService';
+import { ChapterService } from './src/modules/manuscript/ChapterService';
 
 const projectServiceBoot = new ProjectService();
+const chapterServiceBoot = new ChapterService();
 
 runMigrations();
 void projectServiceBoot.migrateWorkModel().then((migratedWorkModel) => {
   if (migratedWorkModel > 0) {
     logger.info(`Migrated work model fields on ${migratedWorkModel} existing project(s)`);
+  }
+});
+void chapterServiceBoot.migrateStructureModel().then((migratedStructure) => {
+  if (migratedStructure > 0) {
+    logger.info(`Migrated structure unit fields on ${migratedStructure} existing chapter(s)`);
   }
 });
 

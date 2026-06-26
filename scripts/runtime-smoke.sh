@@ -102,7 +102,14 @@ try:
         "status": "draft",
     }, token=token)
     cid = chapter["id"]
-    print("CHAPTER:", cid)
+    assert chapter.get("unitType"), "chapter must include unitType"
+    assert chapter.get("sourceRole"), "chapter must include sourceRole"
+    print("CHAPTER:", cid, "unitType:", chapter.get("unitType"), "sourceRole:", chapter.get("sourceRole"))
+
+    structure = req("GET", f"/api/projects/{pid}/structure", token=token)
+    assert len(structure.get("flatUnits", [])) >= 1, "structure endpoint must return flatUnits"
+    assert len(structure.get("units", [])) >= 1, "structure endpoint must return tree units"
+    print("STRUCTURE:", len(structure["flatUnits"]), "units")
 
     projects_before = req("GET", "/api/projects", token=token)
     count_before = len(projects_before)

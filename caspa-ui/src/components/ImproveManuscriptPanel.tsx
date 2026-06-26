@@ -5,6 +5,7 @@ import { createChapter, listChapters } from '../api/chapters';
 import { runNovelWritePro } from '../api/casper';
 import { countWords } from '../lib/utils';
 import { useToast } from './Toast';
+import type { StructureUnitType } from '../lib/structureUnit';
 
 interface ImproveManuscriptPanelProps {
   projectId: string;
@@ -60,6 +61,10 @@ export function ImproveManuscriptPanel({
           order: chapters.length,
           content: draft.text,
           status: 'draft',
+          unitType: 'chapter' as StructureUnitType,
+          unitStatus: 'revision',
+          sourceRole: 'ai-output',
+          metadata: { outputId: draft.outputId, sourceChapterId },
         });
         revisionChapterId = revision.id;
       }

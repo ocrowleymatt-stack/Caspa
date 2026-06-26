@@ -11,6 +11,7 @@ import {
   type RecommendedImportMode,
 } from './ImportAnalyser';
 import type { WorkType } from '../../shared/workModel';
+import { mapDetectedUnitType } from '../../shared/structureUnit';
 import { normalizeProjectWorkModel } from './projectWorkModel';
 
 export interface ImportApplyInput {
@@ -81,6 +82,9 @@ export class ImportService {
           content: rawText,
           order: order + 1,
           status: 'draft',
+          unitType: 'section',
+          unitStatus: 'source',
+          sourceRole: 'original',
         });
         unitTitles.push(chapter.title);
         chaptersCreated = 1;
@@ -88,12 +92,16 @@ export class ImportService {
       }
       case 'single-unit': {
         const title = units[0]?.title || `Imported draft — ${filename}`;
+        const unitType = mapDetectedUnitType(units[0]?.type ?? 'chapter');
         const chapter = await this.chapterService.createChapter({
           projectId: input.projectId,
           title,
           content: rawText,
           order: order + 1,
           status: 'draft',
+          unitType,
+          unitStatus: 'draft',
+          sourceRole: 'imported',
         });
         unitTitles.push(chapter.title);
         chaptersCreated = 1;
@@ -113,6 +121,9 @@ export class ImportService {
             content,
             order,
             status: 'draft',
+            unitType: mapDetectedUnitType(unit.type),
+            unitStatus: 'draft',
+            sourceRole: 'imported',
           });
           unitTitles.push(chapter.title);
           chaptersCreated += 1;

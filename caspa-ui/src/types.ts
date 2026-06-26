@@ -7,15 +7,25 @@ export type {
   StructureType,
   WorkflowStage,
 } from './lib/workModel';
+import type {
+  StructureSourceRole,
+  StructureUnitStatus,
+  StructureUnitType,
+} from './lib/structureUnit';
 
 export interface Chapter {
   id: string;
   projectId: string;
+  parentId?: string;
+  unitType?: StructureUnitType;
   title: string;
   content: string;
   wordCount: number;
   order: number;
   status: 'outline' | 'draft' | 'revised' | 'final';
+  unitStatus?: StructureUnitStatus;
+  sourceRole?: StructureSourceRole;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }

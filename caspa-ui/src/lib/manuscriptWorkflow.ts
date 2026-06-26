@@ -1,7 +1,10 @@
 import type { Chapter } from '../types';
 
-export function isSourceChapter(title: string): boolean {
-  const lower = title.toLowerCase();
+export function isSourceChapter(chapter: Pick<Chapter, 'title' | 'sourceRole' | 'unitStatus'>): boolean {
+  if (chapter.sourceRole === 'original' || chapter.unitStatus === 'source') {
+    return true;
+  }
+  const lower = chapter.title.toLowerCase();
   return lower.includes('source manuscript')
     || lower.includes('uploaded manuscript')
     || lower.startsWith('source white page')
@@ -11,15 +14,15 @@ export function isSourceChapter(title: string): boolean {
 export function pickContinueChapter(chapters: Chapter[]): Chapter | null {
   if (chapters.length === 0) return null;
   const sorted = [...chapters].sort((a, b) => b.order - a.order);
-  const working = sorted.find((chapter) => !isSourceChapter(chapter.title) && chapter.status !== 'outline');
+  const working = sorted.find((chapter) => !isSourceChapter(chapter) && chapter.status !== 'outline');
   if (working) return working;
-  const latestDraft = sorted.find((chapter) => !isSourceChapter(chapter.title));
+  const latestDraft = sorted.find((chapter) => !isSourceChapter(chapter));
   return latestDraft ?? sorted[0];
 }
 
 /** Chapter whose text should be improved — prefers labelled source, else longest draft. */
 export function pickImprovementSourceChapter(chapters: Chapter[]): Chapter | null {
-  const source = chapters.find((chapter) => isSourceChapter(chapter.title));
+  const source = chapters.find((chapter) => isSourceChapter(chapter));
   if (source) return source;
   const withWords = chapters
     .filter((chapter) => chapter.wordCount > 0 || chapter.content?.trim())

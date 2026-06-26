@@ -47,6 +47,8 @@ import {
   pickImprovementSourceChapter,
 } from '../lib/manuscriptWorkflow';
 import { structureLabel, workTypeLabel } from '../lib/workModel';
+import { sourceRoleLabel, structureUnitLabel } from '../lib/structureUnit';
+import type { Chapter } from '../types';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 import { useToast } from '../components/Toast';
 
@@ -54,7 +56,7 @@ function SortableChapter({
   chapter,
   projectId,
 }: {
-  chapter: { id: string; title: string; wordCount: number; status: string; updatedAt: string };
+  chapter: Chapter;
   projectId: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -74,7 +76,19 @@ function SortableChapter({
       <Link to={`/projects/${projectId}/chapters/${chapter.id}`} className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
           <span className="truncate font-serif text-xl font-semibold text-[#171a22]">{chapter.title}</span>
-          <span className="badge shrink-0 capitalize">{chapter.status}</span>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {chapter.unitType && (
+              <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#98711d]">
+                {structureUnitLabel(chapter.unitType)}
+              </span>
+            )}
+            {sourceRoleLabel(chapter.sourceRole) && (
+              <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#5f5648]">
+                {sourceRoleLabel(chapter.sourceRole)}
+              </span>
+            )}
+            <span className="badge capitalize">{chapter.status}</span>
+          </div>
         </div>
         <p className="mt-1 text-xs text-muted">
           {chapter.wordCount.toLocaleString()} words · {formatRelative(chapter.updatedAt)}
@@ -174,7 +188,7 @@ export default function ProjectOverview() {
   });
 
   const sourceChapter = useMemo(
-    () => chapters.find((chapter) => isSourceChapter(chapter.title)),
+    () => chapters.find((chapter) => isSourceChapter(chapter)),
     [chapters],
   );
 

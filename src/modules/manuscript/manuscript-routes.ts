@@ -9,6 +9,7 @@ import { PlotService } from './PlotService';
 import { ResearchService } from './ResearchService';
 import { projectBibleService } from './ProjectBibleService';
 import { importService } from './ImportService';
+import { buildStructureTree } from './structureUnitMigration';
 import {
   PRIMARY_WORK_TYPES,
   WORK_TYPE_LABELS,
@@ -258,6 +259,19 @@ manuscriptRouter.get(
     await projectService.getProject(param(req, 'id'), getUser(req));
     const chapters = await chapterService.listChapters(param(req, 'id'));
     sendSuccess(res, chapters);
+  }),
+);
+
+manuscriptRouter.get(
+  '/api/projects/:id/structure',
+  asyncHandler(async (req, res) => {
+    await projectService.getProject(param(req, 'id'), getUser(req));
+    const chapters = await chapterService.listChapters(param(req, 'id'));
+    sendSuccess(res, {
+      projectId: param(req, 'id'),
+      units: buildStructureTree(chapters),
+      flatUnits: chapters,
+    });
   }),
 );
 

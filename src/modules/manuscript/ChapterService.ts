@@ -12,6 +12,7 @@ import {
   type Chapter,
 } from '../../shared';
 import { NotFoundError, ProjectService } from './ProjectService';
+import { normalizeStructureUnit, migrateChaptersStructureModel } from './structureUnitMigration';
 
 const CHAPTERS = 'chapters';
 const MAX_HISTORY = 20;
@@ -74,11 +75,17 @@ async function appendHistory(chapter: Chapter): Promise<void> {
 export class ChapterService {
   private readonly projectService = new ProjectService();
 
+  migrateStructureModel(): Promise<number> {
+    return migrateChaptersStructureModel();
+  }
+
   async listChapters(projectId: string): Promise<Chapter[]> {
+    const project = await this.projectService.getProject(projectId).catch(() => undefined);
     const chapters = await readCollection<Chapter>(CHAPTERS);
     return chapters
       .filter((chapter) => chapter.projectId === projectId)
-      .sort((a, b) => a.order - b.order);
+      .sort((a, b) => a.order - b.order)
+      .map((chapter) => normalizeStructureUnit(chapter, project));
   }
 
   async getChapter(id: string): Promise<Chapter> {
@@ -86,20 +93,29 @@ export class ChapterService {
     if (!chapter) {
       throw new NotFoundError(`Chapter not found: ${id}`);
     }
-    return chapter;
+    const project = await this.projectService.getProject(chapter.projectId).catch(() => undefined);
+    const normalized = normalizeStructureUnit(chapter, project);
+    if (!chapter.unitType) {
+      await upsert(CHAPTERS, normalized);
+    }
+    return normalized;
   }
 
   async createChapter(
     data: Omit<Chapter, 'id' | 'createdAt' | 'updatedAt' | 'wordCount'>,
   ): Promise<Chapter> {
+    const project = await this.projectService.getProject(data.projectId).catch(() => undefined);
     const now = new Date().toISOString();
-    const chapter: Chapter = {
+    const draft: Chapter = {
       ...data,
       id: generateId(),
-      wordCount: countWords(data.content),
+      content: data.content ?? '',
+      wordCount: countWords(data.content ?? ''),
+      metadata: data.metadata ?? {},
       createdAt: now,
       updatedAt: now,
     };
+    const chapter = normalizeStructureUnit(draft, project);
 
     await upsert(CHAPTERS, chapter);
     emitEvent('chapter:created', chapter);
@@ -117,16 +133,17 @@ export class ChapterService {
     }
 
     const content = data.content ?? existing.content;
-    const chapter: Chapter = {
+    const chapter: Chapter = normalizeStructureUnit({
       ...existing,
       ...data,
       id: existing.id,
       projectId: existing.projectId,
       content,
       wordCount: countWords(content),
+      metadata: data.metadata ?? existing.metadata ?? {},
       createdAt: existing.createdAt,
       updatedAt: new Date().toISOString(),
-    };
+    }, await this.projectService.getProject(existing.projectId).catch(() => undefined));
 
     await upsert(CHAPTERS, chapter);
     emitEvent('chapter:updated', chapter);
