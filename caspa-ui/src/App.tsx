@@ -14,6 +14,8 @@ import MusicPromptLab from './pages/MusicPromptLab';
 import DocumentStudio from './pages/DocumentStudio';
 import PublishConfidence from './pages/PublishConfidence';
 import Outputs from './pages/Outputs';
+import OutputDetail from './pages/OutputDetail';
+import ProjectBible from './pages/ProjectBible';
 import ProjectOverview from './pages/ProjectOverview';
 import ChapterEditor from './pages/ChapterEditor';
 import Characters from './pages/Characters';
@@ -65,6 +67,8 @@ export default function App() {
               <Route path="documents" element={<DocumentStudio />} />
               <Route path="confidence" element={<PublishConfidence />} />
               <Route path="outputs" element={<Outputs />} />
+              <Route path="outputs/:id" element={<OutputDetail />} />
+              <Route path="projects/:id/bible" element={<ProjectBible />} />
               <Route path="show-factory" element={<ShowFactory />} />
               <Route path="music-lab" element={<MusicLab />} />
               <Route path="production" element={<Production />} />

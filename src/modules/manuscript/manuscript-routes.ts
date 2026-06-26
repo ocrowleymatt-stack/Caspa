@@ -7,6 +7,7 @@ import { CharacterService } from './CharacterService';
 import { NotFoundError, ProjectService } from './ProjectService';
 import { PlotService } from './PlotService';
 import { ResearchService } from './ResearchService';
+import { projectBibleService } from './ProjectBibleService';
 
 const projectService = new ProjectService();
 const chapterService = new ChapterService();
@@ -119,6 +120,30 @@ manuscriptRouter.get(
   asyncHandler(async (req, res) => {
     const stats = await projectService.getProjectStats(param(req, 'id'), getUser(req));
     sendSuccess(res, stats);
+  }),
+);
+
+manuscriptRouter.get(
+  '/api/projects/:id/bible',
+  asyncHandler(async (req, res) => {
+    await projectService.getProject(param(req, 'id'), getUser(req));
+    sendSuccess(res, await projectBibleService.get(param(req, 'id')));
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/projects/:id/bible/generate',
+  asyncHandler(async (req, res) => {
+    await projectService.getProject(param(req, 'id'), getUser(req));
+    sendSuccess(res, await projectBibleService.generate(param(req, 'id')), 201);
+  }),
+);
+
+manuscriptRouter.patch(
+  '/api/projects/:id/bible',
+  asyncHandler(async (req, res) => {
+    await projectService.getProject(param(req, 'id'), getUser(req));
+    sendSuccess(res, await projectBibleService.patch(param(req, 'id'), req.body));
   }),
 );
 

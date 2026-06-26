@@ -22,6 +22,7 @@ import {
   FileText,
   GripVertical,
   Loader2,
+  BookOpen,
   PenLine,
   Plus,
   Theater,
@@ -179,6 +180,12 @@ export default function ProjectOverview() {
                 {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 New Chapter
               </button>
+              <Link to={`/projects/${id}/bible`} className="btn-secondary">
+                <BookOpen className="h-4 w-4" /> Project Bible
+              </Link>
+              <Link to="/outputs" className="btn-secondary">
+                Open Outputs
+              </Link>
               <Link to="/show-factory" className="btn-secondary">
                 <Theater className="h-4 w-4" /> Show Pack
               </Link>
