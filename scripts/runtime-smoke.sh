@@ -24,7 +24,7 @@ curl -sS -i http://127.0.0.1:3000/api/projects | head -30 || true
 echo
 
 if [[ -f .env ]]; then
-  echo "--- AUTHENTICATED USABILITY (local .env) ---"
+  echo "--- PHASE 13 WORKFLOW TESTS (authenticated) ---"
   python3 - <<'PY' || true
 import json, pathlib, urllib.request, urllib.error
 
@@ -92,6 +92,57 @@ try:
     assert plain.get("recommendedImportMode") == "whole-manuscript-source", plain.get("recommendedImportMode")
     print("IMPORT PLAIN:", plain["recommendedImportMode"])
 
+    play_text = "ACT I\\n\\nSCENE 1\\n\\nJOHN: The harbour bell rings.\\n\\nSCENE 2\\n\\nMARY: Someone is watching.\\n\\nACT II\\n\\nSCENE 1\\n\\nJOHN: We must leave."
+    play = req("POST", "/api/manuscript/import/analyse", {
+        "filename": "play.txt",
+        "rawText": play_text,
+    }, token=token)
+    play_types = {u.get("type") for u in play.get("detectedUnits", [])}
+    assert play.get("detectedWorkType") == "stage-play", play.get("detectedWorkType")
+    assert "chapter" not in play_types, f"play must not use chapter units: {play_types}"
+    assert play_types & {"act", "scene"}, f"play should detect act/scene units: {play_types}"
+    print("IMPORT PLAY:", play["detectedWorkType"], len(play["detectedUnits"]), "units", sorted(play_types))
+
+    screenplay_text = (
+        "INT. KITCHEN - DAY\\n\\nJohn pours coffee.\\n\\n"
+        "EXT. STREET - NIGHT\\n\\nRain on the cobbles.\\n\\n"
+        "INT. OFFICE - MORNING\\n\\nFiles everywhere.\\n\\n"
+        "EXT. ROOFTOP - DUSK\\n\\nCity lights flicker."
+    )
+    script = req("POST", "/api/manuscript/import/analyse", {
+        "filename": "script.fountain",
+        "rawText": screenplay_text,
+    }, token=token)
+    assert script.get("detectedWorkType") == "screenplay", script.get("detectedWorkType")
+    assert len(script.get("detectedUnits", [])) >= 3, "screenplay should detect scene units from sluglines"
+    print("IMPORT SCREENPLAY:", script["detectedWorkType"], len(script["detectedUnits"]), "units")
+
+    nonfiction_text = "Part One\\n\\nChapter 1\\n\\nThe argument begins here.\\n\\nChapter 2\\n\\nEvidence accumulates slowly."
+    nonfiction = req("POST", "/api/manuscript/import/analyse", {
+        "filename": "nonfiction.txt",
+        "rawText": nonfiction_text,
+        "declaredWorkType": "business-book",
+    }, token=token)
+    assert len(nonfiction.get("detectedUnits", [])) >= 2, "nonfiction should detect multiple units"
+    print("IMPORT NONFICTION:", nonfiction["detectedWorkType"], len(nonfiction["detectedUnits"]), "units")
+
+    poetry_text = "### First Light\\n\\nCold dawn on the pier.\\n\\n### Second Silence\\n\\nNothing moves but tide.\\n\\n### Third Bell\\n\\nThe harbour answers back."
+    poetry = req("POST", "/api/manuscript/import/analyse", {
+        "filename": "poems.md",
+        "rawText": poetry_text,
+    }, token=token)
+    assert poetry.get("detectedWorkType") == "poetry-collection", poetry.get("detectedWorkType")
+    assert len(poetry.get("detectedUnits", [])) >= 2, "poetry collection should detect poem units"
+    print("IMPORT POETRY:", poetry["detectedWorkType"], len(poetry["detectedUnits"]), "units")
+
+    try:
+        unauth = urllib.request.Request("http://127.0.0.1:3000/api/projects", method="GET")
+        urllib.request.urlopen(unauth, timeout=10)
+        raise AssertionError("unauthenticated /api/projects should not succeed")
+    except urllib.error.HTTPError as e:
+        assert e.code == 401, f"expected 401, got {e.code}"
+    print("SAFETY AUTH 401: ok")
+
     bible = req("GET", f"/api/projects/{pid}/bible", token=token)
     print("BIBLE premise empty?", not bool(bible.get("premise")))
 
@@ -129,6 +180,16 @@ try:
     }, token=token)
     assert pole_a["pole"]["id"] and pole_b["pole"]["id"], "place-pole must return poles"
     print("PIER POLES:", pole_a["pole"]["title"], "->", pole_b["pole"]["title"])
+
+    boards = req("POST", "/api/manuscript/pier/lay-boards", {
+        "projectId": pid,
+        "fromPoleId": pole_a["pole"]["id"],
+        "toPoleId": pole_b["pole"]["id"],
+    }, token=token, timeout=300)
+    assert not boards.get("refused"), boards.get("message", "lay-boards refused")
+    assert boards.get("outputId"), "lay-boards must register an output"
+    assert boards.get("text", "").strip(), "lay-boards must return prose"
+    print("PIER BOARDS:", boards["outputId"][:8], len(boards.get("text", "")), "chars")
 
     filler = req("POST", "/api/manuscript/pier/stretch-decking", {
         "projectId": pid,
@@ -179,6 +240,10 @@ try:
     assert depth.get("summary")
     print("RESEARCH DEPTH:", depth["topic"])
 
+    chapters_before = req("GET", f"/api/projects/{pid}/chapters", token=token)
+    chapter_count_before = len(chapters_before)
+    print("SAFETY CHAPTERS BEFORE:", chapter_count_before)
+
     catalog = req("GET", "/api/awards", token=token)
     assert len(catalog) >= 10, "awards catalog should include built-in lenses"
     print("AWARDS CATALOG:", len(catalog))
@@ -209,7 +274,10 @@ try:
     assert swarm.get("consensus"), "swarm must return consensus"
     assert len(swarm.get("agentReports", [])) >= 2
     assert swarm.get("outputId")
-    print("SWARM:", swarm["swarmId"][:8], "agents", len(swarm["agentReports"]))
+    agent_names = [r.get("agent") for r in swarm["agentReports"]]
+    assert len(agent_names) == len(set(agent_names)), "swarm agents must not repeat names"
+    assert swarm.get("consensus", {}).get("revisionPlan"), "consensus must include revision plan"
+    print("SWARM:", swarm["swarmId"][:8], "agents", len(swarm["agentReports"]), "distinct names ok")
 
     gold = req("POST", "/api/gold/run", {
         "projectId": pid,
@@ -219,6 +287,7 @@ try:
     assert gold.get("synthesis"), "gold run must return synthesis"
     assert gold.get("outputId")
     assert gold["synthesis"].get("revisionPlan"), "synthesis needs revision plan"
+    assert gold["synthesis"].get("sourcesUsed"), "synthesis must list sources used"
     print("GOLD SYNTHESIS:", gold["synthesis"]["judgeAssessment"][:60], "output", gold["outputId"][:8])
 
     projects_before = req("GET", "/api/projects", token=token)
@@ -245,6 +314,10 @@ try:
     original = req("GET", f"/api/chapters/{cid}", token=token)
     assert original["content"] == chapter["content"], "original chapter must be preserved"
 
+    chapters_after_improve = req("GET", f"/api/projects/{pid}/chapters", token=token)
+    assert len(chapters_after_improve) == chapter_count_before, "AI improve must not auto-create chapters"
+    print("SAFETY NO AUTO CHAPTER:", len(chapters_after_improve), "units unchanged")
+
     nwp = req("POST", "/api/casper/novel-write-pro", {
         "projectId": pid,
         "mode": "script",
@@ -265,11 +338,16 @@ try:
     gen_bible = req("POST", f"/api/projects/{pid}/bible/generate", token=token, timeout=180)
     print("BIBLE GENERATED premise?", bool(gen_bible.get("premise")))
 
-    gold = req("POST", "/api/gold/run", {"projectId": pid, "source": nwp["text"][:2000]}, token=token, timeout=180)
-    print("GOLD:", gold["outputId"])
-
     outs = req("GET", f"/api/outputs?projectId={pid}", token=token)
-    print("OUTPUTS:", len(outs))
+    out_types = {o.get("type") for o in outs}
+    required_types = {"award-assessment", "agent-swarm", "gold-pass", "pier-boards"}
+    missing = required_types - out_types
+    assert not missing, f"missing output types: {missing}"
+    depth_out = [o for o in outs if o.get("type") == "research-depth-pass"]
+    assert depth_out, "research depth pass must register typed output"
+    gold_out = next(o for o in outs if o.get("type") == "gold-pass")
+    assert gold_out.get("metadata", {}).get("workType"), "gold output should include workType provenance"
+    print("OUTPUTS:", len(outs), "types ok,", "depth-pass registered")
 except urllib.error.HTTPError as e:
     print("AUTH TEST FAILED:", e.read().decode()[:500])
 except Exception as e:
