@@ -76,7 +76,7 @@ try:
     assert project.get("structureType") == "chapters", "project must include structureType"
     print("PROJECT:", pid, "workType:", project.get("workType"))
 
-    novel_text = "Chapter 1\\n\\nThe harbour fog never lifted.\\n\\nChapter 2\\n\\nBy noon the pier was empty."
+    novel_text = "Chapter 1\n\nThe harbour fog never lifted.\n\nChapter 2\n\nBy noon the pier was empty."
     analysis = req("POST", "/api/manuscript/import/analyse", {
         "filename": "novel.txt",
         "rawText": novel_text,
@@ -92,7 +92,7 @@ try:
     assert plain.get("recommendedImportMode") == "whole-manuscript-source", plain.get("recommendedImportMode")
     print("IMPORT PLAIN:", plain["recommendedImportMode"])
 
-    play_text = "ACT I\\n\\nSCENE 1\\n\\nJOHN: The harbour bell rings.\\n\\nSCENE 2\\n\\nMARY: Someone is watching.\\n\\nACT II\\n\\nSCENE 1\\n\\nJOHN: We must leave."
+    play_text = "ACT I\n\nSCENE 1\n\nJOHN: The harbour bell rings.\n\nSCENE 2\n\nMARY: Someone is watching.\n\nACT II\n\nSCENE 1\n\nJOHN: We must leave."
     play = req("POST", "/api/manuscript/import/analyse", {
         "filename": "play.txt",
         "rawText": play_text,
