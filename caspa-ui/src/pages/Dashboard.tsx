@@ -1,13 +1,10 @@
-import { ChangeEvent, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Loader2, Plus, Search, Trash2, UploadCloud } from 'lucide-react';
-import { analyseManuscriptImport, applyManuscriptImport, type ImportAnalysisResult, type RecommendedImportMode } from '../api/manuscriptImport';
-import { createProject, deleteProject, listProjects } from '../api/projects';
-import { ImportReviewPanel } from '../components/ImportReviewPanel';
-import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
-import { workModelFromPrimaryType } from '../lib/casperWorkModel';
-import { PRIMARY_WORK_TYPES, WORK_TYPE_LABELS, type Fictionality, type WorkType } from '../lib/workModel';
+import { BookOpen, Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import { deleteProject, listProjects } from '../api/projects';
+import { NewProjectWizard } from '../components/NewProjectWizard';
+import { WORK_TYPE_LABELS } from '../lib/workModel';
 import { useAppStore } from '../store';
 import { formatRelative } from '../lib/utils';
 import { useToast } from '../components/Toast';
@@ -17,112 +14,13 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setActiveProjectId = useAppStore((s) => s.setActiveProjectId);
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [uploadedName, setUploadedName] = useState<string | null>(null);
-  const [manuscriptText, setManuscriptText] = useState('');
-  const [importAnalysis, setImportAnalysis] = useState<ImportAnalysisResult | null>(null);
-  const [importMode, setImportMode] = useState<RecommendedImportMode>('whole-manuscript-source');
-  const [analysingImport, setAnalysingImport] = useState(false);
-  const [form, setForm] = useState({
-    title: '',
-    workType: 'novel' as WorkType,
-    fictionality: 'fiction' as Fictionality,
-    description: '',
-    targetWordCount: 80000,
-  });
+  const [showWizard, setShowWizard] = useState(false);
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: listProjects,
   });
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const fallbackTitle = uploadedName
-        ? uploadedName.replace(/\.[^.]+$/, '')
-        : 'Untitled Room';
-      const cleanTitle = form.title.trim() || fallbackTitle;
-      const cleanDescription = form.description.trim() || (uploadedName ? `Uploaded manuscript: ${fallbackTitle}` : 'A fresh blank room.');
-      const targetWordCount = Number.isFinite(form.targetWordCount) && form.targetWordCount > 0 ? form.targetWordCount : 80000;
-
-      const project = await createProject({
-        title: cleanTitle,
-        description: cleanDescription,
-        targetWordCount,
-        hasImportedManuscript: Boolean(manuscriptText.trim()),
-        ...workModelFromPrimaryType(form.workType, { hasImportedManuscript: Boolean(manuscriptText.trim()) }),
-        fictionality: form.fictionality,
-      });
-
-      if (manuscriptText.trim()) {
-        await applyManuscriptImport({
-          projectId: project.id,
-          rawText: manuscriptText,
-          filename: uploadedName ?? undefined,
-          importMode,
-          detectedUnits: importAnalysis?.detectedUnits,
-          workType: form.workType,
-        });
-      }
-      return project;
-    },
-    onSuccess: async (project) => {
-      await queryClient.invalidateQueries({ queryKey: ['projects'] });
-      await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
-      setActiveProjectId(project.id);
-      setShowModal(false);
-      setForm({ title: '', workType: 'novel', fictionality: 'fiction', description: '', targetWordCount: 80000 });
-      setUploadedName(null);
-      setManuscriptText('');
-      setImportAnalysis(null);
-      setImportMode('whole-manuscript-source');
-      toast.success(`Created "${project.title}"`);
-      navigate(`/projects/${project.id}`);
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  async function handleManuscriptUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!isSupportedManuscriptFile(file)) {
-      toast.error('Quick upload supports .txt, .md, .rtf and .html. Convert PDF/DOCX to text or paste into Casper.');
-      event.target.value = '';
-      return;
-    }
-
-    const { title, text } = await readManuscriptFile(file);
-    setUploadedName(file.name);
-    setManuscriptText(text);
-    setAnalysingImport(true);
-    try {
-      const analysis = await analyseManuscriptImport({
-        filename: file.name,
-        rawText: text,
-        declaredWorkType: form.workType,
-      });
-      setImportAnalysis(analysis);
-      setImportMode(analysis.recommendedImportMode);
-      setForm((current) => ({
-        ...current,
-        title: current.title.trim() ? current.title : title,
-        workType: analysis.detectedWorkType,
-        description: current.description.trim()
-          ? current.description
-          : `Uploaded manuscript: ${title}`,
-        targetWordCount: Math.max(current.targetWordCount, analysis.totalWordCount),
-      }));
-      toast.success(`Structure analysed · ${analysis.detectedUnits.length} unit(s) detected`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Import analysis failed');
-    } finally {
-      setAnalysingImport(false);
-    }
-    event.target.value = '';
-  }
 
   const deleteMutation = useMutation({
     mutationFn: deleteProject,
@@ -163,7 +61,7 @@ export default function Dashboard() {
               Novels, scripts, shows, source material and half-glorious chaos. Open a room and keep writing.
             </p>
           </div>
-          <button type="button" onClick={() => setShowModal(true)} className="btn-primary self-start md:self-auto">
+          <button type="button" onClick={() => setShowWizard(true)} className="btn-primary self-start md:self-auto">
             <Plus className="h-4 w-4" /> New Project
           </button>
         </div>
@@ -195,7 +93,7 @@ export default function Dashboard() {
               : 'Create the first room. Casper can help with the mess once the door exists.'}
           </p>
           {!search && (
-            <button type="button" onClick={() => setShowModal(true)} className="btn-primary mt-6">
+            <button type="button" onClick={() => setShowWizard(true)} className="btn-primary mt-6">
               <Plus className="h-4 w-4" /> Create Project
             </button>
           )}
@@ -261,123 +159,15 @@ export default function Dashboard() {
         </div>
       )}
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#171a22]/55 p-4 backdrop-blur-sm">
-          <form
-            className="w-full max-w-lg rounded-[2rem] border border-[#eadfca] bg-white p-6 shadow-room"
-            onSubmit={(event) => {
-              event.preventDefault();
-              createMutation.mutate();
-            }}
-          >
-            <h2 className="font-serif text-3xl font-semibold text-[#171a22]">New project</h2>
-            <p className="mt-1 text-sm text-muted">Create the room first. Leave the title blank for an Untitled Room.</p>
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => uploadInputRef.current?.click()}
-                className="btn-secondary"
-              >
-                <UploadCloud className="h-4 w-4" /> Upload manuscript
-              </button>
-              {uploadedName && (
-                <span className="rounded-full bg-[#fff1c9] px-3 py-1 text-xs font-semibold text-[#7c5b12]">
-                  {analysingImport ? 'Analysing…' : `Loaded: ${uploadedName}`}
-                </span>
-              )}
-              <input
-                ref={uploadInputRef}
-                type="file"
-                accept=".txt,.md,.markdown,.rtf,.html,.htm,text/*"
-                className="hidden"
-                onChange={handleManuscriptUpload}
-              />
-            </div>
-            <div className="mt-6 space-y-4">
-              <div>
-                <label className="label">Title</label>
-                <input
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="input"
-                  placeholder="Optional — what is this room about?"
-                />
-              </div>
-              <div>
-                <label className="label">What are you making?</label>
-                <select
-                  value={form.workType}
-                  onChange={(e) => setForm({ ...form, workType: e.target.value as WorkType })}
-                  className="input"
-                >
-                  {PRIMARY_WORK_TYPES.map((workType) => (
-                    <option key={workType} value={workType}>
-                      {WORK_TYPE_LABELS[workType]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">Fiction or nonfiction?</label>
-                <select
-                  value={form.fictionality}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      fictionality: e.target.value as Fictionality,
-                    })
-                  }
-                  className="input"
-                >
-                  <option value="fiction">Fiction</option>
-                  <option value="nonfiction">Nonfiction</option>
-                  <option value="hybrid">Hybrid / based on true events</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Target Word Count</label>
-                <input
-                  type="number"
-                  value={form.targetWordCount}
-                  onChange={(e) => setForm({ ...form, targetWordCount: Number(e.target.value) })}
-                  className="input"
-                />
-              </div>
-              <div>
-                <label className="label">Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="input min-h-[110px] resize-y"
-                  placeholder="The rough shape, the voice, the thing it might become..."
-                />
-              </div>
-            </div>
-            {importAnalysis && manuscriptText.trim() && (
-              <ImportReviewPanel
-                analysis={importAnalysis}
-                filename={uploadedName}
-                selectedWorkType={form.workType}
-                selectedImportMode={importMode}
-                onWorkTypeChange={(workType) => setForm((current) => ({ ...current, workType }))}
-                onImportModeChange={setImportMode}
-              />
-            )}
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="btn-primary"
-              >
-                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create and open'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <NewProjectWizard
+        open={showWizard}
+        onClose={() => setShowWizard(false)}
+        onCreated={(projectId, route) => {
+          setActiveProjectId(projectId);
+          setShowWizard(false);
+          navigate(route);
+        }}
+      />
     </div>
   );
 }
