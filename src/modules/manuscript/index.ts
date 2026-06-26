@@ -4,3 +4,5 @@ export { NotFoundError, ProjectService } from './ProjectService';
 export { PlotService } from './PlotService';
 export { ResearchService } from './ResearchService';
 export { manuscriptRouter } from './manuscript-routes';
+export { importService } from './ImportService';
+export { analyseManuscriptImport } from './ImportAnalyser';

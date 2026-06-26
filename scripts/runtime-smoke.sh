@@ -76,6 +76,22 @@ try:
     assert project.get("structureType") == "chapters", "project must include structureType"
     print("PROJECT:", pid, "workType:", project.get("workType"))
 
+    novel_text = "Chapter 1\\n\\nThe harbour fog never lifted.\\n\\nChapter 2\\n\\nBy noon the pier was empty."
+    analysis = req("POST", "/api/manuscript/import/analyse", {
+        "filename": "novel.txt",
+        "rawText": novel_text,
+        "declaredWorkType": "novel",
+    }, token=token)
+    assert len(analysis.get("detectedUnits", [])) >= 2, "novel with chapters should detect multiple units"
+    print("IMPORT ANALYSE:", len(analysis["detectedUnits"]), "units,", analysis["recommendedImportMode"])
+
+    plain = req("POST", "/api/manuscript/import/analyse", {
+        "filename": "notes.txt",
+        "rawText": "A long unbroken manuscript with no headings at all. " * 80,
+    }, token=token)
+    assert plain.get("recommendedImportMode") == "whole-manuscript-source", plain.get("recommendedImportMode")
+    print("IMPORT PLAIN:", plain["recommendedImportMode"])
+
     bible = req("GET", f"/api/projects/{pid}/bible", token=token)
     print("BIBLE premise empty?", not bool(bible.get("premise")))
 

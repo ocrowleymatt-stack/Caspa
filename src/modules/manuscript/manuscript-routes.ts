@@ -8,12 +8,14 @@ import { NotFoundError, ProjectService } from './ProjectService';
 import { PlotService } from './PlotService';
 import { ResearchService } from './ResearchService';
 import { projectBibleService } from './ProjectBibleService';
+import { importService } from './ImportService';
 import {
   PRIMARY_WORK_TYPES,
   WORK_TYPE_LABELS,
   getDefaultsForWorkType,
   structureLabel,
   workflowStageLabel,
+  type WorkType,
 } from '../../shared/workModel';
 
 const projectService = new ProjectService();
@@ -95,6 +97,79 @@ manuscriptRouter.get(
       structureLabel,
       workflowStageLabel,
     });
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/manuscript/import/analyse',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      filename?: string;
+      rawText?: string;
+      declaredWorkType?: WorkType;
+    };
+
+    if (!body.rawText?.trim()) {
+      sendError(res, new Error('rawText is required'), 400);
+      return;
+    }
+
+    if (body.projectId) {
+      await projectService.getProject(body.projectId, getUser(req));
+    }
+
+    sendSuccess(res, importService.analyse({
+      filename: body.filename,
+      rawText: body.rawText,
+      declaredWorkType: body.declaredWorkType,
+    }));
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/manuscript/import/apply',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      rawText?: string;
+      filename?: string;
+      importMode?: string;
+      detectedUnits?: Array<{
+        type: string;
+        title: string;
+        startIndex: number;
+        endIndex: number;
+        wordCount: number;
+      }>;
+      workType?: WorkType;
+    };
+
+    if (!body.projectId?.trim()) {
+      sendError(res, new Error('projectId is required'), 400);
+      return;
+    }
+    if (!body.rawText?.trim()) {
+      sendError(res, new Error('rawText is required'), 400);
+      return;
+    }
+    if (!body.importMode?.trim()) {
+      sendError(res, new Error('importMode is required'), 400);
+      return;
+    }
+
+    const result = await importService.apply(
+      {
+        projectId: body.projectId,
+        rawText: body.rawText,
+        filename: body.filename,
+        importMode: body.importMode as 'whole-manuscript-source' | 'split-into-units' | 'single-unit' | 'research-notes',
+        detectedUnits: body.detectedUnits as import('./ImportAnalyser').DetectedUnit[] | undefined,
+        workType: body.workType,
+      },
+      getUser(req),
+    );
+    sendSuccess(res, result, 201);
   }),
 );
 

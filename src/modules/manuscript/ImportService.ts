@@ -1,0 +1,147 @@
+import type { UserPublic } from '../auth/types';
+import { ChapterService } from './ChapterService';
+import { NotFoundError, ProjectService } from './ProjectService';
+import { ResearchService } from './ResearchService';
+import {
+  analyseManuscriptImport,
+  sliceUnitText,
+  type DetectedUnit,
+  type ImportAnalysisInput,
+  type ImportAnalysisResult,
+  type RecommendedImportMode,
+} from './ImportAnalyser';
+import type { WorkType } from '../../shared/workModel';
+import { normalizeProjectWorkModel } from './projectWorkModel';
+
+export interface ImportApplyInput {
+  projectId: string;
+  rawText: string;
+  filename?: string;
+  importMode: RecommendedImportMode;
+  detectedUnits?: DetectedUnit[];
+  workType?: WorkType;
+}
+
+export interface ImportApplyResult {
+  projectId: string;
+  importMode: RecommendedImportMode;
+  chaptersCreated: number;
+  researchNotesCreated: number;
+  unitTitles: string[];
+}
+
+export class ImportService {
+  private readonly projectService = new ProjectService();
+  private readonly chapterService = new ChapterService();
+  private readonly researchService = new ResearchService();
+
+  analyse(input: ImportAnalysisInput): ImportAnalysisResult {
+    return analyseManuscriptImport(input);
+  }
+
+  async apply(input: ImportApplyInput, user: UserPublic): Promise<ImportApplyResult> {
+    const project = await this.projectService.getProject(input.projectId, user);
+    const rawText = input.rawText.trim();
+    if (!rawText) {
+      throw new Error('rawText is required to apply an import.');
+    }
+
+    const filename = input.filename?.trim() || 'uploaded manuscript';
+    const units = input.detectedUnits ?? analyseManuscriptImport({
+      rawText,
+      filename: input.filename,
+      declaredWorkType: input.workType ?? project.workType,
+    }).detectedUnits;
+
+    if (input.workType && input.workType !== project.workType) {
+      await this.projectService.updateProject(
+        input.projectId,
+        normalizeProjectWorkModel(project, { workType: input.workType, workflowStage: 'imported' }),
+        user,
+      );
+    } else {
+      await this.projectService.updateProject(
+        input.projectId,
+        { workflowStage: 'imported' },
+        user,
+      );
+    }
+
+    const existing = await this.chapterService.listChapters(input.projectId);
+    let order = existing.length;
+    const unitTitles: string[] = [];
+    let chaptersCreated = 0;
+    let researchNotesCreated = 0;
+
+    switch (input.importMode) {
+      case 'whole-manuscript-source': {
+        const chapter = await this.chapterService.createChapter({
+          projectId: input.projectId,
+          title: `Source manuscript: ${filename}`,
+          content: rawText,
+          order: order + 1,
+          status: 'draft',
+        });
+        unitTitles.push(chapter.title);
+        chaptersCreated = 1;
+        break;
+      }
+      case 'single-unit': {
+        const title = units[0]?.title || `Imported draft — ${filename}`;
+        const chapter = await this.chapterService.createChapter({
+          projectId: input.projectId,
+          title,
+          content: rawText,
+          order: order + 1,
+          status: 'draft',
+        });
+        unitTitles.push(chapter.title);
+        chaptersCreated = 1;
+        break;
+      }
+      case 'split-into-units': {
+        if (units.length === 0) {
+          throw new Error('No structural units detected to split. Choose whole manuscript source instead.');
+        }
+        for (const unit of units) {
+          order += 1;
+          const content = sliceUnitText(rawText, unit);
+          if (!content.trim()) continue;
+          const chapter = await this.chapterService.createChapter({
+            projectId: input.projectId,
+            title: unit.title,
+            content,
+            order,
+            status: 'draft',
+          });
+          unitTitles.push(chapter.title);
+          chaptersCreated += 1;
+        }
+        break;
+      }
+      case 'research-notes': {
+        const note = await this.researchService.createNote({
+          projectId: input.projectId,
+          title: `Imported research — ${filename}`,
+          content: rawText,
+          tags: ['imported', 'research-desk'],
+        });
+        unitTitles.push(note.title);
+        researchNotesCreated = 1;
+        break;
+      }
+      default:
+        throw new Error(`Unknown import mode: ${input.importMode as string}`);
+    }
+
+    return {
+      projectId: input.projectId,
+      importMode: input.importMode,
+      chaptersCreated,
+      researchNotesCreated,
+      unitTitles,
+    };
+  }
+}
+
+export const importService = new ImportService();

@@ -2,8 +2,9 @@ import { ChangeEvent, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Loader2, Plus, Search, Trash2, UploadCloud } from 'lucide-react';
-import { createChapter } from '../api/chapters';
+import { analyseManuscriptImport, applyManuscriptImport, type ImportAnalysisResult, type RecommendedImportMode } from '../api/manuscriptImport';
 import { createProject, deleteProject, listProjects } from '../api/projects';
+import { ImportReviewPanel } from '../components/ImportReviewPanel';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
 import { workModelFromPrimaryType } from '../lib/casperWorkModel';
 import { PRIMARY_WORK_TYPES, WORK_TYPE_LABELS, type Fictionality, type WorkType } from '../lib/workModel';
@@ -21,6 +22,9 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [uploadedName, setUploadedName] = useState<string | null>(null);
   const [manuscriptText, setManuscriptText] = useState('');
+  const [importAnalysis, setImportAnalysis] = useState<ImportAnalysisResult | null>(null);
+  const [importMode, setImportMode] = useState<RecommendedImportMode>('whole-manuscript-source');
+  const [analysingImport, setAnalysingImport] = useState(false);
   const [form, setForm] = useState({
     title: '',
     workType: 'novel' as WorkType,
@@ -53,11 +57,13 @@ export default function Dashboard() {
       });
 
       if (manuscriptText.trim()) {
-        await createChapter(project.id, {
-          title: uploadedName ? `Uploaded manuscript: ${uploadedName}` : 'Imported manuscript',
-          order: 1,
-          content: manuscriptText,
-          status: 'draft',
+        await applyManuscriptImport({
+          projectId: project.id,
+          rawText: manuscriptText,
+          filename: uploadedName ?? undefined,
+          importMode,
+          detectedUnits: importAnalysis?.detectedUnits,
+          workType: form.workType,
         });
       }
       return project;
@@ -70,6 +76,8 @@ export default function Dashboard() {
       setForm({ title: '', workType: 'novel', fictionality: 'fiction', description: '', targetWordCount: 80000 });
       setUploadedName(null);
       setManuscriptText('');
+      setImportAnalysis(null);
+      setImportMode('whole-manuscript-source');
       toast.success(`Created "${project.title}"`);
       navigate(`/projects/${project.id}`);
     },
@@ -89,16 +97,30 @@ export default function Dashboard() {
     const { title, text } = await readManuscriptFile(file);
     setUploadedName(file.name);
     setManuscriptText(text);
-    setForm((current) => ({
-      ...current,
-      title: current.title.trim() ? current.title : title,
-      workType: 'literary-fiction',
-      description: current.description.trim()
-        ? current.description
-        : `Uploaded manuscript: ${title}`,
-      targetWordCount: Math.max(current.targetWordCount, text.split(/\s+/).filter(Boolean).length),
-    }));
-    toast.success('Manuscript loaded — create the room to import it.');
+    setAnalysingImport(true);
+    try {
+      const analysis = await analyseManuscriptImport({
+        filename: file.name,
+        rawText: text,
+        declaredWorkType: form.workType,
+      });
+      setImportAnalysis(analysis);
+      setImportMode(analysis.recommendedImportMode);
+      setForm((current) => ({
+        ...current,
+        title: current.title.trim() ? current.title : title,
+        workType: analysis.detectedWorkType,
+        description: current.description.trim()
+          ? current.description
+          : `Uploaded manuscript: ${title}`,
+        targetWordCount: Math.max(current.targetWordCount, analysis.totalWordCount),
+      }));
+      toast.success(`Structure analysed · ${analysis.detectedUnits.length} unit(s) detected`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import analysis failed');
+    } finally {
+      setAnalysingImport(false);
+    }
     event.target.value = '';
   }
 
@@ -260,7 +282,7 @@ export default function Dashboard() {
               </button>
               {uploadedName && (
                 <span className="rounded-full bg-[#fff1c9] px-3 py-1 text-xs font-semibold text-[#7c5b12]">
-                  Loaded: {uploadedName}
+                  {analysingImport ? 'Analysing…' : `Loaded: ${uploadedName}`}
                 </span>
               )}
               <input
@@ -331,6 +353,16 @@ export default function Dashboard() {
                 />
               </div>
             </div>
+            {importAnalysis && manuscriptText.trim() && (
+              <ImportReviewPanel
+                analysis={importAnalysis}
+                filename={uploadedName}
+                selectedWorkType={form.workType}
+                selectedImportMode={importMode}
+                onWorkTypeChange={(workType) => setForm((current) => ({ ...current, workType }))}
+                onImportModeChange={setImportMode}
+              />
+            )}
             <div className="mt-6 flex justify-end gap-2">
               <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
                 Cancel
