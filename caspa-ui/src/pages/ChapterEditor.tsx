@@ -91,7 +91,7 @@ export default function ChapterEditor() {
       setSaveState('saved');
       queryClient.invalidateQueries({ queryKey: ['chapter', chapterId] });
       queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      toast.success(`Continued writing · saved output ${result.outputId.slice(0, 8)}`);
+      toast.success(`Continued writing · saved output ${result.outputId.slice(0, 8)} (appended to chapter)`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -245,7 +245,7 @@ export default function ChapterEditor() {
         </div>
       </footer>
 
-      <AIPanel chapterId={chapterId} projectId={projectId} selectedText={selectedText} onInsert={handleInsert} />
+      <AIPanel chapterId={chapterId} projectId={projectId} chapterContent={content} selectedText={selectedText} onInsert={handleInsert} />
     </div>
   );
 }

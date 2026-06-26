@@ -321,7 +321,7 @@ export default function CasperFreestyle() {
     startProject();
   }
 
-  const pendingLabel = 'Novel Write Pro is drafting...';
+  const pendingLabel = 'Novel Write Pro is drafting... (plan → draft → critic → rewrite — ~4–5 min on Ollama)';
 
   return (
     <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">

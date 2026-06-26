@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Copy, Loader2, PenLine, Sparkles, Wand2 } from 'lucide-react';
 import { getOutput } from '../api/outputs';
@@ -24,6 +24,7 @@ type OutputRecord = {
 
 export default function OutputDetail() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -61,11 +62,20 @@ export default function OutputDetail() {
     mutationFn: () => runGoldPass(output!.projectId!, text),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      toast.success(`Gold Pass saved · ${result.outputId.slice(0, 8)}`);
+      toast.success(`Gold Pass saved · ${result.outputId.slice(0, 8)} (used this output text)`);
       navigate(`/outputs/${result.outputId}`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  const autoGoldStarted = useRef(false);
+
+  useEffect(() => {
+    if (searchParams.get('gold') !== '1' || autoGoldStarted.current) return;
+    if (!output?.projectId || !text.trim()) return;
+    autoGoldStarted.current = true;
+    goldMutation.mutate();
+  }, [output?.projectId, text, searchParams, goldMutation]);
 
   async function copyText() {
     await navigator.clipboard.writeText(text);
@@ -100,6 +110,9 @@ export default function OutputDetail() {
         <p className="mt-2 text-sm text-muted">
           {output.id.slice(0, 8)} · {new Date(output.createdAt).toLocaleString()}
           {output.metadata?.provider ? ` · ${output.metadata.provider}/${output.metadata.model}` : ''}
+        </p>
+        <p className="mt-3 text-sm leading-6 text-[#5f5648]">
+          Saved output only — your manuscript chapters are not changed unless you copy or apply text yourself.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <button type="button" onClick={copyText} className="btn-secondary text-sm">

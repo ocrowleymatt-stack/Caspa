@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import {
   checkConsistency,
-  continueChapter,
   critiqueChapter,
   generateSummary,
   generateTitles,
@@ -21,6 +20,7 @@ import {
   styleLock,
   suggestPlotPoints,
 } from '../api/assistant';
+import { continueWriting } from '../api/casper';
 import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
 import { useToast } from './Toast';
@@ -29,13 +29,14 @@ import { ProviderStatus } from './ProviderStatus';
 interface AIPanelProps {
   chapterId?: string;
   projectId?: string;
+  chapterContent?: string;
   selectedText?: string;
   onInsert?: (text: string) => void;
 }
 
 const actionClass = 'rounded-2xl border border-[#eadfca] bg-white/75 px-3 py-2 text-xs font-semibold text-[#5f5648] shadow-sm transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#fff8e8] disabled:opacity-50 disabled:hover:translate-y-0';
 
-export function AIPanel({ chapterId, projectId, selectedText, onInsert }: AIPanelProps) {
+export function AIPanel({ chapterId, projectId, chapterContent, selectedText, onInsert }: AIPanelProps) {
   const open = useAppStore((s) => s.aiPanelOpen);
   const setOpen = useAppStore((s) => s.setAiPanelOpen);
   const toast = useToast();
@@ -68,8 +69,17 @@ export function AIPanel({ chapterId, projectId, selectedText, onInsert }: AIPane
 
   const actionMutation = useMutation({
     mutationFn: async (action: string) => {
+      if (action === 'continue' && projectId && chapterContent?.trim()) {
+        const result = await continueWriting({
+          projectId,
+          chapterId,
+          currentText: chapterContent,
+          mode: 'continue',
+        });
+        return result.text;
+      }
       if (action === 'continue' && chapterId) {
-        return continueChapter(chapterId);
+        throw new Error('Save your chapter first, or use the header Continue writing button with live text.');
       }
       if (action === 'rewrite' && selectedText && projectId) {
         return rewriteSelection(selectedText, prompt || 'Improve this text', projectId);

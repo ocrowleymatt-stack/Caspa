@@ -85,7 +85,7 @@ function OutputsContent({ projectId }: { projectId: string }) {
                   <Link to={`/outputs/${output.id}`} className="btn-secondary text-xs">
                     <PenLine className="h-3.5 w-3.5" /> Continue
                   </Link>
-                  <Link to={`/outputs/${output.id}`} className="btn-secondary text-xs">
+                  <Link to={`/outputs/${output.id}?gold=1`} className="btn-secondary text-xs">
                     <Sparkles className="h-3.5 w-3.5" /> Gold
                   </Link>
                 </div>
