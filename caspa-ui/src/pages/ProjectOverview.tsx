@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -33,32 +33,21 @@ import {
 import { getProject, getProjectStats } from '../api/projects';
 import {
   createChapter,
+  getChapter,
   listChapters,
   reorderChapters,
 } from '../api/chapters';
 import { listOutputs } from '../api/outputs';
 import { useAppStore } from '../store';
 import { formatRelative } from '../lib/utils';
+import {
+  casperImproveUrl,
+  isSourceChapter,
+  pickContinueChapter,
+  pickImprovementSourceChapter,
+} from '../lib/manuscriptWorkflow';
+import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 import { useToast } from '../components/Toast';
-
-function isSourceChapter(title: string): boolean {
-  const lower = title.toLowerCase();
-  return lower.includes('source manuscript')
-    || lower.includes('uploaded manuscript')
-    || lower.startsWith('source white page')
-    || lower.startsWith('imported manuscript');
-}
-
-function pickContinueChapter(
-  chapters: Array<{ id: string; title: string; order: number; status: string; updatedAt: string }>,
-) {
-  if (chapters.length === 0) return null;
-  const sorted = [...chapters].sort((a, b) => b.order - a.order);
-  const working = sorted.find((chapter) => !isSourceChapter(chapter.title) && chapter.status !== 'outline');
-  if (working) return working;
-  const latestDraft = sorted.find((chapter) => !isSourceChapter(chapter.title));
-  return latestDraft ?? sorted[0];
-}
 
 function SortableChapter({
   chapter,
@@ -185,6 +174,21 @@ export default function ProjectOverview() {
   );
 
   const continueChapter = useMemo(() => pickContinueChapter(chapters), [chapters]);
+  const defaultImproveChapter = useMemo(() => pickImprovementSourceChapter(chapters), [chapters]);
+  const [improveChapterId, setImproveChapterId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (defaultImproveChapter) {
+      setImproveChapterId((current) => current ?? defaultImproveChapter.id);
+    }
+  }, [defaultImproveChapter?.id]);
+
+  const { data: improveChapterDetail } = useQuery({
+    queryKey: ['chapter', improveChapterId],
+    queryFn: () => getChapter(improveChapterId!),
+    enabled: !!improveChapterId,
+  });
+
   const sourceChapter = useMemo(
     () => chapters.find((chapter) => isSourceChapter(chapter.title)),
     [chapters],
@@ -234,9 +238,14 @@ export default function ProjectOverview() {
                   <PenLine className="h-4 w-4" /> Continue Writing
                 </Link>
               )}
-              {(projectMode === 'blank' || projectMode === 'manuscript') && (
+              {(projectMode === 'blank' || projectMode === 'manuscript') && projectMode === 'blank' && (
                 <Link to="/casper" className="btn-primary">
-                  <Sparkles className="h-4 w-4" /> {projectMode === 'manuscript' ? 'Improve Manuscript' : 'Auto-write'}
+                  <Sparkles className="h-4 w-4" /> Auto-write
+                </Link>
+              )}
+              {projectMode === 'manuscript' && improveChapterId && improveChapterDetail && (
+                <Link to={casperImproveUrl(id!, improveChapterId)} className="btn-secondary">
+                  <Sparkles className="h-4 w-4" /> Open in Casper
                 </Link>
               )}
               {projectMode === 'manuscript' && sourceChapter && (
@@ -290,6 +299,40 @@ export default function ProjectOverview() {
           </div>
         </div>
       </section>
+
+      {(projectMode === 'manuscript' || (chapters.length > 0 && defaultImproveChapter)) && (
+        <section className="space-y-4">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Manuscript improvement</div>
+            <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Improve this manuscript</h2>
+          </div>
+          {chapters.length > 1 && (
+            <label className="block max-w-md text-sm text-[#5f5648]">
+              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Source chapter</span>
+              <select
+                value={improveChapterId ?? ''}
+                onChange={(event) => setImproveChapterId(event.target.value)}
+                className="w-full rounded-2xl border border-[#eadfca] bg-white px-4 py-3 text-sm text-[#171a22] outline-none focus:border-[#caa044]"
+              >
+                {chapters.map((chapter) => (
+                  <option key={chapter.id} value={chapter.id}>
+                    {chapter.title} ({chapter.wordCount.toLocaleString()} words)
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {improveChapterDetail && project && (
+            <ImproveManuscriptPanel
+              projectId={id!}
+              projectTitle={project.title}
+              sourceChapterId={improveChapterDetail.id}
+              sourceChapterTitle={improveChapterDetail.title}
+              sourceText={improveChapterDetail.content}
+            />
+          )}
+        </section>
+      )}
 
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-3">

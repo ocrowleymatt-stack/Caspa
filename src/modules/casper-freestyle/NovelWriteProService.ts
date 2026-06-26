@@ -16,6 +16,9 @@ import {
 
 export interface NovelWriteProRequest {
   projectId?: string;
+  chapterId?: string;
+  sourceChapterTitle?: string;
+  improveExisting?: boolean;
   mode?: NovelWriteProMode;
   output?: string;
   spark?: string;
@@ -41,12 +44,14 @@ export interface NovelWriteProResult {
   outputId: string;
   projectId?: string;
   title: string;
-  kind: 'novel-write-pro';
+  kind: 'novel-write-pro' | 'manuscript-improvement';
   text: string;
   provider: string;
   model: string;
   createdAt: string;
   structured: NovelWriteProStructuredArtifacts;
+  sourceChapterId?: string;
+  sourceChapterTitle?: string;
 }
 
 const modeTitles: Record<NovelWriteProMode, string> = {
@@ -99,6 +104,15 @@ export class NovelWriteProService {
     const premise = body.spark ?? '';
     const tone = body.tone ?? 'Clear, vivid, witty, production-minded.';
     const sourceText = body.source ?? '';
+    const improveExisting = Boolean(body.improveExisting && body.projectId?.trim());
+
+    if (improveExisting && !sourceText.trim()) {
+      throw new Error('Source manuscript text is required when improving an existing project.');
+    }
+
+    if (improveExisting && !body.projectId?.trim()) {
+      throw new Error('projectId is required when improveExisting is true.');
+    }
 
     const promptInput = {
       mode,
@@ -160,7 +174,12 @@ export class NovelWriteProService {
 
     const model = rewriteResponse.model || draftResponse.model || planResponse.model;
     const provider = inferProvider(model);
-    const title = draftTitle(mode, output);
+    const isManuscriptImprovement = improveExisting;
+    const title = isManuscriptImprovement
+      ? `Manuscript improvement — ${body.sourceChapterTitle || 'draft'}`
+      : draftTitle(mode, output);
+    const outputType = isManuscriptImprovement ? 'manuscript-improvement' : 'novel-write-pro';
+    const resultKind = isManuscriptImprovement ? 'manuscript-improvement' : 'novel-write-pro';
 
     const structured: NovelWriteProStructuredArtifacts = {
       projectBible: plan,
@@ -175,11 +194,11 @@ export class NovelWriteProService {
 
     const record = await outputRegistry.register({
       projectId: body.projectId,
-      type: 'novel-write-pro',
+      type: outputType,
       title,
       path: '',
       metadata: {
-        kind: 'novel-write-pro',
+        kind: resultKind,
         text: improvedRewrite,
         firstDraft,
         criticReport,
@@ -190,6 +209,10 @@ export class NovelWriteProService {
         output,
         spark: premise,
         tone,
+        sourceChapterId: body.chapterId,
+        sourceChapterTitle: body.sourceChapterTitle,
+        improvementMode: isManuscriptImprovement ? 'polish' : mode,
+        improveExisting: isManuscriptImprovement,
       },
     });
 
@@ -216,12 +239,14 @@ export class NovelWriteProService {
       outputId: record.id,
       projectId: body.projectId,
       title,
-      kind: 'novel-write-pro',
+      kind: resultKind,
       text: improvedRewrite,
       provider,
       model,
       createdAt: record.createdAt,
       structured,
+      sourceChapterId: body.chapterId,
+      sourceChapterTitle: body.sourceChapterTitle,
     };
   }
 }

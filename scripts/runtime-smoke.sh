@@ -73,6 +73,39 @@ try:
     bible = req("GET", f"/api/projects/{pid}/bible", token=token)
     print("BIBLE premise empty?", not bool(bible.get("premise")))
 
+    chapter = req("POST", f"/api/projects/{pid}/chapters", {
+        "title": "Source manuscript: smoke.txt",
+        "order": 1,
+        "content": "The old lighthouse keeper heard footsteps on the stairs again. Nobody lived upstairs anymore.",
+        "status": "draft",
+    }, token=token)
+    cid = chapter["id"]
+    print("CHAPTER:", cid)
+
+    projects_before = req("GET", "/api/projects", token=token)
+    count_before = len(projects_before)
+
+    improve = req("POST", "/api/casper/novel-write-pro", {
+        "projectId": pid,
+        "chapterId": cid,
+        "sourceChapterTitle": chapter["title"],
+        "improveExisting": True,
+        "mode": "polish",
+        "output": "Award Pass Rewrite",
+        "spark": "Improve smoke test manuscript",
+        "source": chapter["content"],
+        "tone": "Clear and vivid",
+    }, token=token, timeout=300)
+    print("IMPROVE:", improve["outputId"], "kind:", improve.get("kind"))
+    assert improve.get("projectId") == pid, "improve must stay on same project"
+    assert improve.get("kind") == "manuscript-improvement", "expected manuscript-improvement kind"
+
+    projects_after = req("GET", "/api/projects", token=token)
+    assert len(projects_after) == count_before, "improveExisting must not create a duplicate project"
+
+    original = req("GET", f"/api/chapters/{cid}", token=token)
+    assert original["content"] == chapter["content"], "original chapter must be preserved"
+
     nwp = req("POST", "/api/casper/novel-write-pro", {
         "projectId": pid,
         "mode": "script",

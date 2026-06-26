@@ -13,6 +13,9 @@ casperRouter.post(
   asyncHandler(async (req, res) => {
     const body = req.body as {
       projectId?: string;
+      chapterId?: string;
+      sourceChapterTitle?: string;
+      improveExisting?: boolean;
       mode?: NovelWriteProMode;
       output?: string;
       spark?: string;
@@ -22,6 +25,11 @@ casperRouter.post(
       modeTitle?: string;
       genre?: string;
     };
+
+    if (body.improveExisting && !body.projectId?.trim()) {
+      sendError(res, new Error('projectId is required when improveExisting is true'), 400);
+      return;
+    }
 
     sendSuccess(res, await novelWriteProService.generate(body), 201);
   }),

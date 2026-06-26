@@ -8,6 +8,7 @@ import { getProject } from '../api/projects';
 import { useAppStore } from '../store';
 import { countWords } from '../lib/utils';
 import { useToast } from '../components/Toast';
+import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 import { AIPanel } from '../components/AIPanel';
 
 type SaveState = 'saved' | 'saving' | 'unsaved';
@@ -20,6 +21,7 @@ export default function ChapterEditor() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [showImprove, setShowImprove] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedText, setSelectedText] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -180,6 +182,14 @@ export default function ChapterEditor() {
             {continueMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PenLine className="h-3.5 w-3.5" />}
             Continue writing
           </button>
+          <button
+            type="button"
+            onClick={() => setShowImprove((value) => !value)}
+            disabled={!content.trim()}
+            className="btn-secondary text-xs"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Improve this manuscript
+          </button>
           <button type="button" onClick={() => setShowHistory(!showHistory)} className="btn-secondary text-xs">
             <Clock className="h-3.5 w-3.5" /> History
           </button>
@@ -191,6 +201,18 @@ export default function ChapterEditor() {
 
       <div className="flex flex-1 overflow-hidden">
         <main className="custom-scrollbar flex-1 overflow-y-auto px-4 py-7 md:px-8 md:py-10">
+          {showImprove && project && content.trim() && (
+            <div className="mx-auto mb-6 max-w-4xl">
+              <ImproveManuscriptPanel
+                compact
+                projectId={projectId!}
+                projectTitle={project.title}
+                sourceChapterId={chapterId!}
+                sourceChapterTitle={title}
+                sourceText={content}
+              />
+            </div>
+          )}
           <div className="mx-auto max-w-4xl rounded-[2rem] border border-[#eadfca] bg-[#fffdf8] p-6 shadow-room md:p-10">
             <textarea
               value={content}

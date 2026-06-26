@@ -11,6 +11,7 @@ export type OutputType =
   | 'gold-pass'
   | 'continue-writing'
   | 'project-bible'
+  | 'manuscript-improvement'
   | 'other';
 
 export interface OutputRecord {

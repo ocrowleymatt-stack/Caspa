@@ -1,6 +1,6 @@
-import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   BookOpen,
@@ -18,15 +18,17 @@ import {
   UploadCloud,
   Wand2,
 } from 'lucide-react';
-import { createProject } from '../api/projects';
-import { createChapter } from '../api/chapters';
+import { createProject, getProject } from '../api/projects';
+import { createChapter, getChapter, listChapters } from '../api/chapters';
 import { runNovelWritePro } from '../api/casper';
 import {
   buildNovelWriteProOpenWebUIPrompt,
 } from '../lib/novelWritePro';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
+import { pickImprovementSourceChapter } from '../lib/manuscriptWorkflow';
 import { useAppStore } from '../store';
 import { useToast } from '../components/Toast';
+import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 
 type CasperMode = 'novel' | 'script' | 'musical' | 'adaptation' | 'polish' | 'chaos';
 
@@ -158,9 +160,53 @@ async function playBrowserMusicDemo() {
 export default function CasperFreestyle() {
   const toast = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const setActiveProjectId = useAppStore((s) => s.setActiveProjectId);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const queryProjectId = searchParams.get('projectId')?.trim() ?? '';
+  const queryChapterId = searchParams.get('chapterId')?.trim() ?? '';
+  const improveMode = searchParams.get('improve') === '1';
+  const [showNewProjectFlow, setShowNewProjectFlow] = useState(!queryProjectId);
+  const [selectedChapterId, setSelectedChapterId] = useState(queryChapterId);
+
+  const { data: existingProject } = useQuery({
+    queryKey: ['project', queryProjectId],
+    queryFn: () => getProject(queryProjectId),
+    enabled: !!queryProjectId,
+  });
+
+  const { data: existingChapters = [] } = useQuery({
+    queryKey: ['chapters', queryProjectId],
+    queryFn: () => listChapters(queryProjectId),
+    enabled: !!queryProjectId,
+  });
+
+  useEffect(() => {
+    if (queryProjectId) {
+      setActiveProjectId(queryProjectId);
+      setShowNewProjectFlow(false);
+    }
+  }, [queryProjectId, setActiveProjectId]);
+
+  useEffect(() => {
+    if (queryChapterId) {
+      setSelectedChapterId(queryChapterId);
+      return;
+    }
+    const picked = pickImprovementSourceChapter(existingChapters);
+    if (picked) setSelectedChapterId(picked.id);
+  }, [queryChapterId, existingChapters]);
+
+  const { data: sourceChapter } = useQuery({
+    queryKey: ['chapter', selectedChapterId],
+    queryFn: () => getChapter(selectedChapterId),
+    enabled: !!selectedChapterId,
+  });
+
+  const inExistingProject = Boolean(queryProjectId && existingProject && !showNewProjectFlow);
+  const hasManuscriptText = Boolean(sourceChapter?.content?.trim());
 
   const [mode, setMode] = useState<CasperMode>('script');
   const [premise, setPremise] = useState('');
@@ -322,6 +368,70 @@ export default function CasperFreestyle() {
   }
 
   const pendingLabel = 'Novel Write Pro is drafting... (plan → draft → critic → rewrite — ~4–5 min on Ollama)';
+
+  if (inExistingProject && existingProject) {
+    return (
+      <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">
+        <div className="mx-auto max-w-4xl space-y-8">
+          <header className="space-y-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
+              <Wand2 className="h-4 w-4" /> Casper · Improve existing manuscript
+            </div>
+            <h1 className="font-serif text-5xl font-semibold leading-[0.95] tracking-[-0.045em] text-[#171a22] md:text-6xl">
+              Working inside: {existingProject.title}
+            </h1>
+            <p className="max-w-2xl text-lg leading-8 text-[#68604f]">
+              {hasManuscriptText
+                ? 'Manuscript text detected. CASPA will improve this chapter and save the revision as a new output — your original stays untouched.'
+                : 'No manuscript text found in the selected chapter. Upload or paste text in the chapter editor first.'}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link to={`/projects/${queryProjectId}`} className="btn-secondary">
+                Back to project
+              </Link>
+              <button type="button" onClick={() => setShowNewProjectFlow(true)} className="btn-secondary">
+                Start new project instead
+              </button>
+            </div>
+          </header>
+
+          {existingChapters.length > 1 && (
+            <label className="block max-w-md text-sm text-[#5f5648]">
+              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Source chapter</span>
+              <select
+                value={selectedChapterId}
+                onChange={(event) => setSelectedChapterId(event.target.value)}
+                className="w-full rounded-2xl border border-[#eadfca] bg-white px-4 py-3 text-sm text-[#171a22] outline-none focus:border-[#caa044]"
+              >
+                {existingChapters.map((chapter) => (
+                  <option key={chapter.id} value={chapter.id}>
+                    {chapter.title} ({chapter.wordCount.toLocaleString()} words)
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {sourceChapter && (
+            <ImproveManuscriptPanel
+              projectId={queryProjectId}
+              projectTitle={existingProject.title}
+              sourceChapterId={sourceChapter.id}
+              sourceChapterTitle={sourceChapter.title}
+              sourceText={sourceChapter.content}
+              tone={tone}
+            />
+          )}
+
+          {improveMode && (
+            <p className="text-sm text-[#766b58]">
+              Opened from project overview · mode: polish · source: existing manuscript/chapter
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">

@@ -35,11 +35,13 @@ export interface NovelWriteProResult {
   outputId: string;
   projectId?: string;
   title: string;
-  kind: 'novel-write-pro';
+  kind: 'novel-write-pro' | 'manuscript-improvement';
   text: string;
   provider: string;
   model: string;
   createdAt: string;
+  sourceChapterId?: string;
+  sourceChapterTitle?: string;
   structured?: {
     premise: string;
     formatDecision: string;
@@ -53,6 +55,9 @@ export interface NovelWriteProResult {
 
 export function runNovelWritePro(body: {
   projectId?: string;
+  chapterId?: string;
+  sourceChapterTitle?: string;
+  improveExisting?: boolean;
   mode?: string;
   output?: string;
   spark?: string;
