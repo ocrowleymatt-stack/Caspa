@@ -197,6 +197,20 @@ try:
     assert assessment.get("outputId")
     print("AWARDS ASSESS:", assessment["overallReadiness"], "output", assessment["outputId"][:8])
 
+    agent_list = req("GET", "/api/agents", token=token)
+    assert len(agent_list) >= 10, "agent catalog should list swarm agents"
+    print("AGENTS:", len(agent_list))
+
+    swarm = req("POST", "/api/agents/swarm", {
+        "projectId": pid,
+        "agentIds": [agent_list[0]["id"], agent_list[1]["id"], "anti-filler-inspector"],
+        "mode": "critique",
+    }, token=token, timeout=300)
+    assert swarm.get("consensus"), "swarm must return consensus"
+    assert len(swarm.get("agentReports", [])) >= 2
+    assert swarm.get("outputId")
+    print("SWARM:", swarm["swarmId"][:8], "agents", len(swarm["agentReports"]))
+
     projects_before = req("GET", "/api/projects", token=token)
     count_before = len(projects_before)
 

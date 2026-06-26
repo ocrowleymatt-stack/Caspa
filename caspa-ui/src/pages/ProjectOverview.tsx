@@ -23,6 +23,7 @@ import {
   GripVertical,
   Loader2,
   Anchor,
+  Bot,
   BookMarked,
   BookOpen,
   PenLine,
@@ -307,6 +308,9 @@ export default function ProjectOverview() {
               </Link>
               <Link to="/awards" className="btn-secondary">
                 <Trophy className="h-4 w-4" /> Awards Shelf
+              </Link>
+              <Link to="/agent-swarm" className="btn-secondary">
+                <Bot className="h-4 w-4" /> Agent Swarm
               </Link>
               <Link to="/outputs" className="btn-secondary">
                 Open Outputs

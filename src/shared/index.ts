@@ -4,6 +4,7 @@ export * from './structureUnit';
 export * from './pierBuilder';
 export * from './researchDesk';
 export * from './awardsShelf';
+export * from './agentSwarm';
 export * from './config';
 export * from './eventBus';
 export * from './db';

@@ -38,6 +38,7 @@ import Producer from './pages/Producer';
 import Localise from './pages/Localise';
 import Visuals from './pages/Visuals';
 import Awards from './pages/Awards';
+import AgentSwarm from './pages/AgentSwarm';
 import GoldPipeline from './pages/GoldPipeline';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -86,6 +87,7 @@ export default function App() {
               <Route path="localise" element={<Localise />} />
               <Route path="visuals" element={<Visuals />} />
               <Route path="awards" element={<Awards />} />
+              <Route path="agent-swarm" element={<AgentSwarm />} />
               <Route path="gold" element={<GoldPipeline />} />
               <Route path="settings" element={<Settings />} />
               <Route element={<RequireAdmin />}>

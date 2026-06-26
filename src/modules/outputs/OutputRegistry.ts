@@ -15,6 +15,7 @@ export type OutputType =
   | 'pier-boards'
   | 'pier-stretch'
   | 'award-assessment'
+  | 'agent-swarm'
   | 'other';
 
 export interface OutputRecord {

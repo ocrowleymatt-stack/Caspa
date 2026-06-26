@@ -36,6 +36,7 @@ import { documentRenderRouter } from './src/modules/document-renderer/index';
 import { publishConfidenceRouter } from './src/modules/publish-confidence/index';
 import { outputsRouter } from './src/modules/outputs/index';
 import { showCatalogueRouter } from './src/modules/show-catalogue/index';
+import { agentSwarmRouter } from './src/modules/agent-swarm/index';
 import { runMigrations } from './src/services/db';
 import { ProjectService } from './src/modules/manuscript/ProjectService';
 import { ChapterService } from './src/modules/manuscript/ChapterService';
@@ -83,6 +84,7 @@ const moduleRegistry = [
   { name: 'research', mount: '/api/research', status: 'mounted' },
   { name: 'verification', mount: '/api/verification', status: 'mounted' },
   { name: 'outputs', mount: '/api/outputs', status: 'mounted' },
+  { name: 'agent-swarm', mount: '/api/agents', status: 'mounted' },
   { name: 'show-catalogue', mount: '/api/show-catalogue', status: 'mounted' },
 ];
 
@@ -186,6 +188,7 @@ app.use(musicPromptRouter);
 app.use(documentRenderRouter);
 app.use(publishConfidenceRouter);
 app.use(outputsRouter);
+app.use(agentSwarmRouter);
 app.use(showCatalogueRouter);
 
 app.use(
