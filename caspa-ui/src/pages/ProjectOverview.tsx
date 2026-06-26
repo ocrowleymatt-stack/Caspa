@@ -156,23 +156,6 @@ export default function ProjectOverview() {
     reorderMutation.mutate(reordered.map((c) => c.id));
   };
 
-  if (projectLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-[#98711d]" />
-      </div>
-    );
-  }
-
-  if (!project) {
-    return <p className="py-20 text-center text-muted">Project not found</p>;
-  }
-
-  const progress = Math.min(
-    100,
-    Math.round((project.currentWordCount / (project.targetWordCount || 1)) * 100),
-  );
-
   const continueChapter = useMemo(() => pickContinueChapter(chapters), [chapters]);
   const defaultImproveChapter = useMemo(() => pickImprovementSourceChapter(chapters), [chapters]);
   const [improveChapterId, setImproveChapterId] = useState<string | null>(null);
@@ -195,12 +178,30 @@ export default function ProjectOverview() {
   );
 
   const projectMode = useMemo(() => {
+    if (!project) return 'blank' as const;
     if (outputs.length > 0 && chapters.length === 0) return 'output-led';
     if (project.genre === 'Manuscript Polish' || sourceChapter) return 'manuscript';
     if (chapters.length === 0) return 'blank';
     if (outputs.length > 0) return 'output-led';
     return 'writing';
-  }, [chapters.length, outputs.length, project.genre, sourceChapter]);
+  }, [chapters.length, outputs.length, project, sourceChapter]);
+
+  if (projectLoading) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-[#98711d]" />
+      </div>
+    );
+  }
+
+  if (!project) {
+    return <p className="py-20 text-center text-muted">Project not found</p>;
+  }
+
+  const progress = Math.min(
+    100,
+    Math.round((project.currentWordCount / (project.targetWordCount || 1)) * 100),
+  );
 
   const modeCopy = {
     blank: 'Blank room — no manuscript yet. Start from Casper or upload a file.',
