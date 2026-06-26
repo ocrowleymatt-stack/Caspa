@@ -349,7 +349,8 @@ try:
     assert gold_out.get("metadata", {}).get("workType"), "gold output should include workType provenance"
     print("OUTPUTS:", len(outs), "types ok,", "depth-pass registered")
 except urllib.error.HTTPError as e:
-    print("AUTH TEST FAILED:", e.read().decode()[:500])
+    body = e.read().decode(errors="replace")[:500]
+    print("AUTH TEST FAILED:", e.code, body or "(empty body)")
 except Exception as e:
     print("AUTH TEST ERROR:", e)
 PY
