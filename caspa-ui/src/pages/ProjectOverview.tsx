@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -25,8 +25,10 @@ import {
   BookOpen,
   PenLine,
   Plus,
+  Sparkles,
   Theater,
   Upload,
+  Wand2,
 } from 'lucide-react';
 import { getProject, getProjectStats } from '../api/projects';
 import {
@@ -34,9 +36,29 @@ import {
   listChapters,
   reorderChapters,
 } from '../api/chapters';
+import { listOutputs } from '../api/outputs';
 import { useAppStore } from '../store';
 import { formatRelative } from '../lib/utils';
 import { useToast } from '../components/Toast';
+
+function isSourceChapter(title: string): boolean {
+  const lower = title.toLowerCase();
+  return lower.includes('source manuscript')
+    || lower.includes('uploaded manuscript')
+    || lower.startsWith('source white page')
+    || lower.startsWith('imported manuscript');
+}
+
+function pickContinueChapter(
+  chapters: Array<{ id: string; title: string; order: number; status: string; updatedAt: string }>,
+) {
+  if (chapters.length === 0) return null;
+  const sorted = [...chapters].sort((a, b) => b.order - a.order);
+  const working = sorted.find((chapter) => !isSourceChapter(chapter.title) && chapter.status !== 'outline');
+  if (working) return working;
+  const latestDraft = sorted.find((chapter) => !isSourceChapter(chapter.title));
+  return latestDraft ?? sorted[0];
+}
 
 function SortableChapter({
   chapter,
@@ -101,6 +123,12 @@ export default function ProjectOverview() {
     enabled: !!id,
   });
 
+  const { data: outputs = [] } = useQuery({
+    queryKey: ['outputs', id],
+    queryFn: () => listOutputs(id!),
+    enabled: !!id,
+  });
+
   const createMutation = useMutation({
     mutationFn: () =>
       createChapter(id!, {
@@ -156,7 +184,26 @@ export default function ProjectOverview() {
     Math.round((project.currentWordCount / (project.targetWordCount || 1)) * 100),
   );
 
-  const firstDraftChapter = chapters.find((c) => c.status !== 'final') ?? chapters[0];
+  const continueChapter = useMemo(() => pickContinueChapter(chapters), [chapters]);
+  const sourceChapter = useMemo(
+    () => chapters.find((chapter) => isSourceChapter(chapter.title)),
+    [chapters],
+  );
+
+  const projectMode = useMemo(() => {
+    if (outputs.length > 0 && chapters.length === 0) return 'output-led';
+    if (project.genre === 'Manuscript Polish' || sourceChapter) return 'manuscript';
+    if (chapters.length === 0) return 'blank';
+    if (outputs.length > 0) return 'output-led';
+    return 'writing';
+  }, [chapters.length, outputs.length, project.genre, sourceChapter]);
+
+  const modeCopy = {
+    blank: 'Blank room — no manuscript yet. Start from Casper or upload a file.',
+    manuscript: 'Manuscript project — your original upload is preserved as a separate chapter. Revisions save as new chapters and outputs.',
+    writing: 'Writing room — continue the latest draft or run Novel Write Pro for a new pass.',
+    'output-led': 'Output-led — saved AI drafts live in Outputs. Continue from there or open the latest chapter.',
+  } as const;
 
   return (
     <div className="mx-auto max-w-6xl space-y-7">
@@ -170,12 +217,36 @@ export default function ProjectOverview() {
             <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
               {project.description || 'No description yet. This room is waiting for its first proper sentence.'}
             </p>
+            <div className="mt-5 rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-4 text-sm leading-7 text-[#5f5648]">
+              <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">
+                Room mode · {projectMode.replace('-', ' ')}
+              </div>
+              <p className="mt-2">{modeCopy[projectMode]}</p>
+              {sourceChapter && (
+                <p className="mt-2 text-xs text-muted">
+                  Original preserved in “{sourceChapter.title}”. AI revisions are saved separately — nothing overwrites your upload silently.
+                </p>
+              )}
+            </div>
             <div className="mt-7 flex flex-wrap gap-3">
-              {firstDraftChapter && (
-                <Link to={`/projects/${id}/chapters/${firstDraftChapter.id}`} className="btn-primary">
+              {continueChapter && (
+                <Link to={`/projects/${id}/chapters/${continueChapter.id}`} className="btn-primary">
                   <PenLine className="h-4 w-4" /> Continue Writing
                 </Link>
               )}
+              {(projectMode === 'blank' || projectMode === 'manuscript') && (
+                <Link to="/casper" className="btn-primary">
+                  <Sparkles className="h-4 w-4" /> {projectMode === 'manuscript' ? 'Improve Manuscript' : 'Auto-write'}
+                </Link>
+              )}
+              {projectMode === 'manuscript' && sourceChapter && (
+                <Link to={`/projects/${id}/chapters/${sourceChapter.id}`} className="btn-secondary">
+                  <FileText className="h-4 w-4" /> Open Original
+                </Link>
+              )}
+              <Link to="/gold" className="btn-secondary">
+                <Wand2 className="h-4 w-4" /> Run Gold Pass
+              </Link>
               <button type="button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending} className="btn-secondary">
                 {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 New Chapter

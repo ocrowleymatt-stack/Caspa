@@ -99,7 +99,11 @@ export default function Dashboard() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteProject,
-    onSuccess: () => {
+    onSuccess: (_result, deletedId) => {
+      const activeId = useAppStore.getState().activeProjectId;
+      if (activeId === deletedId) {
+        setActiveProjectId(null);
+      }
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success('Project deleted');
     },
