@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { listChapters } from '../../api/chapters';
 import { listProjects } from '../../api/projects';
-import { getGoldReport, runGoldPipeline, type GoldRunOptions } from '../../api/gold';
+import { getGoldReport, runGoldPass, runGoldPipeline, type GoldRunOptions } from '../../api/gold';
 import {
   executeGoldPipelineStream,
   isGoldPipelineStreamEvent,
@@ -234,6 +234,35 @@ export default function GoldPipelinePanel() {
   ) => {
     const report = await runGoldPipeline(projectId, options);
     finishPipeline(report, scopeLabel, options);
+  };
+
+  const runQuickGoldPass = async () => {
+    if (!activeProjectId) {
+      toast.error('Select active project in sidebar');
+      return;
+    }
+    const scopeChapter = chapters.find((ch) => selectedChapters.includes(ch.id));
+    const source = scopeChapter?.content ?? chapters.map((ch) => ch.content).join('\n\n').slice(0, 12000);
+    setIsProcessing(true);
+    setPipelineError(null);
+    try {
+      const result = await runGoldPass(activeProjectId, source);
+      setPipelineOutput({
+        finalText: result.improved,
+        changeLog: result.critique,
+        beforeAfter: result.improved,
+        riskNotes: `Quality score: ${result.report.overallScore} · ${result.report.overallStatus}`,
+        exportPack: result.improved,
+        exportAvailable: false,
+        exportReason: `Quick pass saved to Outputs hub (${result.outputId.slice(0, 8)})`,
+      });
+      setRunId(result.jobId);
+      toast.success(`Gold Pass saved · output ${result.outputId.slice(0, 8)}`);
+    } catch (err) {
+      failPipeline(err instanceof Error ? err.message : 'Gold Pass failed');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const executeGoldPipeline = async () => {
@@ -564,6 +593,14 @@ export default function GoldPipelinePanel() {
               ) : (
                 'Execute Gold Pipeline Pass'
               )}
+            </button>
+            <button
+              type="button"
+              onClick={runQuickGoldPass}
+              disabled={isProcessing || !activeProjectId}
+              className="mt-2 w-full py-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              Run Gold Pass (save output)
             </button>
           </div>
         </div>

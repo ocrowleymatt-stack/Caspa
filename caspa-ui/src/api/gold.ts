@@ -23,3 +23,19 @@ export async function runGoldPipeline(projectId: string, options?: GoldRunOption
 export async function getGoldReport(projectId: string) {
   return apiCall<GoldReport | null>(`/api/gold/report/${projectId}`);
 }
+
+export interface GoldPassResult {
+  jobId: string;
+  status: string;
+  outputId: string;
+  improved: string;
+  critique: string;
+  report: GoldReport;
+}
+
+export async function runGoldPass(projectId: string, source?: string) {
+  return apiCall<GoldPassResult>('/api/gold/run', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, source }),
+  });
+}
