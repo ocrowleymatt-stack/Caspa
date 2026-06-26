@@ -20,6 +20,7 @@ import ProjectOverview from './pages/ProjectOverview';
 import ChapterEditor from './pages/ChapterEditor';
 import Characters from './pages/Characters';
 import PlotBoard from './pages/PlotBoard';
+import PierBuilder from './pages/PierBuilder';
 import Research from './pages/Research';
 import ShowFactory from './pages/ShowFactory';
 import MusicLab from './pages/MusicLab';
@@ -59,6 +60,7 @@ export default function App() {
               <Route path="projects/:id" element={<ProjectOverview />} />
               <Route path="projects/:id/characters" element={<Characters />} />
               <Route path="projects/:id/plot" element={<PlotBoard />} />
+              <Route path="projects/:id/pier" element={<PierBuilder />} />
               <Route path="projects/:id/research" element={<Research />} />
               <Route path="forge" element={<ForgeIntake />} />
               <Route path="product-plan" element={<ProductPlan />} />

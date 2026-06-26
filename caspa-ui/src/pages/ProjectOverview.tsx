@@ -22,6 +22,7 @@ import {
   FileText,
   GripVertical,
   Loader2,
+  Anchor,
   BookOpen,
   PenLine,
   Plus,
@@ -295,6 +296,9 @@ export default function ProjectOverview() {
               </button>
               <Link to={`/projects/${id}/bible`} className="btn-secondary">
                 <BookOpen className="h-4 w-4" /> Project Bible
+              </Link>
+              <Link to={`/projects/${id}/pier`} className="btn-secondary">
+                <Anchor className="h-4 w-4" /> Pier Builder
               </Link>
               <Link to="/outputs" className="btn-secondary">
                 Open Outputs

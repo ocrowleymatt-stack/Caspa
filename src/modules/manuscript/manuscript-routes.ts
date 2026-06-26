@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { config, type Project } from '../../shared';
+import { config, type PlotPoint, type Project } from '../../shared';
 import { AuthError } from '../auth/errors';
 import type { UserPublic } from '../auth/types';
 import { ChapterService } from './ChapterService';
@@ -9,6 +9,7 @@ import { PlotService } from './PlotService';
 import { ResearchService } from './ResearchService';
 import { projectBibleService } from './ProjectBibleService';
 import { importService } from './ImportService';
+import { pierBuilderService } from './PierBuilderService';
 import { buildStructureTree } from './structureUnitMigration';
 import {
   PRIMARY_WORK_TYPES,
@@ -171,6 +172,109 @@ manuscriptRouter.post(
       getUser(req),
     );
     sendSuccess(res, result, 201);
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/manuscript/pier/survey',
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId?.trim()) {
+      sendError(res, new Error('projectId is required'), 400);
+      return;
+    }
+    await projectService.getProject(projectId, getUser(req));
+    sendSuccess(res, await pierBuilderService.survey(projectId));
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/manuscript/pier/place-pole',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      poleId?: string;
+      title?: string;
+      description?: string;
+      type?: PlotPoint['type'];
+      order?: number;
+      chapterId?: string;
+    };
+    if (!body.projectId?.trim()) {
+      sendError(res, new Error('projectId is required'), 400);
+      return;
+    }
+    await projectService.getProject(body.projectId, getUser(req));
+    sendSuccess(res, await pierBuilderService.placePole({
+      projectId: body.projectId,
+      poleId: body.poleId,
+      title: body.title ?? '',
+      description: body.description ?? '',
+      type: body.type,
+      order: body.order,
+      chapterId: body.chapterId,
+    }), 201);
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/manuscript/pier/lay-boards',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      fromPoleId?: string;
+      toPoleId?: string;
+      tone?: string;
+    };
+    if (!body.projectId?.trim() || !body.fromPoleId?.trim() || !body.toPoleId?.trim()) {
+      sendError(res, new Error('projectId, fromPoleId, and toPoleId are required'), 400);
+      return;
+    }
+    await projectService.getProject(body.projectId, getUser(req));
+    sendSuccess(res, await pierBuilderService.layBoards({
+      projectId: body.projectId,
+      fromPoleId: body.fromPoleId,
+      toPoleId: body.toPoleId,
+      tone: body.tone,
+    }), 201);
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/manuscript/pier/stretch-decking',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      sourceText?: string;
+      structuralPurpose?: string;
+      targetExtraWords?: number;
+      unitId?: string;
+    };
+    if (!body.projectId?.trim() || !body.sourceText?.trim() || !body.structuralPurpose?.trim()) {
+      sendError(res, new Error('projectId, sourceText, and structuralPurpose are required'), 400);
+      return;
+    }
+    await projectService.getProject(body.projectId, getUser(req));
+    sendSuccess(res, await pierBuilderService.stretchDecking({
+      projectId: body.projectId,
+      sourceText: body.sourceText,
+      structuralPurpose: body.structuralPurpose,
+      targetExtraWords: body.targetExtraWords,
+      unitId: body.unitId,
+    }), 201);
+  }),
+);
+
+manuscriptRouter.post(
+  '/api/manuscript/pier/extend',
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.body as { projectId?: string };
+    if (!projectId?.trim()) {
+      sendError(res, new Error('projectId is required'), 400);
+      return;
+    }
+    await projectService.getProject(projectId, getUser(req));
+    sendSuccess(res, await pierBuilderService.extend(projectId));
   }),
 );
 

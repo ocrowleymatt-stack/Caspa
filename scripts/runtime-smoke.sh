@@ -111,6 +111,37 @@ try:
     assert len(structure.get("units", [])) >= 1, "structure endpoint must return tree units"
     print("STRUCTURE:", len(structure["flatUnits"]), "units")
 
+    pier = req("POST", "/api/manuscript/pier/survey", {"projectId": pid}, token=token)
+    assert pier.get("recommendedNextStep"), "pier survey must recommend next step"
+    print("PIER SURVEY:", pier["recommendedNextStep"], pier.get("poleCount", 0), "poles")
+
+    pole_a = req("POST", "/api/manuscript/pier/place-pole", {
+        "projectId": pid,
+        "title": "Fog on the harbour",
+        "description": "Protagonist senses wrongness at the pier — foreshadows the hidden occupant and raises immediate pressure.",
+        "type": "inciting-incident",
+    }, token=token)
+    pole_b = req("POST", "/api/manuscript/pier/place-pole", {
+        "projectId": pid,
+        "title": "Footsteps upstairs",
+        "description": "Evidence confirms someone is in the lighthouse — escalates conflict and forces a decision.",
+        "type": "rising-action",
+    }, token=token)
+    assert pole_a["pole"]["id"] and pole_b["pole"]["id"], "place-pole must return poles"
+    print("PIER POLES:", pole_a["pole"]["title"], "->", pole_b["pole"]["title"])
+
+    filler = req("POST", "/api/manuscript/pier/stretch-decking", {
+        "projectId": pid,
+        "sourceText": chapter["content"],
+        "structuralPurpose": "make it longer",
+    }, token=token)
+    assert filler.get("refused"), "stretch without structural purpose must refuse filler"
+    print("PIER FILLER REFUSAL:", filler.get("message", "")[:60])
+
+    extend = req("POST", "/api/manuscript/pier/extend", {"projectId": pid}, token=token)
+    assert extend.get("recommendedNextStep"), "extend must return recommendation"
+    print("PIER EXTEND:", extend["recommendedNextStep"])
+
     projects_before = req("GET", "/api/projects", token=token)
     count_before = len(projects_before)
 

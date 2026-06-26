@@ -6,3 +6,4 @@ export { ResearchService } from './ResearchService';
 export { manuscriptRouter } from './manuscript-routes';
 export { importService } from './ImportService';
 export { analyseManuscriptImport } from './ImportAnalyser';
+export { pierBuilderService } from './PierBuilderService';

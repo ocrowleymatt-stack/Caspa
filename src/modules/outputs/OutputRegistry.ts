@@ -12,6 +12,8 @@ export type OutputType =
   | 'continue-writing'
   | 'project-bible'
   | 'manuscript-improvement'
+  | 'pier-boards'
+  | 'pier-stretch'
   | 'other';
 
 export interface OutputRecord {
