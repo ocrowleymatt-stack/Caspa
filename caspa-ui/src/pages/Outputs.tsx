@@ -1,15 +1,16 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Package } from 'lucide-react';
+import { Copy, Package, PenLine, Sparkles } from 'lucide-react';
 import { ElevationWorkbench } from '../components/ElevationWorkbench';
 import { listOutputs } from '../api/outputs';
+import { listProjects } from '../api/projects';
+import { useToast } from '../components/Toast';
 
 type OutputRecord = {
   id: string;
   projectId?: string;
   type: string;
   title: string;
-  path?: string;
   metadata?: {
     text?: string;
     kind?: string;
@@ -19,11 +20,28 @@ type OutputRecord = {
   createdAt: string;
 };
 
+function excerpt(text: string, limit = 220): string {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  if (!clean) return '';
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
+}
+
 function OutputsContent({ projectId }: { projectId: string }) {
+  const toast = useToast();
+  const navigate = useNavigate();
+
   const { data: outputs = [], isLoading } = useQuery({
     queryKey: ['outputs', projectId],
     queryFn: () => listOutputs(projectId || undefined) as Promise<OutputRecord[]>,
   });
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: listProjects,
+  });
+
+  const projectTitle = (pid?: string) =>
+    projects.find((p) => p.id === pid)?.title ?? (pid ? pid.slice(0, 8) : 'Unscoped');
 
   if (isLoading) return <p className="text-muted text-center py-8">Loading outputs...</p>;
 
@@ -44,18 +62,34 @@ function OutputsContent({ projectId }: { projectId: string }) {
                   <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">{output.type}</div>
                   <h3 className="mt-1 font-serif text-2xl font-semibold text-[#171a22]">{output.title}</h3>
                   <p className="mt-1 text-xs text-muted">
-                    {output.id.slice(0, 8)} · {new Date(output.createdAt).toLocaleString()}
+                    {output.id.slice(0, 8)} · {projectTitle(output.projectId)} · {new Date(output.createdAt).toLocaleString()}
                     {output.metadata?.provider ? ` · ${output.metadata.provider}/${output.metadata.model ?? 'model'}` : ''}
                   </p>
+                  {text && <p className="mt-3 text-sm leading-7 text-[#5f5648]">{excerpt(text)}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => navigate(`/outputs/${output.id}`)} className="btn-primary text-xs">
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(text);
+                      toast.success('Copied');
+                    }}
+                    disabled={!text}
+                    className="btn-secondary text-xs"
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Copy
+                  </button>
+                  <Link to={`/outputs/${output.id}`} className="btn-secondary text-xs">
+                    <PenLine className="h-3.5 w-3.5" /> Continue
+                  </Link>
+                  <Link to={`/outputs/${output.id}`} className="btn-secondary text-xs">
+                    <Sparkles className="h-3.5 w-3.5" /> Gold
+                  </Link>
                 </div>
               </div>
-              {text ? (
-                <pre className="mt-4 max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4 text-sm leading-7 text-[#3d352b]">
-                  {text.slice(0, 4000)}{text.length > 4000 ? '\n\n[Truncated in list view]' : ''}
-                </pre>
-              ) : (
-                <p className="mt-4 text-sm text-muted">No inline text stored for this output.</p>
-              )}
             </article>
           );
         })
