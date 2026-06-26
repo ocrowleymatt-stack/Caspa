@@ -4,7 +4,6 @@
  * Enables Life-Factory and Nexus-Factory integration
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs/promises';
 import path from 'path';
 import type PDFAssemblyService from './PDFAssemblyService';
@@ -99,7 +98,7 @@ export class ServiceAPIManager {
   }
 
   async submitBatch(request: JobRequest): Promise<string> {
-    const jobId = uuidv4();
+    const jobId = crypto.randomUUID();
     const now = new Date().toISOString();
 
     const jobStatus: JobStatus = {
