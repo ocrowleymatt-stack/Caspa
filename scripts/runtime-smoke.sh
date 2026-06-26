@@ -25,7 +25,7 @@ echo
 
 if [[ -f .env ]]; then
   echo "--- PHASE 13 WORKFLOW TESTS (authenticated) ---"
-  python3 - <<'PY' || true
+  python3 -u - <<'PY' || true
 import json, pathlib, urllib.request, urllib.error
 
 def load_env():
