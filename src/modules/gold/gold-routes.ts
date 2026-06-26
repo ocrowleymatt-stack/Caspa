@@ -19,7 +19,7 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     return;
   }
 
-  const report = await goldPipeline.run(projectId);
+  const report = await goldPipeline.run(projectId, { sourceText: source });
   const polishStep = report.steps.find((step) => step.step === 'final-polish');
   const improved = polishStep?.summary ?? report.recommendations.join('\n');
   const critique = report.steps
@@ -37,6 +37,7 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
       text: improved,
       critique,
       sourceExcerpt: source?.slice(0, 500) ?? '',
+      sourceScope: source?.trim() ? 'provided-text' : 'full-project',
       reportId: report.id,
       overallScore: report.overallScore,
       overallStatus: report.overallStatus,

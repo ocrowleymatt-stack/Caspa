@@ -24,10 +24,10 @@ function statusFromScore(score: number): QualityGateStatus {
 }
 
 export class GoldPipeline {
-  async run(projectId: string): Promise<GoldReport> {
+  async run(projectId: string, opts?: { sourceText?: string }): Promise<GoldReport> {
     await requireProject(projectId);
     const startedAt = new Date().toISOString();
-    const text = await getProjectFullText(projectId);
+    const text = opts?.sourceText?.trim() || (await getProjectFullText(projectId));
     const steps: GoldReportStep[] = [];
 
     const arc = await emotionalArcEngine.analyseProject(projectId);
