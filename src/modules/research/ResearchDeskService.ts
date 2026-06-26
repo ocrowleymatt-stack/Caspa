@@ -328,7 +328,7 @@ export class ResearchDeskService {
 
     await outputRegistry.register({
       projectId: input.projectId,
-      type: 'other',
+      type: 'research-depth-pass',
       title: `Research depth pass — ${topic}`,
       path: '',
       metadata: {

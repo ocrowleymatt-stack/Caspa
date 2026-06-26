@@ -14,8 +14,14 @@ export type OutputType =
   | 'manuscript-improvement'
   | 'pier-boards'
   | 'pier-stretch'
+  | 'pier-survey'
   | 'award-assessment'
   | 'agent-swarm'
+  | 'research-depth-pass'
+  | 'accuracy-check'
+  | 'claim-extraction'
+  | 'imported-source-analysis'
+  | 'export-package'
   | 'other';
 
 export interface OutputRecord {

@@ -11,6 +11,7 @@ import {
   type SwarmConsensus,
   type SwarmMode,
 } from '../../shared/agentSwarm';
+import { standardOutputProvenance } from '../../shared/outputSemantics';
 import { hasStructuralPurpose } from '../../shared/pierBuilder';
 import { awardsCatalog } from '../awards/AwardsCatalog';
 import { ProjectService } from '../manuscript/ProjectService';
@@ -207,6 +208,12 @@ export class AgentSwarmService {
       path: '',
       metadata: {
         kind: 'agent-swarm',
+        ...standardOutputProvenance({
+          workType: project.workType,
+          researchItemIds: input.researchItemIds ?? [],
+          targetAwardIds: input.targetAwardIds ?? project.targetPrizeIds ?? [],
+          stage: mode,
+        }),
         swarmId,
         mode,
         agentReports,

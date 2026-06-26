@@ -10,6 +10,7 @@ import {
   type PierPoleSummary,
   type PierSurveyResult,
 } from '../../shared/pierBuilder';
+import { standardOutputProvenance } from '../../shared/outputSemantics';
 import { buildStructureTree } from './structureUnitMigration';
 import { ChapterService } from './ChapterService';
 import { PlotService } from './PlotService';
@@ -281,6 +282,11 @@ export class PierBuilderService {
       path: '',
       metadata: {
         kind: 'pier-boards',
+        ...standardOutputProvenance({
+          workType: project.workType,
+          fromPoleTitle: from.title,
+          toPoleTitle: to.title,
+        }),
         text,
         fromPoleId: from.id,
         toPoleId: to.id,
@@ -325,6 +331,7 @@ export class PierBuilderService {
       };
     }
 
+    const project = await this.projectService.getProject(input.projectId);
     const poles = await this.plotService.listPlotPoints(input.projectId);
     if (poles.length < 2) {
       return {
@@ -372,6 +379,11 @@ export class PierBuilderService {
       path: '',
       metadata: {
         kind: 'pier-stretch',
+        ...standardOutputProvenance({
+          workType: project.workType,
+          unitId: input.unitId,
+          sourceScope: 'selected-unit',
+        }),
         text,
         sourceText: input.sourceText,
         structuralPurpose: input.structuralPurpose.trim(),

@@ -3,6 +3,7 @@ import { config } from '../../shared';
 import { findById } from '../../shared/db';
 import type { GoldReport } from '../../shared';
 import type { GoldSynthesisStage } from '../../shared/goldSynthesis';
+import { standardOutputProvenance } from '../../shared/outputSemantics';
 import type { UserPublic } from '../auth/types';
 import { ProjectService } from '../manuscript/ProjectService';
 import { outputRegistry } from '../outputs';
@@ -50,7 +51,7 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     return;
   }
 
-  await projectService.getProject(body.projectId, getUser(req));
+  const project = await projectService.getProject(body.projectId, getUser(req));
 
   const synthesis = await goldSynthesisService.synthesize({
     projectId: body.projectId,
@@ -83,6 +84,13 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     path: '',
     metadata: {
       kind: 'gold-synthesis',
+      ...standardOutputProvenance({
+        workType: project.workType,
+        sourceScope: body.source?.trim() ? 'provided-text' : 'whole-manuscript',
+        swarmOutputId: body.swarmOutputId,
+        stage: synthesis.stage,
+        targetAwardIds: project.targetPrizeIds,
+      }),
       text: improved,
       critique,
       synthesis,

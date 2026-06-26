@@ -1,15 +1,16 @@
 import { apiCall } from './client';
+import type { OutputRecord } from '../lib/outputSemantics';
 
 export function listOutputs(projectId?: string, type?: string) {
   const params = new URLSearchParams();
   if (projectId) params.set('projectId', projectId);
   if (type) params.set('type', type);
   const q = params.toString() ? `?${params}` : '';
-  return apiCall<unknown[]>(`/api/outputs${q}`);
+  return apiCall<OutputRecord[]>(`/api/outputs${q}`);
 }
 
 export function getOutput(id: string) {
-  return apiCall<unknown>(`/api/outputs/${id}`);
+  return apiCall<OutputRecord>(`/api/outputs/${id}`);
 }
 
 export function registerOutput(body: {
@@ -19,5 +20,5 @@ export function registerOutput(body: {
   path?: string;
   metadata?: Record<string, unknown>;
 }) {
-  return apiCall<unknown>('/api/outputs', { method: 'POST', body: JSON.stringify(body) });
+  return apiCall<OutputRecord>('/api/outputs', { method: 'POST', body: JSON.stringify(body) });
 }
