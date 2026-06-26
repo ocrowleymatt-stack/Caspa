@@ -41,6 +41,75 @@ import { runMigrations } from './src/services/db';
 runMigrations();
 
 const app = express();
+const publicDir = path.join(process.cwd(), 'public');
+
+const moduleRegistry = [
+  { name: 'storage', mount: '/api/local', status: 'mounted' },
+  { name: 'manuscript', mount: '/api/projects', status: 'mounted' },
+  { name: 'ai-assistant', mount: '/api/assist + /api/ollama', status: 'mounted' },
+  { name: 'show-factory', mount: '/api/show-factory', status: 'mounted' },
+  { name: 'music-lab', mount: '/api/music-lab', status: 'mounted' },
+  { name: 'orchestra', mount: '/api/show-orchestra', status: 'mounted' },
+  { name: 'publishing', mount: '/api/publish', status: 'mounted' },
+  { name: 'show-in-a-box', mount: '/api/show-in-a-box', status: 'mounted' },
+  { name: 'wonder', mount: '/api/wonder', status: 'mounted' },
+  { name: 'quality', mount: '/api/quality', status: 'mounted' },
+  { name: 'taste', mount: '/api/taste', status: 'mounted' },
+  { name: 'audience', mount: '/api/audience', status: 'mounted' },
+  { name: 'gold', mount: '/api/gold + /api/goldpipeline', status: 'mounted' },
+  { name: 'casper-freestyle', mount: '/api/casper', status: 'mounted' },
+  { name: 'research', mount: '/api/research', status: 'mounted' },
+  { name: 'verification', mount: '/api/verification', status: 'mounted' },
+  { name: 'outputs', mount: '/api/outputs', status: 'mounted' },
+  { name: 'show-catalogue', mount: '/api/show-catalogue', status: 'mounted' },
+];
+
+function fileExistsAt(...parts: string[]): boolean {
+  return fs.existsSync(path.join(...parts));
+}
+
+function getDoctorSnapshot() {
+  const dataDir = path.resolve(config.dataDir);
+  const dbPath = path.join(dataDir, 'caspa.db');
+  const publicIndexPath = path.join(publicDir, 'index.html');
+
+  return {
+    status: 'ok',
+    service: 'CASPA Studio',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    deployment: {
+      mode: 'self-hosted-private',
+      port: config.port,
+      publicUiPresent: fileExistsAt(publicIndexPath),
+      publicDir,
+      authEnabled: config.authEnabled,
+    },
+    storage: {
+      dataDir,
+      sqliteConfigured: true,
+      sqlitePath: dbPath,
+      sqliteFilePresent: fileExistsAt(dbPath),
+      walFilePresent: fileExistsAt(`${dbPath}-wal`),
+    },
+    aiProviders: {
+      ollama: {
+        url: config.ollamaUrl,
+        model: config.ollamaModel,
+        configured: Boolean(config.ollamaUrl),
+      },
+      geminiConfigured: Boolean(config.geminiApiKey),
+      openaiConfigured: Boolean(config.openaiApiKey),
+      anthropicConfigured: Boolean(config.anthropicApiKey),
+      grokConfigured: Boolean(config.grokApiKey),
+    },
+    integrations: {
+      dropboxConfigured: Boolean(config.dropboxToken),
+    },
+    modules: moduleRegistry,
+    recoveryPlan: 'docs/CASPA_COMPENDIUM_RECOVERY_PLAN.md',
+  };
+}
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: '*' }));
@@ -59,6 +128,10 @@ app.use(authRouter);
 if (config.authEnabled) {
   app.use(requireAuth);
 }
+
+app.get('/api/doctor', (_req: Request, res: Response) => {
+  res.json({ success: true, data: getDoctorSnapshot() });
+});
 
 app.use(storageRouter);
 app.use(manuscriptRouter);
@@ -93,7 +166,6 @@ app.use(publishConfidenceRouter);
 app.use(outputsRouter);
 app.use(showCatalogueRouter);
 
-const publicDir = path.join(process.cwd(), 'public');
 app.use(
   express.static(publicDir, {
     setHeaders(res, filePath) {
@@ -139,6 +211,7 @@ async function start(): Promise<void> {
   app.listen(config.port, () => {
     logger.info(`CASPA Studio running on port ${config.port}`);
     logger.info(`Health: http://localhost:${config.port}/health`);
+    logger.info(`Doctor: http://localhost:${config.port}/api/doctor`);
   });
 }
 
