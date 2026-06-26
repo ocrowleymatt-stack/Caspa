@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Clock, Loader2, PenLine, Sparkles } from 'lucide-react';
 import { getChapter, getChapterHistory, restoreChapter, updateChapter } from '../api/chapters';
+import { continueWriting } from '../api/casper';
 import { getProject } from '../api/projects';
 import { useAppStore } from '../store';
 import { countWords } from '../lib/utils';
@@ -67,6 +68,32 @@ export default function ChapterEditor() {
       setSaveState('unsaved');
       toast.error(err.message);
     },
+  });
+
+  const continueMutation = useMutation({
+    mutationFn: async () => {
+      const result = await continueWriting({
+        projectId: projectId!,
+        chapterId: chapterId!,
+        currentText: content,
+        mode: 'continue',
+      });
+      const next = content + (content.endsWith('\n') ? '' : '\n\n') + result.text;
+      await updateChapter(chapterId!, {
+        title,
+        content: next,
+        wordCount: countWords(next),
+      });
+      return { result, next };
+    },
+    onSuccess: ({ result, next }) => {
+      setContent(next);
+      setSaveState('saved');
+      queryClient.invalidateQueries({ queryKey: ['chapter', chapterId] });
+      queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      toast.success(`Continued writing · saved output ${result.outputId.slice(0, 8)}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const restoreMutation = useMutation({
@@ -144,6 +171,15 @@ export default function ChapterEditor() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => continueMutation.mutate()}
+            disabled={continueMutation.isPending || !content.trim()}
+            className="btn-primary text-xs"
+          >
+            {continueMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PenLine className="h-3.5 w-3.5" />}
+            Continue writing
+          </button>
           <button type="button" onClick={() => setShowHistory(!showHistory)} className="btn-secondary text-xs">
             <Clock className="h-3.5 w-3.5" /> History
           </button>

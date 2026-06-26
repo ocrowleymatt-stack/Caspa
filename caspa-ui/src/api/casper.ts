@@ -40,6 +40,15 @@ export interface NovelWriteProResult {
   provider: string;
   model: string;
   createdAt: string;
+  structured?: {
+    premise: string;
+    formatDecision: string;
+    characterWoundMap: string;
+    scenePlan: string[];
+    firstDraft: string;
+    criticReport: string;
+    improvedRewrite: string;
+  };
 }
 
 export function runNovelWritePro(body: {
@@ -54,6 +63,32 @@ export function runNovelWritePro(body: {
   genre?: string;
 }) {
   return apiCall<NovelWriteProResult>('/api/casper/novel-write-pro', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export interface ContinueWritingResult {
+  outputId: string;
+  projectId: string;
+  title: string;
+  kind: 'continue-writing';
+  text: string;
+  provider: string;
+  model: string;
+  mode: string;
+  createdAt: string;
+}
+
+export function continueWriting(body: {
+  projectId: string;
+  chapterId?: string;
+  currentText: string;
+  instruction?: string;
+  mode?: 'continue' | 'rewrite' | 'expand' | 'polish' | 'punch-up' | 'darker' | 'funnier' | 'stage-adapt';
+  parentOutputId?: string;
+}) {
+  return apiCall<ContinueWritingResult>('/api/casper/continue', {
     method: 'POST',
     body: JSON.stringify(body),
   });

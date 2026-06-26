@@ -3,6 +3,7 @@ import { toolRegistry } from '../command-orchestrator/ToolRegistry';
 import { casperFreestyleEngine } from './CasperFreestyleEngine';
 import { freestyleSessionStore } from './FreestyleSessionStore';
 import { novelWriteProService } from './NovelWriteProService';
+import { continueWritingService, type ContinueMode } from './ContinueWritingService';
 import type { NovelWriteProMode } from './novelWritePro';
 
 export const casperRouter = createElevationRouter();
@@ -23,6 +24,38 @@ casperRouter.post(
     };
 
     sendSuccess(res, await novelWriteProService.generate(body), 201);
+  }),
+);
+
+casperRouter.post(
+  '/api/casper/continue',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      chapterId?: string;
+      currentText?: string;
+      instruction?: string;
+      mode?: ContinueMode;
+      parentOutputId?: string;
+    };
+
+    if (!body.projectId?.trim()) {
+      sendError(res, new Error('projectId is required'), 400);
+      return;
+    }
+    if (!body.currentText?.trim()) {
+      sendError(res, new Error('currentText is required'), 400);
+      return;
+    }
+
+    sendSuccess(res, await continueWritingService.continue({
+      projectId: body.projectId,
+      chapterId: body.chapterId,
+      currentText: body.currentText,
+      instruction: body.instruction,
+      mode: body.mode,
+      parentOutputId: body.parentOutputId,
+    }), 201);
   }),
 );
 
