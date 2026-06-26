@@ -8,11 +8,17 @@ PM2_NAME="${PM2_NAME:-caspa-server}"
 
 cd "$APP_DIR"
 
-echo "==> Stopping legacy /opt/caspa service if it is holding port 3000"
-if systemctl is-active --quiet caspa.service 2>/dev/null; then
-  systemctl stop caspa.service
-  systemctl disable caspa.service
-fi
+echo "==> Stopping legacy /opt/caspa services if they are holding port 3000"
+for legacy_unit in caspa.service novelwriter.service; do
+  if systemctl is-active --quiet "$legacy_unit" 2>/dev/null; then
+    systemctl stop "$legacy_unit"
+    echo "==> Stopped $legacy_unit"
+  fi
+  if systemctl is-enabled --quiet "$legacy_unit" 2>/dev/null; then
+    systemctl disable "$legacy_unit"
+    echo "==> Disabled $legacy_unit"
+  fi
+done
 
 echo "==> Fetching origin/$BRANCH"
 git fetch origin "$BRANCH"
@@ -78,4 +84,9 @@ for _ in $(seq 1 30); do
 done
 
 echo "==> Post-deploy runtime smoke (expect ~8 min with AI workflows)"
+if ! curl -sf http://127.0.0.1:3000/api/doctor | grep -q '"service":"CASPA Studio"'; then
+  echo "==> ERROR: port 3000 is not serving CASPA Studio (legacy process may have reclaimed the port)"
+  lsof -i :3000 2>/dev/null || true
+  exit 1
+fi
 CASPA_SMOKE_STRICT=1 bash scripts/runtime-smoke.sh
