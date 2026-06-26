@@ -82,21 +82,17 @@ function getDoctorSnapshot() {
       mode: 'self-hosted-private',
       port: config.port,
       publicUiPresent: fileExistsAt(publicIndexPath),
-      publicDir,
       authEnabled: config.authEnabled,
     },
     storage: {
-      dataDir,
       sqliteConfigured: true,
-      sqlitePath: dbPath,
       sqliteFilePresent: fileExistsAt(dbPath),
       walFilePresent: fileExistsAt(`${dbPath}-wal`),
     },
     aiProviders: {
       ollama: {
-        url: config.ollamaUrl,
-        model: config.ollamaModel,
         configured: Boolean(config.ollamaUrl),
+        model: config.ollamaModel,
       },
       geminiConfigured: Boolean(config.geminiApiKey),
       openaiConfigured: Boolean(config.openaiApiKey),
@@ -124,14 +120,17 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
+// Safe public diagnostic endpoint. It deliberately reports booleans/status only,
+// not secrets, raw paths, usernames, tokens, or provider keys. Keep it before auth
+// so localhost deployment smoke tests can verify module wiring.
+app.get('/api/doctor', (_req: Request, res: Response) => {
+  res.json({ success: true, data: getDoctorSnapshot() });
+});
+
 app.use(authRouter);
 if (config.authEnabled) {
   app.use(requireAuth);
 }
-
-app.get('/api/doctor', (_req: Request, res: Response) => {
-  res.json({ success: true, data: getDoctorSnapshot() });
-});
 
 app.use(storageRouter);
 app.use(manuscriptRouter);
