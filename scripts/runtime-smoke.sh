@@ -149,7 +149,7 @@ try:
     chapter = req("POST", f"/api/projects/{pid}/chapters", {
         "title": "Source manuscript: smoke.txt",
         "order": 1,
-        "content": "The old lighthouse keeper heard footsteps on the stairs again. Nobody lived upstairs anymore.",
+        "content": "The lighthouse was built in 1847 and staffed by a single keeper each winter. The old lighthouse keeper heard footsteps on the stairs again. Nobody lived upstairs anymore.",
         "status": "draft",
     }, token=token)
     cid = chapter["id"]
