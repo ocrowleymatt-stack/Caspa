@@ -46,6 +46,7 @@ import {
   pickContinueChapter,
   pickImprovementSourceChapter,
 } from '../lib/manuscriptWorkflow';
+import { structureLabel, workTypeLabel } from '../lib/workModel';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 import { useToast } from '../components/Toast';
 
@@ -215,7 +216,24 @@ export default function ProjectOverview() {
       <section className="overflow-hidden rounded-[2.4rem] border border-[#eadfca] bg-white shadow-room">
         <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
           <div className="p-7 md:p-10">
-            <span className="badge mb-4">{project.genre}</span>
+            <span className="badge mb-4">{workTypeLabel(project.workType) || project.genre}</span>
+            <div className="mb-4 flex flex-wrap gap-2 text-xs text-muted">
+              {project.fictionality && (
+                <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-3 py-1 capitalize">
+                  {project.fictionality}
+                </span>
+              )}
+              {project.structureType && (
+                <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-3 py-1">
+                  {structureLabel(project.structureType)}
+                </span>
+              )}
+              {project.workflowStage && (
+                <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-3 py-1 capitalize">
+                  {project.workflowStage.replace(/-/g, ' ')}
+                </span>
+              )}
+            </div>
             <h1 className="font-serif text-5xl font-semibold leading-none tracking-[-0.045em] text-[#171a22] md:text-6xl">
               {project.title}
             </h1>

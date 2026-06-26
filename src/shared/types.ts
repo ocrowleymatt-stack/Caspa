@@ -1,3 +1,12 @@
+import type {
+  Fictionality,
+  StructureType,
+  TargetMarket,
+  WorkForm,
+  WorkflowStage,
+  WorkType,
+} from './workModel';
+
 export interface Project {
   id: string;
   title: string;
@@ -5,7 +14,19 @@ export interface Project {
   description: string;
   targetWordCount: number;
   currentWordCount: number;
+  /** Publication lifecycle — unchanged for backward compatibility. */
   status: 'draft' | 'in-progress' | 'complete' | 'published';
+  /** Canonical work typing (Phase 2). */
+  workType?: WorkType;
+  fictionality?: Fictionality;
+  form?: WorkForm;
+  subgenre?: string;
+  targetAudience?: string;
+  targetPrizeIds?: string[];
+  targetMarket?: TargetMarket;
+  structureType?: StructureType;
+  /** Pier / production workflow stage. */
+  workflowStage?: WorkflowStage;
   ownerId?: string;
   createdAt: string;
   updatedAt: string;

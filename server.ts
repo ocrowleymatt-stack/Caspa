@@ -37,8 +37,16 @@ import { publishConfidenceRouter } from './src/modules/publish-confidence/index'
 import { outputsRouter } from './src/modules/outputs/index';
 import { showCatalogueRouter } from './src/modules/show-catalogue/index';
 import { runMigrations } from './src/services/db';
+import { ProjectService } from './src/modules/manuscript/ProjectService';
+
+const projectServiceBoot = new ProjectService();
 
 runMigrations();
+void projectServiceBoot.migrateWorkModel().then((migratedWorkModel) => {
+  if (migratedWorkModel > 0) {
+    logger.info(`Migrated work model fields on ${migratedWorkModel} existing project(s)`);
+  }
+});
 
 const app = express();
 const publicDir = path.join(process.cwd(), 'public');

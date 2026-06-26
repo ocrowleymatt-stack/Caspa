@@ -26,6 +26,7 @@ import {
 } from '../lib/novelWritePro';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
 import { pickImprovementSourceChapter } from '../lib/manuscriptWorkflow';
+import { workModelFromCasperMode } from '../lib/casperWorkModel';
 import { useAppStore } from '../store';
 import { useToast } from '../components/Toast';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
@@ -255,6 +256,8 @@ export default function CasperFreestyle() {
         description,
         targetWordCount: finalModeCard.targetWordCount,
         status: 'draft',
+        hasImportedManuscript: Boolean(whitePage.trim()),
+        ...workModelFromCasperMode(finalMode, { hasUploadedManuscript: Boolean(whitePage.trim()) }),
       });
 
       if (whitePage.trim()) {

@@ -18,6 +18,11 @@ import {
 } from '../../shared';
 import { assertProjectAccess, filterProjectsForUser } from '../auth/projectAccess';
 import type { UserPublic } from '../auth/types';
+import {
+  applyWorkModelOnCreate,
+  migrateProjectsWorkModel,
+  normalizeProjectWorkModel,
+} from './projectWorkModel';
 
 const PROJECTS = 'projects';
 const CHAPTERS = 'chapters';
@@ -60,9 +65,24 @@ async function deleteChapterHistoryFiles(chapterIds: string[]): Promise<void> {
 }
 
 export class ProjectService {
+  migrateWorkModel(): Promise<number> {
+    return migrateProjectsWorkModel();
+  }
+
   async listProjects(user: UserPublic): Promise<Project[]> {
     const projects = await readCollection<Project>(PROJECTS);
-    return filterProjectsForUser(projects, user);
+    return filterProjectsForUser(projects, user).map((project) =>
+      this.ensureWorkModel(project),
+    );
+  }
+
+  private ensureWorkModel(project: Project): Project {
+    if (project.workType && project.structureType && project.form) {
+      return project;
+    }
+    const normalized = normalizeProjectWorkModel(project);
+    void upsert(PROJECTS, normalized);
+    return normalized;
   }
 
   async getProject(id: string, user?: UserPublic): Promise<Project> {
@@ -70,19 +90,22 @@ export class ProjectService {
     if (!project) {
       throw new NotFoundError(`Project not found: ${id}`);
     }
+    const normalized = this.ensureWorkModel(project);
     if (user) {
-      assertProjectAccess(project, user);
+      assertProjectAccess(normalized, user);
     }
-    return project;
+    return normalized;
   }
 
   async createProject(
     data: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'currentWordCount'>,
     ownerId: string,
+    options?: { hasImportedManuscript?: boolean },
   ): Promise<Project> {
     const now = new Date().toISOString();
+    const withWorkModel = applyWorkModelOnCreate(data, options);
     const project: Project = {
-      ...data,
+      ...withWorkModel,
       id: generateId(),
       ownerId,
       currentWordCount: 0,
@@ -92,7 +115,7 @@ export class ProjectService {
 
     await upsert(PROJECTS, project);
     emitEvent('project:created', project);
-    logger.info(`Created project: ${project.id}`);
+    logger.info(`Created project: ${project.id} (${project.workType})`);
     return project;
   }
 
@@ -100,13 +123,15 @@ export class ProjectService {
     const existing = await this.getProject(id, user);
     const { id: _id, createdAt: _createdAt, ...updates } = data;
 
-    const project: Project = {
+    const merged: Project = {
       ...existing,
       ...updates,
       id: existing.id,
       createdAt: existing.createdAt,
       updatedAt: new Date().toISOString(),
     };
+
+    const project = normalizeProjectWorkModel(merged, updates);
 
     await upsert(PROJECTS, project);
     emitEvent('project:updated', project);

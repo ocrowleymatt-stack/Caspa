@@ -5,6 +5,8 @@ import { BookOpen, Loader2, Plus, Search, Trash2, UploadCloud } from 'lucide-rea
 import { createChapter } from '../api/chapters';
 import { createProject, deleteProject, listProjects } from '../api/projects';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
+import { workModelFromPrimaryType } from '../lib/casperWorkModel';
+import { PRIMARY_WORK_TYPES, WORK_TYPE_LABELS, type Fictionality, type WorkType } from '../lib/workModel';
 import { useAppStore } from '../store';
 import { formatRelative } from '../lib/utils';
 import { useToast } from '../components/Toast';
@@ -21,7 +23,8 @@ export default function Dashboard() {
   const [manuscriptText, setManuscriptText] = useState('');
   const [form, setForm] = useState({
     title: '',
-    genre: 'Novel',
+    workType: 'novel' as WorkType,
+    fictionality: 'fiction' as Fictionality,
     description: '',
     targetWordCount: 80000,
   });
@@ -41,10 +44,12 @@ export default function Dashboard() {
       const targetWordCount = Number.isFinite(form.targetWordCount) && form.targetWordCount > 0 ? form.targetWordCount : 80000;
 
       const project = await createProject({
-        ...form,
         title: cleanTitle,
         description: cleanDescription,
         targetWordCount,
+        hasImportedManuscript: Boolean(manuscriptText.trim()),
+        ...workModelFromPrimaryType(form.workType, { hasImportedManuscript: Boolean(manuscriptText.trim()) }),
+        fictionality: form.fictionality,
       });
 
       if (manuscriptText.trim()) {
@@ -62,7 +67,7 @@ export default function Dashboard() {
       await queryClient.invalidateQueries({ queryKey: ['chapters', project.id] });
       setActiveProjectId(project.id);
       setShowModal(false);
-      setForm({ title: '', genre: 'Novel', description: '', targetWordCount: 80000 });
+      setForm({ title: '', workType: 'novel', fictionality: 'fiction', description: '', targetWordCount: 80000 });
       setUploadedName(null);
       setManuscriptText('');
       toast.success(`Created "${project.title}"`);
@@ -87,7 +92,7 @@ export default function Dashboard() {
     setForm((current) => ({
       ...current,
       title: current.title.trim() ? current.title : title,
-      genre: 'Manuscript Polish',
+      workType: 'literary-fiction',
       description: current.description.trim()
         ? current.description
         : `Uploaded manuscript: ${title}`,
@@ -194,7 +199,9 @@ export default function Dashboard() {
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff1c9] text-[#98711d]">
                       <BookOpen className="h-5 w-5" />
                     </div>
-                    <span className="badge shrink-0">{project.genre}</span>
+                    <span className="badge shrink-0">
+                      {project.workType ? WORK_TYPE_LABELS[project.workType] : project.genre}
+                    </span>
                   </div>
                   <h3 className="truncate font-serif text-2xl font-semibold text-[#171a22]">{project.title}</h3>
                   <p className="mt-2 line-clamp-3 min-h-[4.25rem] text-sm leading-6 text-muted">
@@ -275,19 +282,34 @@ export default function Dashboard() {
                 />
               </div>
               <div>
-                <label className="label">Kind of work</label>
+                <label className="label">What are you making?</label>
                 <select
-                  value={form.genre}
-                  onChange={(e) => setForm({ ...form, genre: e.target.value })}
+                  value={form.workType}
+                  onChange={(e) => setForm({ ...form, workType: e.target.value as WorkType })}
                   className="input"
                 >
-                  {['Novel', 'Script', 'Musical / Show', 'Manuscript Polish', 'Adaptation', 'Memoir', 'Thriller', 'Comedy', 'Historical', 'Experimental'].map(
-                    (g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ),
-                  )}
+                  {PRIMARY_WORK_TYPES.map((workType) => (
+                    <option key={workType} value={workType}>
+                      {WORK_TYPE_LABELS[workType]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Fiction or nonfiction?</label>
+                <select
+                  value={form.fictionality}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      fictionality: e.target.value as Fictionality,
+                    })
+                  }
+                  className="input"
+                >
+                  <option value="fiction">Fiction</option>
+                  <option value="nonfiction">Nonfiction</option>
+                  <option value="hybrid">Hybrid / based on true events</option>
                 </select>
               </div>
               <div>

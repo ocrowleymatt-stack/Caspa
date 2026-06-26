@@ -63,12 +63,18 @@ try:
     project = req("POST", "/api/projects", {
         "title": "Smoke Test Project",
         "genre": "Novel",
+        "workType": "novel",
+        "fictionality": "fiction",
+        "form": "book",
+        "structureType": "chapters",
         "description": "Runtime smoke",
         "targetWordCount": 80000,
         "status": "draft",
     }, token=token)
     pid = project["id"]
-    print("PROJECT:", pid)
+    assert project.get("workType") == "novel", "project must include workType"
+    assert project.get("structureType") == "chapters", "project must include structureType"
+    print("PROJECT:", pid, "workType:", project.get("workType"))
 
     bible = req("GET", f"/api/projects/{pid}/bible", token=token)
     print("BIBLE premise empty?", not bool(bible.get("premise")))

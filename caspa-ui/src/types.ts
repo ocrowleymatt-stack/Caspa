@@ -1,15 +1,12 @@
-export interface Project {
-  id: string;
-  title: string;
-  genre: string;
-  description: string;
-  targetWordCount: number;
-  currentWordCount: number;
-  status: 'draft' | 'in-progress' | 'complete' | 'published';
-  ownerId?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type {
+  Project,
+  WorkType,
+  Fictionality,
+  WorkForm,
+  TargetMarket,
+  StructureType,
+  WorkflowStage,
+} from './lib/workModel';
 
 export interface Chapter {
   id: string;

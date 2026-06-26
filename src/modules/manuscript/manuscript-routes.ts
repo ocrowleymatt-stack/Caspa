@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { config } from '../../shared';
+import { config, type Project } from '../../shared';
 import { AuthError } from '../auth/errors';
 import type { UserPublic } from '../auth/types';
 import { ChapterService } from './ChapterService';
@@ -8,6 +8,13 @@ import { NotFoundError, ProjectService } from './ProjectService';
 import { PlotService } from './PlotService';
 import { ResearchService } from './ResearchService';
 import { projectBibleService } from './ProjectBibleService';
+import {
+  PRIMARY_WORK_TYPES,
+  WORK_TYPE_LABELS,
+  getDefaultsForWorkType,
+  structureLabel,
+  workflowStageLabel,
+} from '../../shared/workModel';
 
 const projectService = new ProjectService();
 const chapterService = new ChapterService();
@@ -76,6 +83,22 @@ function getUser(req: Request): UserPublic {
 export const manuscriptRouter = Router();
 
 manuscriptRouter.get(
+  '/api/work-model/catalog',
+  asyncHandler(async (_req, res) => {
+    sendSuccess(res, {
+      primaryWorkTypes: PRIMARY_WORK_TYPES.map((workType) => ({
+        workType,
+        label: WORK_TYPE_LABELS[workType],
+        defaults: getDefaultsForWorkType(workType),
+      })),
+      labels: WORK_TYPE_LABELS,
+      structureLabel,
+      workflowStageLabel,
+    });
+  }),
+);
+
+manuscriptRouter.get(
   '/api/projects',
   asyncHandler(async (req, res) => {
     const projects = await projectService.listProjects(getUser(req));
@@ -86,7 +109,14 @@ manuscriptRouter.get(
 manuscriptRouter.post(
   '/api/projects',
   asyncHandler(async (req, res) => {
-    const project = await projectService.createProject(req.body, getUser(req).id);
+    const body = req.body as Partial<Project> & { hasImportedManuscript?: boolean };
+    const hasImportedManuscript = Boolean(body.hasImportedManuscript);
+    const { hasImportedManuscript: _drop, ...projectData } = body;
+    const project = await projectService.createProject(
+      projectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'currentWordCount'>,
+      getUser(req).id,
+      { hasImportedManuscript },
+    );
     sendSuccess(res, project, 201);
   }),
 );
