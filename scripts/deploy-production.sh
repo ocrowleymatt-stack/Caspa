@@ -42,6 +42,7 @@ mkdir -p public
 npm run deploy
 
 echo "==> Ensuring port 3000 is free for $PM2_NAME"
+pm2 stop "$PM2_NAME" >/dev/null 2>&1 || true
 if command -v fuser >/dev/null 2>&1; then
   fuser -k 3000/tcp >/dev/null 2>&1 || true
 elif command -v lsof >/dev/null 2>&1; then
@@ -50,7 +51,7 @@ elif command -v lsof >/dev/null 2>&1; then
     kill ${PIDS} >/dev/null 2>&1 || true
   fi
 fi
-sleep 1
+sleep 2
 
 echo "==> Restarting $PM2_NAME"
 if pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
