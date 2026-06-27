@@ -102,6 +102,31 @@
     background: rgba(152, 113, 29, 0.55);
   }
 
+  .menu-scroll {
+    scrollbar-width: auto;
+    scrollbar-color: rgba(152, 113, 29, 0.62) rgba(152, 113, 29, 0.14);
+  }
+
+  .menu-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .menu-scroll::-webkit-scrollbar-track {
+    background: rgba(152, 113, 29, 0.12);
+    border-radius: 999px;
+    margin: 6px 2px;
+  }
+
+  .menu-scroll::-webkit-scrollbar-thumb {
+    background: rgba(152, 113, 29, 0.52);
+    border: 2px solid rgba(255, 250, 240, 0.85);
+    border-radius: 999px;
+  }
+
+  .menu-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(152, 113, 29, 0.72);
+  }
+
   .app-shell {
     min-height: 100dvh;
     height: 100dvh;

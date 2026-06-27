@@ -186,38 +186,41 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'flex h-full flex-col border-r border-[#eadfca] bg-[#fffaf0]/90 shadow-[12px_0_45px_rgba(75,55,21,0.08)] backdrop-blur transition-all duration-200',
-        mobileDrawer ? 'w-full border-r-0 shadow-none' : collapsed ? 'w-16' : 'w-64',
+        'flex flex-col border-r border-[#eadfca] bg-[#fffaf0]/90 shadow-[12px_0_45px_rgba(75,55,21,0.08)] backdrop-blur transition-all duration-200',
+        mobileDrawer ? 'h-auto w-full border-r-0 shadow-none' : 'h-full',
+        !mobileDrawer && (collapsed ? 'w-16' : 'w-64'),
       )}
     >
-      <div className="flex items-center justify-between border-b border-[#eadfca] px-4 py-5">
-        {!collapsed && (
-          <div>
-            <h1 className="font-serif text-xl font-semibold tracking-tight text-[#171a22]">
-              <span className="text-[#98711d]">CASPA</span> Studio
-            </h1>
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8661]">
-              {simpleMode ? 'Writer mode' : 'Producer mode'}
-            </p>
-          </div>
-        )}
-        {!mobileDrawer && (
+      {!mobileDrawer && (
+        <div className="flex items-center justify-between border-b border-[#eadfca] px-4 py-5">
+          {!collapsed && (
+            <div>
+              <h1 className="font-serif text-xl font-semibold tracking-tight text-[#171a22]">
+                <span className="text-[#98711d]">CASPA</span> Studio
+              </h1>
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9b8661]">
+                {simpleMode ? 'Writer mode' : 'Producer mode'}
+              </p>
+            </div>
+          )}
           <button type="button" onClick={toggle} className="btn-ghost min-h-[44px] min-w-[44px] p-1.5" aria-label="Toggle sidebar">
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {!collapsed && (
-        <div className="space-y-3 border-b border-[#eadfca] p-3">
-          <button
-            type="button"
-            onClick={toggleSimpleMode}
-            className="flex w-full items-center justify-between rounded-2xl border border-[#e7d8b9] bg-white/75 px-3 py-2.5 text-xs font-semibold text-[#5e5445] shadow-sm transition hover:border-accent hover:bg-[#fff8e8]"
-          >
-            <span>{simpleMode ? 'Writer' : 'Producer'} Mode</span>
-            <span className="text-[#98711d]">{simpleMode ? '→ Producer' : '→ Writer'}</span>
-          </button>
+        <div className={cn('space-y-3 border-b border-[#eadfca] p-3', mobileDrawer && 'pt-1')}>
+          {!mobileDrawer && (
+            <button
+              type="button"
+              onClick={toggleSimpleMode}
+              className="flex w-full items-center justify-between rounded-2xl border border-[#e7d8b9] bg-white/75 px-3 py-2.5 text-xs font-semibold text-[#5e5445] shadow-sm transition hover:border-accent hover:bg-[#fff8e8]"
+            >
+              <span>{simpleMode ? 'Writer' : 'Producer'} Mode</span>
+              <span className="text-[#98711d]">{simpleMode ? '→ Producer' : '→ Writer'}</span>
+            </button>
+          )}
           <div>
             <label className="label">Active Project</label>
             <select
@@ -240,7 +243,12 @@ export function Sidebar({
         </div>
       )}
 
-      <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto p-2">
+      <nav
+        className={cn(
+          'space-y-1 p-2',
+          mobileDrawer ? 'pb-4' : 'custom-scrollbar menu-scroll min-h-0 flex-1 overflow-y-auto',
+        )}
+      >
         {!collapsed && (
           <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-[0.2em] text-[#98711d]">
             Primary
@@ -278,7 +286,7 @@ export function Sidebar({
       </nav>
 
       {!collapsed && (
-        <div className="space-y-2 border-t border-[#eadfca] p-3">
+        <div className={cn('space-y-2 border-t border-[#eadfca] p-3', mobileDrawer && 'pb-6')}>
           {user && (
             <div className="space-y-2 rounded-2xl border border-[#eadfca] bg-white/70 px-3 py-2 shadow-sm">
               <div className="min-w-0">
