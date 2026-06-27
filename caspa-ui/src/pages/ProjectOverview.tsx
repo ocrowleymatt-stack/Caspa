@@ -196,7 +196,7 @@ export default function ProjectOverview() {
                 <div className="flex flex-wrap gap-3">
                   {projectMode === 'blank' && (
                     <>
-                      <Link to="/casper" className="btn-primary">
+                      <Link to={`/casper?projectId=${id}`} className="btn-primary">
                         <Sparkles className="h-4 w-4" /> Auto-write
                       </Link>
                       <Link to={`/projects/${id}/bible`} className="btn-secondary">
@@ -219,7 +219,7 @@ export default function ProjectOverview() {
                       <Link to={`/projects/${id}/bible`} className="btn-primary">
                         <BookOpen className="h-4 w-4" /> Write from bible
                       </Link>
-                      <Link to="/casper" className="btn-secondary">
+                      <Link to={`/casper?projectId=${id}`} className="btn-secondary">
                         <Sparkles className="h-4 w-4" /> Auto-write scene
                       </Link>
                     </>

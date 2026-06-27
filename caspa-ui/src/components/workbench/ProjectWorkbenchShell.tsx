@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { getProject } from '../../api/projects';
 import { WorkbenchApplyRail } from './WorkbenchApplyRail';
 import { WorkbenchSourceSelector } from './WorkbenchSourceSelector';
+import { DEFAULT_WORKBENCH_SOURCE } from '../../lib/workbenchSource';
 import { useAppStore } from '../../store';
 
 const TABS = [
@@ -26,10 +27,14 @@ export function ProjectWorkbenchShell() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const setActiveProjectId = useAppStore((s) => s.setActiveProjectId);
+  const setWorkbenchSource = useAppStore((s) => s.setWorkbenchSource);
 
   useEffect(() => {
-    if (id) setActiveProjectId(id);
-  }, [id, setActiveProjectId]);
+    if (id) {
+      setActiveProjectId(id);
+      setWorkbenchSource(DEFAULT_WORKBENCH_SOURCE);
+    }
+  }, [id, setActiveProjectId, setWorkbenchSource]);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', id],

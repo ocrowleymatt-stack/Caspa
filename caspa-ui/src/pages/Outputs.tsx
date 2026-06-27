@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Copy, Package, PenLine, Sparkles } from 'lucide-react';
+import { Copy, Package, Sparkles } from 'lucide-react';
 import { ElevationWorkbench } from '../components/ElevationWorkbench';
 import { listOutputs } from '../api/outputs';
 import { listProjects } from '../api/projects';
@@ -91,9 +91,6 @@ export function OutputsContent({ projectId }: { projectId: string }) {
                   >
                     <Copy className="h-3.5 w-3.5" /> Copy
                   </button>
-                  <Link to={`/outputs/${output.id}`} className="btn-secondary text-xs">
-                    <PenLine className="h-3.5 w-3.5" /> Continue
-                  </Link>
                   <Link to={`/outputs/${output.id}?gold=1`} className="btn-secondary text-xs">
                     <Sparkles className="h-3.5 w-3.5" /> Gold
                   </Link>

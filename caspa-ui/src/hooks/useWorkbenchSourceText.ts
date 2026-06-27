@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getChapter, listChapters } from '../api/chapters';
 import { getOutput } from '../api/outputs';
 import { listResearchDeskNotes } from '../api/research';
+import { extractOutputText } from '../lib/outputSemantics';
 import type { WorkbenchSource } from '../lib/workbenchSource';
 
 const MANUSCRIPT_SLICE = 120_000;
@@ -54,7 +55,7 @@ export function useWorkbenchSourceText(projectId: string | undefined, source: Wo
       case 'selected-unit':
         return unitChapter?.content ?? '';
       case 'selected-output':
-        return outputRecord?.metadata?.text ?? '';
+        return extractOutputText(outputRecord?.metadata);
       case 'clipboard':
       case 'custom':
         return source.customText ?? '';
@@ -64,7 +65,7 @@ export function useWorkbenchSourceText(projectId: string | undefined, source: Wo
         return wholeManuscript;
     }
   }, [
-    outputRecord?.metadata?.text,
+    outputRecord?.metadata,
     researchNote?.content,
     source.customText,
     source.mode,

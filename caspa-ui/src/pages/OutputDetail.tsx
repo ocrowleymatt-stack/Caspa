@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -109,13 +109,21 @@ export default function OutputDetail() {
   }
 
   const autoGoldStarted = useRef(false);
+  const [goldPromptOpen, setGoldPromptOpen] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('gold') !== '1' || autoGoldStarted.current) return;
     if (!output?.projectId || !text.trim()) return;
     autoGoldStarted.current = true;
-    goldMutation.mutate();
-  }, [output?.projectId, text, searchParams, goldMutation]);
+    setGoldPromptOpen(true);
+  }, [output?.projectId, text, searchParams]);
+
+  function handleGoldPass() {
+    const confirmed = confirm(
+      'Run Gold Pass on this output? A new gold artefact will be saved — your original output stays untouched.',
+    );
+    if (confirmed) goldMutation.mutate();
+  }
 
   async function copyText() {
     await navigator.clipboard.writeText(text);
@@ -163,7 +171,7 @@ export default function OutputDetail() {
             capabilities={capabilities}
             onCopy={copyText}
             onContinue={() => continueMutation.mutate()}
-            onGold={() => goldMutation.mutate()}
+            onGold={handleGoldPass}
             onApply={handleApplyRevision}
             onExportMarkdown={exportMarkdown}
             continuePending={continueMutation.isPending}
@@ -172,6 +180,22 @@ export default function OutputDetail() {
           />
         </div>
       </header>
+
+      {goldPromptOpen && (
+        <section className="rounded-[1.5rem] border border-[#caa044] bg-[#fff8e8] p-5 text-sm leading-7 text-[#5f5648]">
+          <strong className="text-[#171a22]">Run Gold Pass on this output?</strong>
+          <p className="mt-2">Gold saves a new artefact — it does not replace this output.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={handleGoldPass} disabled={goldMutation.isPending} className="btn-primary text-xs">
+              {goldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Run Gold Pass
+            </button>
+            <button type="button" onClick={() => setGoldPromptOpen(false)} className="btn-secondary text-xs">
+              Not now
+            </button>
+          </div>
+        </section>
+      )}
 
       {output.metadata?.critique && (
         <section className="rounded-[1.8rem] border border-[#eadfca] bg-[#fff8e8] p-5 shadow-paper">

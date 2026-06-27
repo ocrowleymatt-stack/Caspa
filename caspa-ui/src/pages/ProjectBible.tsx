@@ -17,7 +17,7 @@ export default function ProjectBiblePage() {
     enabled: !!id,
   });
 
-  const { data: bible, isLoading } = useQuery({
+  const { data: bible, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['project-bible', id],
     queryFn: () => getProjectBible(id!),
     enabled: !!id,
@@ -48,10 +48,31 @@ export default function ProjectBiblePage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  if (isLoading || !bible) {
+  if (isLoading) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-[#98711d]" />
+      </div>
+    );
+  }
+
+  if (isError || !bible) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6 py-16 text-center">
+        <BookOpen className="mx-auto h-10 w-10 text-[#98711d]" />
+        <h1 className="font-serif text-3xl font-semibold text-[#171a22]">Project Bible</h1>
+        <p className="text-sm leading-7 text-muted">
+          {isError ? (error instanceof Error ? error.message : 'Could not load the bible.') : 'No bible loaded yet.'}
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <button type="button" onClick={() => refetch()} className="btn-secondary">
+            Retry load
+          </button>
+          <button type="button" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="btn-primary">
+            {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Generate Project Bible
+          </button>
+        </div>
       </div>
     );
   }

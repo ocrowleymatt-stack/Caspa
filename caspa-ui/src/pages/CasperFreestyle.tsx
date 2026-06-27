@@ -206,13 +206,27 @@ export default function CasperFreestyle() {
     enabled: !!selectedChapterId,
   });
 
-  const inExistingProject = Boolean(queryProjectId && existingProject && !showNewProjectFlow);
+  const showImproveFlow = Boolean(queryProjectId && existingProject && improveMode && !showNewProjectFlow);
+  const writingInProject = Boolean(queryProjectId && existingProject && !showNewProjectFlow && !showImproveFlow);
   const hasManuscriptText = Boolean(sourceChapter?.content?.trim());
+
+  function defaultOutputForMode(nextMode: CasperMode): string {
+    if (nextMode === 'script') return 'Act One';
+    if (nextMode === 'musical') return 'Song list and lyrics';
+    if (nextMode === 'polish') return 'Award Pass Rewrite';
+    if (nextMode === 'novel') return 'Full chapter';
+    return 'First scene';
+  }
+
+  function handleModeSelect(nextMode: CasperMode) {
+    setMode(nextMode);
+    setOutput(defaultOutputForMode(nextMode));
+  }
 
   const [mode, setMode] = useState<CasperMode>('novel');
   const [premise, setPremise] = useState('');
   const [tone, setTone] = useState('Clear, vivid, witty, production-minded.');
-  const [output, setOutput] = useState('Act One');
+  const [output, setOutput] = useState('Full chapter');
   const [whitePage, setWhitePage] = useState('');
   const [uploadedName, setUploadedName] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -242,31 +256,38 @@ export default function CasperFreestyle() {
       const finalPremise = override?.premise ?? premise;
       const finalOutput = override?.output ?? output;
       const finalModeCard = getMode(finalMode);
-      const title = titleFromPremise(uploadedName || finalPremise, finalMode);
-      const trimmedPremise = finalPremise.trim();
-      const description = trimmedPremise
-        ? `${trimmedPremise}\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`
-        : uploadedName
-          ? `Uploaded manuscript: ${uploadedName}\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`
-          : `A fresh blank room.\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`;
+      const useExistingProjectId = queryProjectId && !showNewProjectFlow ? queryProjectId : '';
 
-      const project = await createProject({
-        title,
-        genre: finalModeCard.genre,
-        description,
-        targetWordCount: finalModeCard.targetWordCount,
-        status: 'draft',
-        hasImportedManuscript: Boolean(whitePage.trim()),
-        ...workModelFromCasperMode(finalMode, { hasUploadedManuscript: Boolean(whitePage.trim()) }),
-      });
+      let project;
+      if (useExistingProjectId) {
+        project = existingProject ?? await getProject(useExistingProjectId);
+      } else {
+        const title = titleFromPremise(uploadedName || finalPremise, finalMode);
+        const trimmedPremise = finalPremise.trim();
+        const description = trimmedPremise
+          ? `${trimmedPremise}\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`
+          : uploadedName
+            ? `Uploaded manuscript: ${uploadedName}\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`
+            : `A fresh blank room.\n\nCaspa auto-write target: Novel Write Pro / award-level ${finalOutput}`;
 
-      if (whitePage.trim()) {
-        await createChapter(project.id, {
-          title: uploadedName ? `Source manuscript: ${uploadedName}` : 'Source White Page',
-          order: 1,
-          content: whitePage,
-          status: finalMode === 'polish' ? 'draft' : 'outline',
+        project = await createProject({
+          title,
+          genre: finalModeCard.genre,
+          description,
+          targetWordCount: finalModeCard.targetWordCount,
+          status: 'draft',
+          hasImportedManuscript: Boolean(whitePage.trim()),
+          ...workModelFromCasperMode(finalMode, { hasUploadedManuscript: Boolean(whitePage.trim()) }),
         });
+
+        if (whitePage.trim()) {
+          await createChapter(project.id, {
+            title: uploadedName ? `Source manuscript: ${uploadedName}` : 'Source White Page',
+            order: 1,
+            content: whitePage,
+            status: finalMode === 'polish' ? 'draft' : 'outline',
+          });
+        }
       }
 
       const draft = await runNovelWritePro({
@@ -286,9 +307,10 @@ export default function CasperFreestyle() {
         throw new Error('Novel Write Pro returned no writing. Check Ollama on the server or try again.');
       }
 
+      const existingCount = useExistingProjectId ? existingChapters.length : (whitePage.trim() ? 1 : 0);
       const chapter = await createChapter(project.id, {
         title: draft.title || firstDraftTitle(finalMode, finalOutput),
-        order: whitePage.trim() ? 2 : 1,
+        order: existingCount + 1,
         content: generated,
         status: 'draft',
       });
@@ -359,10 +381,9 @@ export default function CasperFreestyle() {
     createMutation.mutate(override);
   }
 
-  function startMode(nextMode: CasperMode, nextOutput = output) {
-    setMode(nextMode);
-    setOutput(nextOutput);
-    startProject({ mode: nextMode, output: nextOutput });
+  function startMode(nextMode: CasperMode, nextOutput?: string) {
+    handleModeSelect(nextMode);
+    startProject({ mode: nextMode, output: nextOutput ?? defaultOutputForMode(nextMode) });
   }
 
   function handleIdeaSubmit(event: FormEvent) {
@@ -372,7 +393,7 @@ export default function CasperFreestyle() {
 
   const pendingLabel = 'Novel Write Pro is drafting... (plan → draft → critic → rewrite — ~4–5 min on Ollama)';
 
-  if (inExistingProject && existingProject) {
+  if (showImproveFlow && existingProject) {
     return (
       <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">
         <div className="mx-auto max-w-4xl space-y-8">
@@ -441,6 +462,17 @@ export default function CasperFreestyle() {
       <div className="mx-auto max-w-7xl space-y-8">
         <header className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-end">
           <div className="space-y-6">
+            {writingInProject && existingProject && (
+              <div className="rounded-[1.5rem] border border-[#caa044] bg-[#fff8e8] px-5 py-4 text-sm leading-7 text-[#5f5648]">
+                <strong className="text-[#171a22]">Writing in: {existingProject.title}</strong>
+                <span className="block mt-1">
+                  Novel Write Pro will add a new chapter here — it will not create a duplicate project.
+                </span>
+                <Link to={`/projects/${queryProjectId}`} className="mt-2 inline-flex text-xs font-bold uppercase tracking-[0.14em] text-[#98711d] hover:underline">
+                  Back to project overview
+                </Link>
+              </div>
+            )}
             <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
               <Sparkles className="h-4 w-4" /> Casper · Novel Write Pro
             </div>
@@ -479,7 +511,9 @@ export default function CasperFreestyle() {
                 placeholder="Describe the book, script, show, song or idea — or leave blank and let Novel Write Pro invent the opening."
               />
               <p className="text-sm leading-6 text-[#766b58]">
-                Primary action: create the project, run the critic room silently, generate the first draft, and open the writing page.
+                {writingInProject
+                  ? 'Primary action: run Novel Write Pro inside this project and open the new draft chapter.'
+                  : 'Primary action: create the project, run the critic room silently, generate the first draft, and open the writing page.'}
               </p>
               <button
                 type="submit"
@@ -487,7 +521,11 @@ export default function CasperFreestyle() {
                 className="flex w-full items-center justify-center gap-2 rounded-[1.35rem] bg-[#f5d37a] px-6 py-4 text-base font-bold text-[#171a22] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#ffe39a] disabled:opacity-60"
               >
                 {createMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
-                {createMutation.isPending ? pendingLabel : 'Auto-write award draft'}
+                {createMutation.isPending
+                  ? pendingLabel
+                  : writingInProject
+                    ? 'Auto-write in this project'
+                    : 'Auto-write award draft'}
               </button>
             </div>
 

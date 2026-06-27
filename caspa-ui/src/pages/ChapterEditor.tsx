@@ -98,6 +98,13 @@ export default function ChapterEditor() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  function handleContinueWriting() {
+    const confirmed = confirm(
+      'Continue writing will append AI text to this chapter. The continuation is also saved as a separate output.',
+    );
+    if (confirmed) continueMutation.mutate();
+  }
+
   const restoreMutation = useMutation({
     mutationFn: (timestamp: string) => restoreChapter(chapterId!, timestamp),
     onSuccess: (restored) => {
@@ -175,7 +182,7 @@ export default function ChapterEditor() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => continueMutation.mutate()}
+            onClick={handleContinueWriting}
             disabled={continueMutation.isPending || !content.trim()}
             className="btn-primary text-xs"
           >
