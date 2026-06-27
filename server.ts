@@ -38,6 +38,7 @@ import { outputsRouter } from './src/modules/outputs/index';
 import { showCatalogueRouter } from './src/modules/show-catalogue/index';
 import { agentSwarmRouter } from './src/modules/agent-swarm/index';
 import { bookRouter } from './src/modules/book/index';
+import { studioRouter } from './src/modules/studio/index';
 import { runMigrations } from './src/services/db';
 import { ProjectService } from './src/modules/manuscript/ProjectService';
 import { ChapterService } from './src/modules/manuscript/ChapterService';
@@ -87,6 +88,7 @@ const moduleRegistry = [
   { name: 'outputs', mount: '/api/outputs', status: 'mounted' },
   { name: 'agent-swarm', mount: '/api/agents', status: 'mounted' },
   { name: 'book-engine', mount: '/api/projects/:id/book-map + structure + memory + versions + export', status: 'mounted' },
+  { name: 'studio', mount: '/api/projects/:id/assets + production-brief + guide-state + intimacy', status: 'mounted' },
   { name: 'show-catalogue', mount: '/api/show-catalogue', status: 'mounted' },
 ];
 
@@ -192,6 +194,7 @@ app.use(publishConfidenceRouter);
 app.use(outputsRouter);
 app.use(agentSwarmRouter);
 app.use(bookRouter);
+app.use(studioRouter);
 app.use(showCatalogueRouter);
 
 app.use(
