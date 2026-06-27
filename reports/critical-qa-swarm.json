@@ -1,0 +1,236 @@
+{
+  "generatedAt": "2026-06-27T07:49:57.998Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "commit": "1.0.0",
+  "withAi": false,
+  "agents": [
+    {
+      "agent": "Impatient New User",
+      "score": 10,
+      "status": "pass",
+      "tested": [
+        "POST /api/auth/login",
+        "POST /api/projects (blank project)",
+        "GET /api/casper/status",
+        "GET /api/outputs",
+        "UI bundle string scan"
+      ],
+      "evidence": [
+        "Created project HUjMRSd2",
+        "GET /api/casper/status → 200",
+        "GET /api/projects/HUjMRSd22CmN/book-map → 200",
+        "GET /api/outputs?projectId=HUjMRSd22CmN → 200",
+        "GET /api/projects/HUjMRSd22CmN/export/markdown → 200",
+        "UI contains \"Saved Writing\"",
+        "UI contains \"Book Map\"",
+        "UI contains \"Novel Write Pro\"",
+        "UI contains \"Finish This Book\"",
+        "UI contains \"What are we making today\""
+      ],
+      "failures": [],
+      "recommendedFixes": [],
+      "severity": "low"
+    },
+    {
+      "agent": "Angry Novelist",
+      "score": 9,
+      "status": "warn",
+      "tested": [
+        "POST /api/manuscript/import/analyse (multi-chapter fixture)",
+        "POST /api/projects/:id/book-map/generate"
+      ],
+      "evidence": [
+        "Detected 5 units; mode=single-unit",
+        "Book Map outputId=dNcYswxg"
+      ],
+      "failures": [
+        "WARN: Skipped live NWP/finish AI calls (use --with-ai)"
+      ],
+      "recommendedFixes": [
+        "Run with --with-ai on server for full Angry Novelist test"
+      ],
+      "severity": "medium"
+    },
+    {
+      "agent": "Manuscript Surgeon",
+      "score": 9,
+      "status": "warn",
+      "tested": [
+        "POST /api/manuscript/import/analyse (multi-chapter-novel.md)",
+        "POST /api/manuscript/import/analyse (stage-play-scene.txt)",
+        "POST /api/manuscript/import/analyse (nonfiction-outline.md)",
+        "POST /api/manuscript/import/analyse (messy-bad-project.md)",
+        "POST /api/manuscript/import/apply (preserve source)"
+      ],
+      "evidence": [
+        "multi-chapter-novel.md: 5 units, confidence=high",
+        "stage-play-scene.txt: 8 units, confidence=high",
+        "nonfiction-outline.md: 8 units, confidence=high",
+        "messy-bad-project.md: 1 units, confidence=high",
+        "whole-manuscript-source apply succeeded",
+        "Structure report outputId=H7vRAida"
+      ],
+      "failures": [
+        "WARN: Messy fixture produced no warnings"
+      ],
+      "recommendedFixes": [],
+      "severity": "medium"
+    },
+    {
+      "agent": "Continuity Pedant",
+      "score": 10,
+      "status": "pass",
+      "tested": [
+        "POST /api/projects/:id/book-map/generate",
+        "POST /api/projects/:id/memory/extract"
+      ],
+      "evidence": [
+        "completion=0% next=Chapter 10: The Final Battle",
+        "memory updatedAt=2026-06-27T07:48:35.818Z"
+      ],
+      "failures": [],
+      "recommendedFixes": [],
+      "severity": "low"
+    },
+    {
+      "agent": "Output Auditor",
+      "score": 10,
+      "status": "pass",
+      "tested": [
+        "POST /api/casper/continue",
+        "POST /api/research/extract-claims",
+        "POST /api/projects/:id/book-map/generate",
+        "GET /api/outputs?projectId=",
+        "GET /api/outputs/:id"
+      ],
+      "evidence": [
+        "Outputs list count=3"
+      ],
+      "failures": [],
+      "recommendedFixes": [],
+      "severity": "low"
+    },
+    {
+      "agent": "Data-Loss Paranoid",
+      "score": 10,
+      "status": "pass",
+      "tested": [
+        "POST /api/manuscript/import/apply whole-manuscript-source",
+        "GET /api/projects/:id/chapters",
+        "POST /api/projects/:id/snapshot",
+        "GET /api/projects/:id/versions",
+        "GET /api/projects/:id/compare (requires two snapshots — route exists)"
+      ],
+      "evidence": [
+        "Source chapter preserved (258 words)",
+        "Snapshot dSGHsgSo created"
+      ],
+      "failures": [],
+      "recommendedFixes": [],
+      "severity": "low"
+    },
+    {
+      "agent": "UX Sadist",
+      "score": 10,
+      "status": "pass",
+      "tested": [
+        "UI bundle CTA scan",
+        "GET /api/casper/status availability",
+        "Browser checklist (manual): empty states, duplicate project selector"
+      ],
+      "evidence": [
+        "Found \"Auto-write award draft\" in UI",
+        "Found \"Finish This Book\" in UI",
+        "Found \"Generate Book Map\" in UI",
+        "Found \"Saved Writing\" in UI",
+        "Manual: verify each empty state has a button; verify single active project context"
+      ],
+      "failures": [],
+      "recommendedFixes": [],
+      "severity": "low"
+    },
+    {
+      "agent": "Security Goblin",
+      "score": 10,
+      "status": "pass",
+      "tested": [
+        "GET /health (public)",
+        "GET /api/doctor secret scan",
+        "GET /api/projects unauthenticated → 401",
+        "GET /api/outputs unauthenticated → 401",
+        "GET /api/ollama/health unauthenticated → 401",
+        "GET /api/ollama/models unauthenticated → 401",
+        "GET /api/projects/000000000000000000000000/book-map unauthenticated → 401"
+      ],
+      "evidence": [
+        "/health public OK",
+        "Doctor exposes booleans only (no raw keys)",
+        "/api/projects → 401",
+        "/api/outputs → 401",
+        "/api/ollama/health → 401",
+        "/api/ollama/models → 401",
+        "/api/projects/000000000000000000000000/book-map → 401"
+      ],
+      "failures": [],
+      "recommendedFixes": [],
+      "severity": "low"
+    },
+    {
+      "agent": "Performance Miser",
+      "score": 9,
+      "status": "warn",
+      "tested": [
+        "POST /api/ollama/generate-test"
+      ],
+      "evidence": [
+        "Ollama generate-test 1.7s"
+      ],
+      "failures": [
+        "WARN: Skipped NWP duration test (use --with-ai)"
+      ],
+      "recommendedFixes": [],
+      "severity": "medium"
+    },
+    {
+      "agent": "Commercial Snob",
+      "score": 10,
+      "status": "pass",
+      "tested": [
+        "End-to-end API journey: project → import → structure → book map → export"
+      ],
+      "evidence": [
+        "Journey produced 2 saved outputs",
+        "Commercial journey score component: 10/10"
+      ],
+      "failures": [],
+      "recommendedFixes": [
+        "Top beta blockers: surface finish roadmap on Today; wire Trash to Treasure UI; staged progress on NWP"
+      ],
+      "severity": "low"
+    }
+  ],
+  "browserChecklist": [
+    "Login page loads and submits",
+    "Today page shows primary actions without explanation",
+    "New project wizard has visible submit on each step",
+    "Novel Write Pro shows progress stages during long run",
+    "Output detail shows after generation with link from toast",
+    "Apply revision shows confirm() before replace",
+    "Chapter editor prev/next navigation works",
+    "Trash to Treasure entry point discoverable"
+  ],
+  "overallScore": 9.7,
+  "browserReadinessScore": 10,
+  "finishedBookMachineScore": 9.5,
+  "dataSafetyScore": 10,
+  "topDefects": [],
+  "priority": {
+    "p0": [],
+    "p1": [],
+    "p2": [
+      "Angry Novelist: WARN: Skipped live NWP/finish AI calls (use --with-ai)",
+      "Manuscript Surgeon: WARN: Messy fixture produced no warnings",
+      "Performance Miser: WARN: Skipped NWP duration test (use --with-ai)"
+    ]
+  }
+}

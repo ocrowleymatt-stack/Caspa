@@ -23,8 +23,8 @@ export async function readJsonFile<T>(subPath: string, filename: string): Promis
 }
 
 export async function writeJsonFile<T>(subPath: string, filename: string, data: T): Promise<void> {
-  const dir = await ensureDataSubDir(subPath);
-  const filePath = path.join(dir, filename);
+  const filePath = path.join(getConfig().dataDir, subPath, filename);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tmpPath = `${filePath}.tmp`;
   await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
   await fs.rename(tmpPath, filePath);

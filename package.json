@@ -11,6 +11,8 @@
     "lint": "tsc --noEmit",
     "deploy:ui": "cd caspa-ui && npm run build && mkdir -p ../public && rm -rf ../public/* && cp -r dist/* ../public/",
     "deploy": "npm run deploy:ui && npm run build",
+    "qa:critical": "tsx scripts/critical-qa-swarm.ts",
+    "qa:critical:full": "tsx scripts/critical-qa-swarm.ts --with-ai",
     "casper": "tsx src/cli/casper.ts"
   },
   "dependencies": {
