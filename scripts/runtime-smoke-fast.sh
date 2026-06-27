@@ -86,23 +86,11 @@ fi
 echo "--- PM2 ---"
 if command -v pm2 >/dev/null 2>&1; then
   if pm2 describe caspa-server >/dev/null 2>&1; then
-    pm2_status=$(pm2 jlist 2>/dev/null | python3 - <<'PY' || echo "unknown"
-import json, sys
-try:
-    apps = json.load(sys.stdin)
-    app = next((a for a in apps if a.get("name") == "caspa-server"), None)
-    if not app:
-        print("missing")
-    else:
-        print(app.get("pm2_env", {}).get("status", "unknown"))
-except Exception:
-    print("unknown")
-PY
-)
+    pm2_status=$(pm2 describe caspa-server 2>/dev/null | awk '/status/{print $4; exit}' || true)
     if [[ "$pm2_status" == "online" ]]; then
       pass "pm2 caspa-server online"
     else
-      fail "pm2 caspa-server status: ${pm2_status}"
+      fail "pm2 caspa-server status: ${pm2_status:-unknown}"
     fi
     pm2 status caspa-server || true
   else
