@@ -20,11 +20,15 @@ import { GuideMeButton } from '../components/GuideMeDrawer';
 import { ProviderStatus } from '../components/ProviderStatus';
 import { normalizeOutputKind, OUTPUT_KIND_LABELS, outputExcerpt, extractOutputText } from '../lib/outputSemantics';
 
-const quickLinks = [
+const coreQuickLinks = [
+  { to: '/projects', label: 'Projects', icon: BookOpen, desc: 'Add material, choose a product, and pick up where you left off.' },
   { to: '/casper', label: 'Novel Write Pro', icon: Ghost, desc: 'Auto-write, upload a manuscript, or improve an existing chapter.' },
-  { to: '/projects', label: 'Projects', icon: BookOpen, desc: 'Create a room, import structure, and pick up where you left off.' },
-  { to: '/command', label: 'Studio Command', icon: Sparkles, desc: 'Ask what to do next — routes to Pier, Gold, Research, Swarm or Outputs.' },
   { to: '/outputs', label: 'Saved Writing', icon: Package, desc: 'Every AI draft and report — apply only when you are ready.' },
+  { to: '/help', label: 'Help Centre', icon: FileText, desc: 'Practical guides for material, plan, write, improve, and export.' },
+];
+
+const moreQuickLinks = [
+  { to: '/command', label: 'Studio Command', icon: Sparkles, desc: 'Ask what to do next — routes to Pier, Gold, Research, Swarm or Outputs.' },
   { to: '/music-prompt', label: 'Music', icon: Music, desc: 'Lyrics, show numbers, prompts and musical sketches.' },
   { to: '/documents', label: 'Documents', icon: FileText, desc: 'Render, preview and prepare manuscripts.' },
 ];
@@ -62,30 +66,31 @@ export default function CommandCentre() {
             </div>
             <div className="flex flex-wrap gap-3">
               <Link to="/projects" className="btn-primary">
-                <BookOpen className="h-4 w-4" /> Start blank project
+                <BookOpen className="h-4 w-4" /> Start with material
               </Link>
-              <Link to="/start" className="btn-secondary">
-                <Sparkles className="h-4 w-4" /> Production Wizard
-              </Link>
-              <Link to="/casper/trash-to-treasure" className="btn-secondary">
-                <Gem className="h-4 w-4" /> Trash to Treasure
-              </Link>
-              {activeProject && (
+              {activeProject ? (
                 <Link to={`/projects/${activeProject.id}`} className="btn-secondary">
                   <PenLine className="h-4 w-4" /> Continue {activeProject.title}
                 </Link>
+              ) : (
+                <Link to="/projects" className="btn-secondary">
+                  <PenLine className="h-4 w-4" /> Continue project
+                </Link>
               )}
+              <Link to="/casper/trash-to-treasure" className="btn-secondary">
+                <Gem className="h-4 w-4" /> Rescue rough material
+              </Link>
+              <Link to="/outputs" className="btn-secondary">
+                <Package className="h-4 w-4" /> Open saved writing
+              </Link>
             </div>
             <div className="flex flex-wrap gap-3 pt-2">
               <GuideMeButton />
+              <Link to="/start" className="btn-ghost text-sm">
+                <Sparkles className="h-4 w-4" /> Production Wizard
+              </Link>
               <Link to="/help" className="btn-ghost text-sm">
                 <FileText className="h-4 w-4" /> Help Centre
-              </Link>
-              <Link to="/casper" className="btn-ghost text-sm">
-                <Ghost className="h-4 w-4" /> Casper · Novel Write Pro
-              </Link>
-              <Link to="/outputs" className="btn-ghost text-sm">
-                <Package className="h-4 w-4" /> Saved Writing
               </Link>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -108,8 +113,8 @@ export default function CommandCentre() {
                   <p>Write badly if necessary.</p>
                   <p>Casper can tidy it after the spark has arrived.</p>
                 </div>
-                <div className="mt-8 rounded-2xl bg-[#171a22] p-4 text-sm leading-6 text-white/78">
-                  The tools are still here. They have simply been told to stop standing in front of the work.
+                <div className="mt-8 rounded-2xl border border-[#eadfca] bg-[#fff8e8] p-4 text-sm leading-6 text-[#5f5648]">
+                  Material in → plan → draft → improve → export. One calm path; every tool still available when you need it.
                 </div>
               </div>
               <ProviderStatus />
@@ -120,7 +125,7 @@ export default function CommandCentre() {
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-[1.8rem] border border-[#eadfca] bg-white p-5 shadow-paper lg:col-span-2">
-          <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Secret Weapon cockpit</div>
+          <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Your project</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {activeProject ? (
               <Link to={`/projects/${activeProject.id}`} className="rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 transition hover:-translate-y-0.5">
@@ -187,8 +192,8 @@ export default function CommandCentre() {
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {quickLinks.map(({ to, label, icon: Icon, desc }) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {coreQuickLinks.map(({ to, label, icon: Icon, desc }) => (
           <Link
             key={to}
             to={to}
@@ -206,6 +211,25 @@ export default function CommandCentre() {
           </Link>
         ))}
       </div>
+
+      <details className="rounded-[1.8rem] border border-[#eadfca] bg-white/80 p-5 shadow-paper">
+        <summary className="cursor-pointer font-serif text-lg font-semibold text-[#171a22]">
+          More tools
+        </summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {moreQuickLinks.map(({ to, label, icon: Icon, desc }) => (
+            <Link
+              key={to}
+              to={to}
+              className="group rounded-[1.4rem] border border-[#eadfca] bg-[#fffdf8] p-4 transition hover:border-[#caa044]"
+            >
+              <Icon className="h-5 w-5 text-[#98711d]" />
+              <div className="mt-2 font-serif text-lg font-semibold text-[#171a22]">{label}</div>
+              <p className="mt-1 text-xs leading-5 text-muted">{desc}</p>
+            </Link>
+          ))}
+        </div>
+      </details>
 
       <div className="rounded-[1.8rem] border border-[#eadfca] bg-white/80 p-6 shadow-paper">
         <h3 className="mb-3 flex items-center gap-2 font-serif text-2xl font-semibold text-[#171a22]">
