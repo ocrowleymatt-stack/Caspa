@@ -6,7 +6,7 @@ import { getOutput } from '../api/outputs';
 import { continueWriting } from '../api/casper';
 import { runGoldPass } from '../api/gold';
 import { getProject } from '../api/projects';
-import { updateChapter } from '../api/chapters';
+import { applyManuscriptOutput } from '../api/book';
 import { OutputApplyActions } from '../components/outputs/OutputApplyActions';
 import { OutputProvenancePanel } from '../components/outputs/OutputProvenancePanel';
 import {
@@ -16,8 +16,6 @@ import {
   normalizeOutputKind,
   OUTPUT_KIND_LABELS,
 } from '../lib/outputSemantics';
-import { countWords } from '../lib/utils';
-import { createProjectSnapshot } from '../api/book';
 import { useToast } from '../components/Toast';
 
 export default function OutputDetail() {
@@ -87,17 +85,22 @@ export default function OutputDetail() {
 
   const applyRevisionMutation = useMutation({
     mutationFn: async () => {
-      await updateChapter(sourceChapterId!, {
-        content: text,
-        wordCount: countWords(text),
+      if (!output?.projectId || !sourceChapterId) {
+        throw new Error('Missing project or source chapter for apply.');
+      }
+      return applyManuscriptOutput(output.projectId, {
+        outputId: output.id,
+        mode: 'replace-unit',
+        unitId: sourceChapterId,
+        confirmed: true,
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['chapter', sourceChapterId] });
       queryClient.invalidateQueries({ queryKey: ['chapters', output?.projectId] });
       queryClient.invalidateQueries({ queryKey: ['chapter-history', sourceChapterId] });
-      toast.success('Revision applied · previous version saved in chapter history');
-      navigate(`/projects/${output!.projectId}/chapters/${sourceChapterId}`);
+      toast.success(`Revision applied safely · snapshot ${result.snapshotId.slice(0, 8)}`);
+      navigate(`/projects/${output!.projectId}/chapters/${result.unitId}`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -107,15 +110,7 @@ export default function OutputDetail() {
       'Replace the current chapter text with this revision? A snapshot will be created first. The previous version will remain in chapter history.',
     );
     if (!confirmed) return;
-    void (async () => {
-      if (output?.projectId) {
-        await createProjectSnapshot(output.projectId, {
-          label: 'Before apply',
-          reason: `Snapshot before applying output ${output.id.slice(0, 8)}`,
-        });
-      }
-      applyRevisionMutation.mutate();
-    })();
+    applyRevisionMutation.mutate();
   }
 
   const autoGoldStarted = useRef(false);

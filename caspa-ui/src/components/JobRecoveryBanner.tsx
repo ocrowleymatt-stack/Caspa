@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { getLatestProjectJob, resumeCaspaJob, type CaspaJob, type CaspaJobStage } from '../api/caspaJobs';
+import { useToast } from './Toast';
 
 function jobSummary(job: CaspaJob): string {
   const stage = job.stages.find((s: CaspaJobStage) => s.id === job.currentStage);
@@ -15,7 +16,8 @@ function jobSummary(job: CaspaJob): string {
 }
 
 export function JobRecoveryBanner({ projectId }: { projectId: string }) {
-  const { data: job, refetch } = useQuery({
+  const toast = useToast();
+  const { data: job, refetch, isFetching } = useQuery({
     queryKey: ['caspa-job-latest', projectId],
     queryFn: () => getLatestProjectJob(projectId),
     enabled: !!projectId,
@@ -30,8 +32,14 @@ export function JobRecoveryBanner({ projectId }: { projectId: string }) {
   }
 
   const resume = async () => {
-    await resumeCaspaJob(job.id);
-    await refetch();
+    if (!job) return;
+    try {
+      await resumeCaspaJob(job.id);
+      await refetch();
+      toast.success('Job resume started — check Writing History for new output');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not resume job');
+    }
   };
 
   return (
@@ -52,9 +60,10 @@ export function JobRecoveryBanner({ projectId }: { projectId: string }) {
             <button
               type="button"
               onClick={resume}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-[#0B0F19] px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/20"
+              disabled={isFetching}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-[#0B0F19] px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
             >
-              <RotateCcw className="h-3.5 w-3.5" /> Mark for resume
+              <RotateCcw className="h-3.5 w-3.5" /> Resume job
             </button>
           ) : null}
           <Link

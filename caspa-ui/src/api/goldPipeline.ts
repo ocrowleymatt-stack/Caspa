@@ -8,6 +8,7 @@ export interface GoldPipelineExecuteBody {
   projectId: string;
   config: GoldRunOptions;
   chapters: string[];
+  sourceLockId: string;
 }
 
 export type GoldPipelineStreamEvent =

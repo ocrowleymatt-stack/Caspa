@@ -66,6 +66,7 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
   const [steps, setSteps] = useState<PipelineStep[]>(createInitialSteps);
   const [runId, setRunId] = useState('');
   const [showSourceModal, setShowSourceModal] = useState(false);
+  const [pendingGoldAction, setPendingGoldAction] = useState<'quick' | 'pipeline' | null>(null);
   const [lockedSourceLabel, setLockedSourceLabel] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -317,7 +318,7 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
     }
   };
 
-  const openGoldSourceModal = () => {
+  const openGoldSourceModal = (action: 'quick' | 'pipeline') => {
     if (!projectId) {
       toast.error('Select active project in sidebar');
       return;
@@ -326,21 +327,16 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
       toast.error('No manuscript source available for Gold Pass');
       return;
     }
-    setShowSourceModal(true);
-  };
-
-  const executeGoldPipeline = async () => {
-    if (!projectId) {
-      const msg = 'Select active project in sidebar';
-      setPipelineError(msg);
-      toast.error(msg);
-      return;
-    }
-
-    if (selectedChapters.length === 0) {
+    if (action === 'pipeline' && selectedChapters.length === 0) {
       setPipelineError('Select at least one chapter or whole-book scope before execution.');
       return;
     }
+    setPendingGoldAction(action);
+    setShowSourceModal(true);
+  };
+
+  const executeGoldPipelineWithLock = async (sourceLockId: string) => {
+    if (!projectId) return;
 
     const freshSteps = createInitialSteps();
     const scopeLabel = selectedScopeLabel;
@@ -367,9 +363,10 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
     streamCompleteRef.current = false;
 
     const streamBody = {
-      projectId: projectId,
+      projectId,
       config: options,
       chapters: options.chapterIds ?? [],
+      sourceLockId,
     };
 
     try {
@@ -407,8 +404,11 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
       if (abortRef.current === controller) {
         abortRef.current = null;
       }
+      setIsProcessing(false);
     }
   };
+
+  const executeGoldPipeline = () => openGoldSourceModal('pipeline');
 
   const getCurrentTabText = () => {
     if (!pipelineOutput) return '';
@@ -508,11 +508,20 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
         open={showSourceModal}
         projectId={projectId ?? ''}
         choices={goldSourceChoices}
-        onClose={() => setShowSourceModal(false)}
+        onClose={() => {
+          setShowSourceModal(false);
+          setPendingGoldAction(null);
+        }}
         onConfirmed={(sourceLockId, preview) => {
           setLockedSourceLabel(`${preview.title} · ${preview.wordCount.toLocaleString()} words locked`);
           setShowSourceModal(false);
-          void runQuickGoldPassWithLock(sourceLockId);
+          const action = pendingGoldAction ?? 'quick';
+          setPendingGoldAction(null);
+          if (action === 'pipeline') {
+            void executeGoldPipelineWithLock(sourceLockId);
+          } else {
+            void runQuickGoldPassWithLock(sourceLockId);
+          }
         }}
       />
       <div className="lg:col-span-2 space-y-6">
@@ -681,7 +690,7 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
             </button>
             <button
               type="button"
-              onClick={openGoldSourceModal}
+              onClick={() => openGoldSourceModal('quick')}
               disabled={isProcessing || !projectId}
               className="mt-2 w-full py-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
             >

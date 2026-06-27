@@ -110,3 +110,26 @@ export function createProjectSnapshot(projectId: string, body?: { label?: string
     body: JSON.stringify(body ?? {}),
   });
 }
+
+export function applyManuscriptOutput(
+  projectId: string,
+  body: {
+    outputId: string;
+    mode: 'replace-unit' | 'append-unit' | 'new-unit';
+    unitId?: string;
+    newUnitTitle?: string;
+    confirmed: boolean;
+  },
+) {
+  return apiCall<{
+    applied: boolean;
+    mode: string;
+    snapshotId: string;
+    unitId: string;
+    outputId: string;
+    wordCount: number;
+  }>(`/api/projects/${projectId}/manuscript/apply-output`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
