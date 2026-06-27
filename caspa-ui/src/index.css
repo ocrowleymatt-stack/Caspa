@@ -9,6 +9,9 @@
 
   html {
     background: #f7f1e6;
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
   }
 
   body {
@@ -17,7 +20,19 @@
       radial-gradient(ellipse at 14% 0%, rgba(212, 175, 55, 0.18) 0%, transparent 42%),
       radial-gradient(ellipse at 82% 12%, rgba(255, 250, 240, 0.85) 0%, transparent 36%),
       linear-gradient(180deg, #f7f1e6 0%, #f3eadb 100%);
-    min-height: 100vh;
+    min-height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-4 ring-accent/30 ring-offset-2 ring-offset-[#fffaf0];
   }
 
   ::selection {
@@ -37,7 +52,7 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-primary {
@@ -85,6 +100,25 @@
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(152, 113, 29, 0.55);
+  }
+
+  .app-shell {
+    min-height: 100dvh;
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .page-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  .safe-bottom {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .progress-reserve {
+    min-height: 7rem;
   }
 }
 

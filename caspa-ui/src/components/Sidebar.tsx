@@ -83,6 +83,7 @@ const elevationItems = [
 
 const projectPrimaryLinks = (projectId: string) => [
   { to: `/projects/${projectId}`, label: 'Overview', icon: PenLine, end: true },
+  { to: `/projects/${projectId}/sources`, label: 'Source Library', icon: FileText },
   { to: `/projects/${projectId}/manuscript`, label: 'Write', icon: BookOpen },
   { to: `/projects/${projectId}/bible`, label: 'Bible', icon: BookOpen },
   { to: `/projects/${projectId}/book-map`, label: 'Book Map', icon: Map },
@@ -121,8 +122,15 @@ function NavSection({
   );
 }
 
-export function Sidebar() {
-  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+export function Sidebar({
+  mobileDrawer = false,
+  onNavigate,
+}: {
+  mobileDrawer?: boolean;
+  onNavigate?: () => void;
+} = {}) {
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const collapsed = mobileDrawer ? false : sidebarCollapsed;
   const simpleMode = useAppStore((s) => s.simpleMode);
   const toggleSimpleMode = useAppStore((s) => s.toggleSimpleMode);
   const toggle = useAppStore((s) => s.toggleSidebar);
@@ -158,6 +166,7 @@ export function Sidebar() {
       key={to}
       to={to}
       end={end}
+      onClick={onNavigate}
       className={({ isActive }) =>
         cn(
           'flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all',
@@ -178,7 +187,7 @@ export function Sidebar() {
     <aside
       className={cn(
         'flex h-full flex-col border-r border-[#eadfca] bg-[#fffaf0]/90 shadow-[12px_0_45px_rgba(75,55,21,0.08)] backdrop-blur transition-all duration-200',
-        collapsed ? 'w-16' : 'w-64',
+        mobileDrawer ? 'w-full border-r-0 shadow-none' : collapsed ? 'w-16' : 'w-64',
       )}
     >
       <div className="flex items-center justify-between border-b border-[#eadfca] px-4 py-5">
@@ -192,9 +201,11 @@ export function Sidebar() {
             </p>
           </div>
         )}
-        <button type="button" onClick={toggle} className="btn-ghost p-1.5">
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
+        {!mobileDrawer && (
+          <button type="button" onClick={toggle} className="btn-ghost min-h-[44px] min-w-[44px] p-1.5" aria-label="Toggle sidebar">
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        )}
       </div>
 
       {!collapsed && (

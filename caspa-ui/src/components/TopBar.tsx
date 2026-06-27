@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, Menu, Search } from 'lucide-react';
 import { getProject } from '../api/projects';
 import { getChapter } from '../api/chapters';
 import { useAppStore } from '../store';
@@ -29,6 +29,7 @@ export function TopBar() {
   const location = useLocation();
   const { id: projectId, chapterId } = useParams();
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
+  const setMobileNavOpen = useAppStore((s) => s.setMobileNavOpen);
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -68,33 +69,43 @@ export function TopBar() {
   }, [location.pathname, projectId, project, chapter]);
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-[#eadfca] bg-[#fffaf0]/82 px-4 shadow-sm backdrop-blur md:px-6">
-      <div className="flex min-w-0 items-center gap-2">
-        {breadcrumbs.map((crumb, i) => (
-          <div key={i} className="flex min-w-0 items-center gap-2">
-            {i > 0 && <ChevronRight className="h-4 w-4 shrink-0 text-[#b89b56]" />}
+    <header className="sticky top-0 z-40 flex h-14 min-h-[3.5rem] shrink-0 items-center justify-between gap-2 border-b border-[#eadfca] bg-[#fffaf0]/92 px-3 shadow-sm backdrop-blur md:h-16 md:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <button
+          type="button"
+          className="btn-ghost min-h-[44px] min-w-[44px] p-2 lg:hidden"
+          aria-label="Open menu"
+          onClick={() => setMobileNavOpen(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="flex min-w-0 items-center gap-1 overflow-hidden md:gap-2">
+        {breadcrumbs.slice(-2).map((crumb, i) => (
+          <div key={i} className="flex min-w-0 items-center gap-1 md:gap-2">
+            {i > 0 && <ChevronRight className="hidden h-4 w-4 shrink-0 text-[#b89b56] sm:block" />}
             {crumb.to ? (
-              <Link to={crumb.to} className="truncate text-sm font-medium text-muted hover:text-[#98711d]">
+              <Link to={crumb.to} className="truncate text-xs font-medium text-muted hover:text-[#98711d] md:text-sm">
                 {crumb.label}
               </Link>
             ) : (
-              <span className="truncate font-serif text-lg font-semibold text-foreground">{crumb.label}</span>
+              <span className="truncate font-serif text-base font-semibold text-foreground md:text-lg">{crumb.label}</span>
             )}
           </div>
         ))}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <GuideMeButton className="hidden sm:inline-flex" />
-        <ProviderStatus compact className="hidden lg:inline-flex" />
+      <div className="flex shrink-0 items-center gap-1 md:gap-2">
+        <GuideMeButton className="hidden min-h-[44px] sm:inline-flex" />
+        <ProviderStatus compact className="hidden xl:inline-flex" />
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="btn-secondary hidden text-xs sm:flex"
+          className="btn-secondary hidden min-h-[44px] text-xs sm:flex"
         >
           <Search className="h-3.5 w-3.5" />
-          Search
-          <kbd className="ml-1 rounded border border-[#eadfca] bg-white px-1 text-[10px] text-muted">⌘K</kbd>
+          <span className="hidden md:inline">Search</span>
+          <kbd className="ml-1 hidden rounded border border-[#eadfca] bg-white px-1 text-[10px] text-muted lg:inline">⌘K</kbd>
         </button>
         <AIPanelToggle />
       </div>
