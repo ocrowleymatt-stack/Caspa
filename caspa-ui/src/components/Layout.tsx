@@ -11,6 +11,7 @@ import { cn } from '../lib/utils';
 
 export function Layout() {
   const aiPanelOpen = useAppStore((s) => s.aiPanelOpen);
+  const activeProjectId = useAppStore((s) => s.activeProjectId);
 
   return (
     <div className="app-shell flex min-h-dvh h-dvh max-h-dvh w-full overflow-hidden bg-background text-foreground">
@@ -31,10 +32,10 @@ export function Layout() {
           </div>
         </main>
       </div>
-      <AIPanel />
+      <AIPanel projectId={activeProjectId ?? undefined} />
       <CommandPalette />
       <GuideMeDrawer />
-      <MobileBottomNav />
+      {!aiPanelOpen && <MobileBottomNav />}
     </div>
   );
 }
