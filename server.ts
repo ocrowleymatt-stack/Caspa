@@ -40,6 +40,7 @@ import { showCatalogueRouter } from './src/modules/show-catalogue/index';
 import { agentSwarmRouter } from './src/modules/agent-swarm/index';
 import { bookRouter } from './src/modules/book/index';
 import { studioRouter } from './src/modules/studio/index';
+import { minimalRouter } from './src/modules/minimal/index';
 import { runMigrations } from './src/services/db';
 import { ProjectService } from './src/modules/manuscript/ProjectService';
 import { ChapterService } from './src/modules/manuscript/ChapterService';
@@ -90,6 +91,7 @@ const moduleRegistry = [
   { name: 'agent-swarm', mount: '/api/agents', status: 'mounted' },
   { name: 'book-engine', mount: '/api/projects/:id/book-map + structure + memory + versions + export', status: 'mounted' },
   { name: 'studio', mount: '/api/projects/:id/assets + production-brief + guide-state + intimacy', status: 'mounted' },
+  { name: 'minimal', mount: '/api/projects/:id/minimal/* + /api/minimal/projects', status: 'mounted' },
   { name: 'show-catalogue', mount: '/api/show-catalogue', status: 'mounted' },
 ];
 
@@ -197,6 +199,7 @@ app.use(caspaJobsRouter);
 app.use(agentSwarmRouter);
 app.use(bookRouter);
 app.use(studioRouter);
+app.use(minimalRouter);
 app.use(showCatalogueRouter);
 
 app.use(

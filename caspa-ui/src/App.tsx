@@ -57,6 +57,7 @@ import GoldPipeline from './pages/GoldPipeline';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AdminUsers from './pages/AdminUsers';
+import CaspaMinimal from './pages/CaspaMinimal';
 
 export default function App() {
   return (
@@ -66,8 +67,9 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route element={<AuthGuard />}>
+            <Route path="write" element={<CaspaMinimal />} />
             <Route element={<Layout />}>
-              <Route index element={<Navigate to="/home" replace />} />
+              <Route index element={<Navigate to="/write" replace />} />
               <Route path="home" element={<CommandCentre />} />
               <Route path="start" element={<ProductionWizard />} />
               <Route path="wizard" element={<ProductionWizard />} />
