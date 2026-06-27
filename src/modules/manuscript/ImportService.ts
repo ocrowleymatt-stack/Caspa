@@ -2,6 +2,8 @@ import type { UserPublic } from '../auth/types';
 import { ChapterService } from './ChapterService';
 import { NotFoundError, ProjectService } from './ProjectService';
 import { ResearchService } from './ResearchService';
+import { outputRegistry } from '../outputs';
+import { toStructureReport } from '../book/ManuscriptStructureService';
 import {
   analyseManuscriptImport,
   sliceUnitText,
@@ -145,6 +147,8 @@ export class ImportService {
         throw new Error(`Unknown import mode: ${input.importMode as string}`);
     }
 
+    await this.saveStructureReport(input.projectId, rawText, filename, input.workType ?? project.workType);
+
     return {
       projectId: input.projectId,
       importMode: input.importMode,
@@ -152,6 +156,27 @@ export class ImportService {
       researchNotesCreated,
       unitTitles,
     };
+  }
+
+  private async saveStructureReport(
+    projectId: string,
+    rawText: string,
+    filename?: string,
+    workType?: WorkType,
+  ): Promise<void> {
+    const analysis = analyseManuscriptImport({
+      rawText,
+      filename,
+      declaredWorkType: workType,
+    });
+    const report = toStructureReport(analysis, { projectId });
+    await outputRegistry.register({
+      projectId,
+      type: 'imported-source-analysis',
+      title: `Manuscript structure report — ${filename ?? 'import'}`,
+      path: '',
+      metadata: { kind: 'manuscript-structure-report', ...report },
+    });
   }
 }
 

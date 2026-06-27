@@ -1,6 +1,7 @@
 import { aiOrchestrator } from '../ai';
 import { projectBibleService } from '../manuscript/ProjectBibleService';
 import { outputRegistry } from '../outputs';
+import { bookContextLoader } from '../book/BookContextLoader';
 import {
   buildNovelWriteProAutoWritePrompt,
   type NovelWriteProMode,
@@ -103,8 +104,17 @@ export class NovelWriteProService {
     const genre = body.genre ?? modeGenres[mode];
     const premise = body.spark ?? '';
     const tone = body.tone ?? 'Clear, vivid, witty, production-minded.';
-    const sourceText = body.source ?? '';
     const improveExisting = Boolean(body.improveExisting && body.projectId?.trim());
+    let sourceText = body.source ?? '';
+
+    if (body.projectId?.trim() && !sourceText.trim() && !improveExisting) {
+      const bookContext = await bookContextLoader.load(body.projectId);
+      sourceText = bookContext.sourceText.slice(0, 12_000);
+    }
+
+    const bookContextBlock = body.projectId?.trim()
+      ? (await bookContextLoader.load(body.projectId)).summaryBlock.slice(0, 6000)
+      : '';
 
     if (improveExisting && !sourceText.trim()) {
       throw new Error('Source manuscript text is required when improving an existing project.');
@@ -133,7 +143,11 @@ export class NovelWriteProService {
 
     const planResponse = await aiOrchestrator.generate({
       ...generateOpts,
-      prompt: buildPlanningPrompt(promptInput),
+      prompt: [
+        buildPlanningPrompt(promptInput),
+        bookContextBlock ? `\n--- BOOK CONTEXT ---\n${bookContextBlock}` : '',
+        '\nBOOK RULES: Do not summarize the whole manuscript unless asked. Do not collapse the book into one essay or blurb. Preserve existing structure. For novel mode produce chapter-scale work or a book-scale plan — never a single stanza summary.',
+      ].join(''),
       temperature: 0.45,
       maxTokens: 2200,
     });
@@ -149,7 +163,11 @@ export class NovelWriteProService {
 
     const draftResponse = await aiOrchestrator.generate({
       ...generateOpts,
-      prompt: buildFirstDraftPrompt(promptInput, plan),
+      prompt: [
+        buildFirstDraftPrompt(promptInput, plan),
+        bookContextBlock ? `\n--- BOOK CONTEXT ---\n${bookContextBlock}` : '',
+        '\nWrite chapter-scale prose. Minimum meaningful length for the target output. Do not produce poetry unless mode is poetry.',
+      ].join(''),
     });
     const firstDraft = draftResponse.text.trim();
     if (!firstDraft) {

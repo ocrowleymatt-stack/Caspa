@@ -91,11 +91,11 @@ researchRouter.post(
       return;
     }
     await assertProject(body.projectId, req);
-    sendSuccess(res, await researchDeskService.suggestTopics({
+    sendSuccess(res, await researchDeskService.suggestTopicsWithOutput({
       projectId: body.projectId,
       sourceText: body.sourceText,
       query: body.query,
-    }));
+    }), 201);
   }),
 );
 
@@ -109,6 +109,11 @@ researchRouter.post(
     }
     if (body.projectId) {
       await assertProject(body.projectId, req);
+      sendSuccess(res, await researchDeskService.extractClaimsWithOutput({
+        projectId: body.projectId,
+        text: body.text,
+      }), 201);
+      return;
     }
     sendSuccess(res, researchDeskService.extractClaims({
       projectId: body.projectId,
@@ -130,11 +135,11 @@ researchRouter.post(
       return;
     }
     await assertProject(body.projectId, req);
-    sendSuccess(res, await researchDeskService.checkAccuracy({
+    sendSuccess(res, await researchDeskService.checkAccuracyWithOutput({
       projectId: body.projectId,
       claims: body.claims,
       sourceText: body.sourceText,
-    }));
+    }), 201);
   }),
 );
 

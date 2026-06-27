@@ -4,9 +4,74 @@ import { casperFreestyleEngine } from './CasperFreestyleEngine';
 import { freestyleSessionStore } from './FreestyleSessionStore';
 import { novelWriteProService } from './NovelWriteProService';
 import { continueWritingService, type ContinueMode } from './ContinueWritingService';
+import { bookCompletionService } from '../book/BookCompletionService';
+import { trashToTreasureService } from '../book/TrashToTreasureService';
 import type { NovelWriteProMode } from './novelWritePro';
 
 export const casperRouter = createElevationRouter();
+
+casperRouter.post(
+  '/api/casper/suggest-next-chapters',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      manuscriptText?: string;
+      targetLength?: number;
+      targetGenre?: string;
+      desiredEnding?: string;
+    };
+    if (!body.projectId?.trim()) {
+      sendError(res, new Error('projectId is required'), 400);
+      return;
+    }
+    sendSuccess(res, await bookCompletionService.suggestNextChapters({ ...body, projectId: body.projectId, user: req.user }), 201);
+  }),
+);
+
+casperRouter.post(
+  '/api/casper/finish-book',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      mode?: import('../book/types').FinishBookMode;
+      targetWords?: number;
+      desiredOutcome?: string;
+      currentText?: string;
+    };
+    if (!body.projectId?.trim()) {
+      sendError(res, new Error('projectId is required'), 400);
+      return;
+    }
+    if (!body.mode) {
+      sendError(res, new Error('mode is required'), 400);
+      return;
+    }
+    sendSuccess(res, await bookCompletionService.finishBook({ ...body, projectId: body.projectId, mode: body.mode, user: req.user }), 201);
+  }),
+);
+
+casperRouter.post(
+  '/api/casper/trash-to-treasure',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      title?: string;
+      material?: string;
+      problem?: string;
+      desiredOutcome?: import('../book/TrashToTreasureService').TrashDesiredOutcome;
+      tone?: string;
+    };
+    if (!body.material?.trim()) {
+      sendError(res, new Error('material is required'), 400);
+      return;
+    }
+    if (!body.desiredOutcome) {
+      sendError(res, new Error('desiredOutcome is required'), 400);
+      return;
+    }
+    sendSuccess(res, await trashToTreasureService.rescue({ ...body, material: body.material, desiredOutcome: body.desiredOutcome, user: req.user }), 201);
+  }),
+);
 
 casperRouter.post(
   '/api/casper/novel-write-pro',

@@ -17,6 +17,7 @@ import {
   OUTPUT_KIND_LABELS,
 } from '../lib/outputSemantics';
 import { countWords } from '../lib/utils';
+import { createProjectSnapshot } from '../api/book';
 import { useToast } from '../components/Toast';
 
 export default function OutputDetail() {
@@ -103,9 +104,18 @@ export default function OutputDetail() {
 
   function handleApplyRevision() {
     const confirmed = confirm(
-      'Replace the current chapter text with this revision? The previous version will remain in chapter history.',
+      'Replace the current chapter text with this revision? A snapshot will be created first. The previous version will remain in chapter history.',
     );
-    if (confirmed) applyRevisionMutation.mutate();
+    if (!confirmed) return;
+    void (async () => {
+      if (output?.projectId) {
+        await createProjectSnapshot(output.projectId, {
+          label: 'Before apply',
+          reason: `Snapshot before applying output ${output.id.slice(0, 8)}`,
+        });
+      }
+      applyRevisionMutation.mutate();
+    })();
   }
 
   const autoGoldStarted = useRef(false);

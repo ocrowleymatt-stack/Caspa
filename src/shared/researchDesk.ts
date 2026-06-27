@@ -66,6 +66,7 @@ export interface ResearchDepthPassResult {
   confirmedNoteCount: number;
   unverifiedNoteCount: number;
   disclaimer: string;
+  outputId?: string;
 }
 
 export const RESEARCH_AI_DISCLAIMER =

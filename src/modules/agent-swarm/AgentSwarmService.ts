@@ -207,7 +207,7 @@ export class AgentSwarmService {
       title: `Agent Swarm — ${mode} (${agents.length} agents)`,
       path: '',
       metadata: {
-        kind: 'agent-swarm',
+        kind: revisedText ? 'agent-swarm-revision' : 'agent-swarm-report',
         ...standardOutputProvenance({
           workType: project.workType,
           researchItemIds: input.researchItemIds ?? [],

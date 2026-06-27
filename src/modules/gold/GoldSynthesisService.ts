@@ -11,6 +11,7 @@ import { GOLD_SYNTHESIS_DISCLAIMER } from '../../shared/goldSynthesis';
 import type { ProseAssessment } from '../../shared/awardsShelf';
 import { awardsCatalog } from '../awards/AwardsCatalog';
 import { buildStructureTree } from '../manuscript/structureUnitMigration';
+import { bookMapService } from '../book/BookMapService';
 import { ChapterService } from '../manuscript/ChapterService';
 import { PlotService } from '../manuscript/PlotService';
 import { projectBibleService } from '../manuscript/ProjectBibleService';
@@ -49,12 +50,13 @@ export class GoldSynthesisService {
     user?: import('../auth/types').UserPublic,
   ): Promise<GoldSynthesisResult> {
     const project = await this.projectService.getProject(input.projectId, user);
-    const [bible, chapters, poles, notes, awardLenses] = await Promise.all([
+    const [bible, chapters, poles, notes, awardLenses, bookMap] = await Promise.all([
       projectBibleService.get(input.projectId),
       this.chapterService.listChapters(input.projectId),
       this.plotService.listPlotPoints(input.projectId),
       this.researchService.listNotes(input.projectId),
       awardsCatalog.resolveByIds(project.targetPrizeIds ?? []),
+      bookMapService.get(input.projectId, user),
     ]);
 
     const confirmed = notes.filter((note) => note.verificationStatus === 'confirmed');
@@ -107,6 +109,9 @@ export class GoldSynthesisService {
       sourcesUsed.projectBible
         ? `Bible premise: ${bible.premise}\nStructure: ${bible.structure}\nThemes: ${bible.themes.join(', ')}`
         : 'Bible: empty',
+      bookMap
+        ? `Book Map: ${bookMap.completionPercentage}% complete · next: ${bookMap.nextRecommendedChapter}\nMissing: ${bookMap.missingSections.join('; ')}\nRoadmap: ${bookMap.finishRoadmap.slice(0, 3).join(' → ')}`
+        : 'Book Map: not generated',
       sourcesUsed.researchLibrary
         ? `Confirmed research:\n${confirmed.map((note) => `- ${note.title}`).join('\n')}`
         : 'Confirmed research: none',

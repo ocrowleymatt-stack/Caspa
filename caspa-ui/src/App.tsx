@@ -25,6 +25,7 @@ import ProjectGoldPass from './pages/workbench/ProjectGoldPass';
 import ProjectOutputs from './pages/workbench/ProjectOutputs';
 import ProjectExport from './pages/workbench/ProjectExport';
 import ProjectOverview from './pages/ProjectOverview';
+import ProjectBookMap from './pages/workbench/ProjectBookMap';
 import ChapterEditor from './pages/ChapterEditor';
 import Characters from './pages/Characters';
 import PlotBoard from './pages/PlotBoard';
@@ -80,6 +81,7 @@ export default function App() {
                 <Route path="characters" element={<Characters />} />
                 <Route path="plot" element={<PlotBoard />} />
                 <Route path="bible" element={<ProjectBible />} />
+                <Route path="book-map" element={<ProjectBookMap />} />
               </Route>
               <Route path="forge" element={<ForgeIntake />} />
               <Route path="product-plan" element={<ProductPlan />} />

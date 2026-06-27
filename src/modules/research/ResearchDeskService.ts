@@ -137,6 +137,27 @@ export class ResearchDeskService {
     return { topics, disclaimer: RESEARCH_AI_DISCLAIMER };
   }
 
+  async suggestTopicsWithOutput(input: {
+    projectId: string;
+    sourceText?: string;
+    query?: string;
+  }): Promise<{ topics: ResearchTopicSuggestion[]; disclaimer: string; outputId: string }> {
+    const result = await this.suggestTopics(input);
+    const record = await outputRegistry.register({
+      projectId: input.projectId,
+      type: 'other',
+      title: `Research topics — ${input.query?.slice(0, 40) ?? 'suggestions'}`,
+      path: '',
+      metadata: {
+        kind: 'research-answer',
+        topics: result.topics,
+        query: input.query,
+        disclaimer: result.disclaimer,
+      },
+    });
+    return { ...result, outputId: record.id };
+  }
+
   extractClaims(input: { projectId?: string; text: string }): {
     claims: ExtractedResearchClaim[];
     disclaimer: string;
@@ -150,6 +171,26 @@ export class ResearchDeskService {
     }));
 
     return { claims, disclaimer: RESEARCH_AI_DISCLAIMER };
+  }
+
+  async extractClaimsWithOutput(input: { projectId: string; text: string }): Promise<{
+    claims: ExtractedResearchClaim[];
+    disclaimer: string;
+    outputId: string;
+  }> {
+    const result = this.extractClaims(input);
+    const record = await outputRegistry.register({
+      projectId: input.projectId,
+      type: 'claim-extraction',
+      title: 'Claim extraction',
+      path: '',
+      metadata: {
+        kind: 'claim-extraction',
+        claims: result.claims,
+        sourcePreview: input.text.slice(0, 500),
+      },
+    });
+    return { ...result, outputId: record.id };
   }
 
   async checkAccuracy(input: {
@@ -252,6 +293,32 @@ export class ResearchDeskService {
     };
   }
 
+  async checkAccuracyWithOutput(input: {
+    projectId: string;
+    claims?: Array<{ id?: string; text: string }>;
+    sourceText?: string;
+  }): Promise<{
+    verdicts: AccuracyVerdict[];
+    disclaimer: string;
+    confirmedLibraryUsed: boolean;
+    outputId: string;
+  }> {
+    const result = await this.checkAccuracy(input);
+    const record = await outputRegistry.register({
+      projectId: input.projectId,
+      type: 'accuracy-check',
+      title: 'Accuracy check',
+      path: '',
+      metadata: {
+        kind: 'accuracy-check',
+        verdicts: result.verdicts,
+        sourcePreview: input.sourceText?.slice(0, 500),
+        confirmedLibraryUsed: result.confirmedLibraryUsed,
+      },
+    });
+    return { ...result, outputId: record.id };
+  }
+
   async depthPass(input: {
     projectId: string;
     topic?: string;
@@ -326,18 +393,18 @@ export class ResearchDeskService {
       disclaimer: RESEARCH_AI_DISCLAIMER,
     };
 
-    await outputRegistry.register({
+    const record = await outputRegistry.register({
       projectId: input.projectId,
       type: 'research-depth-pass',
       title: `Research depth pass — ${topic}`,
       path: '',
       metadata: {
         kind: 'research-depth-pass',
+        outputId: undefined,
         ...result,
       },
     });
-
-    return result;
+    return { ...result, outputId: record.id };
   }
 }
 

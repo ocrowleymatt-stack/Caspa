@@ -19,7 +19,7 @@ const quickLinks = [
   { to: '/casper', label: 'Novel Write Pro', icon: Ghost, desc: 'Auto-write, upload a manuscript, or improve an existing chapter.' },
   { to: '/projects', label: 'Projects', icon: BookOpen, desc: 'Create a room, import structure, and pick up where you left off.' },
   { to: '/command', label: 'Studio Command', icon: Sparkles, desc: 'Ask what to do next — routes to Pier, Gold, Research, Swarm or Outputs.' },
-  { to: '/outputs', label: 'Outputs', icon: Package, desc: 'Saved AI drafts — apply only when you are ready.' },
+  { to: '/outputs', label: 'Saved Writing', icon: Package, desc: 'Every AI draft and report — apply only when you are ready.' },
   { to: '/music-prompt', label: 'Music', icon: Music, desc: 'Lyrics, show numbers, prompts and musical sketches.' },
   { to: '/documents', label: 'Documents', icon: FileText, desc: 'Render, preview and prepare manuscripts.' },
 ];
@@ -44,24 +44,35 @@ export default function CommandCentre() {
             </div>
             <div>
               <h1 className="max-w-3xl font-serif text-5xl font-semibold leading-[0.96] tracking-[-0.045em] text-[#171a22] md:text-7xl">
-                Make the thing. Then make it better.
+                What are we making today?
               </h1>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-                Caspa is your private creative room: novels, scripts, shows, songs, manuscripts, production packs and polish without the cockpit nonsense.
+                Start blank, upload a manuscript, rescue rough material, or continue the book you already have.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link to="/casper" className="btn-primary">
-                <Ghost className="h-4 w-4" /> Open Casper
+              <Link to="/projects" className="btn-primary">
+                <BookOpen className="h-4 w-4" /> Start blank project
               </Link>
               <Link to="/projects" className="btn-secondary">
-                <BookOpen className="h-4 w-4" /> View Projects
+                <FileText className="h-4 w-4" /> Upload manuscript
+              </Link>
+              <Link to="/casper" className="btn-secondary">
+                <Ghost className="h-4 w-4" /> Fix / Finish a Bad Project
               </Link>
               {activeProject && (
                 <Link to={`/projects/${activeProject.id}`} className="btn-secondary">
                   <PenLine className="h-4 w-4" /> Continue {activeProject.title}
                 </Link>
               )}
+            </div>
+            <div className="flex flex-wrap gap-3 pt-2">
+              <Link to="/casper" className="btn-ghost text-sm">
+                <Ghost className="h-4 w-4" /> Casper · Novel Write Pro
+              </Link>
+              <Link to="/outputs" className="btn-ghost text-sm">
+                <Package className="h-4 w-4" /> Saved Writing
+              </Link>
             </div>
             <div className="flex flex-wrap gap-2">
               {casperStatus && (

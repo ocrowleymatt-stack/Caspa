@@ -107,8 +107,8 @@ export function OutputsContent({ projectId }: { projectId: string }) {
 export default function Outputs() {
   return (
     <ElevationWorkbench
-      title="Outputs Hub"
-      subtitle="Central registry for all generated artefacts — provenance, apply actions, and export in one archive"
+      title="Saved Writing Hub"
+      subtitle="Central registry for all generated artefacts — provenance, safe apply, and export"
       icon={<Package className="h-7 w-7 text-accent" />}
       requireProject={false}
     >

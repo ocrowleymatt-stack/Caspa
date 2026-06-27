@@ -20,6 +20,7 @@ import {
   listChapters,
 } from '../api/chapters';
 import { listOutputs } from '../api/outputs';
+import { finishBook, getBookMap } from '../api/book';
 import { useAppStore } from '../store';
 import {
   casperImproveUrl,
@@ -70,6 +71,22 @@ export default function ProjectOverview() {
     queryKey: ['outputs', id],
     queryFn: () => listOutputs(id!),
     enabled: !!id,
+  });
+
+  const { data: bookMap } = useQuery({
+    queryKey: ['book-map', id],
+    queryFn: () => getBookMap(id!),
+    enabled: !!id,
+  });
+
+  const finishBookMutation = useMutation({
+    mutationFn: () => finishBook({ projectId: id!, mode: 'plan' }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['outputs', id] });
+      toast.success(`Finish plan saved · ${String(result.outputId ?? '').slice(0, 8)}`);
+      if (result.outputId) navigate(`/outputs/${result.outputId}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const createMutation = useMutation({
@@ -184,9 +201,10 @@ export default function ProjectOverview() {
                 Room mode · {projectMode.replace('-', ' ')}
               </div>
               <p className="mt-2">{modeCopy[projectMode]}</p>
-              {sourceChapter && (
+              {bookMap && bookMap.missingSections.length > 0 && (
                 <p className="mt-2 text-xs text-muted">
-                  Original preserved in “{sourceChapter.title}”. AI revisions are saved separately — nothing overwrites your upload silently.
+                  Missing: {bookMap.missingSections.slice(0, 3).join(' · ')}
+                  {bookMap.missingSections.length > 3 ? '…' : ''}
                 </p>
               )}
             </div>
@@ -239,6 +257,18 @@ export default function ProjectOverview() {
                       <PenLine className="h-4 w-4" /> Continue writing
                     </Link>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => finishBookMutation.mutate()}
+                    disabled={finishBookMutation.isPending}
+                    className="btn-secondary"
+                  >
+                    {finishBookMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    Finish This Book
+                  </button>
+                  <Link to={`/projects/${id}/book-map`} className="btn-secondary">
+                    <BookOpen className="h-4 w-4" /> Book Map
+                  </Link>
                 </div>
               </div>
               <div>
@@ -248,7 +278,7 @@ export default function ProjectOverview() {
                     <Wand2 className="h-4 w-4" /> Run Gold Pass
                   </Link>
                   <Link to={`/projects/${id}/outputs`} className="btn-secondary">
-                    Open Outputs
+                    Open Saved Writing
                   </Link>
                   <Link to={`/projects/${id}/export`} className="btn-secondary">
                     <Upload className="h-4 w-4" /> Export

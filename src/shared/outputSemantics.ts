@@ -134,3 +134,12 @@ export function outputKindLabel(type: string, metadata?: Record<string, unknown>
   const kind = normalizeOutputKind(type, metadata);
   return OUTPUT_KIND_LABELS[kind];
 }
+
+export function extractOutputText(metadata?: Record<string, unknown>): string {
+  if (!metadata) return '';
+  const text = metadata.text;
+  const revised = metadata.revisedText;
+  if (typeof text === 'string' && text.trim()) return text.trim();
+  if (typeof revised === 'string' && revised.trim()) return revised.trim();
+  return '';
+}

@@ -39,17 +39,17 @@ import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
 
 const primaryNavItems = [
-  { to: '/home', label: 'Studio', icon: Home },
-  { to: '/casper', label: 'Casper', icon: Ghost },
+  { to: '/home', label: 'Today', icon: Home },
   { to: '/projects', label: 'Projects', icon: BookOpen },
-  { to: '/outputs', label: 'Outputs', icon: Package },
+  { to: '/casper', label: 'Write', icon: Ghost },
+  { to: '/outputs', label: 'Saved Writing', icon: Package },
 ];
 
-const secondaryNavItems = [
-  { to: '/command', label: 'Command', icon: Command },
+const authorToolsNavItems = [
+  { to: '/command', label: 'Studio Command', icon: Command },
 ];
 
-const advancedWriterNavItems = [
+const moreToolsNavItems = [
   { to: '/music-prompt', label: 'Music', icon: Music2 },
   { to: '/documents', label: 'Documents', icon: FileText },
   { to: '/confidence', label: 'Confidence', icon: ShieldCheck },
@@ -82,17 +82,18 @@ const elevationItems = [
 const projectPrimaryLinks = (projectId: string) => [
   { to: `/projects/${projectId}`, label: 'Overview', icon: PenLine, end: true },
   { to: `/projects/${projectId}/manuscript`, label: 'Write', icon: BookOpen },
-  { to: `/projects/${projectId}/structure`, label: 'Structure', icon: Map },
-  { to: `/projects/${projectId}/pier`, label: 'Pier', icon: Anchor },
+  { to: `/projects/${projectId}/bible`, label: 'Bible', icon: BookOpen },
+  { to: `/projects/${projectId}/book-map`, label: 'Book Map', icon: Map },
+  { to: `/projects/${projectId}/outputs`, label: 'Saved Writing', icon: Package },
   { to: `/projects/${projectId}/research`, label: 'Research', icon: BookMarked },
-  { to: `/projects/${projectId}/gold`, label: 'Gold', icon: Gem },
-  { to: `/projects/${projectId}/outputs`, label: 'Outputs', icon: Package },
 ];
 
 const projectSecondaryLinks = (projectId: string) => [
-  { to: `/projects/${projectId}/bible`, label: 'Bible', icon: BookOpen },
-  { to: `/projects/${projectId}/awards`, label: 'Awards', icon: Trophy },
+  { to: `/projects/${projectId}/gold`, label: 'Improve', icon: Gem },
+  { to: `/projects/${projectId}/structure`, label: 'Structure', icon: Map },
+  { to: `/projects/${projectId}/pier`, label: 'Pier', icon: Anchor },
   { to: `/projects/${projectId}/swarm`, label: 'Swarm', icon: Users },
+  { to: `/projects/${projectId}/awards`, label: 'Awards', icon: Trophy },
   { to: `/projects/${projectId}/export`, label: 'Export', icon: Upload },
 ];
 
@@ -234,8 +235,9 @@ export function Sidebar() {
         )}
         {primaryNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon, to === '/home' || to === '/projects'))}
 
-        <NavSection title={collapsed ? undefined : 'Tools'} collapsed={collapsed}>
-          {secondaryNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
+        <NavSection title={collapsed ? undefined : 'More Tools'} collapsed={collapsed}>
+          {authorToolsNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
+          {moreToolsNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
         </NavSection>
 
         {activeProjectId && (
@@ -254,39 +256,12 @@ export function Sidebar() {
           </NavSection>
         )}
 
-        <NavSection title={collapsed ? undefined : 'Advanced'} collapsed={collapsed}>
-          {advancedWriterNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
-        </NavSection>
-
         {!simpleMode && (
-          <NavSection title={collapsed ? undefined : 'Producer'} collapsed={collapsed}>
+          <NavSection title={collapsed ? undefined : 'More Tools (advanced)'} collapsed={collapsed}>
+            {elevationItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
             {expertNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
           </NavSection>
         )}
-
-        {!simpleMode && !collapsed && (
-          <div className="mt-3 border-t border-[#eadfca] pt-4">
-            <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-[#98711d]">
-              Elevation
-            </p>
-            {elevationItems.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
-                    isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
-                  )
-                }
-              >
-                <Icon className="h-4 w-4" /> {label}
-              </NavLink>
-            ))}
-          </div>
-        )}
-
-        {!simpleMode && collapsed && elevationItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
       </nav>
 
       {!collapsed && (

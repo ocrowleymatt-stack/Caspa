@@ -351,6 +351,28 @@ try:
     gen_bible = req("POST", f"/api/projects/{pid}/bible/generate", token=token, timeout=180)
     print("BIBLE GENERATED premise?", bool(gen_bible.get("premise")))
 
+    print("--- FULL: BOOK MAP & FINISH ENGINE ---")
+    book_map = req("POST", f"/api/projects/{pid}/book-map/generate", token=token, timeout=180)
+    assert book_map.get("outputId"), "book map generate must return outputId"
+    assert book_map.get("finishRoadmap"), "book map must include finishRoadmap"
+    print("BOOK MAP:", book_map.get("completionPercentage"), "% next:", book_map.get("nextRecommendedChapter"))
+
+    plan = req("POST", "/api/casper/suggest-next-chapters", {"projectId": pid}, token=token, timeout=180)
+    assert plan.get("outputId"), "suggest-next-chapters must return outputId"
+    print("COMPLETION PLAN:", plan.get("outputId", "")[:8])
+
+    finish = req("POST", "/api/casper/finish-book", {"projectId": pid, "mode": "plan"}, token=token, timeout=180)
+    assert finish.get("outputId"), "finish-book must return outputId"
+    print("FINISH BOOK:", finish.get("outputId", "")[:8])
+
+    snap = req("POST", f"/api/projects/{pid}/snapshot", {"label": "Smoke snapshot", "reason": "full smoke"}, token=token)
+    assert snap.get("id"), "snapshot must return id"
+    print("SNAPSHOT:", snap["id"][:8])
+
+    md_export = req("GET", f"/api/projects/{pid}/export/markdown", token=token)
+    assert md_export.get("markdown"), "markdown export must return content"
+    print("EXPORT MARKDOWN:", len(md_export["markdown"]), "chars")
+
     print("--- FULL: OUTPUT REGISTRATION ---")
     outs = req("GET", f"/api/outputs?projectId={pid}", token=token)
     out_types = {o.get("type") for o in outs}
