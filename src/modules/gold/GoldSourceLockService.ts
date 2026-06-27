@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { generateId, writeJsonFile, readJsonFile } from '../../shared/fileStore';
+import { extractOutputText } from '../../shared/outputSemantics';
 import { ChapterService } from '../manuscript/ChapterService';
 import { ProjectService } from '../manuscript/ProjectService';
 import { outputRegistry } from '../outputs';
@@ -197,7 +198,7 @@ export class GoldSourceLockService {
       if (!output || output.projectId !== input.projectId) {
         throw new Error('Selected source does not belong to this project.');
       }
-      const text = String(output.metadata?.text ?? output.metadata?.revisedText ?? '');
+      const text = extractOutputText(output.metadata);
       return { sourceText: text, title: output.title };
     }
 

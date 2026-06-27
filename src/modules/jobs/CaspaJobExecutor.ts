@@ -1,7 +1,9 @@
+import type { GoldSynthesisStage } from '../../shared/goldSynthesis';
 import { novelWriteProService, type NovelWriteProRequest } from '../casper-freestyle/NovelWriteProService';
-import { goldSynthesisService } from '../gold/GoldSynthesisService';
+import { goldPassRunService } from '../gold/GoldPassRunService';
 import { goldSourceLockService } from '../gold/GoldSourceLockService';
 import { ProjectService } from '../manuscript/ProjectService';
+import type { UserPublic } from '../auth/types';
 import { caspaJobService, type CaspaJob } from './CaspaJobService';
 
 export class CaspaJobExecutor {
@@ -50,7 +52,7 @@ export class CaspaJobExecutor {
   private async resumeGoldPass(
     jobId: string,
     job: CaspaJob,
-    user?: import('../auth/types').UserPublic,
+    user?: UserPublic,
   ): Promise<CaspaJob> {
     const projectId = job.projectId;
     if (!projectId) throw new Error('Gold Pass job missing projectId');
@@ -60,18 +62,29 @@ export class CaspaJobExecutor {
     if (!sourceLockId) throw new Error('Gold Pass job missing sourceLockId — create a new source lock and run again.');
 
     const sourceLock = await goldSourceLockService.verifyLock(sourceLockId, projectId);
+    const stage = typeof job.input.stage === 'string'
+      ? job.input.stage as GoldSynthesisStage
+      : 'revision';
+
     await caspaJobService.startStage(jobId, 'synthesis');
-    const synthesis = await goldSynthesisService.synthesize({
+    const result = await goldPassRunService.execute({
       projectId,
       sourceText: sourceLock.sourceText,
       sourceLock,
       improveText: job.input.improveText !== false,
-      stage: typeof job.input.stage === 'string' ? job.input.stage as 'draft' | 'revision' | 'submission' : 'revision',
-    }, user);
+      stage,
+      user,
+    });
+
+    await caspaJobService.completeStage(jobId, 'synthesis', {
+      stage: result.synthesis.stage,
+      outputId: result.outputId,
+    });
 
     const completed = await caspaJobService.complete(jobId, {
-      synthesisStage: synthesis.stage,
-      sourceLockId,
+      outputId: result.outputId,
+      driftBlocked: result.driftBlocked,
+      fidelity: result.fidelity,
     });
     if (!completed) throw new Error('Job update failed after Gold Pass resume');
     return completed;

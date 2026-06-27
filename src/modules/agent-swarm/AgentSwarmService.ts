@@ -11,7 +11,9 @@ import {
   type SwarmConsensus,
   type SwarmMode,
 } from '../../shared/agentSwarm';
+import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
 import { standardOutputProvenance } from '../../shared/outputSemantics';
+import { productionBriefService } from '../studio/ProductionBriefService';
 import { hasStructuralPurpose } from '../../shared/pierBuilder';
 import { awardsCatalog } from '../awards/AwardsCatalog';
 import { ProjectService } from '../manuscript/ProjectService';
@@ -117,11 +119,12 @@ export class AgentSwarmService {
 
     const agents = agentIds.map((id) => getAgentById(id)!);
 
-    const [notes, awardLenses] = await Promise.all([
+    const [notes, awardLenses, brief] = await Promise.all([
       this.researchService.listNotes(input.projectId),
       awardsCatalog.resolveByIds(input.targetAwardIds?.length
         ? input.targetAwardIds
         : project.targetPrizeIds ?? []),
+      productionBriefService.get(input.projectId, input.user),
     ]);
 
     const researchNotes = notes.filter((note) =>
@@ -129,17 +132,19 @@ export class AgentSwarmService {
     );
     const confirmedResearch = researchNotes.filter((note) => note.verificationStatus === 'confirmed');
 
+    const creativeSpec = buildCreativeSpecPrompt(brief);
     const contextBlock = [
       `Project: ${project.title}`,
       `Work type: ${input.workType ?? project.workType ?? project.genre}`,
       `Form: ${project.form ?? 'book'}`,
+      creativeSpec,
       awardLenses.length
         ? `Award lenses: ${awardLenses.map((lens) => lens.name).join('; ')}`
         : 'Award lenses: none selected',
       confirmedResearch.length
         ? `Confirmed research:\n${confirmedResearch.map((note) => `- ${note.title}: ${note.content.slice(0, 200)}`).join('\n')}`
         : 'Confirmed research: none — flag unsupported factual claims.',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     const agentReports = await Promise.all(
       agents.map((agent) => runAgentReport(agent, sourceText, contextBlock, input.projectId)),

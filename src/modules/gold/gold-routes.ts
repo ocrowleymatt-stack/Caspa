@@ -3,15 +3,12 @@ import { config } from '../../shared';
 import { findById } from '../../shared/db';
 import type { GoldReport } from '../../shared';
 import type { GoldSynthesisStage } from '../../shared/goldSynthesis';
-import { standardOutputProvenance } from '../../shared/outputSemantics';
 import type { UserPublic } from '../auth/types';
 import { ProjectService } from '../manuscript/ProjectService';
-import { outputRegistry } from '../outputs';
 import { caspaJobService } from '../jobs/CaspaJobService';
+import { goldPassRunService } from './GoldPassRunService';
 import { goldPipeline } from './GoldPipeline';
-import { goldSynthesisService } from './GoldSynthesisService';
 import {
-  assessGoldFidelity,
   goldSourceLockService,
   type GoldPassMode,
   type GoldSourceType,
@@ -98,7 +95,7 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     return;
   }
 
-  const project = await projectService.getProject(body.projectId, getUser(req));
+  await projectService.getProject(body.projectId, getUser(req));
 
   let sourceText = body.source?.trim() ?? '';
   let sourceLock = null as Awaited<ReturnType<typeof goldSourceLockService.getLock>> | null;
@@ -131,31 +128,31 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     },
   });
 
-  let synthesis;
-  let report: GoldReport | undefined;
+  let runResult;
 
   try {
     await caspaJobService.startStage(job.id, 'synthesis');
-    synthesis = await goldSynthesisService.synthesize({
+    runResult = await goldPassRunService.execute({
       projectId: body.projectId,
       sourceText,
-      sourceLock: sourceLock ?? undefined,
+      sourceLock,
       improveText: body.improveText ?? true,
       stage: body.stage,
       swarmOutputId: body.swarmOutputId,
       awardAssessmentOutputId: body.awardAssessmentOutputId,
       includeElevationSteps: body.includeElevationSteps,
-    }, getUser(req));
-    await caspaJobService.completeStage(job.id, 'synthesis', {
-      stage: synthesis.stage,
+      providedSource: body.source,
+      user: getUser(req),
     });
-
-    if (body.includeElevationSteps) {
+    await caspaJobService.completeStage(job.id, 'synthesis', {
+      stage: runResult.synthesis.stage,
+      outputId: runResult.outputId,
+    });
+    if (body.includeElevationSteps && runResult.report) {
       await caspaJobService.startStage(job.id, 'elevation');
-      report = await goldPipeline.run(body.projectId, { sourceText });
       await caspaJobService.completeStage(job.id, 'elevation', {
-        reportId: report?.id,
-        overallScore: report?.overallScore,
+        reportId: runResult.report.id,
+        overallScore: runResult.report.overallScore,
       });
     }
   } catch (err) {
@@ -163,78 +160,26 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     throw err;
   }
 
-  const improved = synthesis.improvedText ?? synthesis.revisionPlan.join('\n');
-  const fidelity = sourceLock && synthesis.improvedText
-    ? assessGoldFidelity(sourceLock.sourceText, synthesis.improvedText, sourceLock)
-    : undefined;
-
-  const driftBlocked = fidelity
-    && (fidelity.verdict === 'major-drift' || fidelity.verdict === 'different-story');
-
-  const critique = [
-    synthesis.judgeAssessment,
-    `Structure: ${synthesis.structuralAssessment.summary}`,
-    `Research: ${synthesis.researchAssessment.summary}`,
-    `Anti-filler: ${synthesis.antiFillerReport.summary}`,
-    fidelity ? `Fidelity: ${fidelity.verdict} (${fidelity.sameStoryScore}/100)` : '',
-    driftBlocked ? 'WARNING: Gold Pass drifted from the source. Kept as alternative — not a safe revision.' : '',
-  ].filter(Boolean).join('\n\n');
-
-  const record = await outputRegistry.register({
-    projectId: body.projectId,
-    type: 'gold-pass',
-    title: driftBlocked
-      ? `Gold alternative (drift detected) — ${synthesis.stage}`
-      : `Gold synthesis — ${synthesis.stage}`,
-    path: '',
-    metadata: {
-      kind: 'gold-synthesis',
-      ...standardOutputProvenance({
-        workType: project.workType,
-        sourceScope: sourceLock?.sourceType ?? (body.source?.trim() ? 'provided-text' : 'whole-manuscript'),
-        unitId: sourceLock?.unitId,
-        unitTitle: sourceLock?.title,
-        swarmOutputId: body.swarmOutputId,
-        stage: synthesis.stage,
-        targetAwardIds: project.targetPrizeIds,
-      }),
-      text: improved,
-      critique,
-      synthesis,
-      reportId: report?.id,
-      overallScore: report?.overallScore,
-      overallStatus: report?.overallStatus,
-      sourceLockId: sourceLock?.sourceLockId,
-      sourceHash: sourceLock?.sourceHash,
-      fidelity,
-      driftBlocked,
-      applyBlocked: driftBlocked,
-      destination: sourceLock?.unitId ? 'beside-unit' : 'writing-history',
-      sourceExcerpt: sourceText.slice(0, 500),
-      sourceScope: sourceLock?.sourceType ?? (body.source?.trim() ? 'provided-text' : 'full-project'),
-    },
-  });
-
   await caspaJobService.complete(job.id, {
-    outputId: record.id,
-    driftBlocked,
-    fidelity,
+    outputId: runResult.outputId,
+    driftBlocked: runResult.driftBlocked,
+    fidelity: runResult.fidelity,
   });
 
   sendSuccess(res, {
     jobId: job.id,
     caspaJobId: job.id,
-    goldReportId: report?.id,
+    goldReportId: runResult.report?.id,
     status: 'complete',
-    outputId: record.id,
-    synthesis,
-    report,
-    improved,
-    critique,
-    fidelity,
-    driftBlocked,
+    outputId: runResult.outputId,
+    synthesis: runResult.synthesis,
+    report: runResult.report,
+    improved: runResult.improved,
+    critique: runResult.critique,
+    fidelity: runResult.fidelity,
+    driftBlocked: runResult.driftBlocked,
     destination: sourceLock?.unitId ? `Draft saved beside ${sourceLock.title}` : 'Draft saved to Writing History',
-    nextActions: driftBlocked
+    nextActions: runResult.driftBlocked
       ? ['Keep as alternative', 'Review source lock', 'Run again with line-edit only']
       : ['Apply safely', 'Compare', 'Continue from this', 'Export'],
   });

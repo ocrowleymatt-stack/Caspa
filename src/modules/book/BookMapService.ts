@@ -1,6 +1,8 @@
 import { readJsonFile, writeJsonFile } from '../../shared/fileStore';
 import { aiWithFallback, getProjectChapters } from '../../shared/elevationHelpers';
+import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
 import { projectBibleService } from '../manuscript/ProjectBibleService';
+import { productionBriefService } from '../studio/ProductionBriefService';
 import { ProjectService } from '../manuscript/ProjectService';
 import { outputRegistry } from '../outputs';
 import type { BookMap, BookMapChapterEntry } from './types';
@@ -98,6 +100,8 @@ export class BookMapService {
   async generate(projectId: string, user?: import('../auth/types').UserPublic): Promise<BookMap & { outputId: string }> {
     const draft = await this.buildDraft(projectId, user);
     const project = await this.projectService.getProject(projectId, user);
+    const brief = await productionBriefService.get(projectId, user);
+    const creativeSpec = buildCreativeSpecPrompt(brief);
 
     const { text } = await aiWithFallback(
       [
@@ -107,7 +111,8 @@ export class BookMapService {
         '"weakSections": [], "missingSections": [], "continuityWarnings": [], "nextRecommendedChapter": "...", "finishRoadmap": [] }',
         'Suggest missing chapters that move toward a FINISHED BOOK — not summaries.',
         'Do not collapse the manuscript into a short blurb.',
-      ].join('\n'),
+        creativeSpec,
+      ].filter(Boolean).join('\n'),
       JSON.stringify({
         title: project.title,
         workType: project.workType,

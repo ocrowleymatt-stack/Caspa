@@ -84,6 +84,59 @@ export class CutTightenService {
       cutNeeded: Number(parsed.cutNeeded ?? Math.max(0, currentWordCount - targetWordCount)),
       cutMap: parsed,
       cutReport: String(parsed.cutReport ?? text),
+      unitId: input.unitId,
+    };
+  }
+
+  async generateDraft(
+    input: CutAnalyseRequest & { cutReport?: string; cutMap?: Record<string, unknown> },
+    user?: import('../auth/types').UserPublic,
+  ) {
+    await this.projectService.getProject(input.projectId, user);
+    const brief = await productionBriefService.get(input.projectId, user);
+    const chapters = await this.chapterService.listChapters(input.projectId);
+    const unit = input.unitId ? chapters.find((c) => c.id === input.unitId) : null;
+    const sourceText = unit?.content?.trim()
+      ?? chapters.map((c) => `# ${c.title}\n\n${c.content ?? ''}`).join('\n\n');
+    const targetWordCount = input.targetWordCount
+      ?? Math.round(sourceText.split(/\s+/).filter(Boolean).length * 0.9);
+
+    const { text: draftText } = await aiWithFallback(
+      [
+        'Tighten this manuscript following the cut map. Preserve story, characters, chronology, and voice.',
+        'Return the full tightened text only — no commentary.',
+        `Target length ~${targetWordCount} words. Cut depth: ${input.cutDepth ?? 'moderate'}.`,
+        buildCreativeSpecPrompt(brief),
+        input.cutReport ? `Cut report:\n${input.cutReport}` : '',
+      ].filter(Boolean).join('\n'),
+      sourceText.slice(0, 35000),
+      sourceText.slice(0, Math.min(sourceText.length, targetWordCount * 6)),
+      input.projectId,
+    );
+
+    const wordCount = draftText.split(/\s+/).filter(Boolean).length;
+    const record = await outputRegistry.register({
+      projectId: input.projectId,
+      type: 'other',
+      title: unit ? `Cut draft — ${unit.title}` : 'Cut draft — full work',
+      path: '',
+      metadata: {
+        kind: 'cut-draft',
+        text: draftText,
+        cutMap: input.cutMap,
+        unitId: input.unitId,
+        cutDepth: input.cutDepth,
+        destination: input.unitId ? 'beside-unit' : 'writing-history',
+        applyMode: 'review-before-apply',
+      },
+    });
+
+    return {
+      outputId: record.id,
+      draftText,
+      wordCount,
+      targetWordCount,
+      unitId: input.unitId,
     };
   }
 

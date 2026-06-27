@@ -142,6 +142,13 @@ bookRouter.post(
 );
 
 bookRouter.post(
+  '/api/projects/:id/cut/generate-draft',
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await cutTightenService.generateDraft({ ...req.body, projectId: param(req, 'id') }, req.user), 201);
+  }),
+);
+
+bookRouter.post(
   '/api/projects/:id/cut/analyse',
   asyncHandler(async (req, res) => {
     sendSuccess(res, await cutTightenService.analyse({ ...req.body, projectId: param(req, 'id') }, req.user), 201);
