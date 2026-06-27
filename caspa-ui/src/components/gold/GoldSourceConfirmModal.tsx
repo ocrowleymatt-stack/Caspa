@@ -5,7 +5,8 @@ import { createGoldSourceLock } from '../../api/gold';
 export type GoldSourceChoice =
   | { type: 'chapter'; chapterId: string; label: string }
   | { type: 'current-manuscript'; label: string }
-  | { type: 'workbench'; pastedText: string; label: string };
+  | { type: 'workbench'; pastedText: string; label: string }
+  | { type: 'output'; outputId: string; label: string };
 
 interface GoldSourceConfirmModalProps {
   open: boolean;
@@ -49,6 +50,13 @@ export function GoldSourceConfirmModal({
           projectId,
           sourceType: 'pasted-text',
           pastedText: selected.pastedText,
+          mode: 'improve-same-story',
+        });
+      } else if (selected.type === 'output') {
+        lock = await createGoldSourceLock({
+          projectId,
+          sourceType: 'output',
+          outputId: selected.outputId,
           mode: 'improve-same-story',
         });
       } else {

@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { getOutput } from '../api/outputs';
 import { continueWriting } from '../api/casper';
 import { runGoldPass } from '../api/gold';
+import { GoldSourceConfirmModal, type GoldSourceChoice } from '../components/gold/GoldSourceConfirmModal';
 import { getProject } from '../api/projects';
 import { applyManuscriptOutput } from '../api/book';
 import { OutputApplyActions } from '../components/outputs/OutputApplyActions';
@@ -74,14 +75,34 @@ export default function OutputDetail() {
   });
 
   const goldMutation = useMutation({
-    mutationFn: () => runGoldPass(output!.projectId!, text),
+    mutationFn: (sourceLockId: string) =>
+      runGoldPass(output!.projectId!, undefined, {
+        sourceLockId,
+        improveText: true,
+        stage: 'revision',
+        mode: 'improve-same-story',
+      }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      toast.success(`Gold Pass saved · ${result.outputId.slice(0, 8)}`);
+      if (result.driftBlocked) {
+        toast.error('Gold Pass drift detected — saved as alternative only');
+      } else {
+        toast.success(`Gold Pass saved · ${result.outputId.slice(0, 8)}`);
+      }
       navigate(`/outputs/${result.outputId}`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  const [showGoldSourceModal, setShowGoldSourceModal] = useState(false);
+  const goldSourceChoices = useMemo((): GoldSourceChoice[] => {
+    if (!output?.projectId || !text.trim()) return [];
+    return [{
+      type: 'output',
+      outputId: output.id,
+      label: `This output (${text.trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words)`,
+    }];
+  }, [output?.id, output?.projectId, text]);
 
   const applyRevisionMutation = useMutation({
     mutationFn: async () => {
@@ -124,10 +145,11 @@ export default function OutputDetail() {
   }, [output?.projectId, text, searchParams]);
 
   function handleGoldPass() {
-    const confirmed = confirm(
-      'Run Gold Pass on this output? A new gold artefact will be saved — your original output stays untouched.',
-    );
-    if (confirmed) goldMutation.mutate();
+    if (!output?.projectId || !text.trim()) {
+      toast.error('No readable text to run Gold Pass');
+      return;
+    }
+    setShowGoldSourceModal(true);
   }
 
   async function copyText() {
@@ -154,6 +176,17 @@ export default function OutputDetail() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 overflow-x-hidden pb-6">
+      <GoldSourceConfirmModal
+        open={showGoldSourceModal}
+        projectId={output.projectId ?? ''}
+        choices={goldSourceChoices}
+        onClose={() => setShowGoldSourceModal(false)}
+        onConfirmed={(sourceLockId) => {
+          setShowGoldSourceModal(false);
+          setGoldPromptOpen(false);
+          goldMutation.mutate(sourceLockId);
+        }}
+      />
       <header className="rounded-[2rem] border border-[#eadfca] bg-white p-4 shadow-room sm:p-6">
         <Link
           to={output.projectId ? `/projects/${output.projectId}/outputs` : '/outputs'}
@@ -193,7 +226,7 @@ export default function OutputDetail() {
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={handleGoldPass} disabled={goldMutation.isPending} className="btn-primary text-xs">
               {goldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Run Gold Pass
+              Confirm source &amp; run Gold Pass
             </button>
             <button type="button" onClick={() => setGoldPromptOpen(false)} className="btn-secondary text-xs">
               Not now

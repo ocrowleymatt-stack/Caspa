@@ -45,6 +45,22 @@ export async function analyseCut(projectId: string, body: CutAnalyseRequest) {
   });
 }
 
+export async function generateCutDraft(
+  projectId: string,
+  body: CutAnalyseRequest & { cutReport?: string; cutMap?: CutAnalyseResult['cutMap'] },
+) {
+  return apiCall<{
+    outputId: string;
+    draftText: string;
+    wordCount: number;
+    targetWordCount: number;
+    unitId?: string;
+  }>(`/api/projects/${projectId}/cut/generate-draft`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function applyCut(
   projectId: string,
   body: { unitId: string; revisedText: string; outputId?: string },
