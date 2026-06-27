@@ -1,12 +1,16 @@
-import { useCallback, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
+  FilePlus,
   Loader2,
   MessageSquare,
+  NotebookPen,
   RefreshCw,
   Send,
   Sparkles,
+  SplitSquareHorizontal,
   Wand2,
   X,
 } from 'lucide-react';
@@ -21,40 +25,66 @@ import {
   suggestPlotPoints,
 } from '../api/assistant';
 import { continueWriting } from '../api/casper';
+import { patchProjectBible, getProjectBible } from '../api/bible';
+import { createProjectSnapshot } from '../api/book';
+import { getChapter, listChapters, createChapter, updateChapter } from '../api/chapters';
 import { registerOutput } from '../api/outputs';
+import { createResearchNote } from '../api/research';
 import { useAppStore } from '../store';
-import { cn } from '../lib/utils';
+import { cn, countWords } from '../lib/utils';
 import { useToast } from './Toast';
 import { ProviderStatus } from './ProviderStatus';
 import { useBodyScrollLock, useEscapeKey } from '../hooks/useOverlay';
 
-interface AIPanelProps {
-  chapterId?: string;
-  projectId?: string;
-  chapterContent?: string;
-  selectedText?: string;
-  onInsert?: (text: string) => void;
-}
-
 const actionClass =
   'rounded-2xl border border-[#eadfca] bg-white/75 px-3 py-2 text-xs font-semibold text-[#5f5648] shadow-sm transition hover:-translate-y-0.5 hover:border-accent hover:bg-[#fff8e8] disabled:opacity-50 disabled:hover:translate-y-0';
 
-export function AIPanel({ chapterId, projectId, chapterContent, selectedText, onInsert }: AIPanelProps) {
+const pushClass =
+  'btn-secondary flex-1 min-w-[9rem] text-xs justify-center';
+
+function draftTitle(prompt: string, fallback: string) {
+  const trimmed = prompt.trim();
+  if (!trimmed) return fallback;
+  return trimmed.length > 72 ? `${trimmed.slice(0, 72)}…` : trimmed;
+}
+
+export function AIPanel() {
   const open = useAppStore((s) => s.aiPanelOpen);
   const setOpen = useAppStore((s) => s.setAiPanelOpen);
+  const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const editorContext = useAppStore((s) => s.aiPanelEditorContext);
+  const routeParams = useParams<{ id?: string; chapterId?: string }>();
+  const queryClient = useQueryClient();
   const toast = useToast();
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const [savedOutputId, setSavedOutputId] = useState<string | null>(null);
+
+  const projectId = editorContext?.projectId ?? routeParams.id ?? activeProjectId ?? undefined;
+  const chapterId = editorContext?.chapterId ?? routeParams.chapterId;
+  const chapterContent = editorContext?.chapterContent;
+  const selectedText = editorContext?.selectedText;
+  const onInsert = editorContext?.insertText;
+
+  const { data: routeChapter } = useQuery({
+    queryKey: ['chapter', chapterId],
+    queryFn: () => getChapter(chapterId!),
+    enabled: !!chapterId && !editorContext,
+  });
 
   const close = useCallback(() => setOpen(false), [setOpen]);
   useEscapeKey(open, close);
   useBodyScrollLock(open);
 
+  const effectiveChapterContent = chapterContent ?? routeChapter?.content ?? '';
+  const effectiveChapterTitle = editorContext?.chapterTitle ?? routeChapter?.title;
+
   const streamMutation = useMutation({
     mutationFn: async (userPrompt: string) => {
       setResponse('');
+      setSavedOutputId(null);
       setStreaming(true);
       let full = '';
       await streamGenerate(
@@ -78,10 +108,10 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
   const saveHistoryMutation = useMutation({
     mutationFn: async () => {
       if (!response.trim()) throw new Error('Nothing to save yet.');
-      return registerOutput({
+      const record = await registerOutput({
         projectId,
         type: 'ask-casper',
-        title: prompt.trim().slice(0, 80) || 'Ask Casper reply',
+        title: draftTitle(prompt, 'Ask Casper reply'),
         metadata: {
           text: response,
           prompt: prompt.trim() || undefined,
@@ -90,65 +120,228 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
           source: 'ask-casper',
         },
       });
+      return record;
     },
-    onSuccess: () => toast.success('Saved to Writing History'),
+    onSuccess: (record) => {
+      setSavedOutputId(record.id);
+      queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      toast.success('Saved to Writing History');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const pushAppendMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId || !chapterId || !response.trim()) {
+        throw new Error('Open a chapter to append this draft.');
+      }
+      if (editorContext?.insertText) {
+        editorContext.insertText(response);
+        return { mode: 'live-editor' as const };
+      }
+      if (projectId) {
+        await createProjectSnapshot(projectId, {
+          label: 'Before Casper append',
+          reason: 'ask-casper-append',
+        });
+      }
+      const base = effectiveChapterContent;
+      const next = base + (base.endsWith('\n') ? '' : '\n\n') + response;
+      await updateChapter(chapterId, {
+        content: next,
+        wordCount: countWords(next),
+      });
+      return { mode: 'saved-chapter' as const };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chapter', chapterId] });
+      queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
+      toast.success('Appended to current section');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const pushReplaceMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId || !chapterId || !response.trim()) {
+        throw new Error('Open a chapter to replace text.');
+      }
+      if (selectedText?.trim() && editorContext?.replaceSelection) {
+        editorContext.replaceSelection(response);
+        return { mode: 'selection' as const };
+      }
+      if (projectId) {
+        await createProjectSnapshot(projectId, {
+          label: 'Before Casper replace',
+          reason: 'ask-casper-replace',
+        });
+      }
+      await updateChapter(chapterId, {
+        content: response,
+        wordCount: countWords(response),
+      });
+      return { mode: 'chapter' as const };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chapter', chapterId] });
+      queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
+      toast.success('Section updated from Casper draft');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const pushNewSectionMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId || !response.trim()) throw new Error('Select a project first.');
+      const chapters = await listChapters(projectId);
+      const title = draftTitle(prompt, `Casper draft ${chapters.length + 1}`);
+      return createChapter(projectId, {
+        title,
+        order: chapters.length + 1,
+        content: response,
+        status: 'draft',
+      });
+    },
+    onSuccess: (chapter) => {
+      queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
+      toast.success(`New section created · ${chapter.title}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const pushResearchMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId || !response.trim()) throw new Error('Select a project first.');
+      return createResearchNote(projectId, {
+        title: draftTitle(prompt, 'Ask Casper note'),
+        content: response,
+        tags: ['ask-casper'],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['research', projectId] });
+      toast.success('Saved to research notes');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const pushBibleMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId || !response.trim()) throw new Error('Select a project first.');
+      const bible = await getProjectBible(projectId);
+      const stamp = new Date().toLocaleString();
+      const block = `\n\n---\nAsk Casper · ${stamp}\n${prompt.trim() ? `Q: ${prompt.trim()}\n\n` : ''}${response.trim()}`;
+      return patchProjectBible(projectId, {
+        sourceNotes: `${bible.sourceNotes ?? ''}${block}`.trim(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-bible', projectId] });
+      toast.success('Added to Project Bible notes');
+    },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const actionMutation = useMutation({
     mutationFn: async (action: string) => {
-      if (action === 'continue' && projectId && chapterContent?.trim()) {
+      if (action === 'continue' && projectId && effectiveChapterContent.trim()) {
         const result = await continueWriting({
           projectId,
           chapterId,
-          currentText: chapterContent,
+          currentText: effectiveChapterContent,
           mode: 'continue',
         });
-        return result.text;
+        return { text: result.text, outputId: result.outputId };
       }
       if (action === 'continue' && chapterId) {
-        throw new Error('Save your chapter first, or use the header Continue writing button with live text.');
+        throw new Error('Add chapter text first, or open the chapter editor.');
       }
       if (action === 'rewrite' && selectedText && projectId) {
-        return rewriteSelection(selectedText, prompt || 'Improve this text', projectId);
+        const text = await rewriteSelection(selectedText, prompt || 'Improve this text', projectId);
+        return { text };
       }
       if (action === 'critique' && chapterId) {
         const result = await critiqueChapter(chapterId);
-        return `Strengths:\n${result.strengths.map((s) => `• ${s}`).join('\n')}\n\nWeaknesses:\n${result.weaknesses.map((s) => `• ${s}`).join('\n')}\n\nSuggestions:\n${result.suggestions.map((s) => `• ${s}`).join('\n')}`;
+        const text = `Strengths:\n${result.strengths.map((s) => `• ${s}`).join('\n')}\n\nWeaknesses:\n${result.weaknesses.map((s) => `• ${s}`).join('\n')}\n\nSuggestions:\n${result.suggestions.map((s) => `• ${s}`).join('\n')}`;
+        return { text };
       }
       if (action === 'consistency' && projectId) {
         const result = await checkConsistency(projectId);
-        return `Issues:\n${result.issues.map((s) => `• ${s}`).join('\n') || 'None'}\n\nWarnings:\n${result.warnings.map((s) => `• ${s}`).join('\n') || 'None'}`;
+        const text = `Issues:\n${result.issues.map((s) => `• ${s}`).join('\n') || 'None'}\n\nWarnings:\n${result.warnings.map((s) => `• ${s}`).join('\n') || 'None'}`;
+        return { text };
       }
       if (action === 'summary' && chapterId) {
-        return generateSummary(chapterId);
+        const text = await generateSummary(chapterId);
+        return { text };
       }
       if (action === 'titles' && projectId) {
         const titles = await generateTitles(projectId);
-        return titles.map((t, i) => `${i + 1}. ${t}`).join('\n');
+        const text = titles.map((t, i) => `${i + 1}. ${t}`).join('\n');
+        return { text };
       }
       if (action === 'plot-suggest' && projectId) {
         const points = await suggestPlotPoints(projectId);
-        return points.map((p, i) => `${i + 1}. [${p.type}] ${p.title}\n   ${p.description}`).join('\n\n');
+        const text = points.map((p, i) => `${i + 1}. [${p.type}] ${p.title}\n   ${p.description}`).join('\n\n');
+        return { text };
       }
       if (action === 'style-lock' && selectedText) {
-        return styleLock(selectedText, prompt || 'Match this writing style');
+        const text = await styleLock(selectedText, prompt || 'Match this writing style');
+        return { text };
       }
       throw new Error('Action not available');
     },
-    onSuccess: (text) => {
-      setResponse(text);
-      toast.success('Casper finished');
+    onSuccess: (result) => {
+      setResponse(result.text);
+      if (result.outputId) setSavedOutputId(result.outputId);
+      queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      toast.success('Casper finished — push into project below');
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const pushPending = useMemo(
+    () =>
+      pushAppendMutation.isPending
+      || pushReplaceMutation.isPending
+      || pushNewSectionMutation.isPending
+      || pushResearchMutation.isPending
+      || pushBibleMutation.isPending
+      || saveHistoryMutation.isPending,
+    [
+      pushAppendMutation.isPending,
+      pushBibleMutation.isPending,
+      pushNewSectionMutation.isPending,
+      pushReplaceMutation.isPending,
+      pushResearchMutation.isPending,
+      saveHistoryMutation.isPending,
+    ],
+  );
+
   if (!open) return null;
 
-  const busy = streaming || actionMutation.isPending || streamMutation.isPending;
+  const busy = streaming || actionMutation.isPending || streamMutation.isPending || pushPending;
   const hasQuickActions = Boolean(
     chapterId || (selectedText && projectId) || projectId || selectedText,
   );
+  const canPushToChapter = Boolean(projectId && chapterId && response.trim());
+  const canPushToProject = Boolean(projectId && response.trim());
+
+  function handleReplaceChapter() {
+    const label = effectiveChapterTitle ? `"${effectiveChapterTitle}"` : 'this section';
+    const confirmed = confirm(
+      selectedText?.trim()
+        ? 'Replace the selected text with this Casper draft?'
+        : `Replace all text in ${label}? A project snapshot is created first.`,
+    );
+    if (confirmed) pushReplaceMutation.mutate();
+  }
+
+  function handleAppendChapter() {
+    const confirmed = confirm(
+      'Append this Casper draft to the current section? A snapshot is created if saving directly to the chapter.',
+    );
+    if (confirmed) pushAppendMutation.mutate();
+  }
 
   return (
     <>
@@ -172,13 +365,23 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
               </div>
               <h2 className="mt-1 font-serif text-2xl font-semibold text-[#171a22] sm:text-3xl">Ask Casper</h2>
               <p className="mt-1 text-sm leading-6 text-muted">
-                Type a question below, or use a quick action when you have a project open.
+                Ask a question, then push the answer into your manuscript, bible, or research.
               </p>
             </div>
             <button type="button" onClick={close} className="btn-ghost min-h-[44px] min-w-[44px] shrink-0 p-2" aria-label="Close">
               <X className="h-4 w-4" />
             </button>
           </div>
+          {projectId && (
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#766b58]">
+              <span className="rounded-full border border-[#eadfca] bg-white px-2.5 py-1">Project linked</span>
+              {chapterId && (
+                <span className="rounded-full border border-[#caa044] bg-[#fff8e8] px-2.5 py-1">
+                  {effectiveChapterTitle ?? 'Current section'}
+                </span>
+              )}
+            </div>
+          )}
           <ProviderStatus compact className="mt-3 max-w-full" />
         </div>
 
@@ -251,11 +454,11 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
               <MessageSquare className="mb-4 h-10 w-10 text-[#98711d] opacity-70" />
               <p className="font-serif text-xl font-semibold text-[#171a22] sm:text-2xl">Your conversation appears here.</p>
               <p className="mt-2 max-w-xs text-sm leading-6">
-                Ask about structure, tone, the next scene, or paste a problem — Casper replies in this space.
+                Ask about structure, tone, the next scene, or paste a problem — then push the answer into the project.
               </p>
               {!projectId && (
                 <p className="mt-4 text-xs leading-5 text-[#98711d]">
-                  Select a project in the sidebar for consistency, titles, and plot actions.
+                  Open a project to push drafts into manuscript, bible, or research.
                 </p>
               )}
             </div>
@@ -263,21 +466,79 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
         </div>
 
         <div className="shrink-0 space-y-3 border-t border-[#eadfca] bg-white/55 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4">
-          {response && (
-            <div className="flex flex-wrap gap-2">
-              {onInsert && (
-                <button type="button" onClick={() => onInsert(response)} className="btn-secondary flex-1 text-xs">
-                  Insert into chapter
+          {response && canPushToProject && (
+            <div className="space-y-2">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#98711d]">Push into project</div>
+              <div className="flex flex-wrap gap-2">
+                {canPushToChapter && (
+                  <>
+                    {onInsert && (
+                      <button type="button" onClick={() => onInsert(response)} className={pushClass}>
+                        <SplitSquareHorizontal className="h-3.5 w-3.5" /> Insert in editor
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={pushPending}
+                      onClick={handleAppendChapter}
+                      className={pushClass}
+                    >
+                      <SplitSquareHorizontal className="h-3.5 w-3.5" />
+                      Append section
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pushPending}
+                      onClick={handleReplaceChapter}
+                      className={pushClass}
+                    >
+                      {selectedText?.trim() ? 'Replace selection' : 'Replace section'}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  disabled={pushPending}
+                  onClick={() => pushNewSectionMutation.mutate()}
+                  className={pushClass}
+                >
+                  <FilePlus className="h-3.5 w-3.5" /> New section
                 </button>
+                <button
+                  type="button"
+                  disabled={pushPending}
+                  onClick={() => pushResearchMutation.mutate()}
+                  className={pushClass}
+                >
+                  <NotebookPen className="h-3.5 w-3.5" /> Research note
+                </button>
+                <button
+                  type="button"
+                  disabled={pushPending}
+                  onClick={() => pushBibleMutation.mutate()}
+                  className={pushClass}
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> Bible notes
+                </button>
+                <button
+                  type="button"
+                  disabled={saveHistoryMutation.isPending}
+                  onClick={() => saveHistoryMutation.mutate()}
+                  className={pushClass}
+                >
+                  {saveHistoryMutation.isPending ? 'Saving…' : 'Writing History'}
+                </button>
+              </div>
+              {savedOutputId && (
+                <Link to={`/outputs/${savedOutputId}`} className="text-xs font-semibold text-[#98711d] hover:underline">
+                  Open saved draft in Writing History →
+                </Link>
               )}
-              <button
-                type="button"
-                disabled={saveHistoryMutation.isPending}
-                onClick={() => saveHistoryMutation.mutate()}
-                className="btn-secondary flex-1 text-xs"
-              >
-                {saveHistoryMutation.isPending ? 'Saving…' : 'Save to Writing History'}
-              </button>
+              {projectId && (
+                <Link to={`/projects/${projectId}/manuscript`} className="text-xs font-semibold text-[#98711d] hover:underline">
+                  Open current work →
+                </Link>
+              )}
             </div>
           )}
           <div className="flex min-w-0 gap-2">

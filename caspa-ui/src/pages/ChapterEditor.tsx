@@ -9,7 +9,6 @@ import { useAppStore } from '../store';
 import { countWords } from '../lib/utils';
 import { useToast } from '../components/Toast';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
-import { AIPanel } from '../components/AIPanel';
 import { ChapterRail } from '../components/chapter/ChapterRail';
 import { StagedProgressPanel } from '../components/StagedProgressPanel';
 import { CONTINUE_STAGES } from '../components/StagedProgress';
@@ -22,6 +21,7 @@ export default function ChapterEditor() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const setAiPanelOpen = useAppStore((s) => s.setAiPanelOpen);
+  const setAiPanelEditorContext = useAppStore((s) => s.setAiPanelEditorContext);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('saved');
@@ -175,12 +175,52 @@ export default function ChapterEditor() {
     setSelectedText(sel);
   };
 
-  const handleInsert = (text: string) => {
+  const handleInsert = useCallback((text: string) => {
     const next = content + (content.endsWith('\n') ? '' : '\n\n') + text;
     setContent(next);
     scheduleSave();
     toast.success('Text inserted');
-  };
+  }, [content, scheduleSave, toast]);
+
+  const handleReplaceSelection = useCallback((text: string) => {
+    if (selectedText?.trim()) {
+      const next = content.includes(selectedText)
+        ? content.replace(selectedText, text)
+        : content + (content.endsWith('\n') ? '' : '\n\n') + text;
+      setContent(next);
+      setSelectedText('');
+      scheduleSave();
+      toast.success('Selection replaced');
+      return;
+    }
+    handleInsert(text);
+  }, [content, handleInsert, scheduleSave, selectedText, toast]);
+
+  useEffect(() => {
+    if (!projectId || !chapterId) {
+      setAiPanelEditorContext(null);
+      return;
+    }
+    setAiPanelEditorContext({
+      projectId,
+      chapterId,
+      chapterContent: content,
+      chapterTitle: title,
+      selectedText,
+      insertText: handleInsert,
+      replaceSelection: handleReplaceSelection,
+    });
+    return () => setAiPanelEditorContext(null);
+  }, [
+    chapterId,
+    content,
+    handleInsert,
+    handleReplaceSelection,
+    projectId,
+    selectedText,
+    setAiPanelEditorContext,
+    title,
+  ]);
 
   if (isLoading) {
     return (
@@ -377,8 +417,6 @@ export default function ChapterEditor() {
           </span>
         </div>
       </footer>
-
-      <AIPanel chapterId={chapterId} projectId={projectId} chapterContent={content} selectedText={selectedText} onInsert={handleInsert} />
     </div>
   );
 }

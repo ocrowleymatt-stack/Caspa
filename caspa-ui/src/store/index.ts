@@ -11,6 +11,16 @@ export interface ToastMessage {
   message: string;
 }
 
+export interface AiPanelEditorContext {
+  projectId: string;
+  chapterId: string;
+  chapterContent: string;
+  chapterTitle?: string;
+  selectedText?: string;
+  insertText: (text: string) => void;
+  replaceSelection: (text: string) => void;
+}
+
 interface AppState {
   authToken: string | null;
   user: UserPublic | null;
@@ -31,6 +41,9 @@ interface AppState {
   aiPanelOpen: boolean;
   setAiPanelOpen: (open: boolean) => void;
   toggleAiPanel: () => void;
+
+  aiPanelEditorContext: AiPanelEditorContext | null;
+  setAiPanelEditorContext: (context: AiPanelEditorContext | null) => void;
 
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
@@ -82,6 +95,9 @@ export const useAppStore = create<AppState>()(
       aiPanelOpen: false,
       setAiPanelOpen: (open) => set({ aiPanelOpen: open }),
       toggleAiPanel: () => set({ aiPanelOpen: !get().aiPanelOpen }),
+
+      aiPanelEditorContext: null,
+      setAiPanelEditorContext: (context) => set({ aiPanelEditorContext: context }),
 
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
