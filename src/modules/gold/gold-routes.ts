@@ -9,6 +9,12 @@ import { ProjectService } from '../manuscript/ProjectService';
 import { outputRegistry } from '../outputs';
 import { goldPipeline } from './GoldPipeline';
 import { goldSynthesisService } from './GoldSynthesisService';
+import {
+  assessGoldFidelity,
+  goldSourceLockService,
+  type GoldPassMode,
+  type GoldSourceType,
+} from './GoldSourceLockService';
 
 const COLLECTION = 'gold-reports';
 
@@ -31,6 +37,44 @@ function getUser(req: { user?: UserPublic }): UserPublic {
   throw new Error('Authentication required');
 }
 
+goldRouter.post('/api/gold/source-lock', asyncHandler(async (req, res) => {
+  const body = req.body as {
+    projectId?: string;
+    sourceType?: GoldSourceType;
+    sourceId?: string;
+    unitId?: string;
+    chapterId?: string;
+    outputId?: string;
+    pastedText?: string;
+    mode?: GoldPassMode;
+  };
+  if (!body.projectId?.trim()) {
+    sendError(res, new Error('projectId is required'), 400);
+    return;
+  }
+  const lock = await goldSourceLockService.createLock({
+    projectId: body.projectId,
+    sourceType: body.sourceType ?? 'current-manuscript',
+    sourceId: body.sourceId,
+    unitId: body.unitId,
+    chapterId: body.chapterId,
+    outputId: body.outputId,
+    pastedText: body.pastedText,
+    mode: body.mode ?? 'improve-same-story',
+    user: getUser(req),
+  });
+  sendSuccess(res, lock, 201);
+}));
+
+goldRouter.get('/api/gold/source-lock/:id', asyncHandler(async (req, res) => {
+  const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+  if (!projectId) {
+    sendError(res, new Error('projectId query required'), 400);
+    return;
+  }
+  sendSuccess(res, await goldSourceLockService.getLock(param(req, 'id'), projectId));
+}));
+
 goldRouter.post('/api/gold/run/:projectId', asyncHandler(async (req, res) => {
   await projectService.getProject(param(req, 'projectId'), getUser(req));
   sendSuccess(res, await goldPipeline.run(param(req, 'projectId')));
@@ -40,11 +84,13 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
   const body = req.body as {
     projectId?: string;
     source?: string;
+    sourceLockId?: string;
     improveText?: boolean;
     stage?: GoldSynthesisStage;
     swarmOutputId?: string;
     awardAssessmentOutputId?: string;
     includeElevationSteps?: boolean;
+    mode?: GoldPassMode;
   };
   if (!body.projectId?.trim()) {
     sendError(res, new Error('projectId is required'), 400);
@@ -53,10 +99,26 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
 
   const project = await projectService.getProject(body.projectId, getUser(req));
 
+  let sourceText = body.source?.trim() ?? '';
+  let sourceLock = null as Awaited<ReturnType<typeof goldSourceLockService.getLock>> | null;
+
+  if (body.sourceLockId) {
+    sourceLock = await goldSourceLockService.verifyLock(
+      body.sourceLockId,
+      body.projectId,
+      body.source,
+    );
+    sourceText = sourceLock.sourceText;
+  } else if (body.mode === 'adapt-reinvent') {
+    sendError(res, new Error('Adapt/reinvent mode requires an explicit source lock.'), 400);
+    return;
+  }
+
   const synthesis = await goldSynthesisService.synthesize({
     projectId: body.projectId,
-    sourceText: body.source,
-    improveText: body.improveText,
+    sourceText,
+    sourceLock: sourceLock ?? undefined,
+    improveText: body.improveText ?? true,
     stage: body.stage,
     swarmOutputId: body.swarmOutputId,
     awardAssessmentOutputId: body.awardAssessmentOutputId,
@@ -65,28 +127,40 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
 
   let report: GoldReport | undefined;
   if (body.includeElevationSteps) {
-    report = await goldPipeline.run(body.projectId, { sourceText: body.source });
+    report = await goldPipeline.run(body.projectId, { sourceText });
   }
 
-  const improved = synthesis.improvedText
-    ?? synthesis.revisionPlan.join('\n');
+  const improved = synthesis.improvedText ?? synthesis.revisionPlan.join('\n');
+  const fidelity = sourceLock && synthesis.improvedText
+    ? assessGoldFidelity(sourceLock.sourceText, synthesis.improvedText, sourceLock)
+    : undefined;
+
+  const driftBlocked = fidelity
+    && (fidelity.verdict === 'major-drift' || fidelity.verdict === 'different-story');
+
   const critique = [
     synthesis.judgeAssessment,
     `Structure: ${synthesis.structuralAssessment.summary}`,
     `Research: ${synthesis.researchAssessment.summary}`,
     `Anti-filler: ${synthesis.antiFillerReport.summary}`,
-  ].join('\n\n');
+    fidelity ? `Fidelity: ${fidelity.verdict} (${fidelity.sameStoryScore}/100)` : '',
+    driftBlocked ? 'WARNING: Gold Pass drifted from the source. Kept as alternative — not a safe revision.' : '',
+  ].filter(Boolean).join('\n\n');
 
   const record = await outputRegistry.register({
     projectId: body.projectId,
     type: 'gold-pass',
-    title: `Gold synthesis — ${synthesis.stage}`,
+    title: driftBlocked
+      ? `Gold alternative (drift detected) — ${synthesis.stage}`
+      : `Gold synthesis — ${synthesis.stage}`,
     path: '',
     metadata: {
       kind: 'gold-synthesis',
       ...standardOutputProvenance({
         workType: project.workType,
-        sourceScope: body.source?.trim() ? 'provided-text' : 'whole-manuscript',
+        sourceScope: sourceLock?.sourceType ?? (body.source?.trim() ? 'provided-text' : 'whole-manuscript'),
+        unitId: sourceLock?.unitId,
+        unitTitle: sourceLock?.title,
         swarmOutputId: body.swarmOutputId,
         stage: synthesis.stage,
         targetAwardIds: project.targetPrizeIds,
@@ -97,8 +171,14 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
       reportId: report?.id,
       overallScore: report?.overallScore,
       overallStatus: report?.overallStatus,
-      sourceExcerpt: body.source?.slice(0, 500) ?? '',
-      sourceScope: body.source?.trim() ? 'provided-text' : 'full-project',
+      sourceLockId: sourceLock?.sourceLockId,
+      sourceHash: sourceLock?.sourceHash,
+      fidelity,
+      driftBlocked,
+      applyBlocked: driftBlocked,
+      destination: sourceLock?.unitId ? 'beside-unit' : 'writing-history',
+      sourceExcerpt: sourceText.slice(0, 500),
+      sourceScope: sourceLock?.sourceType ?? (body.source?.trim() ? 'provided-text' : 'full-project'),
     },
   });
 
@@ -110,6 +190,12 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     report,
     improved,
     critique,
+    fidelity,
+    driftBlocked,
+    destination: sourceLock?.unitId ? `Draft saved beside ${sourceLock.title}` : 'Draft saved to Writing History',
+    nextActions: driftBlocked
+      ? ['Keep as alternative', 'Review source lock', 'Run again with line-edit only']
+      : ['Apply safely', 'Compare', 'Continue from this', 'Export'],
   });
 }));
 

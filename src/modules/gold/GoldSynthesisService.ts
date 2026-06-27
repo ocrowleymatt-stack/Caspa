@@ -1,4 +1,5 @@
 import { aiWithFallback, getProjectFullText } from '../../shared/elevationHelpers';
+import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
 import type {
   GoldAntiFillerReport,
   GoldResearchAssessment,
@@ -18,6 +19,8 @@ import { projectBibleService } from '../manuscript/ProjectBibleService';
 import { ProjectService } from '../manuscript/ProjectService';
 import { ResearchService } from '../manuscript/ResearchService';
 import { outputRegistry } from '../outputs';
+import { productionBriefService } from '../studio/ProductionBriefService';
+import { buildSourceFidelityContract, type GoldSourceLock } from './GoldSourceLockService';
 
 function defaultProse(): ProseAssessment {
   return {
@@ -50,13 +53,14 @@ export class GoldSynthesisService {
     user?: import('../auth/types').UserPublic,
   ): Promise<GoldSynthesisResult> {
     const project = await this.projectService.getProject(input.projectId, user);
-    const [bible, chapters, poles, notes, awardLenses, bookMap] = await Promise.all([
+    const [bible, chapters, poles, notes, awardLenses, bookMap, brief] = await Promise.all([
       projectBibleService.get(input.projectId),
       this.chapterService.listChapters(input.projectId),
       this.plotService.listPlotPoints(input.projectId),
       this.researchService.listNotes(input.projectId),
       awardsCatalog.resolveByIds(project.targetPrizeIds ?? []),
       bookMapService.get(input.projectId, user),
+      productionBriefService.get(input.projectId, user),
     ]);
 
     const confirmed = notes.filter((note) => note.verificationStatus === 'confirmed');
@@ -87,8 +91,11 @@ export class GoldSynthesisService {
       awardFit?: Array<{ awardName: string; score: number; judgeComments: string }>;
     } | undefined;
 
-    const sourceText = input.sourceText?.trim()
-      || (await getProjectFullText(input.projectId, 8000));
+    const sourceText = input.sourceLock?.sourceText?.trim()
+      || input.sourceText?.trim()
+      || (await getProjectFullText(input.projectId, input.sourceLock ? 120_000 : 8000));
+
+    const creativeSpec = buildCreativeSpecPrompt(brief);
 
     const sourcesUsed: GoldSynthesisSourcesUsed = {
       projectBible: Boolean(bible.premise || bible.structure || bible.scenePlan.length),
@@ -125,6 +132,7 @@ export class GoldSynthesisService {
         ? `Prior award assessment readiness: ${awardAssessment?.overallReadiness ?? 'see linked output'}`
         : 'Award assessment: none linked',
       `Structure units: ${chapters.length}, poles: ${poles.length}`,
+      creativeSpec,
     ].join('\n\n');
 
     const fallbackPayload = {
@@ -164,7 +172,7 @@ export class GoldSynthesisService {
         '"researchAssessment": { "summary", "gaps": [], "accuracyFlags": [] }, "antiFillerReport": { "warnings": [], "summary": "..." }, "revisionPlan": [] }',
         `Stage: ${input.stage ?? 'draft'}`,
       ].join('\n'),
-      `${contextBlock}\n\n--- SOURCE TEXT ---\n${sourceText.slice(0, 5000)}`,
+      `${contextBlock}\n\n--- SOURCE TEXT ---\n${sourceText.slice(0, input.sourceLock ? 12000 : 5000)}`,
       JSON.stringify(fallbackPayload),
       input.projectId,
     );
@@ -213,15 +221,54 @@ export class GoldSynthesisService {
       : fallbackPayload.revisionPlan;
 
     let improvedText: string | undefined;
-    if (input.improveText) {
+    if (input.improveText && !input.sourceLock?.allowAdaptation) {
+      const lockForFidelity: GoldSourceLock = input.sourceLock
+        ? (input.sourceLock as GoldSourceLock)
+        : {
+        sourceLockId: 'inline',
+        projectId: input.projectId,
+        sourceType: 'current-manuscript' as const,
+        title: 'Manuscript',
+        wordCount: sourceText.split(/\s+/).filter(Boolean).length,
+        sourceHash: '',
+        sourcePreviewStart: sourceText.slice(0, 300),
+        sourcePreviewEnd: sourceText.slice(-300),
+        mode: 'improve-same-story' as const,
+        preserveStory: true,
+        preserveCharacters: true,
+        preserveEvents: true,
+        preserveChronology: true,
+        preserveVoice: true,
+        allowAdaptation: false,
+        sourceText,
+        createdAt: new Date().toISOString(),
+      };
+
+      const fidelity = buildSourceFidelityContract(lockForFidelity);
+
       const { text: revised } = await aiWithFallback(
         [
-          'Apply the Gold synthesis revision plan only. Preserve voice-guardian notes from swarm if present.',
+          fidelity,
+          'Apply the Gold synthesis revision plan only. IMPROVE THE SAME STORY — do not replace with a different plot.',
           `Revision plan:\n${revisionPlan.join('\n')}`,
+          creativeSpec,
           'Return improved text only.',
-        ].join('\n'),
-        sourceText.slice(0, 6000),
-        sourceText,
+        ].join('\n\n'),
+        sourceText.slice(0, input.sourceLock ? 50000 : 6000),
+        sourceText.slice(0, 2000),
+        input.projectId,
+      );
+      improvedText = revised.trim() || undefined;
+    } else if (input.improveText) {
+      const { text: revised } = await aiWithFallback(
+        [
+          'Adapt/reinvent mode — explicit opt-in.',
+          `Revision plan:\n${revisionPlan.join('\n')}`,
+          creativeSpec,
+          'Return improved text only.',
+        ].join('\n\n'),
+        sourceText.slice(0, 50000),
+        sourceText.slice(0, 2000),
         input.projectId,
       );
       improvedText = revised.trim() || undefined;

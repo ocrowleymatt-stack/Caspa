@@ -29,6 +29,16 @@ export interface GoldAntiFillerReport {
 export interface GoldSynthesisInput {
   projectId: string;
   sourceText?: string;
+  sourceLock?: {
+    sourceLockId: string;
+    sourceText: string;
+    title: string;
+    sourceType: string;
+    unitId?: string;
+    mode: string;
+    allowAdaptation: boolean;
+    preserveStory: boolean;
+  };
   workType?: string;
   stage?: GoldSynthesisStage;
   improveText?: boolean;
