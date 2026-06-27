@@ -30,6 +30,8 @@ import { workModelFromCasperMode } from '../lib/casperWorkModel';
 import { useAppStore } from '../store';
 import { useToast } from '../components/Toast';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
+import { StagedProgressPanel } from '../components/StagedProgressPanel';
+import { NOVEL_WRITE_PRO_STAGES } from '../components/StagedProgress';
 
 type CasperMode = 'novel' | 'script' | 'musical' | 'adaptation' | 'polish' | 'chaos';
 
@@ -393,6 +395,11 @@ export default function CasperFreestyle() {
 
   const pendingLabel = 'Novel Write Pro is drafting... (plan → draft → critic → rewrite — ~4–5 min on Ollama)';
 
+  const nwpError =
+    createMutation.isError && createMutation.error instanceof Error
+      ? createMutation.error.message
+      : null;
+
   if (showImproveFlow && existingProject) {
     return (
       <div className="-mx-4 -my-4 min-h-[calc(100vh-5rem)] rounded-[2rem] bg-[#f7f1e6] px-4 py-6 pb-24 text-[#1f2430] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] md:-mx-6 md:-my-6 md:px-8 md:py-8 md:pb-8">
@@ -567,6 +574,16 @@ export default function CasperFreestyle() {
             </div>
           </form>
         </section>
+
+        {createMutation.isPending && (
+          <StagedProgressPanel
+            label="Novel Write Pro"
+            stages={NOVEL_WRITE_PRO_STAGES}
+            pending={createMutation.isPending}
+            error={nwpError}
+            advanceEveryMs={18_000}
+          />
+        )}
 
         <section className="grid gap-6 lg:grid-cols-[1fr_330px]">
           <article className="rounded-[2.2rem] border border-[#eadfca] bg-white p-5 shadow-[0_25px_80px_rgba(75,55,21,0.10)] md:p-7">

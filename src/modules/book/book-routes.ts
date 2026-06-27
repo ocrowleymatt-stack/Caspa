@@ -131,6 +131,21 @@ bookRouter.get(
   }),
 );
 
+bookRouter.get(
+  '/api/projects/:id/export/docx',
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await projectExportService.exportDocxManuscript(param(req, 'id'), req.user), 201);
+  }),
+);
+
+bookRouter.get(
+  '/api/projects/:id/export/docx/download',
+  asyncHandler(async (req, res) => {
+    const { docxPath, filename } = await projectExportService.exportDocxManuscript(param(req, 'id'), req.user);
+    res.download(docxPath, filename);
+  }),
+);
+
 bookRouter.post(
   '/api/projects/:id/export/archive',
   asyncHandler(async (req, res) => {

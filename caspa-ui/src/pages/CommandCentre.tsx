@@ -4,7 +4,9 @@ import {
   BookOpen,
   Clapperboard,
   FileText,
+  Gem,
   Ghost,
+  Map,
   Music,
   Package,
   PenLine,
@@ -12,8 +14,10 @@ import {
 } from 'lucide-react';
 import { listProjects } from '../api/projects';
 import { getCasperStatus } from '../api/casper';
+import { listOutputs } from '../api/outputs';
 import { useAppStore } from '../store';
 import { ProviderStatus } from '../components/ProviderStatus';
+import { normalizeOutputKind, OUTPUT_KIND_LABELS, outputExcerpt, extractOutputText } from '../lib/outputSemantics';
 
 const quickLinks = [
   { to: '/casper', label: 'Novel Write Pro', icon: Ghost, desc: 'Auto-write, upload a manuscript, or improve an existing chapter.' },
@@ -28,8 +32,13 @@ export default function CommandCentre() {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: listProjects });
   const { data: casperStatus } = useQuery({ queryKey: ['casper-status'], queryFn: getCasperStatus });
+  const { data: recentOutputs = [] } = useQuery({
+    queryKey: ['outputs-recent'],
+    queryFn: () => listOutputs(),
+  });
 
   const activeProject = projects.find((p) => p.id === activeProjectId);
+  const latestOutputs = recentOutputs.slice(0, 4);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -57,8 +66,8 @@ export default function CommandCentre() {
               <Link to="/projects" className="btn-secondary">
                 <FileText className="h-4 w-4" /> Upload manuscript
               </Link>
-              <Link to="/casper" className="btn-secondary">
-                <Ghost className="h-4 w-4" /> Fix / Finish a Bad Project
+              <Link to="/casper/trash-to-treasure" className="btn-secondary">
+                <Gem className="h-4 w-4" /> Trash to Treasure
               </Link>
               {activeProject && (
                 <Link to={`/projects/${activeProject.id}`} className="btn-secondary">
@@ -101,6 +110,75 @@ export default function CommandCentre() {
               <ProviderStatus />
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-[1.8rem] border border-[#eadfca] bg-white p-5 shadow-paper lg:col-span-2">
+          <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Secret Weapon cockpit</div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {activeProject ? (
+              <Link to={`/projects/${activeProject.id}`} className="rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 transition hover:-translate-y-0.5">
+                <PenLine className="h-5 w-5 text-[#98711d]" />
+                <div className="mt-2 font-serif text-lg font-semibold text-[#171a22]">Continue {activeProject.title}</div>
+                <p className="mt-1 text-xs text-muted">Pick up the active project — chapters, Book Map, Saved Writing.</p>
+              </Link>
+            ) : (
+              <Link to="/projects" className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
+                <BookOpen className="h-5 w-5 text-[#98711d]" />
+                <div className="mt-2 font-serif text-lg font-semibold">Start a project</div>
+                <p className="mt-1 text-xs text-muted">Blank room or upload a manuscript.</p>
+              </Link>
+            )}
+            <Link to="/casper/trash-to-treasure" className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4 transition hover:border-[#caa044]">
+              <Gem className="h-5 w-5 text-[#98711d]" />
+              <div className="mt-2 font-serif text-lg font-semibold">Rescue rough material</div>
+              <p className="mt-1 text-xs text-muted">Trash to Treasure — diagnosis, plan, sample. Original preserved.</p>
+            </Link>
+            {activeProject && (
+              <>
+                <Link to={`/projects/${activeProject.id}/book-map`} className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
+                  <Map className="h-5 w-5 text-[#98711d]" />
+                  <div className="mt-2 font-serif text-lg font-semibold">Finish this book</div>
+                  <p className="mt-1 text-xs text-muted">Book Map, missing chapters, finish roadmap.</p>
+                </Link>
+                <Link to={`/projects/${activeProject.id}/export`} className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
+                  <FileText className="h-5 w-5 text-[#98711d]" />
+                  <div className="mt-2 font-serif text-lg font-semibold">Exports ready</div>
+                  <p className="mt-1 text-xs text-muted">Markdown, DOCX, archive, PDF/EPUB.</p>
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-[1.8rem] border border-[#eadfca] bg-white p-5 shadow-paper">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Latest saved writing</div>
+              <Link to="/outputs" className="text-xs font-semibold text-[#98711d] hover:underline">All</Link>
+            </div>
+            {latestOutputs.length === 0 ? (
+              <p className="mt-3 text-sm text-muted">No outputs yet — run Novel Write Pro or Trash to Treasure.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {latestOutputs.map((output) => {
+                  const kind = normalizeOutputKind(output.type, output.metadata);
+                  const text = extractOutputText(output.metadata);
+                  return (
+                    <li key={output.id}>
+                      <Link to={`/outputs/${output.id}`} className="block rounded-xl border border-[#eadfca] bg-[#fffdf8] px-3 py-2 hover:border-[#caa044]">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-[#98711d]">{OUTPUT_KIND_LABELS[kind]}</div>
+                        <div className="truncate text-sm font-semibold text-[#171a22]">{output.title}</div>
+                        {text && <p className="mt-1 line-clamp-1 text-xs text-muted">{outputExcerpt(text, 80)}</p>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          <ProviderStatus compact />
         </div>
       </section>
 

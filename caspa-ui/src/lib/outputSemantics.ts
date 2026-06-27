@@ -20,6 +20,11 @@ export type OutputKind =
   | 'export-package'
   | 'novel-write-pro'
   | 'continue-writing'
+  | 'trash-to-treasure'
+  | 'book-map'
+  | 'finish-book'
+  | 'gap-fill-draft'
+  | 'next-chapter-draft'
   | 'other';
 
 export const OUTPUT_KIND_LABELS: Record<OutputKind, string> = {
@@ -42,6 +47,11 @@ export const OUTPUT_KIND_LABELS: Record<OutputKind, string> = {
   'export-package': 'Export package',
   'novel-write-pro': 'Novel Write Pro draft',
   'continue-writing': 'Continue writing',
+  'trash-to-treasure': 'Trash to Treasure',
+  'book-map': 'Book Map',
+  'finish-book': 'Finish This Book',
+  'gap-fill-draft': 'Gap fill draft',
+  'next-chapter-draft': 'Next chapter draft',
   other: 'Output',
 };
 
@@ -121,11 +131,16 @@ export function normalizeOutputKind(type: string, metadata?: OutputMetadata): Ou
     'decking-draft': 'decking-draft',
     'pier-stretch': 'stretched-decking',
     'stretched-decking': 'stretched-decking',
-    'continue-writing': 'plot-continuation',
+    'continue-writing': 'continue-writing',
     'plot-continuation': 'plot-continuation',
     'manuscript-improvement': 'manuscript-revision',
     'manuscript-revision': 'manuscript-revision',
     'novel-write-pro': 'novel-write-pro',
+    'trash-to-treasure': 'trash-to-treasure',
+    'book-map': 'book-map',
+    'finish-book': 'finish-book',
+    'gap-fill-draft': 'gap-fill-draft',
+    'next-chapter-draft': 'next-chapter-draft',
     'research-answer': 'research-answer',
     'research-depth-pass': 'research-depth-pass',
     'accuracy-check': 'accuracy-check',

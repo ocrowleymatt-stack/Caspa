@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { BookOpen, Loader2, Map, Sparkles, Wand2 } from 'lucide-react';
 import { generateBookMap, getBookMap, finishBook, suggestNextChapters } from '../../api/book';
 import { getProject } from '../../api/projects';
-import { FINISH_BOOK_STAGES, StagedProgress } from '../../components/StagedProgress';
+import { FINISH_BOOK_STAGES, BOOK_MAP_STAGES } from '../../components/StagedProgress';
+import { StagedProgressPanel } from '../../components/StagedProgressPanel';
 import { useToast } from '../../components/Toast';
 
 export default function ProjectBookMap() {
@@ -89,12 +90,26 @@ export default function ProjectBookMap() {
         </div>
       </header>
 
-      {(generateMutation.isPending || finishMutation.isPending) && (
-        <StagedProgress
-          label="Building your finish map..."
-          stages={FINISH_BOOK_STAGES}
-          activeStage={finishMutation.isPending ? 3 : 2}
-          pending
+      {(generateMutation.isPending || finishMutation.isPending || suggestMutation.isPending) && (
+        <StagedProgressPanel
+          label={
+            finishMutation.isPending
+              ? 'Finish This Book'
+              : suggestMutation.isPending
+                ? 'Suggesting missing chapters'
+                : 'Generating Book Map'
+          }
+          stages={finishMutation.isPending ? FINISH_BOOK_STAGES : BOOK_MAP_STAGES}
+          pending={generateMutation.isPending || finishMutation.isPending || suggestMutation.isPending}
+          error={
+            generateMutation.isError
+              ? generateMutation.error.message
+              : finishMutation.isError
+                ? finishMutation.error.message
+                : suggestMutation.isError
+                  ? suggestMutation.error.message
+                  : null
+          }
         />
       )}
 

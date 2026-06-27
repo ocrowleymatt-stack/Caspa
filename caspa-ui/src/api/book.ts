@@ -1,4 +1,4 @@
-import { apiCall } from './client';
+import { apiCall, apiDownload } from './client';
 import type { BookMap } from '../types/book';
 
 export function getBookMap(projectId: string) {
@@ -53,6 +53,16 @@ export function trashToTreasure(body: {
 
 export function exportMarkdownManuscript(projectId: string) {
   return apiCall<{ markdown: string }>(`/api/projects/${projectId}/export/markdown`);
+}
+
+export function exportDocxManuscript(projectId: string) {
+  return apiCall<{ docxPath: string; outputId: string; filename: string }>(
+    `/api/projects/${projectId}/export/docx`,
+  );
+}
+
+export function downloadDocxManuscript(projectId: string, filename?: string) {
+  return apiDownload(`/api/projects/${projectId}/export/docx/download`, filename ?? 'manuscript.docx');
 }
 
 export function exportProjectArchive(projectId: string) {

@@ -15,6 +15,8 @@ import { useAppStore } from '../../store';
 import { useWorkbenchSourceText } from '../../hooks/useWorkbenchSourceText';
 import type { GoldReport } from '../../types';
 import StatusStream from './StatusStream';
+import { StagedProgressPanel } from '../StagedProgressPanel';
+import { GOLD_PASS_STAGES } from '../StagedProgress';
 import {
   applyReportToSteps,
   applyStepUpdate,
@@ -626,6 +628,16 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
               Run Gold Pass (save output)
             </button>
           </div>
+          {isProcessing && (
+            <div className="mt-4">
+              <StagedProgressPanel
+                label="Gold Pass"
+                stages={GOLD_PASS_STAGES}
+                pending={isProcessing}
+                error={pipelineError}
+              />
+            </div>
+          )}
         </div>
 
         {lastEvent && (

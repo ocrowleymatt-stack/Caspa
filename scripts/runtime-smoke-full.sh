@@ -373,6 +373,21 @@ try:
     assert md_export.get("markdown"), "markdown export must return content"
     print("EXPORT MARKDOWN:", len(md_export["markdown"]), "chars")
 
+    docx_export = req("GET", f"/api/projects/{pid}/export/docx", token=token)
+    assert docx_export.get("outputId"), "docx export must return outputId"
+    assert docx_export.get("filename", "").endswith(".docx"), "docx export must return filename"
+    print("EXPORT DOCX:", docx_export.get("filename"))
+
+    trash = req("POST", "/api/casper/trash-to-treasure", {
+        "projectId": pid,
+        "material": "Chapter One\\n\\nIt was messy. Mara did not know why.\\n\\nChapter Two\\n\\nStill messy.",
+        "problem": "No through-line",
+        "desiredOutcome": "fix",
+    }, token=token, timeout=180)
+    assert trash.get("outputId"), "trash-to-treasure must return outputId"
+    assert trash.get("diagnosis"), "trash-to-treasure must return diagnosis"
+    print("TRASH TO TREASURE:", trash.get("outputId", "")[:8])
+
     print("--- FULL: OUTPUT REGISTRATION ---")
     outs = req("GET", f"/api/outputs?projectId={pid}", token=token)
     out_types = {o.get("type") for o in outs}

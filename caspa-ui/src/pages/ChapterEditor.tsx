@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Clock, Loader2, PenLine, Sparkles } from 'lucide-react';
-import { getChapter, getChapterHistory, restoreChapter, updateChapter } from '../api/chapters';
+import { getChapter, getChapterHistory, listChapters, restoreChapter, updateChapter, createChapter } from '../api/chapters';
 import { continueWriting } from '../api/casper';
 import { getProject } from '../api/projects';
 import { useAppStore } from '../store';
@@ -10,6 +10,10 @@ import { countWords } from '../lib/utils';
 import { useToast } from '../components/Toast';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 import { AIPanel } from '../components/AIPanel';
+import { ChapterRail } from '../components/chapter/ChapterRail';
+import { StagedProgressPanel } from '../components/StagedProgressPanel';
+import { CONTINUE_STAGES } from '../components/StagedProgress';
+import { finishBook } from '../api/book';
 
 type SaveState = 'saved' | 'saving' | 'unsaved';
 
@@ -94,6 +98,34 @@ export default function ChapterEditor() {
       queryClient.invalidateQueries({ queryKey: ['chapter', chapterId] });
       queryClient.invalidateQueries({ queryKey: ['outputs'] });
       toast.success(`Continued writing · saved output ${result.outputId.slice(0, 8)} (appended to chapter)`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const missingChapterMutation = useMutation({
+    mutationFn: async (targetTitle: string) => {
+      const result = await finishBook({
+        projectId: projectId!,
+        mode: 'fill-gap',
+        desiredOutcome: targetTitle,
+        currentText: content.slice(-2000),
+      });
+      const text = String(result.text ?? result.draft ?? '');
+      if (!text.trim()) throw new Error('No draft returned — check AI engine status.');
+      const chapters = await listChapters(projectId!);
+      const chapter = await createChapter(projectId!, {
+        title: targetTitle,
+        order: chapters.length + 1,
+        content: text,
+        status: 'draft',
+      });
+      return { result, chapter };
+    },
+    onSuccess: ({ result, chapter }) => {
+      queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      toast.success(`Gap chapter drafted · output ${String(result.outputId ?? '').slice(0, 8)}`);
+      window.location.href = `/projects/${projectId}/chapters/${chapter.id}`;
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -207,7 +239,37 @@ export default function ChapterEditor() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
+        {projectId && chapterId && (
+          <ChapterRail
+            projectId={projectId}
+            currentChapterId={chapterId}
+            onContinue={handleContinueWriting}
+            onImprove={() => setShowImprove(true)}
+            onWriteNextMissing={(title) => {
+              if (confirm(`Draft missing chapter "${title}"? Creates a new chapter — original preserved.`)) {
+                missingChapterMutation.mutate(title);
+              }
+            }}
+            continuePending={continueMutation.isPending}
+          />
+        )}
         <main className="custom-scrollbar flex-1 overflow-y-auto px-4 py-7 md:px-8 md:py-10">
+          {(continueMutation.isPending || missingChapterMutation.isPending) && (
+            <div className="mx-auto mb-6 max-w-4xl">
+              <StagedProgressPanel
+                label={missingChapterMutation.isPending ? 'Drafting missing chapter' : 'Continue writing'}
+                stages={CONTINUE_STAGES}
+                pending={continueMutation.isPending || missingChapterMutation.isPending}
+                error={
+                  continueMutation.isError
+                    ? continueMutation.error.message
+                    : missingChapterMutation.isError
+                      ? missingChapterMutation.error.message
+                      : null
+                }
+              />
+            </div>
+          )}
           {showImprove && project && content.trim() && (
             <div className="mx-auto mb-6 max-w-4xl">
               <ImproveManuscriptPanel

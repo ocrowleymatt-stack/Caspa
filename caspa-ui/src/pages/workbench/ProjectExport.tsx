@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { Download, FileText, Loader2, Package } from 'lucide-react';
+import {
+  downloadDocxManuscript,
+  exportMarkdownManuscript,
+  exportProjectArchive,
+} from '../../api/book';
 import {
   downloadExport,
   exportEpub,
@@ -14,6 +18,8 @@ import { JobProgressCard } from '../../components/JobProgressCard';
 import { useJobTracker } from '../../hooks/useJobTracker';
 import { formatDate } from '../../lib/utils';
 import type { ProjectWorkbenchContext } from '../../components/workbench/ProjectWorkbenchShell';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 export default function ProjectExport() {
   const { projectId } = useOutletContext<ProjectWorkbenchContext>();
@@ -39,6 +45,30 @@ export default function ProjectExport() {
       setActiveJobId(null);
     }
   }, [activeJob?.error, activeJob?.status, projectId, queryClient, toast]);
+
+  const markdownMutation = useMutation({
+    mutationFn: () => exportMarkdownManuscript(projectId),
+    onSuccess: async ({ markdown }) => {
+      await navigator.clipboard.writeText(markdown);
+      toast.success('Full manuscript Markdown copied to clipboard');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const docxMutation = useMutation({
+    mutationFn: () => downloadDocxManuscript(projectId),
+    onSuccess: () => toast.success('DOCX manuscript downloaded'),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => exportProjectArchive(projectId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['outputs', projectId] });
+      toast.success(`Project archive saved · output ${result.outputId.slice(0, 8)}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   const pdfMutation = useMutation({
     mutationFn: () =>
@@ -88,7 +118,12 @@ export default function ProjectExport() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const busy = pdfMutation.isPending || epubMutation.isPending;
+  const busy =
+    pdfMutation.isPending ||
+    epubMutation.isPending ||
+    markdownMutation.isPending ||
+    docxMutation.isPending ||
+    archiveMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -96,10 +131,22 @@ export default function ProjectExport() {
         <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Export / publishing</div>
         <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Submission packages</h2>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">
-          Export from the current manuscript structure. AI drafts in Outputs are not included unless you applied them.
+          Export manuscript, bible, Book Map, and Saved Writing. AI drafts in Outputs are included in the full archive.
         </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button type="button" onClick={() => pdfMutation.mutate()} disabled={busy} className="btn-primary">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <button type="button" onClick={() => markdownMutation.mutate()} disabled={busy} className="btn-secondary">
+            {markdownMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            Copy Markdown manuscript
+          </button>
+          <button type="button" onClick={() => docxMutation.mutate()} disabled={busy} className="btn-primary">
+            {docxMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Download DOCX
+          </button>
+          <button type="button" onClick={() => archiveMutation.mutate()} disabled={busy} className="btn-secondary">
+            {archiveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+            Full project archive (ZIP)
+          </button>
+          <button type="button" onClick={() => pdfMutation.mutate()} disabled={busy} className="btn-secondary">
             {pdfMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
             Export PDF
           </button>
@@ -125,7 +172,7 @@ export default function ProjectExport() {
             <Loader2 className="h-6 w-6 animate-spin text-[#98711d]" />
           </div>
         ) : exports.length === 0 ? (
-          <p className="text-sm text-muted">No exports yet for this project.</p>
+          <p className="text-sm text-muted">No PDF/EPUB jobs yet for this project.</p>
         ) : (
           <ul className="space-y-3">
             {exports.map((item) => (

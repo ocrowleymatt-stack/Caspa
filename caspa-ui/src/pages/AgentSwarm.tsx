@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Bot, Loader2, Sparkles, Users } from 'lucide-react';
+import { StagedProgressPanel } from '../components/StagedProgressPanel';
+import { SWARM_STAGES } from '../components/StagedProgress';
 import { ElevationWorkbench } from '../components/ElevationWorkbench';
 import { useToast } from '../components/Toast';
 import { useAppStore } from '../store';
@@ -142,6 +144,15 @@ function AgentSwarmContentInner({ projectId }: { projectId: string }) {
           )}
           Run swarm ({selectedAgents.length} agents)
         </button>
+        <div className="mt-4">
+          <StagedProgressPanel
+            label="Agent Swarm"
+            stages={SWARM_STAGES}
+            pending={swarmMutation.isPending}
+            error={swarmMutation.isError ? swarmMutation.error.message : null}
+            outputId={result?.outputId}
+          />
+        </div>
       </section>
 
       {result && (

@@ -82,3 +82,19 @@ export const SWARM_STAGES = [
   'Revision plan',
   'Saving report',
 ];
+
+export const BOOK_MAP_STAGES = [
+  'Reading manuscript',
+  'Loading Project Bible',
+  'Analysing structure',
+  'Mapping arcs and threads',
+  'Finding missing chapters',
+  'Saving Book Map',
+];
+
+export const CONTINUE_STAGES = [
+  'Reading chapter context',
+  'Loading project memory',
+  'Continuing prose',
+  'Saving output',
+];

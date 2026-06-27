@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import CommandCentre from './pages/CommandCentre';
 import NaturalCommand from './pages/NaturalCommand';
 import CasperFreestyle from './pages/CasperFreestyle';
+import TrashToTreasure from './pages/TrashToTreasure';
 import ForgeIntake from './pages/ForgeIntake';
 import ProductPlan from './pages/ProductPlan';
 import Sources from './pages/Sources';
@@ -66,6 +67,7 @@ export default function App() {
               <Route path="home" element={<CommandCentre />} />
               <Route path="command" element={<NaturalCommand />} />
               <Route path="casper" element={<CasperFreestyle />} />
+              <Route path="casper/trash-to-treasure" element={<TrashToTreasure />} />
               <Route path="projects" element={<Dashboard />} />
               <Route path="projects/:id" element={<ProjectWorkbenchShell />}>
                 <Route index element={<ProjectOverview />} />
@@ -82,6 +84,7 @@ export default function App() {
                 <Route path="plot" element={<PlotBoard />} />
                 <Route path="bible" element={<ProjectBible />} />
                 <Route path="book-map" element={<ProjectBookMap />} />
+                <Route path="trash-to-treasure" element={<TrashToTreasure />} />
               </Route>
               <Route path="forge" element={<ForgeIntake />} />
               <Route path="product-plan" element={<ProductPlan />} />
