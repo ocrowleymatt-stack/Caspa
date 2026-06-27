@@ -196,6 +196,32 @@ export default function ProjectOverview() {
             <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
               {project.description || 'No description yet. This room is waiting for its first proper sentence.'}
             </p>
+            <nav
+              aria-label="Project workflow"
+              className="mt-5 flex flex-wrap items-center gap-2 rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] px-4 py-3"
+            >
+              {[
+                { to: `/projects/${id}/sources`, label: 'Sources' },
+                { to: `/projects/${id}/bible`, label: 'Plan' },
+                { to: `/projects/${id}/manuscript`, label: 'Write' },
+                { to: `/projects/${id}/gold`, label: 'Improve' },
+                { to: `/projects/${id}/export`, label: 'Export' },
+              ].map((step, index, steps) => (
+                <span key={step.to} className="flex items-center gap-2">
+                  <Link
+                    to={step.to}
+                    className="rounded-full border border-[#eadfca] bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-[#5f5648] transition hover:border-[#caa044] hover:text-[#171a22]"
+                  >
+                    {step.label}
+                  </Link>
+                  {index < steps.length - 1 && (
+                    <span className="text-[#caa044]" aria-hidden>
+                      →
+                    </span>
+                  )}
+                </span>
+              ))}
+            </nav>
             <div className="mt-5 rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-4 text-sm leading-7 text-[#5f5648]">
               <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">
                 Room mode · {projectMode.replace('-', ' ')}
