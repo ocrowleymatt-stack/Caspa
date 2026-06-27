@@ -15,18 +15,46 @@ import { projectAssetService } from '../studio/ProjectAssetService';
 import { importService } from '../manuscript/ImportService';
 
 const STATE_PATH = 'minimal-workflow';
+const MIN_MATERIAL_CHARS = 80;
+const MIN_EXPORT_WORDS = 50;
+const MIN_IMPROVE_WORDS = 120;
 
 export type MinimalPhase = 'empty' | 'material' | 'built' | 'drafted' | 'improved' | 'exported';
+export type MinimalStepId = 'drop' | 'build' | 'write' | 'improve' | 'export';
+
+export interface MinimalStep {
+  id: MinimalStepId;
+  label: string;
+  status: 'done' | 'current' | 'ready' | 'locked';
+  detail: string;
+}
+
+export interface MinimalCapabilities {
+  canBuild: boolean;
+  canWrite: boolean;
+  canImprove: boolean;
+  canExport: boolean;
+  buildReason?: string;
+  writeReason?: string;
+  improveReason?: string;
+  exportReason?: string;
+}
 
 export interface MinimalWorkflowState {
   projectId: string;
+  projectTitle: string;
   phase: MinimalPhase;
   writeProgress: number;
   materialCount: number;
+  materialChars: number;
+  chapterCount: number;
   wordCount: number;
   targetWordCount: number;
   preview: string;
   statusMessage: string;
+  nextAction: MinimalStepId;
+  steps: MinimalStep[];
+  capabilities: MinimalCapabilities;
   lastAction?: string;
   updatedAt: string;
 }
@@ -65,6 +93,7 @@ export class MinimalWorkflowService {
       manuscriptAssembleService.assemble(projectId, user).catch(() => null),
     ]);
 
+    const materialChars = assets.reduce((sum, asset) => sum + asset.sourceText.trim().length, 0);
     const wordCount = assembled?.currentWordCount
       ?? chapters.reduce((sum, chapter) => sum + (chapter.wordCount ?? 0), 0);
     const preview = assembled?.fullText?.slice(0, 4000)
@@ -77,28 +106,150 @@ export class MinimalWorkflowService {
     if (flags.improvedAt) phase = 'improved';
     if (flags.exportedAt) phase = 'exported';
 
+    const capabilities = this.computeCapabilities({
+      materialCount: assets.length,
+      materialChars,
+      wordCount,
+      chapterCount: chapters.length,
+      builtAt: flags.builtAt,
+      draftedAt: flags.draftedAt,
+    });
+    const nextAction = this.computeNextAction({ phase, capabilities, flags });
+    const steps = this.computeSteps({ phase, capabilities, nextAction, flags });
+
     return {
       projectId,
+      projectTitle: project.title,
       phase,
       writeProgress: flags.writeProgress ?? (flags.draftedAt ? 100 : flags.builtAt ? 30 : 0),
       materialCount: assets.length,
+      materialChars,
+      chapterCount: chapters.length,
       wordCount,
       targetWordCount: project.targetWordCount ?? 0,
       preview,
-      statusMessage: this.statusForPhase(phase, assets.length, wordCount),
+      statusMessage: this.statusForPhase(nextAction, capabilities, materialChars, wordCount),
+      nextAction,
+      steps,
+      capabilities,
       lastAction: flags.exportedAt ?? flags.improvedAt ?? flags.draftedAt ?? flags.builtAt,
       updatedAt: new Date().toISOString(),
     };
   }
 
-  private statusForPhase(phase: MinimalPhase, materialCount: number, wordCount: number): string {
-    if (phase === 'exported') return 'Ready to share — export complete.';
-    if (phase === 'improved') return 'Draft polished — export when ready.';
-    if (phase === 'drafted') return 'Draft written — press Improve or Export.';
-    if (phase === 'built') return 'Structure ready — press Auto Write.';
-    if (materialCount > 0) return `${materialCount} source item(s) loaded — press Auto Build.`;
-    if (wordCount > 0) return 'Material in manuscript — add more or Auto Build.';
-    return 'Drop anything here to begin.';
+  private computeCapabilities(input: {
+    materialCount: number;
+    materialChars: number;
+    wordCount: number;
+    chapterCount: number;
+    builtAt?: string;
+    draftedAt?: string;
+  }): MinimalCapabilities {
+    const hasMaterial = input.materialCount > 0 && input.materialChars >= MIN_MATERIAL_CHARS;
+    const hasManuscriptSeed = input.wordCount >= 20;
+    const canBuild = hasMaterial || hasManuscriptSeed;
+    const canWrite = Boolean(input.builtAt) && input.chapterCount > 0;
+    const canImprove = Boolean(input.builtAt) && input.wordCount >= MIN_IMPROVE_WORDS;
+    const canExport = input.wordCount >= MIN_EXPORT_WORDS;
+
+    return {
+      canBuild,
+      canWrite,
+      canImprove,
+      canExport,
+      buildReason: canBuild
+        ? undefined
+        : `Add notes or a draft first (at least ${MIN_MATERIAL_CHARS} characters).`,
+      writeReason: canWrite
+        ? undefined
+        : !input.builtAt
+          ? 'Run Auto Build to create chapters from your material.'
+          : 'Auto Build did not create any sections — add more material and build again.',
+      improveReason: canImprove
+        ? undefined
+        : !input.builtAt
+          ? 'Run Auto Build before polishing.'
+          : `Write at least ${MIN_IMPROVE_WORDS} words before Improve.`,
+      exportReason: canExport
+        ? undefined
+        : `Need at least ${MIN_EXPORT_WORDS} words in your manuscript.`,
+    };
+  }
+
+  private computeNextAction(input: {
+    phase: MinimalPhase;
+    capabilities: MinimalCapabilities;
+    flags: StoredMinimalFlags;
+  }): MinimalStepId {
+    const { capabilities, flags } = input;
+    if (!capabilities.canBuild && input.phase === 'empty') return 'drop';
+    if (!flags.builtAt) return capabilities.canBuild ? 'build' : 'drop';
+    if (!flags.draftedAt || input.phase === 'built') return 'write';
+    if (!flags.improvedAt && capabilities.canImprove) return 'improve';
+    if (capabilities.canExport) return 'export';
+    if (capabilities.canWrite) return 'write';
+    return 'drop';
+  }
+
+  private computeSteps(input: {
+    phase: MinimalPhase;
+    capabilities: MinimalCapabilities;
+    nextAction: MinimalStepId;
+    flags: StoredMinimalFlags;
+  }): MinimalStep[] {
+    const { capabilities, nextAction, flags } = input;
+    const stepMeta: Array<{ id: MinimalStepId; label: string; detail: string }> = [
+      { id: 'drop', label: 'Drop material', detail: 'Notes, drafts, fragments — originals stay safe.' },
+      { id: 'build', label: 'Auto Build', detail: 'Turn sources into structure, bible, and book map.' },
+      { id: 'write', label: 'Auto Write', detail: 'Draft the next section of your manuscript.' },
+      { id: 'improve', label: 'Improve', detail: 'Polish what you have without changing the story.' },
+      { id: 'export', label: 'Export', detail: 'Download a shareable manuscript file.' },
+    ];
+
+    return stepMeta.map((step) => {
+      let status: MinimalStep['status'] = 'locked';
+      if (step.id === 'drop') {
+        status = flags.builtAt ? 'done' : nextAction === 'drop' ? 'current' : 'ready';
+      } else if (step.id === 'build') {
+        if (nextAction === 'build') status = 'current';
+        else if (flags.builtAt) status = 'done';
+        else status = capabilities.canBuild ? 'ready' : 'locked';
+      } else if (step.id === 'write') {
+        if (nextAction === 'write') status = 'current';
+        else if (capabilities.canWrite) status = flags.draftedAt ? 'ready' : 'ready';
+        else status = 'locked';
+      } else if (step.id === 'improve') {
+        if (nextAction === 'improve') status = 'current';
+        else if (flags.improvedAt) status = 'done';
+        else status = capabilities.canImprove ? 'ready' : 'locked';
+      } else if (step.id === 'export') {
+        if (nextAction === 'export') status = 'current';
+        else if (flags.exportedAt) status = 'done';
+        else status = capabilities.canExport ? 'ready' : 'locked';
+      }
+      return { ...step, status };
+    });
+  }
+
+  private statusForPhase(
+    nextAction: MinimalStepId,
+    capabilities: MinimalCapabilities,
+    materialChars: number,
+    wordCount: number,
+  ): string {
+    if (nextAction === 'export') {
+      return wordCount >= MIN_EXPORT_WORDS
+        ? 'Manuscript ready — export when you are.'
+        : capabilities.exportReason ?? 'Keep writing, then export.';
+    }
+    if (nextAction === 'improve') return 'Draft in place — Improve will polish without changing the story.';
+    if (nextAction === 'write') return 'Structure ready — Auto Write drafts the next section.';
+    if (nextAction === 'build') {
+      return materialChars >= MIN_MATERIAL_CHARS
+        ? 'Material loaded — Auto Build prepares your manuscript structure.'
+        : capabilities.buildReason ?? 'Add a little more material, then Auto Build.';
+    }
+    return 'Drop notes, drafts, or files to begin.';
   }
 
   async autoBuild(projectId: string, user?: import('../auth/types').UserPublic) {
@@ -111,6 +262,10 @@ export class MinimalWorkflowService {
 
     if (!combined && chapterWords < 20) {
       throw new Error('Drop material first — nothing to build from.');
+    }
+
+    if (combined.length > 0 && combined.length < MIN_MATERIAL_CHARS && chapterWords < 20) {
+      throw new Error(`Add a little more material before Auto Build (at least ${MIN_MATERIAL_CHARS} characters).`);
     }
 
     const rawText = combined || (await getProjectFullText(projectId, 200_000));
@@ -159,7 +314,7 @@ export class MinimalWorkflowService {
 
     const chapters = await this.chapterService.listChapters(projectId);
     if (chapters.length === 0) {
-      throw new Error('No manuscript sections yet — run Auto Build.');
+      throw new Error('No manuscript sections yet — run Auto Build after adding more material.');
     }
 
     const sorted = [...chapters].sort((a, b) => a.order - b.order);
@@ -196,7 +351,7 @@ export class MinimalWorkflowService {
     return {
       outputId: result.outputId,
       applied,
-      message: 'Auto Write complete — draft added to your manuscript.',
+      message: `Auto Write complete — "${target.title}" updated in your manuscript.`,
       state: await this.getState(projectId, user),
     };
   }
@@ -204,8 +359,14 @@ export class MinimalWorkflowService {
   async improve(projectId: string, user?: import('../auth/types').UserPublic) {
     await this.projectService.getProject(projectId, user);
     const flags = await this.readFlags(projectId);
-    if (!flags.draftedAt && !flags.builtAt) {
-      throw new Error('Write something first — run Auto Write or add material.');
+    if (!flags.builtAt) {
+      throw new Error('Run Auto Build before Improve.');
+    }
+
+    const chapters = await this.chapterService.listChapters(projectId);
+    const wordCount = chapters.reduce((sum, chapter) => sum + (chapter.wordCount ?? 0), 0);
+    if (wordCount < MIN_IMPROVE_WORDS) {
+      throw new Error(`Write at least ${MIN_IMPROVE_WORDS} words before Improve — run Auto Write first.`);
     }
 
     const lock = await goldSourceLockService.createLock({
@@ -254,6 +415,12 @@ export class MinimalWorkflowService {
 
   async exportAll(projectId: string, user?: import('../auth/types').UserPublic) {
     await this.projectService.getProject(projectId, user);
+    const chapters = await this.chapterService.listChapters(projectId);
+    const wordCount = chapters.reduce((sum, chapter) => sum + (chapter.wordCount ?? 0), 0);
+    if (wordCount < MIN_EXPORT_WORDS) {
+      throw new Error(`Need at least ${MIN_EXPORT_WORDS} words before Export — keep writing first.`);
+    }
+
     const markdown = await projectExportService.exportMarkdownManuscript(projectId, user);
     const docx = await projectExportService.exportDocxManuscript(projectId, user);
 

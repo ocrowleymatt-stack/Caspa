@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Loader2, Upload } from 'lucide-react';
 import {
-  Download,
-  Hammer,
-  Loader2,
-  PenLine,
-  Sparkles,
-  Upload,
-  Wand2,
-} from 'lucide-react';
-import {
+  actionDisabledReason,
   createMinimalProject,
   downloadMinimalDocx,
   getMinimalState,
@@ -17,50 +10,26 @@ import {
   minimalAutoWrite,
   minimalExport,
   minimalImprove,
-  type MinimalWorkflowState,
+  type MinimalStepId,
 } from '../api/minimal';
 import { createProjectAsset } from '../api/studio';
 import { MinimalShell } from '../components/minimal/MinimalShell';
+import { MinimalStepList } from '../components/minimal/MinimalStepList';
 import { useToast } from '../components/Toast';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
 import { cn } from '../lib/utils';
 
 const PROJECT_KEY = 'caspa-minimal-project-id';
 
-type ActionId = 'build' | 'write' | 'improve' | 'export';
+type ActionId = Exclude<MinimalStepId, 'drop'>;
 
-const ACTIONS: Array<{
-  id: ActionId;
-  label: string;
-  icon: typeof Hammer;
-}> = [
-  { id: 'build', label: 'Auto Build', icon: Hammer },
-  { id: 'write', label: 'Auto Write', icon: PenLine },
-  { id: 'improve', label: 'Improve', icon: Sparkles },
-  { id: 'export', label: 'Export', icon: Download },
-];
-
-function phaseRank(phase: MinimalWorkflowState['phase']): number {
-  const order = ['empty', 'material', 'built', 'drafted', 'improved', 'exported'];
-  return order.indexOf(phase);
-}
-
-function canRunAction(state: MinimalWorkflowState | undefined, action: ActionId): boolean {
-  if (!state) return false;
-  if (action === 'build') {
-    return state.materialCount > 0 || state.wordCount > 0;
-  }
-  if (action === 'write') {
-    return phaseRank(state.phase) >= phaseRank('built');
-  }
-  if (action === 'improve') {
-    return phaseRank(state.phase) >= phaseRank('built');
-  }
-  if (action === 'export') {
-    return state.wordCount > 0;
-  }
-  return false;
-}
+const BUSY_LABELS: Record<ActionId | 'drop', string> = {
+  drop: 'Saving your material…',
+  build: 'Building structure — this can take a minute…',
+  write: 'Writing your next section…',
+  improve: 'Polishing your draft…',
+  export: 'Preparing your export…',
+};
 
 export default function CaspaMinimal() {
   const toast = useToast();
@@ -69,7 +38,6 @@ export default function CaspaMinimal() {
   const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem(PROJECT_KEY));
   const [dragOver, setDragOver] = useState(false);
   const [busyAction, setBusyAction] = useState<ActionId | 'drop' | null>(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
   const ensureProject = useCallback(async (): Promise<string> => {
@@ -80,11 +48,11 @@ export default function CaspaMinimal() {
     return project.id;
   }, [projectId]);
 
-  const { data: state, isLoading, refetch } = useQuery({
+  const { data: state, isLoading } = useQuery({
     queryKey: ['minimal-state', projectId],
     queryFn: () => getMinimalState(projectId!),
     enabled: !!projectId,
-    refetchInterval: busyAction ? 2000 : false,
+    refetchInterval: busyAction ? 2500 : false,
   });
 
   useEffect(() => {
@@ -92,6 +60,17 @@ export default function CaspaMinimal() {
       ensureProject().catch((err: Error) => toast.error(err.message));
     }
   }, [projectId, ensureProject, toast]);
+
+  const syncState = useCallback(
+    (next: NonNullable<typeof state>) => {
+      queryClient.setQueryData(['minimal-state', next.projectId], next);
+      if (next.projectId !== projectId) {
+        localStorage.setItem(PROJECT_KEY, next.projectId);
+        setProjectId(next.projectId);
+      }
+    },
+    [projectId, queryClient],
+  );
 
   const ingestMutation = useMutation({
     mutationFn: async (items: Array<{ title: string; text: string; filename?: string }>) => {
@@ -103,12 +82,15 @@ export default function CaspaMinimal() {
           sourceText: item.text,
         });
       }
-      return id;
+      return getMinimalState(id);
     },
-    onSuccess: async (id) => {
-      await queryClient.invalidateQueries({ queryKey: ['minimal-state', id] });
-      await refetch();
-      toast.success('Material added.');
+    onSuccess: (next) => {
+      syncState(next);
+      toast.success(
+        next.materialChars >= 80
+          ? 'Material saved — Auto Build is ready.'
+          : `Material saved — add ${Math.max(0, 80 - next.materialChars)} more characters, then Auto Build.`,
+      );
     },
     onError: (err: Error) => toast.error(err.message),
     onSettled: () => setBusyAction(null),
@@ -124,12 +106,14 @@ export default function CaspaMinimal() {
       return minimalExport(id);
     },
     onSuccess: async (result, action) => {
-      if (projectId) {
-        queryClient.setQueryData(['minimal-state', projectId], result.state);
+      syncState(result.state);
+      if (result.driftBlocked) {
+        toast.info(result.message);
+      } else {
+        toast.success(result.message);
       }
-      toast.success(result.message);
-      if (action === 'export' && projectId) {
-        await downloadMinimalDocx(projectId, result.docxFilename);
+      if (action === 'export') {
+        await downloadMinimalDocx(result.state.projectId, result.docxFilename);
       }
     },
     onError: (err: Error) => toast.error(err.message),
@@ -161,174 +145,174 @@ export default function CaspaMinimal() {
   }
 
   async function handlePasteSubmit() {
-    if (!pasteText.trim()) {
-      toast.error('Paste something first.');
+    const trimmed = pasteText.trim();
+    if (trimmed.length < 20) {
+      toast.error('Paste at least a few sentences — fragments need a little substance.');
       return;
     }
     setBusyAction('drop');
-    setPasteOpen(false);
-    await ingestMutation.mutateAsync([{ title: 'Pasted note', text: pasteText.trim() }]);
+    await ingestMutation.mutateAsync([{ title: 'Pasted note', text: trimmed }]);
     setPasteText('');
+  }
+
+  async function handleStartFresh() {
+    if (working) return;
+    const project = await createMinimalProject();
+    localStorage.setItem(PROJECT_KEY, project.id);
+    setProjectId(project.id);
+    setPasteText('');
+    const next = await getMinimalState(project.id);
+    syncState(next);
+    toast.success('Fresh workspace ready.');
   }
 
   const working = busyAction !== null || actionMutation.isPending || ingestMutation.isPending;
   const progress = state?.writeProgress ?? 0;
+  const steps = state?.steps ?? [];
+  const disabledReasons = {
+    build: actionDisabledReason(state, 'build'),
+    write: actionDisabledReason(state, 'write'),
+    improve: actionDisabledReason(state, 'improve'),
+    export: actionDisabledReason(state, 'export'),
+  };
 
   return (
-    <MinimalShell>
-      <section
-        className={cn(
-          'relative rounded-3xl border border-dashed px-6 py-14 text-center transition',
-          dragOver
-            ? 'border-amber-500/50 bg-amber-500/5'
-            : 'border-slate-800/60 bg-[#161B22]/40',
-        )}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          if (e.dataTransfer.files?.length) {
-            void handleFiles(e.dataTransfer.files);
-          }
-        }}
-      >
-        <div className="mx-auto flex max-w-md flex-col items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-800/60 bg-[#0B0F19]">
-            {busyAction === 'drop' ? (
-              <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+    <MinimalShell
+      title={state?.projectTitle ?? 'Caspa'}
+      subtitle={state?.statusMessage ?? 'Drop material to begin.'}
+      onStartFresh={() => void handleStartFresh()}
+      startFreshDisabled={working}
+    >
+      <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-4 sm:px-6">
+          {working && busyAction && (
+            <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <p className="inline-flex items-center gap-2 text-sm text-amber-200">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {BUSY_LABELS[busyAction]}
+              </p>
+              {busyAction === 'write' && (
+                <div className="mt-3">
+                  <div className="mb-1 flex justify-between text-[11px] text-amber-200/80">
+                    <span>Progress</span>
+                    <span>{Math.max(progress, 8)}%</span>
+                  </div>
+                  <div className="h-1 overflow-hidden rounded-full bg-amber-950/40">
+                    <div
+                      className="h-full rounded-full bg-amber-400 transition-all duration-500"
+                      style={{ width: `${Math.max(progress, 8)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <section
+            className={cn(
+              'rounded-2xl border border-dashed px-4 py-5 transition',
+              dragOver
+                ? 'border-amber-500/50 bg-amber-500/5'
+                : 'border-slate-800/60 bg-[#161B22]/40',
+            )}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (e.dataTransfer.files?.length) {
+                void handleFiles(e.dataTransfer.files);
+              }
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-800/60 bg-[#0B0F19]">
+                {busyAction === 'drop' ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                ) : (
+                  <Upload className="h-4 w-4 text-slate-400" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-white">1 · Drop material</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                  Files or pasted notes. Originals stay safe — nothing is overwritten without your step.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    className="w-full rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-[#0B0F19] transition hover:bg-slate-100 disabled:opacity-50"
+                    disabled={working}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Choose files
+                  </button>
+                  <textarea
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    className="w-full rounded-xl border border-slate-800/60 bg-[#0B0F19] px-3 py-2.5 font-serif text-sm leading-7 text-slate-200 outline-none focus:border-amber-500/40"
+                    rows={4}
+                    placeholder="Or paste material here…"
+                    disabled={working}
+                  />
+                  <button
+                    type="button"
+                    className="w-full rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-600 disabled:opacity-50"
+                    disabled={working || pasteText.trim().length < 20}
+                    onClick={() => void handlePasteSubmit()}
+                  >
+                    Save pasted material
+                  </button>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.length) void handleFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            </div>
+          </section>
+
+          {state && (
+            <div className="mt-3 rounded-xl border border-slate-800/60 bg-[#161B22]/30 px-3 py-2 font-mono text-[11px] text-slate-500">
+              {state.materialCount} source{state.materialCount === 1 ? '' : 's'} · {state.materialChars.toLocaleString()} chars ·{' '}
+              {state.chapterCount} section{state.chapterCount === 1 ? '' : 's'} · {state.wordCount.toLocaleString()} words
+            </div>
+          )}
+
+          <div className="mt-5">
+            {isLoading && !state ? (
+              <p className="py-8 text-center text-sm text-slate-500">Loading workflow…</p>
             ) : (
-              <Upload className="h-6 w-6 text-slate-400" />
+              <MinimalStepList
+                steps={steps.filter((step) => step.id !== 'drop')}
+                busyStep={busyAction}
+                disabled={working}
+                disabledReasons={disabledReasons}
+                onRun={(action) => actionMutation.mutate(action)}
+              />
             )}
           </div>
-          <div>
-            <p className="text-lg font-medium text-white">Drop anything here</p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Notes, drafts, fragments, receipts — CASPA keeps the originals safe.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              className="rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#0B0F19] transition hover:bg-slate-100 disabled:opacity-50"
-              disabled={working}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Choose files
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-slate-700 px-5 py-2.5 text-sm text-slate-300 transition hover:border-slate-600 hover:text-white disabled:opacity-50"
-              disabled={working}
-              onClick={() => setPasteOpen((v) => !v)}
-            >
-              Paste text
-            </button>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.length) void handleFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
+
+          {state?.preview.trim() && (
+            <section className="mt-6 rounded-2xl border border-slate-800/60 bg-[#161B22]/50 p-4">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Manuscript preview</p>
+              <div className="mt-3 break-words whitespace-pre-wrap font-serif text-sm leading-7 tracking-wide text-slate-300">
+                {state.preview}
+                {state.preview.length >= 4000 ? '\n\n…' : ''}
+              </div>
+            </section>
+          )}
         </div>
-
-        {pasteOpen && (
-          <div className="mx-auto mt-8 max-w-lg text-left">
-            <textarea
-              value={pasteText}
-              onChange={(e) => setPasteText(e.target.value)}
-              className="w-full rounded-2xl border border-slate-800/60 bg-[#0B0F19] px-4 py-3 font-serif text-sm leading-7 text-slate-200 outline-none focus:border-amber-500/40"
-              rows={6}
-              placeholder="Paste your material…"
-            />
-            <button
-              type="button"
-              className="mt-3 rounded-full bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
-              disabled={working || !pasteText.trim()}
-              onClick={() => void handlePasteSubmit()}
-            >
-              Add material
-            </button>
-          </div>
-        )}
-      </section>
-
-      <p className="mt-6 text-center text-sm text-slate-400">
-        {isLoading && !state ? 'Loading…' : state?.statusMessage ?? 'Drop anything here to begin.'}
-      </p>
-
-      {state && state.materialCount > 0 && (
-        <p className="mt-1 text-center font-mono text-xs text-slate-500">
-          {state.materialCount} source item{state.materialCount === 1 ? '' : 's'} · {state.wordCount.toLocaleString()} words
-        </p>
-      )}
-
-      {(busyAction === 'write' || progress > 0) && (
-        <div className="mx-auto mt-6 max-w-md">
-          <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
-            <span className="inline-flex items-center gap-2">
-              {busyAction === 'write' && <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />}
-              Writing
-            </span>
-            <span>{progress}%</span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-            <div
-              className="h-full rounded-full bg-amber-500 transition-all duration-500"
-              style={{ width: `${Math.max(progress, busyAction === 'write' ? 8 : 0)}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {ACTIONS.map(({ id, label, icon: Icon }) => {
-          const enabled = canRunAction(state, id) && !working;
-          const active = busyAction === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              disabled={!enabled}
-              onClick={() => actionMutation.mutate(id)}
-              className={cn(
-                'flex flex-col items-center gap-2 rounded-2xl border px-4 py-5 text-sm transition',
-                enabled
-                  ? 'border-slate-700 bg-[#161B22] text-white hover:border-amber-500/40 hover:bg-[#161B22]/90'
-                  : 'cursor-not-allowed border-slate-800/40 bg-[#161B22]/30 text-slate-600',
-              )}
-            >
-              {active ? (
-                <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
-              ) : (
-                <Icon className={cn('h-5 w-5', enabled ? 'text-amber-500' : 'text-slate-600')} />
-              )}
-              {label}
-            </button>
-          );
-        })}
       </div>
-
-      {state?.preview && (
-        <section className="mt-12 rounded-3xl border border-slate-800/60 bg-[#161B22]/50 p-6 md:p-8">
-          <div className="mb-4 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-            <Wand2 className="h-3.5 w-3.5" />
-            Read preview
-          </div>
-          <div className="max-h-[420px] overflow-y-auto whitespace-pre-wrap font-serif text-base leading-loose tracking-wide text-slate-300">
-            {state.preview}
-            {state.preview.length >= 4000 ? '\n\n…' : ''}
-          </div>
-        </section>
-      )}
     </MinimalShell>
   );
 }
