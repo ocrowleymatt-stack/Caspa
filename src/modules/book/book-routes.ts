@@ -6,6 +6,7 @@ import { projectMemoryService } from './ProjectMemoryService';
 import { projectSnapshotService } from './ProjectSnapshotService';
 import { projectExportService } from './ProjectExportService';
 import { manuscriptViewService } from './ManuscriptViewService';
+import { manuscriptApplyOutputService } from './ManuscriptApplyOutputService';
 import { cutTightenService } from './CutTightenService';
 import { ChapterService } from '../manuscript/ChapterService';
 
@@ -104,6 +105,39 @@ bookRouter.get(
       fullText: sorted.map((c) => `# ${c.title}\n\n${c.content ?? ''}`).join('\n\n'),
       sections: sorted,
     });
+  }),
+);
+
+bookRouter.post(
+  '/api/projects/:id/manuscript/apply-output',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      outputId?: string;
+      mode?: 'replace-unit' | 'append-unit' | 'new-unit';
+      unitId?: string;
+      newUnitTitle?: string;
+      confirmed?: boolean;
+    };
+    if (!body.outputId?.trim()) {
+      sendError(res, new Error('outputId is required'), 400);
+      return;
+    }
+    if (!body.mode) {
+      sendError(res, new Error('mode is required'), 400);
+      return;
+    }
+    sendSuccess(
+      res,
+      await manuscriptApplyOutputService.apply({
+        projectId: param(req, 'id'),
+        outputId: body.outputId,
+        mode: body.mode,
+        unitId: body.unitId,
+        newUnitTitle: body.newUnitTitle,
+        confirmed: body.confirmed,
+      }, req.user),
+      201,
+    );
   }),
 );
 

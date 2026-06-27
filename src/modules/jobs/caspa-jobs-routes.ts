@@ -1,5 +1,6 @@
 import { asyncHandler, createElevationRouter, param, sendError, sendSuccess } from '../../shared/routeHelpers';
 import { caspaJobService } from './CaspaJobService';
+import { caspaJobExecutor } from './CaspaJobExecutor';
 
 export const caspaJobsRouter = createElevationRouter();
 
@@ -58,11 +59,7 @@ caspaJobsRouter.post(
       sendError(res, new Error('Job not found'), 404);
       return;
     }
-    sendSuccess(res, await caspaJobService.patch(job.id, {
-      status: 'queued',
-      retryCount: job.retryCount + 1,
-      error: undefined,
-    }));
+    sendSuccess(res, await caspaJobExecutor.resume(job.id, req.user));
   }),
 );
 
