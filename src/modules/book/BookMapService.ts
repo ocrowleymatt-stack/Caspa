@@ -169,6 +169,15 @@ export class BookMapService {
       metadata: {
         kind: 'book-map',
         ...bookMap,
+        text: [
+          bookMap.arcSummary,
+          bookMap.missingSections.length
+            ? `Missing sections: ${bookMap.missingSections.slice(0, 8).join(', ')}`
+            : '',
+          bookMap.nextRecommendedChapter
+            ? `Next recommended: ${bookMap.nextRecommendedChapter}`
+            : '',
+        ].filter(Boolean).join('\n\n'),
         destination: 'writing-history',
       },
     });

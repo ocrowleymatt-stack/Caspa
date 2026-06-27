@@ -48,7 +48,17 @@ studioRouter.post(
       });
     }
 
-    sendSuccess(res, { asset, structureSuggestion }, 201);
+    sendSuccess(res, {
+      asset,
+      structureSuggestion,
+      id: asset.id,
+      title: asset.title,
+      sourceText: asset.sourceText,
+      extractedText: asset.extractedText,
+      detectedUse: asset.detectedUse,
+      kind: asset.kind,
+      summary: asset.summary,
+    }, 201);
   }),
 );
 

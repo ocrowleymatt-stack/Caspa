@@ -180,6 +180,7 @@ export class ResearchDeskService {
     outputId: string;
   }> {
     const result = this.extractClaims(input);
+    const claimsText = result.claims.map((claim) => `• ${claim.text}`).join('\n').trim();
     const record = await outputRegistry.register({
       projectId: input.projectId,
       type: 'claim-extraction',
@@ -187,6 +188,7 @@ export class ResearchDeskService {
       path: '',
       metadata: {
         kind: 'claim-extraction',
+        text: claimsText || input.text.slice(0, 500),
         claims: result.claims,
         sourcePreview: input.text.slice(0, 500),
         destination: 'writing-history',

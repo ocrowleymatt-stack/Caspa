@@ -197,6 +197,24 @@ export function extractOutputText(metadata?: OutputMetadata | Record<string, unk
 
   if (typeof meta.critique === 'string' && meta.critique.trim()) return meta.critique.trim();
 
+  const kind = typeof meta.kind === 'string' ? meta.kind : '';
+  if (kind === 'claim-extraction' && Array.isArray(meta.claims)) {
+    const lines = (meta.claims as Array<{ text?: string }>)
+      .slice(0, 20)
+      .map((claim) => (typeof claim.text === 'string' ? claim.text.trim() : ''))
+      .filter(Boolean)
+      .map((line) => `• ${line}`);
+    if (lines.length) return `Extracted claims:\n${lines.join('\n')}`;
+  }
+  if (kind === 'book-map') {
+    const arc = typeof meta.arcSummary === 'string' ? meta.arcSummary.trim() : '';
+    const missing = Array.isArray(meta.missingSections)
+      ? (meta.missingSections as string[]).slice(0, 8).join(', ')
+      : '';
+    const parts = [arc, missing ? `Missing sections: ${missing}` : ''].filter(Boolean);
+    if (parts.length) return parts.join('\n\n');
+  }
+
   return '';
 }
 

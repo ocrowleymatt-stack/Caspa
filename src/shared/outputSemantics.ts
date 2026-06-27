@@ -178,6 +178,52 @@ function buildStructuredReadableSummary(metadata: Record<string, unknown>): stri
     return `Structure report: ${count} detected ${detected} units (${confidence} confidence).${titles ? `\n${titles}${count > 8 ? '…' : ''}` : ''}`;
   }
 
+  if (kind === 'claim-extraction' && Array.isArray(metadata.claims)) {
+    const claims = metadata.claims as Array<{ text?: string }>;
+    const lines = claims
+      .slice(0, 20)
+      .map((claim) => stringField(claim.text))
+      .filter(Boolean)
+      .map((line) => `• ${line}`);
+    if (lines.length) return `Extracted claims:\n${lines.join('\n')}`;
+    if (stringField(metadata.sourcePreview as string)) {
+      return `Source preview:\n${stringField(metadata.sourcePreview as string)}`;
+    }
+  }
+
+  if (kind === 'accuracy-check' && Array.isArray(metadata.verdicts)) {
+    const verdicts = metadata.verdicts as Array<{ claim?: string; status?: string; note?: string }>;
+    const lines = verdicts.slice(0, 12).map((verdict) => {
+      const claim = stringField(verdict.claim) || stringField(verdict.note);
+      return claim ? `• ${verdict.status ?? 'check'}: ${claim}` : '';
+    }).filter(Boolean);
+    if (lines.length) return `Accuracy check:\n${lines.join('\n')}`;
+  }
+
+  if (kind === 'research-answer' && Array.isArray(metadata.topics)) {
+    const topics = metadata.topics as Array<{ title?: string; rationale?: string } | string>;
+    const lines = topics.slice(0, 10).map((topic) => {
+      if (typeof topic === 'string') return `• ${topic}`;
+      const title = stringField(topic.title);
+      return title ? `• ${title}` : '';
+    }).filter(Boolean);
+    if (lines.length) return `Research topics:\n${lines.join('\n')}`;
+  }
+
+  if (kind === 'book-map') {
+    const arc = stringField(metadata.arcSummary as string);
+    const missing = Array.isArray(metadata.missingSections)
+      ? (metadata.missingSections as string[]).slice(0, 8).join(', ')
+      : '';
+    const next = stringField(metadata.nextRecommendedChapter as string);
+    const parts = [
+      arc,
+      missing ? `Missing sections: ${missing}` : '',
+      next ? `Next recommended: ${next}` : '',
+    ].filter(Boolean);
+    if (parts.length) return parts.join('\n\n');
+  }
+
   const consensus = metadata.consensus as { summary?: string; revisionPlan?: string[] } | undefined;
   if (consensus?.summary) return consensus.summary;
   if (consensus?.revisionPlan?.length) {
