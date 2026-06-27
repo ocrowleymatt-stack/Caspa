@@ -35,6 +35,9 @@ interface AppState {
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
 
+  guideDrawerOpen: boolean;
+  setGuideDrawerOpen: (open: boolean) => void;
+
   jobs: JobStatus[];
   setJobs: (jobs: JobStatus[]) => void;
   upsertJob: (job: JobStatus) => void;
@@ -79,6 +82,9 @@ export const useAppStore = create<AppState>()(
 
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+      guideDrawerOpen: false,
+      setGuideDrawerOpen: (open) => set({ guideDrawerOpen: open }),
 
       jobs: [],
       setJobs: (jobs) => set({ jobs }),

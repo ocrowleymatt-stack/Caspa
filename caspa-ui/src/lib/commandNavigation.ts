@@ -88,10 +88,66 @@ export function routeForText(text: string, projectId?: string | null): CommandRo
   const t = text.trim().toLowerCase();
   if (!t) return null;
 
-  if (/what should i do next|next step|where do i go/.test(t)) {
+  if (/what should i do next|next step|where do i go|guide me|what next/.test(t)) {
     return projectId
-      ? { label: 'Project overview', path: `/projects/${projectId}`, hint: 'See room mode and suggested next actions.' }
+      ? { label: 'Guide Me', path: `/projects/${projectId}`, hint: 'Open Guide Me from the top bar for recommended next action.' }
       : { label: 'Open Projects', path: '/projects', hint: 'Select or create a project first.' };
+  }
+
+  if (/production wizard|choose product|what do you want caspa to make/.test(t)) {
+    return projectId
+      ? { label: 'Production Wizard', path: `/start?projectId=${projectId}` }
+      : { label: 'Production Wizard', path: '/start' };
+  }
+
+  if (/help centre|how do i|what is caspa/.test(t)) {
+    return { label: 'Help Centre', path: '/help' };
+  }
+
+  if (/source library|upload assets|turn these receipts|creative assets/.test(t)) {
+    return projectId
+      ? { label: 'Source Library', path: `/projects/${projectId}/sources` }
+      : { label: 'Projects', path: '/projects', hint: 'Select a project first.' };
+  }
+
+  if (/test all ai|test engines|provider test/.test(t)) {
+    return { label: 'Settings / provider status', path: '/settings', hint: 'Use provider status in top bar; test-all runs via API.' };
+  }
+
+  if (/trash to treasure|rescue this mess|fix bad project/.test(t)) {
+    return projectId
+      ? { label: 'Trash to Treasure', path: `/projects/${projectId}/trash-to-treasure` }
+      : { label: 'Trash to Treasure', path: '/casper/trash-to-treasure' };
+  }
+
+  if (/export this project|submission package/.test(t)) {
+    return projectId
+      ? { label: 'Export', path: `/projects/${projectId}/export` }
+      : { label: 'Projects', path: '/projects' };
+  }
+
+  if (/find my saved writing|saved output/.test(t)) {
+    return projectId
+      ? { label: 'Saved Writing', path: `/projects/${projectId}/outputs` }
+      : { label: 'Saved Writing', path: '/outputs' };
+  }
+
+  if (/help me finish this book|finish this book/.test(t)) {
+    return projectId
+      ? { label: 'Book Map', path: `/projects/${projectId}/book-map` }
+      : { label: 'Projects', path: '/projects' };
+  }
+
+  if (/run gold pass|gold pass/.test(t)) {
+    return projectId
+      ? { label: 'Gold Pass', path: `/projects/${projectId}/gold` }
+      : { label: 'Gold Pipeline', path: '/gold' };
+  }
+
+  if (/fade to black|heat level|intimacy/.test(t)) {
+    return projectId
+      ? { label: 'Production Wizard', path: `/start?projectId=${projectId}`, hint: 'Adjust Romance & Intimacy in wizard step 3.' }
+      : { label: 'Production Wizard', path: '/start' };
   }
 
   if (!projectId) {

@@ -16,6 +16,7 @@ import { listProjects } from '../api/projects';
 import { getCasperStatus } from '../api/casper';
 import { listOutputs } from '../api/outputs';
 import { useAppStore } from '../store';
+import { GuideMeButton } from '../components/GuideMeDrawer';
 import { ProviderStatus } from '../components/ProviderStatus';
 import { normalizeOutputKind, OUTPUT_KIND_LABELS, outputExcerpt, extractOutputText } from '../lib/outputSemantics';
 
@@ -63,8 +64,8 @@ export default function CommandCentre() {
               <Link to="/projects" className="btn-primary">
                 <BookOpen className="h-4 w-4" /> Start blank project
               </Link>
-              <Link to="/projects" className="btn-secondary">
-                <FileText className="h-4 w-4" /> Upload manuscript
+              <Link to="/start" className="btn-secondary">
+                <Sparkles className="h-4 w-4" /> Production Wizard
               </Link>
               <Link to="/casper/trash-to-treasure" className="btn-secondary">
                 <Gem className="h-4 w-4" /> Trash to Treasure
@@ -76,6 +77,10 @@ export default function CommandCentre() {
               )}
             </div>
             <div className="flex flex-wrap gap-3 pt-2">
+              <GuideMeButton />
+              <Link to="/help" className="btn-ghost text-sm">
+                <FileText className="h-4 w-4" /> Help Centre
+              </Link>
               <Link to="/casper" className="btn-ghost text-sm">
                 <Ghost className="h-4 w-4" /> Casper · Novel Write Pro
               </Link>

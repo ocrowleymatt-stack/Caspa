@@ -8,6 +8,8 @@ import CommandCentre from './pages/CommandCentre';
 import NaturalCommand from './pages/NaturalCommand';
 import CasperFreestyle from './pages/CasperFreestyle';
 import TrashToTreasure from './pages/TrashToTreasure';
+import ProductionWizard from './pages/ProductionWizard';
+import HelpCentre from './pages/HelpCentre';
 import ForgeIntake from './pages/ForgeIntake';
 import ProductPlan from './pages/ProductPlan';
 import Sources from './pages/Sources';
@@ -27,6 +29,7 @@ import ProjectOutputs from './pages/workbench/ProjectOutputs';
 import ProjectExport from './pages/workbench/ProjectExport';
 import ProjectOverview from './pages/ProjectOverview';
 import ProjectBookMap from './pages/workbench/ProjectBookMap';
+import ProjectSourceLibrary from './pages/workbench/ProjectSourceLibrary';
 import ChapterEditor from './pages/ChapterEditor';
 import Characters from './pages/Characters';
 import PlotBoard from './pages/PlotBoard';
@@ -65,6 +68,9 @@ export default function App() {
             <Route element={<Layout />}>
               <Route index element={<Navigate to="/home" replace />} />
               <Route path="home" element={<CommandCentre />} />
+              <Route path="start" element={<ProductionWizard />} />
+              <Route path="wizard" element={<ProductionWizard />} />
+              <Route path="help" element={<HelpCentre />} />
               <Route path="command" element={<NaturalCommand />} />
               <Route path="casper" element={<CasperFreestyle />} />
               <Route path="casper/trash-to-treasure" element={<TrashToTreasure />} />
@@ -84,6 +90,7 @@ export default function App() {
                 <Route path="plot" element={<PlotBoard />} />
                 <Route path="bible" element={<ProjectBible />} />
                 <Route path="book-map" element={<ProjectBookMap />} />
+                <Route path="sources" element={<ProjectSourceLibrary />} />
                 <Route path="trash-to-treasure" element={<TrashToTreasure />} />
               </Route>
               <Route path="forge" element={<ForgeIntake />} />

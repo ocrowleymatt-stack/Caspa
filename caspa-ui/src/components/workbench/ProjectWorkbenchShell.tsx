@@ -11,6 +11,7 @@ import { useAppStore } from '../../store';
 const TABS = [
   { slug: '', label: 'Overview', group: 'primary' as const },
   { slug: 'structure', label: 'Structure', group: 'primary' as const },
+  { slug: 'sources', label: 'Source Library', group: 'primary' as const },
   { slug: 'manuscript', label: 'Manuscript', group: 'primary' as const },
   { slug: 'pier', label: 'Pier Builder', group: 'primary' as const },
   { slug: 'research', label: 'Research', group: 'primary' as const },

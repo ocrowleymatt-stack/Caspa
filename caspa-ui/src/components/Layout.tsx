@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { AIPanel } from './AIPanel';
 import { CommandPalette } from './CommandPalette';
+import { GuideMeDrawer } from './GuideMeDrawer';
 import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
 
@@ -22,6 +23,7 @@ export function Layout() {
       </div>
       <AIPanel />
       <CommandPalette />
+      <GuideMeDrawer />
     </div>
   );
 }

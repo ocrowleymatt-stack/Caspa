@@ -47,6 +47,8 @@ const primaryNavItems = [
 
 const authorToolsNavItems = [
   { to: '/command', label: 'Studio Command', icon: Command },
+  { to: '/help', label: 'Help Centre', icon: FileText },
+  { to: '/start', label: 'Production Wizard', icon: Sparkles },
 ];
 
 const moreToolsNavItems = [

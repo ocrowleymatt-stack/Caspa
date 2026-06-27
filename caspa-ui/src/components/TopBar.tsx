@@ -7,10 +7,14 @@ import { getChapter } from '../api/chapters';
 import { useAppStore } from '../store';
 import { AIPanelToggle } from './AIPanel';
 import { ProviderStatus } from './ProviderStatus';
+import { GuideMeButton } from './GuideMeDrawer';
 
 const pageTitles: Record<string, string> = {
   '/': 'Projects',
   '/home': 'The Studio',
+  '/start': 'Production Wizard',
+  '/wizard': 'Production Wizard',
+  '/help': 'Help Centre',
   '/casper': 'Casper',
   '/command': 'Studio Command',
   '/show-factory': 'Show Factory',
@@ -81,6 +85,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-2">
+        <GuideMeButton className="hidden sm:inline-flex" />
         <ProviderStatus compact className="hidden lg:inline-flex" />
         <button
           type="button"
