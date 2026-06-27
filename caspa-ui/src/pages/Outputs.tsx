@@ -86,6 +86,7 @@ export function OutputsContent({ projectId }: { projectId: string }) {
           const kind = normalizeOutputKind(output.type, output.metadata);
           const kindLabel = OUTPUT_KIND_LABELS[kind];
           const provenance = extractOutputProvenance(output);
+          const unrecoverable = Boolean((output.metadata as Record<string, unknown>)?.unrecoverable);
 
           return (
             <article key={output.id} className="rounded-[1.8rem] border border-[#eadfca] bg-white/85 p-5 shadow-paper">
@@ -114,12 +115,17 @@ export function OutputsContent({ projectId }: { projectId: string }) {
                         Awards: {provenance.awardsLabel}
                       </span>
                     )}
+                    {unrecoverable && (
+                      <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-red-800">
+                        Archive only
+                      </span>
+                    )}
                   </div>
                   {text ? (
                     <p className="mt-3 text-sm leading-7 text-[#5f5648]">{outputExcerpt(text)}</p>
                   ) : (
                     <p className="mt-3 text-sm leading-7 text-muted italic">
-                      {archiveOnlyEmptyMessage(kind)}
+                      {unrecoverable ? 'No recoverable text — rerun the tool to regenerate.' : archiveOnlyEmptyMessage(kind)}
                     </p>
                   )}
                 </div>
@@ -138,9 +144,11 @@ export function OutputsContent({ projectId }: { projectId: string }) {
                   >
                     <Copy className="h-3.5 w-3.5" /> Copy
                   </button>
-                  <Link to={`/outputs/${output.id}?gold=1`} className="btn-secondary text-xs">
-                    <Sparkles className="h-3.5 w-3.5" /> Gold
-                  </Link>
+                  {!unrecoverable && (
+                    <Link to={`/outputs/${output.id}?gold=1`} className="btn-secondary text-xs">
+                      <Sparkles className="h-3.5 w-3.5" /> Gold
+                    </Link>
+                  )}
                 </div>
               </div>
             </article>

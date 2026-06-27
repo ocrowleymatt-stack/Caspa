@@ -1,22 +1,31 @@
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, BookOpen, Compass, Loader2, Package, Sparkles, Target } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowRight, BookOpen, Compass, Loader2, Package, PenLine, Sparkles, Target } from 'lucide-react';
 import { listChapters } from '../../api/chapters';
-import { getBookMap } from '../../api/book';
-import { getGuideState } from '../../api/studio';
-import { getProductionBrief } from '../../api/studio';
+import { applyManuscriptOutput, getBookMap } from '../../api/book';
+import { getGuideState, getProductionBrief } from '../../api/studio';
 import { listOutputs } from '../../api/outputs';
-import { extractOutputText, normalizeOutputKind, OUTPUT_KIND_LABELS } from '../../lib/outputSemantics';
+import {
+  extractOutputText,
+  getApplyCapabilities,
+  normalizeOutputKind,
+  OUTPUT_KIND_LABELS,
+} from '../../lib/outputSemantics';
 import { currentWorkLabel } from '../../lib/currentWork';
 import { getProject } from '../../api/projects';
+import { useToast } from '../Toast';
 
 interface Props {
   projectId: string;
   currentChapterId?: string;
   className?: string;
+  onApplied?: () => void;
 }
 
-export function ManuscriptGuidePanel({ projectId, currentChapterId, className }: Props) {
+export function ManuscriptGuidePanel({ projectId, currentChapterId, className, onApplied }: Props) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+
   const { data: guide, isLoading: guideLoading } = useQuery({
     queryKey: ['guide-state', projectId],
     queryFn: () => getGuideState(projectId),
@@ -47,6 +56,32 @@ export function ManuscriptGuidePanel({ projectId, currentChapterId, className }:
     queryFn: () => listOutputs(projectId),
   });
 
+  const applyMutation = useMutation({
+    mutationFn: (input: {
+      outputId: string;
+      mode: 'replace-unit' | 'append-unit' | 'new-unit';
+      unitId?: string;
+      newUnitTitle?: string;
+    }) =>
+      applyManuscriptOutput(projectId, {
+        outputId: input.outputId,
+        mode: input.mode,
+        unitId: input.unitId,
+        newUnitTitle: input.newUnitTitle,
+        confirmed: true,
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['outputs', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
+      if (result.unitId) {
+        queryClient.invalidateQueries({ queryKey: ['chapter', result.unitId] });
+      }
+      toast.success(`Applied safely · snapshot ${result.snapshotId.slice(0, 8)}`);
+      onApplied?.();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const label = currentWorkLabel(project, brief);
   const sorted = [...chapters].sort((a, b) => a.order - b.order);
   const totalWords = sorted.reduce((sum, chapter) => sum + (chapter.wordCount ?? 0), 0);
@@ -57,6 +92,7 @@ export function ManuscriptGuidePanel({ projectId, currentChapterId, className }:
     .filter((output) => {
       const meta = output.metadata ?? {};
       if ((meta as Record<string, unknown>).applied) return false;
+      if ((meta as Record<string, unknown>).unrecoverable) return false;
       if (!extractOutputText(meta)) return false;
       const kind = normalizeOutputKind(output.type, meta);
       if (kind === 'book-map' || kind === 'export-package' || kind === 'project-bible') return false;
@@ -68,6 +104,25 @@ export function ManuscriptGuidePanel({ projectId, currentChapterId, className }:
     })
     .slice(0, 4);
 
+  function handleReplace(outputId: string, unitId: string) {
+    if (!confirm('Replace this chapter with the draft? A snapshot is created first.')) return;
+    applyMutation.mutate({ outputId, mode: 'replace-unit', unitId });
+  }
+
+  function handleAppend(outputId: string, unitId: string) {
+    if (!confirm('Append draft text to the end of this chapter? A snapshot is created first.')) return;
+    applyMutation.mutate({ outputId, mode: 'append-unit', unitId });
+  }
+
+  function handleNewUnit(outputId: string, title: string) {
+    if (!confirm('Save this draft as a new section? A snapshot is created first.')) return;
+    applyMutation.mutate({
+      outputId,
+      mode: 'new-unit',
+      newUnitTitle: `Applied — ${title}`.slice(0, 80),
+    });
+  }
+
   return (
     <aside
       className={`custom-scrollbar flex w-full max-w-sm shrink-0 flex-col border-l border-[#eadfca] bg-[#fffaf0] lg:w-80 ${className ?? ''}`}
@@ -78,7 +133,7 @@ export function ManuscriptGuidePanel({ projectId, currentChapterId, className }:
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Guide</div>
         </div>
         <p className="mt-2 text-sm leading-6 text-muted">
-          {label} progress and next steps — Writing History stays separate until you apply.
+          {label} progress and next steps — apply drafts here without leaving the workspace.
         </p>
       </div>
 
@@ -144,20 +199,59 @@ export function ManuscriptGuidePanel({ projectId, currentChapterId, className }:
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#98711d]">
               <Package className="h-3.5 w-3.5" /> Drafts waiting
             </div>
-            <ul className="mt-3 space-y-2">
+            <ul className="mt-3 space-y-3">
               {pendingOutputs.map((output) => {
                 const kind = normalizeOutputKind(output.type, output.metadata);
+                const capabilities = getApplyCapabilities(output);
+                const unitId =
+                  output.metadata?.sourceChapterId
+                  ?? output.metadata?.chapterId
+                  ?? output.metadata?.unitId
+                  ?? currentChapterId;
+                const canApplyHere = Boolean(unitId && capabilities.canApplyToChapter);
+
                 return (
-                  <li key={output.id}>
-                    <Link
-                      to={`/outputs/${output.id}`}
-                      className="block rounded-xl border border-[#eadfca] bg-[#fffdf8] px-3 py-2 transition hover:border-[#caa044]"
-                    >
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-[#98711d]">
-                        {OUTPUT_KIND_LABELS[kind]}
-                      </div>
-                      <div className="truncate text-sm font-semibold text-[#171a22]">{output.title}</div>
-                    </Link>
+                  <li key={output.id} className="rounded-xl border border-[#eadfca] bg-[#fffdf8] p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-[#98711d]">
+                      {OUTPUT_KIND_LABELS[kind]}
+                    </div>
+                    <div className="truncate text-sm font-semibold text-[#171a22]">{output.title}</div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {canApplyHere && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={applyMutation.isPending}
+                            onClick={() => handleReplace(output.id, unitId!)}
+                            className="btn-primary text-[10px] px-2 py-1"
+                          >
+                            {applyMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />}
+                            Replace
+                          </button>
+                          <button
+                            type="button"
+                            disabled={applyMutation.isPending}
+                            onClick={() => handleAppend(output.id, unitId!)}
+                            className="btn-secondary text-[10px] px-2 py-1"
+                          >
+                            Append
+                          </button>
+                        </>
+                      )}
+                      {capabilities.canSaveAsNewUnit && (
+                        <button
+                          type="button"
+                          disabled={applyMutation.isPending}
+                          onClick={() => handleNewUnit(output.id, output.title)}
+                          className="btn-secondary text-[10px] px-2 py-1"
+                        >
+                          New section
+                        </button>
+                      )}
+                      <Link to={`/outputs/${output.id}`} className="btn-secondary text-[10px] px-2 py-1">
+                        Review
+                      </Link>
+                    </div>
                   </li>
                 );
               })}

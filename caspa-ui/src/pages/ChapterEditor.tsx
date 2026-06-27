@@ -418,7 +418,19 @@ export default function ChapterEditor() {
 
         {!showHistory && projectId && (
           <div className="hidden lg:flex">
-            <ManuscriptGuidePanel projectId={projectId} currentChapterId={chapterId} />
+            <ManuscriptGuidePanel
+              projectId={projectId}
+              currentChapterId={chapterId}
+              onApplied={async () => {
+                queryClient.invalidateQueries({ queryKey: ['chapter', chapterId] });
+                const fresh = await queryClient.fetchQuery({
+                  queryKey: ['chapter', chapterId],
+                  queryFn: () => getChapter(chapterId!),
+                });
+                setContent(fresh.content);
+                setTitle(fresh.title);
+              }}
+            />
           </div>
         )}
 
@@ -442,6 +454,16 @@ export default function ChapterEditor() {
                 projectId={projectId}
                 currentChapterId={chapterId}
                 className="h-full max-h-dvh shadow-2xl"
+                onApplied={async () => {
+                  setShowGuideMobile(false);
+                  queryClient.invalidateQueries({ queryKey: ['chapter', chapterId] });
+                  const fresh = await queryClient.fetchQuery({
+                    queryKey: ['chapter', chapterId],
+                    queryFn: () => getChapter(chapterId!),
+                  });
+                  setContent(fresh.content);
+                  setTitle(fresh.title);
+                }}
               />
             </div>
           </div>
