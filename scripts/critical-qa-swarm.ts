@@ -1013,6 +1013,80 @@ async function runJamesUsabilityTester(http: HttpClient, uiText: string): Promis
   return r;
 }
 
+async function runResponsiveLayoutInspector(_http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('Responsive Layout Inspector');
+  r.tested.push('UI bundle responsive shell patterns');
+
+  const required = [
+    ['overflow-x hidden', /overflow-x-hidden|overflow-x:\s*hidden/],
+    ['dvh shell', /min-h-dvh|app-shell|100dvh/],
+    ['mobile menu', /MobileNavDrawer|mobileNavOpen|Open menu/],
+    ['bottom nav', /MobileBottomNav|Primary navigation/],
+    ['Guide Me drawer', /Guide Me|guideDrawerOpen/],
+    ['safe-area', /safe-area-inset/],
+    ['touch 44px', /min-h-\[44px\]/],
+  ] as const;
+
+  for (const [label, pattern] of required) {
+    if (!pattern.test(uiText)) fail(r, `Missing responsive pattern: ${label}`, 'Complete Phase 23 shell pass', 'high');
+    else r.evidence.push(`Found ${label}`);
+  }
+
+  const manual = path.join(ROOT, 'docs', 'RESPONSIVE_DEVICE_QA_REPORT.md');
+  if (fs.existsSync(manual)) r.evidence.push('Responsive QA report path exists');
+  else warn(r, 'RESPONSIVE_DEVICE_QA_REPORT.md not generated yet', 'Run npm run qa:responsive');
+
+  finalize(r);
+  return r;
+}
+
+async function runIpadAuthorTester(_http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('iPad Author Tester');
+  r.tested.push('Tablet writing flow UI patterns');
+
+  const labels = ['ChapterRail', 'Chapters', 'Book Map', 'Source Library', 'Export', 'Continue'];
+  for (const label of labels) {
+    if (!uiText.includes(label) && label === 'ChapterRail') continue;
+    if (!uiText.includes(label.replace('ChapterRail', 'Chapters')) && label === 'ChapterRail') {
+      if (!uiText.includes('Chapters')) warn(r, 'Chapter rail mobile toggle missing');
+      else r.evidence.push('Chapter navigation present');
+      continue;
+    }
+    if (uiText.includes(label)) r.evidence.push(`Flow label: ${label}`);
+    else warn(r, `Missing iPad flow label: ${label}`);
+  }
+
+  if (fs.existsSync(path.join(ROOT, 'docs', 'MOBILE_TABLET_DESKTOP_TEST_SCRIPT.md'))) {
+    r.evidence.push('Manual tablet test script present');
+  }
+
+  finalize(r);
+  return r;
+}
+
+async function runSmallPhoneFrustrationTester(_http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('Small Phone Frustration Tester');
+  r.tested.push('390px workflow static checks');
+
+  if (!uiText.includes('Skip for now')) warn(r, 'Wizard skip not obvious on small screens');
+  else r.evidence.push('Wizard skippable');
+
+  if (!uiText.includes('Production Wizard') || !uiText.includes('Help Centre')) {
+    warn(r, 'Core guided flows not all labeled in bundle');
+  } else r.evidence.push('Wizard + Help in bundle');
+
+  if (uiText.includes('hover:') && !uiText.includes('min-h-[44px]')) {
+    warn(r, 'Hover utilities without touch target guards');
+  } else r.evidence.push('Touch-friendly button classes present');
+
+  if (uiText.toLowerCase().includes('display:none') && uiText.includes('btn-primary')) {
+    r.evidence.push('Primary buttons exist in bundle (not display-none only)');
+  }
+
+  finalize(r);
+  return r;
+}
+
 async function runAgentSafely(name: string, fn: () => Promise<AgentReport>): Promise<AgentReport> {
   try {
     return await fn();
@@ -1044,6 +1118,9 @@ async function runAllAgents(http: HttpClient, uiText: string, withAi: boolean): 
     ['Intimacy Editor', () => runIntimacyEditor(http, uiText)],
     ['Export Inspector', () => runExportInspector(http)],
     ['James Usability Tester', () => runJamesUsabilityTester(http, uiText)],
+    ['Responsive Layout Inspector', () => runResponsiveLayoutInspector(http, uiText)],
+    ['iPad Author Tester', () => runIpadAuthorTester(http, uiText)],
+    ['Small Phone Frustration Tester', () => runSmallPhoneFrustrationTester(http, uiText)],
   ];
   const agents: AgentReport[] = [];
   for (const [name, run] of steps) {

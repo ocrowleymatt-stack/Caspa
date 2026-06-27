@@ -13,6 +13,7 @@
     "deploy": "npm run deploy:ui && npm run build",
     "qa:critical": "tsx scripts/critical-qa-swarm.ts",
     "qa:critical:full": "tsx scripts/critical-qa-swarm.ts --with-ai",
+    "qa:responsive": "tsx scripts/responsive-qa.ts",
     "casper": "tsx src/cli/casper.ts"
   },
   "dependencies": {
