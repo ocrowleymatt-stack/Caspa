@@ -9,16 +9,19 @@ PM2_NAME="${PM2_NAME:-caspa-server}"
 cd "$APP_DIR"
 
 echo "==> Stopping legacy /opt/caspa services if they are holding port 3000"
-for legacy_unit in caspa.service novelwriter.service; do
-  if systemctl is-active --quiet "$legacy_unit" 2>/dev/null; then
-    systemctl stop "$legacy_unit"
-    echo "==> Stopped $legacy_unit"
-  fi
-  if systemctl is-enabled --quiet "$legacy_unit" 2>/dev/null; then
-    systemctl disable "$legacy_unit"
-    echo "==> Disabled $legacy_unit"
-  fi
-done
+stop_legacy_services() {
+  for legacy_unit in caspa.service novelwriter.service; do
+    if systemctl is-active --quiet "$legacy_unit" 2>/dev/null; then
+      systemctl stop "$legacy_unit"
+      echo "==> Stopped $legacy_unit"
+    fi
+    if systemctl is-enabled --quiet "$legacy_unit" 2>/dev/null; then
+      systemctl disable "$legacy_unit"
+      echo "==> Disabled $legacy_unit"
+    fi
+  done
+}
+stop_legacy_services
 
 echo "==> Fetching origin/$BRANCH"
 git fetch origin "$BRANCH"
@@ -48,6 +51,7 @@ mkdir -p public
 npm run deploy
 
 echo "==> Ensuring port 3000 is free for $PM2_NAME"
+stop_legacy_services
 pm2 stop "$PM2_NAME" >/dev/null 2>&1 || true
 if command -v fuser >/dev/null 2>&1; then
   fuser -k 3000/tcp >/dev/null 2>&1 || true
@@ -67,6 +71,31 @@ else
 fi
 pm2 save
 
+ensure_caspa_on_port() {
+  for attempt in 1 2 3; do
+    if curl -sf http://127.0.0.1:3000/api/doctor | grep -q '"service":"CASPA Studio"'; then
+      return 0
+    fi
+    echo "==> Port 3000 not serving CASPA Studio (attempt ${attempt}/3)"
+    lsof -i :3000 2>/dev/null || true
+    stop_legacy_services
+    pm2 stop "$PM2_NAME" >/dev/null 2>&1 || true
+    if command -v fuser >/dev/null 2>&1; then
+      fuser -k 3000/tcp >/dev/null 2>&1 || true
+    fi
+    sleep 2
+    pm2 restart "$PM2_NAME" --update-env
+    sleep 2
+  done
+  return 1
+}
+
+if ! ensure_caspa_on_port; then
+  echo "==> ERROR: could not bind CASPA Studio to port 3000"
+  lsof -i :3000 2>/dev/null || true
+  exit 1
+fi
+
 echo "==> Deploy complete"
 pm2 status "$PM2_NAME"
 
@@ -84,9 +113,4 @@ for _ in $(seq 1 30); do
 done
 
 echo "==> Post-deploy runtime smoke (expect ~8 min with AI workflows)"
-if ! curl -sf http://127.0.0.1:3000/api/doctor | grep -q '"service":"CASPA Studio"'; then
-  echo "==> ERROR: port 3000 is not serving CASPA Studio (legacy process may have reclaimed the port)"
-  lsof -i :3000 2>/dev/null || true
-  exit 1
-fi
 CASPA_SMOKE_STRICT=1 bash scripts/runtime-smoke.sh
