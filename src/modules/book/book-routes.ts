@@ -5,8 +5,12 @@ import { manuscriptStructureService } from './ManuscriptStructureService';
 import { projectMemoryService } from './ProjectMemoryService';
 import { projectSnapshotService } from './ProjectSnapshotService';
 import { projectExportService } from './ProjectExportService';
+import { manuscriptViewService } from './ManuscriptViewService';
+import { cutTightenService } from './CutTightenService';
+import { ChapterService } from '../manuscript/ChapterService';
 
 export const bookRouter = createElevationRouter();
+const chapterService = new ChapterService();
 
 bookRouter.get(
   '/api/projects/:id/book-map',
@@ -76,6 +80,53 @@ bookRouter.post(
     sendSuccess(
       res,
       await manuscriptStructureService.applyStructure(id, body, req.user),
+      201,
+    );
+  }),
+);
+
+bookRouter.get(
+  '/api/projects/:id/manuscript',
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await manuscriptViewService.getManuscript(param(req, 'id'), req.user));
+  }),
+);
+
+bookRouter.get(
+  '/api/projects/:id/manuscript/read',
+  asyncHandler(async (req, res) => {
+    const projectId = param(req, 'id');
+    const view = await manuscriptViewService.getManuscript(projectId, req.user);
+    const chapters = await chapterService.listChapters(projectId);
+    const sorted = [...chapters].sort((a, b) => a.order - b.order);
+    sendSuccess(res, {
+      ...view,
+      fullText: sorted.map((c) => `# ${c.title}\n\n${c.content ?? ''}`).join('\n\n'),
+      sections: sorted,
+    });
+  }),
+);
+
+bookRouter.post(
+  '/api/projects/:id/cut/analyse',
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await cutTightenService.analyse({ ...req.body, projectId: param(req, 'id') }, req.user), 201);
+  }),
+);
+
+bookRouter.post(
+  '/api/projects/:id/cut/apply',
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await cutTightenService.apply(param(req, 'id'), req.body ?? {}, req.user), 201);
+  }),
+);
+
+bookRouter.post(
+  '/api/projects/:id/structure/:unitId/cut/analyse',
+  asyncHandler(async (req, res) => {
+    sendSuccess(
+      res,
+      await cutTightenService.analyse({ ...req.body, projectId: param(req, 'id'), unitId: param(req, 'unitId') }, req.user),
       201,
     );
   }),

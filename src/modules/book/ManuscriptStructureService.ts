@@ -95,6 +95,7 @@ export class ManuscriptStructureService {
       metadata: {
         kind: 'manuscript-structure-report',
         ...report,
+        text: `CASPA found ${report.units.length} possible ${report.detectedType} units (${report.confidence} confidence).\n\nSuggested: ${report.suggestedNextSteps.slice(0, 3).join(' · ')}`,
       },
     });
 
