@@ -820,6 +820,199 @@ function renderMarkdown(report: SwarmReport): string {
   return lines.join('\n');
 }
 
+async function runLostFirstTimeUser(http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('Lost First-Time User');
+  r.tested.push('UI bundle help/guide/wizard labels');
+  r.tested.push('GET /api/projects/:id/guide-state');
+
+  const needles = ['Help Centre', 'Guide Me', 'Production Wizard', 'Source Library', 'What are we making today'];
+  for (const needle of needles) {
+    if (!uiText.includes(needle)) warn(r, `First-time wayfinding missing "${needle}"`, `Expose ${needle} in primary UI`);
+    else r.evidence.push(`UI contains "${needle}"`);
+  }
+
+  const projectRes = await http.request('POST', '/api/projects', {
+    title: `QA Lost ${Date.now()}`,
+    genre: 'Novel',
+    workType: 'novel',
+    targetWordCount: 60000,
+    status: 'draft',
+  });
+  const project = unwrap<{ id: string }>(projectRes.data);
+  if (!project.id) {
+    fail(r, 'Cannot create project for guide-state test', undefined, 'high');
+    finalize(r);
+    return r;
+  }
+
+  const guide = await http.request('GET', `/api/projects/${project.id}/guide-state`);
+  if (!guide.ok) fail(r, 'guide-state unavailable', 'Mount studio guide-state route', 'high');
+  else {
+    const state = unwrap<{ recommendedNextAction?: { label?: string } }>(guide.data);
+    if (!state.recommendedNextAction?.label) warn(r, 'guide-state missing recommendedNextAction');
+    else r.evidence.push(`Guide recommends: ${state.recommendedNextAction.label}`);
+  }
+
+  finalize(r);
+  return r;
+}
+
+async function runGuidanceAnnoyanceTester(_http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('Guidance Annoyance Tester');
+  r.tested.push('UI bundle dismiss/guide patterns');
+
+  if (uiText.includes('Dismiss guidance')) r.evidence.push('Guide dismiss copy present');
+  else warn(r, 'Guide dismiss option not found in UI bundle');
+
+  if (uiText.includes('Skip for now')) r.evidence.push('Wizard skippable');
+  else warn(r, 'Production wizard skip not obvious');
+
+  finalize(r);
+  return r;
+}
+
+async function runAiRouterAuditor(http: HttpClient): Promise<AgentReport> {
+  const r = makeAgent('AI Router Auditor');
+  r.tested.push('POST /api/providers/test-all');
+
+  const testAll = await http.request('POST', '/api/providers/test-all', {});
+  if (!testAll.ok) fail(r, 'test-all route failed', 'Mount POST /api/providers/test-all', 'high');
+  else {
+    const payload = unwrap<{ providers?: Array<{ id?: string; canGenerate?: boolean; configured?: boolean }> }>(testAll.data);
+    r.evidence.push(`test-all returned ${(payload.providers ?? []).length} providers`);
+  }
+
+  finalize(r);
+  return r;
+}
+
+async function runAssetIngestionAuditor(http: HttpClient): Promise<AgentReport> {
+  const r = makeAgent('Asset Ingestion Auditor');
+  const projectRes = await http.request('POST', '/api/projects', {
+    title: `QA Assets ${Date.now()}`,
+    genre: 'Novel',
+    workType: 'novel',
+    targetWordCount: 50000,
+    status: 'draft',
+  });
+  const project = unwrap<{ id: string }>(projectRes.data);
+  if (!project.id) {
+    fail(r, 'Project create failed', undefined, 'blocker');
+    finalize(r);
+    return r;
+  }
+
+  r.tested.push('POST/GET /api/projects/:id/assets');
+
+  const receipt = await http.request('POST', `/api/projects/${project.id}/assets`, {
+    title: 'Cafe receipt',
+    originalFilename: 'receipt.txt',
+    sourceText: 'TOTAL: £4.50\nVAT 20%\nPaid by card\nBlue Note Cafe',
+  });
+  const fragment = await http.request('POST', `/api/projects/${project.id}/assets`, {
+    title: 'Scene fragment',
+    sourceText: 'She found the ticket stub in his coat — dated the night Mara disappeared.',
+  });
+
+  if (!receipt.ok || !fragment.ok) fail(r, 'Asset create failed', 'Fix studio asset routes', 'blocker');
+  else {
+    const rAsset = unwrap<{ detectedUse?: string; sourceText?: string }>(receipt.data);
+    if (rAsset.detectedUse !== 'receipt') warn(r, 'Receipt not classified as receipt');
+    else r.evidence.push('Receipt classified correctly');
+    if (!rAsset.sourceText?.includes('TOTAL')) fail(r, 'Source text not preserved on asset', undefined, 'blocker');
+  }
+
+  const list = await http.request('GET', `/api/projects/${project.id}/assets`);
+  const assets = unwrap<unknown[]>(list.data);
+  if (!list.ok || assets.length < 2) fail(r, 'Asset list incomplete', undefined, 'high');
+  else r.evidence.push(`${assets.length} assets listed`);
+
+  finalize(r);
+  return r;
+}
+
+async function runIntimacyEditor(http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('Intimacy Editor');
+  const projectRes = await http.request('POST', '/api/projects', {
+    title: `QA Intimacy ${Date.now()}`,
+    genre: 'Romance',
+    workType: 'novel',
+    targetWordCount: 70000,
+    status: 'draft',
+  });
+  const project = unwrap<{ id: string }>(projectRes.data);
+
+  r.tested.push('GET/PATCH intimacy-settings');
+  r.tested.push('UI wizard adult scene question');
+
+  const getRes = await http.request('GET', `/api/projects/${project.id}/intimacy-settings`);
+  if (!getRes.ok) fail(r, 'intimacy-settings GET failed', undefined, 'high');
+
+  const patchRes = await http.request('PATCH', `/api/projects/${project.id}/intimacy-settings`, {
+    defaultHeatLevel: 2,
+    askBeforeIncreasingHeat: true,
+  });
+  if (!patchRes.ok) fail(r, 'intimacy-settings PATCH failed', undefined, 'high');
+  else r.evidence.push('Intimacy settings stored');
+
+  if (!uiText.includes('intimacy') && !uiText.includes('Fade to black')) {
+    warn(r, 'Wizard intimacy copy not found in UI bundle');
+  } else r.evidence.push('Wizard intimacy UI present');
+
+  if (uiText.toLowerCase().includes('porn mode')) fail(r, 'UI contains "porn mode" label', undefined, 'high');
+
+  finalize(r);
+  return r;
+}
+
+async function runExportInspector(http: HttpClient): Promise<AgentReport> {
+  const r = makeAgent('Export Inspector');
+  const projectRes = await http.request('POST', '/api/projects', {
+    title: `QA Export ${Date.now()}`,
+    genre: 'Novel',
+    workType: 'novel',
+    targetWordCount: 60000,
+    status: 'draft',
+  });
+  const project = unwrap<{ id: string }>(projectRes.data);
+
+  r.tested.push('GET export markdown + docx');
+
+  const md = await http.request('GET', `/api/projects/${project.id}/export/markdown`);
+  const docx = await http.request('GET', `/api/projects/${project.id}/export/docx`);
+
+  if (!md.ok) fail(r, 'Markdown export failed', undefined, 'high');
+  else r.evidence.push('Markdown export OK');
+  if (!docx.ok) fail(r, 'DOCX export failed', undefined, 'high');
+  else r.evidence.push('DOCX export OK');
+
+  finalize(r);
+  return r;
+}
+
+async function runJamesUsabilityTester(http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('James Usability Tester');
+  r.tested.push('Manual docs + core flow labels');
+
+  const docPath = path.join(ROOT, 'docs', 'JAMES_USABILITY_TEST.md');
+  const manualPath = path.join(ROOT, 'docs', 'MANUAL_MARKET_LEADER_TEST_SCRIPT.md');
+  if (!fs.existsSync(docPath)) warn(r, 'JAMES_USABILITY_TEST.md missing');
+  else r.evidence.push('James usability doc present');
+  if (!fs.existsSync(manualPath)) warn(r, 'MANUAL_MARKET_LEADER_TEST_SCRIPT.md missing');
+  else r.evidence.push('Manual market leader script present');
+
+  const flowLabels = ['Source Library', 'Production Wizard', 'Help Centre', 'Saved Writing', 'Trash to Treasure'];
+  const found = flowLabels.filter((l) => uiText.includes(l)).length;
+  if (found < 4) warn(r, `Only ${found}/${flowLabels.length} flow labels in UI bundle`);
+  else r.evidence.push(`${found}/${flowLabels.length} flow labels in UI`);
+
+  const list = await http.request('GET', '/api/projects');
+  if (!list.ok) fail(r, 'Projects list fails', undefined, 'high');
+
+  finalize(r);
+  return r;
+}
+
 async function runAgentSafely(name: string, fn: () => Promise<AgentReport>): Promise<AgentReport> {
   try {
     return await fn();
@@ -835,6 +1028,7 @@ async function runAgentSafely(name: string, fn: () => Promise<AgentReport>): Pro
 async function runAllAgents(http: HttpClient, uiText: string, withAi: boolean): Promise<AgentReport[]> {
   const steps: Array<[string, () => Promise<AgentReport>]> = [
     ['Impatient New User', () => runImpatientNewUser(http, uiText)],
+    ['Lost First-Time User', () => runLostFirstTimeUser(http, uiText)],
     ['Angry Novelist', () => runAngryNovelist(http, withAi)],
     ['Manuscript Surgeon', () => runManuscriptSurgeon(http)],
     ['Continuity Pedant', () => runContinuityPedant(http, withAi)],
@@ -844,6 +1038,12 @@ async function runAllAgents(http: HttpClient, uiText: string, withAi: boolean): 
     ['Security Goblin', () => runSecurityGoblin(http)],
     ['Performance Miser', () => runPerformanceMiser(http, withAi)],
     ['Commercial Snob', () => runCommercialSnob(http, withAi)],
+    ['Guidance Annoyance Tester', () => runGuidanceAnnoyanceTester(http, uiText)],
+    ['AI Router Auditor', () => runAiRouterAuditor(http)],
+    ['Asset Ingestion Auditor', () => runAssetIngestionAuditor(http)],
+    ['Intimacy Editor', () => runIntimacyEditor(http, uiText)],
+    ['Export Inspector', () => runExportInspector(http)],
+    ['James Usability Tester', () => runJamesUsabilityTester(http, uiText)],
   ];
   const agents: AgentReport[] = [];
   for (const [name, run] of steps) {
