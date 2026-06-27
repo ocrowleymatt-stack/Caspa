@@ -158,13 +158,33 @@ export function normalizeOutputKind(type: string, metadata?: OutputMetadata): Ou
   return map[kind] ?? map[type] ?? 'other';
 }
 
-export function extractOutputText(metadata?: OutputMetadata): string {
+export function extractOutputText(metadata?: OutputMetadata | Record<string, unknown>): string {
   if (!metadata) return '';
-  return (
-    metadata.text?.trim()
-    || metadata.revisedText?.trim()
-    || ''
-  );
+
+  const meta = metadata as Record<string, unknown>;
+  const keys = [
+    'text', 'content', 'revisedText', 'finalText', 'finalProse',
+    'improvedRewrite', 'rewrite', 'firstDraft', 'output', 'result', 'draft', 'report',
+  ] as const;
+
+  for (const key of keys) {
+    const value = meta[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+
+  const consensus = meta.consensus as { summary?: string; revisionPlan?: string[] } | undefined;
+  if (consensus?.summary?.trim()) return consensus.summary.trim();
+  if (consensus?.revisionPlan?.length) {
+    return consensus.revisionPlan.map((line) => `• ${line}`).join('\n');
+  }
+
+  if (typeof meta.critique === 'string' && meta.critique.trim()) return meta.critique.trim();
+
+  return '';
+}
+
+export function outputHasText(metadata?: OutputMetadata | Record<string, unknown>): boolean {
+  return extractOutputText(metadata).length > 0;
 }
 
 export function extractOutputProvenance(
@@ -219,16 +239,17 @@ export function extractOutputProvenance(
 }
 
 export function getApplyCapabilities(output: OutputRecord): OutputApplyCapabilities {
-  const text = extractOutputText(output.metadata);
   const meta = output.metadata ?? {};
   const sourceChapterId = meta.sourceChapterId ?? meta.chapterId;
+  const applyBlocked = Boolean((meta as Record<string, unknown>).applyBlocked ?? (meta as Record<string, unknown>).driftBlocked);
+  const hasText = outputHasText(output.metadata);
 
   return {
-    canCopy: Boolean(text),
-    canContinue: Boolean(output.projectId && text),
-    canGoldPass: Boolean(output.projectId && text),
-    canApplyToChapter: Boolean(output.projectId && sourceChapterId && text),
-    canExportMarkdown: Boolean(text || output.title),
+    canCopy: hasText,
+    canContinue: Boolean(output.projectId && hasText && !applyBlocked),
+    canGoldPass: Boolean(output.projectId && hasText),
+    canApplyToChapter: Boolean(output.projectId && sourceChapterId && hasText && !applyBlocked),
+    canExportMarkdown: Boolean(hasText || output.title),
     canOpenWorkbench: Boolean(output.projectId),
   };
 }

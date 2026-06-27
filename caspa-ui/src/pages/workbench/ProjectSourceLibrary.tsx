@@ -109,11 +109,16 @@ export default function ProjectSourceLibrary() {
 
   const createMutation = useMutation({
     mutationFn: (input: Parameters<typeof createProjectAsset>[1]) => createProjectAsset(projectId!, input),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['project-assets', projectId] });
       setPasteText('');
       setPasteTitle('');
-      toast.success('Source asset saved — original preserved.');
+      const units = result.structureSuggestion?.units?.length ?? 0;
+      if (units >= 2) {
+        toast.success(`Source saved — CASPA found ${units} possible chapters. Open Current Work to create them.`);
+      } else {
+        toast.success('Source asset saved — original preserved.');
+      }
     },
     onError: (err: Error) => toast.error(err.message),
   });

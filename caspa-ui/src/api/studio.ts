@@ -193,8 +193,8 @@ export async function createProjectAsset(
     kind?: AssetKind;
     detectedUse?: DetectedUse;
   },
-): Promise<ProjectAsset> {
-  return apiCall<ProjectAsset>(`/api/projects/${projectId}/assets`, {
+): Promise<{ asset: ProjectAsset; structureSuggestion?: { units: unknown[]; detectedType: string; confidence: string; suggestedNextSteps: string[] } | null }> {
+  return apiCall(`/api/projects/${projectId}/assets`, {
     method: 'POST',
     body: JSON.stringify(input),
   });

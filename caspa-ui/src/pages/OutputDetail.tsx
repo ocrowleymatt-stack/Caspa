@@ -223,10 +223,31 @@ export default function OutputDetail() {
         </section>
       )}
 
+      {Boolean((output.metadata as Record<string, unknown>)?.driftBlocked) && (
+        <section className="rounded-[1.8rem] border border-red-300 bg-red-50 p-5 shadow-paper">
+          <h2 className="font-serif text-2xl font-semibold text-red-900">Source drift detected</h2>
+          <p className="mt-2 text-sm leading-7 text-red-800">
+            Gold Pass drifted from the source. This has been kept as an alternative, not as a safe revision. Apply is blocked.
+          </p>
+        </section>
+      )}
+
       <section className="rounded-[1.8rem] border border-[#eadfca] bg-white/85 p-5 shadow-paper">
-        <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap font-serif text-lg leading-9 text-[#20202a]">
-          {text || 'No text stored for this output.'}
-        </pre>
+        {text ? (
+          <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap font-serif text-lg leading-9 text-[#20202a]">
+            {text}
+          </pre>
+        ) : (
+          <div className="py-8 text-center">
+            <p className="font-serif text-xl text-[#171a22]">No readable text stored for this output.</p>
+            <p className="mt-2 text-sm text-muted">
+              This may be a structure report, legacy record, or failed save. Apply, continue, and export are disabled.
+            </p>
+            {Boolean((output.metadata as Record<string, unknown>)?.unrecoverable) && (
+              <p className="mt-2 text-xs text-red-700">Marked unrecoverable — rerun the tool to regenerate.</p>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

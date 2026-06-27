@@ -44,15 +44,36 @@ export interface GoldPassResult {
   };
 }
 
+export async function createGoldSourceLock(body: {
+  projectId: string;
+  sourceType?: string;
+  chapterId?: string;
+  unitId?: string;
+  outputId?: string;
+  pastedText?: string;
+  mode?: string;
+}) {
+  return apiCall<{
+    sourceLockId: string;
+    title: string;
+    wordCount: number;
+    sourcePreviewStart: string;
+    sourcePreviewEnd: string;
+    mode: string;
+  }>('/api/gold/source-lock', { method: 'POST', body: JSON.stringify(body) });
+}
+
 export async function runGoldPass(
   projectId: string,
   source?: string,
   options?: {
+    sourceLockId?: string;
     improveText?: boolean;
     stage?: 'draft' | 'revision' | 'submission';
     swarmOutputId?: string;
     awardAssessmentOutputId?: string;
     includeElevationSteps?: boolean;
+    mode?: string;
   },
 ) {
   return apiCall<GoldPassResult>('/api/gold/run', {
