@@ -2,6 +2,8 @@ import { asyncHandler, createElevationRouter, param, sendError, sendSuccess } fr
 import { toolRegistry } from '../command-orchestrator/ToolRegistry';
 import { casperFreestyleEngine } from './CasperFreestyleEngine';
 import { freestyleSessionStore } from './FreestyleSessionStore';
+import { caspaJobService } from '../jobs/CaspaJobService';
+import { novelQualityPassService } from './NovelQualityPassService';
 import { novelWriteProService } from './NovelWriteProService';
 import { continueWritingService, type ContinueMode } from './ContinueWritingService';
 import { bookCompletionService } from '../book/BookCompletionService';
@@ -96,7 +98,53 @@ casperRouter.post(
       return;
     }
 
-    sendSuccess(res, await novelWriteProService.generate(body), 201);
+    const job = await caspaJobService.create({
+      userId: req.user?.id,
+      projectId: body.projectId,
+      type: 'novel-write-pro',
+      stages: [
+        { id: 'plan', label: 'Plan' },
+        { id: 'draft', label: 'First draft' },
+        { id: 'critic', label: 'Critic pass' },
+        { id: 'rewrite', label: 'Rewrite' },
+      ],
+      payload: {
+        improveExisting: body.improveExisting ?? false,
+        mode: body.mode ?? 'novel',
+        chapterId: body.chapterId,
+      },
+    });
+
+    try {
+      await caspaJobService.startStage(job.id, 'plan');
+      const result = await novelWriteProService.generate(body);
+      await caspaJobService.complete(job.id, {
+        outputId: result.outputId,
+        kind: result.kind,
+        title: result.title,
+      });
+      sendSuccess(res, { ...result, caspaJobId: job.id }, 201);
+    } catch (err) {
+      await caspaJobService.fail(job.id, err instanceof Error ? err.message : 'Novel Write Pro failed');
+      throw err;
+    }
+  }),
+);
+
+casperRouter.post(
+  '/api/casper/quality-pass',
+  asyncHandler(async (req, res) => {
+    const body = req.body as {
+      projectId?: string;
+      chapterId?: string;
+      content?: string;
+      mode?: NovelWriteProMode;
+    };
+    if (!body.content?.trim() && !body.chapterId?.trim()) {
+      sendError(res, new Error('content or chapterId is required'), 400);
+      return;
+    }
+    sendSuccess(res, await novelQualityPassService.assess(body));
   }),
 );
 

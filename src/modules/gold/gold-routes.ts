@@ -7,6 +7,7 @@ import { standardOutputProvenance } from '../../shared/outputSemantics';
 import type { UserPublic } from '../auth/types';
 import { ProjectService } from '../manuscript/ProjectService';
 import { outputRegistry } from '../outputs';
+import { caspaJobService } from '../jobs/CaspaJobService';
 import { goldPipeline } from './GoldPipeline';
 import { goldSynthesisService } from './GoldSynthesisService';
 import {
@@ -114,20 +115,50 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     return;
   }
 
-  const synthesis = await goldSynthesisService.synthesize({
+  const job = await caspaJobService.create({
+    userId: req.user?.id,
     projectId: body.projectId,
-    sourceText,
-    sourceLock: sourceLock ?? undefined,
-    improveText: body.improveText ?? true,
-    stage: body.stage,
-    swarmOutputId: body.swarmOutputId,
-    awardAssessmentOutputId: body.awardAssessmentOutputId,
-    includeElevationSteps: body.includeElevationSteps,
-  }, getUser(req));
+    type: 'gold-pass',
+    stages: [
+      { id: 'synthesis', label: 'Gold synthesis' },
+      ...(body.includeElevationSteps ? [{ id: 'elevation', label: 'Elevation steps' }] : []),
+    ],
+    payload: {
+      sourceLockId: body.sourceLockId,
+      mode: body.mode,
+    },
+  });
 
+  let synthesis;
   let report: GoldReport | undefined;
-  if (body.includeElevationSteps) {
-    report = await goldPipeline.run(body.projectId, { sourceText });
+
+  try {
+    await caspaJobService.startStage(job.id, 'synthesis');
+    synthesis = await goldSynthesisService.synthesize({
+      projectId: body.projectId,
+      sourceText,
+      sourceLock: sourceLock ?? undefined,
+      improveText: body.improveText ?? true,
+      stage: body.stage,
+      swarmOutputId: body.swarmOutputId,
+      awardAssessmentOutputId: body.awardAssessmentOutputId,
+      includeElevationSteps: body.includeElevationSteps,
+    }, getUser(req));
+    await caspaJobService.completeStage(job.id, 'synthesis', {
+      stage: synthesis.stage,
+    });
+
+    if (body.includeElevationSteps) {
+      await caspaJobService.startStage(job.id, 'elevation');
+      report = await goldPipeline.run(body.projectId, { sourceText });
+      await caspaJobService.completeStage(job.id, 'elevation', {
+        reportId: report?.id,
+        overallScore: report?.overallScore,
+      });
+    }
+  } catch (err) {
+    await caspaJobService.fail(job.id, err instanceof Error ? err.message : 'Gold Pass failed');
+    throw err;
   }
 
   const improved = synthesis.improvedText ?? synthesis.revisionPlan.join('\n');
@@ -182,8 +213,16 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     },
   });
 
+  await caspaJobService.complete(job.id, {
+    outputId: record.id,
+    driftBlocked,
+    fidelity,
+  });
+
   sendSuccess(res, {
-    jobId: report?.id ?? record.id,
+    jobId: job.id,
+    caspaJobId: job.id,
+    goldReportId: report?.id,
     status: 'complete',
     outputId: record.id,
     synthesis,
