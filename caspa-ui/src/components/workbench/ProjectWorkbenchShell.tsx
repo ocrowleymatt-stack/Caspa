@@ -10,18 +10,18 @@ import { useAppStore } from '../../store';
 
 const TABS = [
   { slug: '', label: 'Overview', group: 'primary' as const },
-  { slug: 'structure', label: 'Structure', group: 'primary' as const },
-  { slug: 'sources', label: 'Source Library', group: 'primary' as const },
-  { slug: 'manuscript', label: 'Manuscript', group: 'primary' as const },
-  { slug: 'pier', label: 'Pier Builder', group: 'primary' as const },
-  { slug: 'research', label: 'Research', group: 'primary' as const },
+  { slug: 'sources', label: 'Sources', group: 'primary' as const },
+  { slug: 'bible', label: 'Plan', group: 'primary' as const },
+  { slug: 'manuscript', label: 'Write', group: 'primary' as const },
   { slug: 'gold', label: 'Improve', group: 'primary' as const },
-  { slug: 'bible', label: 'Bible', group: 'primary' as const },
-  { slug: 'book-map', label: 'Book Map', group: 'primary' as const },
   { slug: 'outputs', label: 'Saved Writing', group: 'primary' as const },
+  { slug: 'export', label: 'Export', group: 'primary' as const },
+  { slug: 'book-map', label: 'Book Map', group: 'secondary' as const },
+  { slug: 'structure', label: 'Structure', group: 'secondary' as const },
+  { slug: 'pier', label: 'Pier Builder', group: 'secondary' as const },
+  { slug: 'research', label: 'Research', group: 'secondary' as const },
   { slug: 'awards', label: 'Awards Shelf', group: 'secondary' as const },
   { slug: 'swarm', label: 'Agent Swarm', group: 'secondary' as const },
-  { slug: 'export', label: 'Export', group: 'secondary' as const },
 ] as const;
 
 const SOURCE_TABS = new Set(['pier', 'research', 'swarm', 'awards', 'gold']);
@@ -74,11 +74,11 @@ export function ProjectWorkbenchShell() {
                 {project.title}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                One room for structure, research, swarm critique, awards lenses, gold synthesis, and exports.
+                Sources → Plan → Write → Improve → Export. Advanced tools stay in the secondary tab row.
               </p>
             </div>
             <Link to={`/projects/${id}/bible`} className="btn-secondary text-xs">
-              Project Bible
+              Open Plan
             </Link>
           </div>
         </div>

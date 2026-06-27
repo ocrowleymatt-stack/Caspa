@@ -83,21 +83,21 @@ const elevationItems = [
 
 const projectPrimaryLinks = (projectId: string) => [
   { to: `/projects/${projectId}`, label: 'Overview', icon: PenLine, end: true },
-  { to: `/projects/${projectId}/sources`, label: 'Source Library', icon: FileText },
+  { to: `/projects/${projectId}/sources`, label: 'Sources', icon: FileText },
+  { to: `/projects/${projectId}/bible`, label: 'Plan', icon: BookOpen },
   { to: `/projects/${projectId}/manuscript`, label: 'Write', icon: BookOpen },
-  { to: `/projects/${projectId}/bible`, label: 'Bible', icon: BookOpen },
-  { to: `/projects/${projectId}/book-map`, label: 'Book Map', icon: Map },
+  { to: `/projects/${projectId}/gold`, label: 'Improve', icon: Gem },
   { to: `/projects/${projectId}/outputs`, label: 'Saved Writing', icon: Package },
-  { to: `/projects/${projectId}/research`, label: 'Research', icon: BookMarked },
+  { to: `/projects/${projectId}/export`, label: 'Export', icon: Upload },
 ];
 
 const projectSecondaryLinks = (projectId: string) => [
-  { to: `/projects/${projectId}/gold`, label: 'Improve', icon: Gem },
+  { to: `/projects/${projectId}/book-map`, label: 'Book Map', icon: Map },
   { to: `/projects/${projectId}/structure`, label: 'Structure', icon: Map },
+  { to: `/projects/${projectId}/research`, label: 'Research', icon: BookMarked },
   { to: `/projects/${projectId}/pier`, label: 'Pier', icon: Anchor },
   { to: `/projects/${projectId}/swarm`, label: 'Swarm', icon: Users },
   { to: `/projects/${projectId}/awards`, label: 'Awards', icon: Trophy },
-  { to: `/projects/${projectId}/export`, label: 'Export', icon: Upload },
 ];
 
 function NavSection({
