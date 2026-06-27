@@ -26,10 +26,17 @@ export async function getGoldReport(projectId: string) {
 
 export interface GoldPassResult {
   jobId: string;
+  caspaJobId?: string;
   status: string;
   outputId: string;
   improved: string;
   critique: string;
+  driftBlocked?: boolean;
+  fidelity?: {
+    verdict: string;
+    sameStoryScore: number;
+    driftWarnings?: string[];
+  };
   report?: GoldReport;
   synthesis?: {
     judgeAssessment: string;

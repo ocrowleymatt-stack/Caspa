@@ -504,7 +504,7 @@ async function runOutputAuditor(http: HttpClient, withAi: boolean): Promise<Agen
 
   r.tested.push('GET /api/outputs?projectId=');
   const listRes = await http.request('GET', `/api/outputs?projectId=${pid}`);
-  const outputs = unwrap<Array<{ id: string; projectId?: string; type?: string }>>(listRes.data);
+  const outputs = unwrap<Array<{ id: string; projectId?: string; type?: string; hasText?: boolean; excerpt?: string }>>(listRes.data);
   if (!listRes.ok) fail(r, 'Outputs list failed', undefined, 'blocker');
   else {
     r.evidence.push(`Outputs list count=${outputs.length}`);
@@ -512,6 +512,7 @@ async function runOutputAuditor(http: HttpClient, withAi: boolean): Promise<Agen
       const found = outputs.find((o) => o.id === oid);
       if (!found) fail(r, `Output ${oid.slice(0, 8)} not in list`, 'Ensure outputs list includes all kinds', 'high');
       else if (found.projectId !== pid) fail(r, `Output missing/wrong projectId`, undefined, 'high');
+      else if (found.hasText === false) fail(r, `Output ${oid.slice(0, 8)} missing hasText`, 'Run repair:outputs / fix output semantics', 'blocker');
     }
   }
 
@@ -519,7 +520,75 @@ async function runOutputAuditor(http: HttpClient, withAi: boolean): Promise<Agen
     r.tested.push('GET /api/outputs/:id');
     const detail = await http.request('GET', `/api/outputs/${outputIds[0]}`);
     if (!detail.ok) fail(r, 'Output detail route broken', undefined, 'blocker');
+    else {
+      const detailData = unwrap<{ metadata?: Record<string, unknown>; hasText?: boolean }>(detail.data);
+      if (detailData.hasText === false && !detailData.metadata?.text) {
+        fail(r, 'Output detail missing readable text', 'Ensure enrichOutputRecord on detail route', 'blocker');
+      } else {
+        r.evidence.push(`Output detail hasText=${String(detailData.hasText ?? !!detailData.metadata?.text)}`);
+      }
+    }
   }
+
+  finalize(r);
+  return r;
+}
+
+async function runGoldFidelityAuditor(http: HttpClient): Promise<AgentReport> {
+  const r = makeAgent('Gold Fidelity Auditor');
+  const projectRes = await http.request('POST', '/api/projects', {
+    title: `QA Gold ${Date.now()}`,
+    genre: 'Novel',
+    workType: 'novel',
+    targetWordCount: 80000,
+    status: 'draft',
+  });
+  const project = unwrap<{ id: string }>(projectRes.data);
+  const pid = project.id;
+
+  r.tested.push('POST /api/projects/:id/chapters');
+  const chapterRes = await http.request('POST', `/api/projects/${pid}/chapters`, {
+    title: 'QA Gold chapter',
+    order: 1,
+    content: 'Mara reached the lighthouse before dawn. Tomas waited with the broken foghorn.',
+  });
+  const chapter = unwrap<{ id: string }>(chapterRes.data);
+
+  r.tested.push('POST /api/gold/source-lock');
+  const lockRes = await http.request('POST', '/api/gold/source-lock', {
+    projectId: pid,
+    sourceType: 'chapter',
+    chapterId: chapter.id,
+    mode: 'improve-same-story',
+  });
+  const lock = unwrap<{ sourceLockId?: string; wordCount?: number; sourcePreviewStart?: string }>(lockRes.data);
+  if (!lockRes.ok || !lock.sourceLockId) {
+    fail(r, 'Gold source lock failed', 'Ensure /api/gold/source-lock route', 'blocker');
+    finalize(r);
+    return r;
+  }
+  r.evidence.push(`Source lock ${lock.sourceLockId.slice(0, 8)} · ${lock.wordCount ?? 0} words`);
+
+  r.tested.push('GET /api/gold/source-lock/:id');
+  const getLock = await http.request('GET', `/api/gold/source-lock/${lock.sourceLockId}?projectId=${pid}`);
+  if (!getLock.ok) fail(r, 'Gold source lock GET failed', undefined, 'high');
+
+  r.tested.push('POST /api/casper/quality-pass');
+  const qualityRes = await http.request('POST', '/api/casper/quality-pass', {
+    projectId: pid,
+    chapterId: chapter.id,
+    mode: 'polish',
+  });
+  const quality = unwrap<{ overallScore?: number; status?: string; findings?: unknown[] }>(qualityRes.data);
+  if (!qualityRes.ok || typeof quality.overallScore !== 'number') {
+    fail(r, 'Novel quality pass route failed', 'Ensure /api/casper/quality-pass', 'high');
+  } else {
+    r.evidence.push(`Quality pass score=${quality.overallScore} status=${quality.status}`);
+  }
+
+  r.tested.push('GET /api/projects/:id/jobs/latest');
+  const latestJob = await http.request('GET', `/api/projects/${pid}/jobs/latest`);
+  if (!latestJob.ok) warn(r, 'Project jobs/latest route unavailable');
 
   finalize(r);
   return r;
@@ -1107,6 +1176,7 @@ async function runAllAgents(http: HttpClient, uiText: string, withAi: boolean): 
     ['Manuscript Surgeon', () => runManuscriptSurgeon(http)],
     ['Continuity Pedant', () => runContinuityPedant(http, withAi)],
     ['Output Auditor', () => runOutputAuditor(http, withAi)],
+    ['Gold Fidelity Auditor', () => runGoldFidelityAuditor(http)],
     ['Data-Loss Paranoid', () => runDataLossParanoid(http)],
     ['UX Sadist', () => runUxSadist(http, uiText)],
     ['Security Goblin', () => runSecurityGoblin(http)],

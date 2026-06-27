@@ -53,6 +53,25 @@ export interface NovelWriteProResult {
   };
 }
 
+export function runNovelQualityPass(body: {
+  projectId?: string;
+  chapterId?: string;
+  content?: string;
+  mode?: string;
+}) {
+  return apiCall<{
+    overallScore: number;
+    status: string;
+    findings: Array<{ gate: string; status: string; score: number; issues: string[] }>;
+    recommendedRewritePrompt: string;
+    wordCount: number;
+    mode: string;
+  }>('/api/casper/quality-pass', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export function runNovelWritePro(body: {
   projectId?: string;
   chapterId?: string;

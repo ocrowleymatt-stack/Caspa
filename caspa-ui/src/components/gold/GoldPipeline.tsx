@@ -5,6 +5,8 @@ import { Loader2 } from 'lucide-react';
 import { listChapters } from '../../api/chapters';
 import { listProjects } from '../../api/projects';
 import { getGoldReport, runGoldPass, runGoldPipeline, type GoldRunOptions } from '../../api/gold';
+import { GoldSourceConfirmModal, type GoldSourceChoice } from './GoldSourceConfirmModal';
+import { JobRecoveryBanner } from '../JobRecoveryBanner';
 import {
   executeGoldPipelineStream,
   isGoldPipelineStreamEvent,
@@ -63,6 +65,8 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
   const [lastEvent, setLastEvent] = useState<PipelineRunEvent | null>(null);
   const [steps, setSteps] = useState<PipelineStep[]>(createInitialSteps);
   const [runId, setRunId] = useState('');
+  const [showSourceModal, setShowSourceModal] = useState(false);
+  const [lockedSourceLabel, setLockedSourceLabel] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const streamCompleteRef = useRef(false);
@@ -243,21 +247,40 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
     finishPipeline(report, scopeLabel, options);
   };
 
-  const runQuickGoldPass = async () => {
-    if (!projectId) {
-      toast.error('Select active project in sidebar');
-      return;
+  const goldSourceChoices = useMemo((): GoldSourceChoice[] => {
+    const items: GoldSourceChoice[] = [];
+    if (workbenchText.trim()) {
+      items.push({
+        type: 'workbench',
+        pastedText: workbenchText,
+        label: `Workbench source (${workbenchText.trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words)`,
+      });
     }
-    const scopeChapter = chapters.find((ch) => selectedChapters.includes(ch.id));
-    const fallbackSource =
-      scopeChapter?.content ?? chapters.map((ch) => ch.content).join('\n\n').slice(0, 12000);
-    const source = workbenchText.trim() || fallbackSource;
+    for (const chapter of [...chapters].sort((a, b) => a.order - b.order)) {
+      if (selectedChapters.includes(chapter.id) || selectedChapters.includes('book')) {
+        items.push({
+          type: 'chapter',
+          chapterId: chapter.id,
+          label: `Chapter ${chapter.order}: ${chapter.title}`,
+        });
+      }
+    }
+    if (items.length === 0) {
+      items.push({ type: 'current-manuscript', label: 'Current manuscript (all chapters)' });
+    }
+    return items;
+  }, [chapters, selectedChapters, workbenchText]);
+
+  const runQuickGoldPassWithLock = async (sourceLockId: string) => {
+    if (!projectId) return;
     setIsProcessing(true);
     setPipelineError(null);
     try {
-      const result = await runGoldPass(projectId, source, {
+      const result = await runGoldPass(projectId, undefined, {
+        sourceLockId,
         improveText: selectedDepth === 'deep',
         stage: 'revision',
+        mode: 'improve-same-story',
       });
       const synthesis = result.synthesis;
       setPipelineOutput({
@@ -282,12 +305,28 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
         exportReason: `Synthesis saved to Outputs (${result.outputId.slice(0, 8)})`,
       });
       setRunId(result.jobId);
-      toast.success(`Gold synthesis saved · ${result.outputId.slice(0, 8)}`);
+      if (result.driftBlocked) {
+        toast.error('Gold Pass drift detected — saved as alternative only');
+      } else {
+        toast.success(`Gold synthesis saved · ${result.outputId.slice(0, 8)}`);
+      }
     } catch (err) {
       failPipeline(err instanceof Error ? err.message : 'Gold Pass failed');
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const openGoldSourceModal = () => {
+    if (!projectId) {
+      toast.error('Select active project in sidebar');
+      return;
+    }
+    if (goldSourceChoices.length === 0) {
+      toast.error('No manuscript source available for Gold Pass');
+      return;
+    }
+    setShowSourceModal(true);
   };
 
   const executeGoldPipeline = async () => {
@@ -460,6 +499,22 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
 
   return (
     <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-start animate-fadeIn">
+      {projectId ? (
+        <div className="lg:col-span-3">
+          <JobRecoveryBanner projectId={projectId} />
+        </div>
+      ) : null}
+      <GoldSourceConfirmModal
+        open={showSourceModal}
+        projectId={projectId ?? ''}
+        choices={goldSourceChoices}
+        onClose={() => setShowSourceModal(false)}
+        onConfirmed={(sourceLockId, preview) => {
+          setLockedSourceLabel(`${preview.title} · ${preview.wordCount.toLocaleString()} words locked`);
+          setShowSourceModal(false);
+          void runQuickGoldPassWithLock(sourceLockId);
+        }}
+      />
       <div className="lg:col-span-2 space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-100 flex items-center gap-2">
@@ -602,6 +657,11 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
           </div>
 
           <div className="pt-2">
+            {lockedSourceLabel ? (
+              <p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-mono text-emerald-300">
+                Source locked: {lockedSourceLabel}
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={executeGoldPipeline}
@@ -621,11 +681,11 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
             </button>
             <button
               type="button"
-              onClick={runQuickGoldPass}
+              onClick={openGoldSourceModal}
               disabled={isProcessing || !projectId}
               className="mt-2 w-full py-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
             >
-              Run Gold Pass (save output)
+              Run Gold Pass (confirm source)
             </button>
           </div>
           {isProcessing && (
