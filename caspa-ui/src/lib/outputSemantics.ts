@@ -116,9 +116,26 @@ export interface OutputApplyCapabilities {
   canContinue: boolean;
   canGoldPass: boolean;
   canApplyToChapter: boolean;
+  canAppendToChapter: boolean;
+  canSaveAsNewUnit: boolean;
   canExportMarkdown: boolean;
   canOpenWorkbench: boolean;
+  isArchiveOnly: boolean;
 }
+
+/** Kinds that are metadata/report artefacts — apply actions are disabled by design. */
+export const ARCHIVE_ONLY_KINDS = new Set<OutputKind>([
+  'book-map',
+  'finish-book',
+  'imported-source-analysis',
+  'pier-survey',
+  'structural-pole',
+  'agent-swarm-report',
+  'claim-extraction',
+  'accuracy-check',
+  'export-package',
+  'project-bible',
+]);
 
 export function normalizeOutputKind(type: string, metadata?: OutputMetadata): OutputKind {
   const kind = metadata?.kind ?? type;
@@ -240,18 +257,33 @@ export function extractOutputProvenance(
 
 export function getApplyCapabilities(output: OutputRecord): OutputApplyCapabilities {
   const meta = output.metadata ?? {};
-  const sourceChapterId = meta.sourceChapterId ?? meta.chapterId;
+  const sourceChapterId = meta.sourceChapterId ?? meta.chapterId ?? meta.unitId;
   const applyBlocked = Boolean((meta as Record<string, unknown>).applyBlocked ?? (meta as Record<string, unknown>).driftBlocked);
   const hasText = outputHasText(output.metadata);
+  const kind = normalizeOutputKind(output.type, meta);
+  const isArchiveOnly = ARCHIVE_ONLY_KINDS.has(kind) || Boolean((meta as Record<string, unknown>).unrecoverable);
 
   return {
     canCopy: hasText,
-    canContinue: Boolean(output.projectId && hasText && !applyBlocked),
-    canGoldPass: Boolean(output.projectId && hasText),
-    canApplyToChapter: Boolean(output.projectId && sourceChapterId && hasText && !applyBlocked),
+    canContinue: Boolean(output.projectId && hasText && !applyBlocked && !isArchiveOnly),
+    canGoldPass: Boolean(output.projectId && hasText && !isArchiveOnly),
+    canApplyToChapter: Boolean(output.projectId && sourceChapterId && hasText && !applyBlocked && !isArchiveOnly),
+    canAppendToChapter: Boolean(output.projectId && sourceChapterId && hasText && !applyBlocked && !isArchiveOnly),
+    canSaveAsNewUnit: Boolean(output.projectId && hasText && !applyBlocked && !isArchiveOnly),
     canExportMarkdown: Boolean(hasText || output.title),
     canOpenWorkbench: Boolean(output.projectId),
+    isArchiveOnly,
   };
+}
+
+export function archiveOnlyEmptyMessage(kind: OutputKind): string {
+  if (kind === 'book-map') return 'Book Map report — open Book Map to use this structure plan.';
+  if (kind === 'finish-book') return 'Finish roadmap — use Book Map or Finish This Book to act on it.';
+  if (kind === 'imported-source-analysis') return 'Import analysis — metadata only; re-upload source if needed.';
+  if (kind === 'export-package') return 'Export package — download from Export tab.';
+  if (kind === 'project-bible') return 'Project Bible snapshot — edit in Bible tab.';
+  if (kind === 'agent-swarm-report') return 'Swarm critique report — review notes here or run a revision pass.';
+  return 'Archive record — no prose to apply. Rerun the tool to regenerate text.';
 }
 
 export function outputExcerpt(text: string, limit = 220): string {

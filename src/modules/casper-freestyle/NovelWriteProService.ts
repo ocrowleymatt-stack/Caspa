@@ -1,6 +1,7 @@
 import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
 import { productionBriefService } from '../studio/ProductionBriefService';
 import { aiOrchestrator } from '../ai';
+import { caspaJobService } from '../jobs/CaspaJobService';
 import { projectBibleService } from '../manuscript/ProjectBibleService';
 import { outputRegistry } from '../outputs';
 import { bookContextLoader } from '../book/BookContextLoader';
@@ -30,6 +31,7 @@ export interface NovelWriteProRequest {
   uploadedName?: string | null;
   modeTitle?: string;
   genre?: string;
+  caspaJobId?: string;
 }
 
 export interface NovelWriteProStructuredArtifacts {
@@ -100,6 +102,15 @@ function inferProvider(model: string): string {
 
 export class NovelWriteProService {
   async generate(body: NovelWriteProRequest): Promise<NovelWriteProResult> {
+    const touchStage = async (stageId: string, phase: 'start' | 'complete') => {
+      if (!body.caspaJobId) return;
+      if (phase === 'start') {
+        await caspaJobService.startStage(body.caspaJobId, stageId);
+      } else {
+        await caspaJobService.completeStage(body.caspaJobId, stageId);
+      }
+    };
+
     const mode = body.mode ?? 'script';
     const output = body.output ?? 'Act One';
     const modeTitle = body.modeTitle ?? modeTitles[mode];
@@ -148,6 +159,7 @@ export class NovelWriteProService {
       maxTokens: 4200,
     };
 
+    await touchStage('plan', 'start');
     const planResponse = await aiOrchestrator.generate({
       ...generateOpts,
       prompt: [
@@ -168,7 +180,9 @@ export class NovelWriteProService {
       characterWoundMap: 'Protagonist carries a hidden wound driving every scene.',
       scenePlan: [`Opening beat for ${output}`, 'Escalation', 'Reversal', 'Cost', 'Resonant image ending'],
     });
+    await touchStage('plan', 'complete');
 
+    await touchStage('draft', 'start');
     const draftResponse = await aiOrchestrator.generate({
       ...generateOpts,
       prompt: [
@@ -184,7 +198,9 @@ export class NovelWriteProService {
         'Novel Write Pro planning succeeded but first draft was empty. Check Ollama or cloud billing.',
       );
     }
+    await touchStage('draft', 'complete');
 
+    await touchStage('critic', 'start');
     const criticResponse = await aiOrchestrator.generate({
       ...generateOpts,
       prompt: buildCriticPrompt(plan, firstDraft),
@@ -192,7 +208,9 @@ export class NovelWriteProService {
       maxTokens: 1800,
     });
     const criticReport = criticResponse.text.trim() || 'Critic room: strengthen hook, scene turns and subtext.';
+    await touchStage('critic', 'complete');
 
+    await touchStage('rewrite', 'start');
     const rewriteResponse = await aiOrchestrator.generate({
       ...generateOpts,
       prompt: [
@@ -201,6 +219,7 @@ export class NovelWriteProService {
       ].join(''),
     });
     const improvedRewrite = rewriteResponse.text.trim() || firstDraft;
+    await touchStage('rewrite', 'complete');
 
     const model = rewriteResponse.model || draftResponse.model || planResponse.model;
     const provider = inferProvider(model);
@@ -243,6 +262,7 @@ export class NovelWriteProService {
         sourceChapterTitle: body.sourceChapterTitle,
         improvementMode: isManuscriptImprovement ? 'polish' : mode,
         improveExisting: isManuscriptImprovement,
+        destination: body.chapterId ? 'beside-unit' : 'writing-history',
       },
     });
 

@@ -16,6 +16,7 @@ import {
   getApplyCapabilities,
   normalizeOutputKind,
   OUTPUT_KIND_LABELS,
+  archiveOnlyEmptyMessage,
 } from '../lib/outputSemantics';
 import { useToast } from '../components/Toast';
 
@@ -39,7 +40,9 @@ export default function OutputDetail() {
   });
 
   const text = extractOutputText(output?.metadata);
-  const sourceChapterId = output?.metadata?.sourceChapterId ?? output?.metadata?.chapterId;
+  const sourceChapterId = output?.metadata?.sourceChapterId
+    ?? output?.metadata?.chapterId
+    ?? output?.metadata?.unitId;
   const provenance = useMemo(
     () => (output ? extractOutputProvenance(output, sourceProject?.workType) : null),
     [output, sourceProject?.workType],
@@ -126,12 +129,67 @@ export default function OutputDetail() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const appendMutation = useMutation({
+    mutationFn: async () => {
+      if (!output?.projectId || !sourceChapterId) {
+        throw new Error('Missing project or chapter for append.');
+      }
+      return applyManuscriptOutput(output.projectId, {
+        outputId: output.id,
+        mode: 'append-unit',
+        unitId: sourceChapterId,
+        confirmed: true,
+      });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['chapter', sourceChapterId] });
+      queryClient.invalidateQueries({ queryKey: ['chapters', output?.projectId] });
+      toast.success(`Appended safely · snapshot ${result.snapshotId.slice(0, 8)}`);
+      navigate(`/projects/${output!.projectId}/chapters/${result.unitId}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const newUnitMutation = useMutation({
+    mutationFn: async (newUnitTitle?: string) => {
+      if (!output?.projectId) throw new Error('Missing project for new section.');
+      return applyManuscriptOutput(output.projectId, {
+        outputId: output.id,
+        mode: 'new-unit',
+        newUnitTitle: newUnitTitle?.trim() || undefined,
+        confirmed: true,
+      });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['chapters', output?.projectId] });
+      toast.success(`New section created · snapshot ${result.snapshotId.slice(0, 8)}`);
+      navigate(`/projects/${output!.projectId}/chapters/${result.unitId}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   function handleApplyRevision() {
     const confirmed = confirm(
       'Replace the current chapter text with this revision? A snapshot will be created first. The previous version will remain in chapter history.',
     );
     if (!confirmed) return;
     applyRevisionMutation.mutate();
+  }
+
+  function handleAppendToChapter() {
+    const confirmed = confirm(
+      'Append this text to the end of the chapter? A snapshot will be created first.',
+    );
+    if (!confirmed) return;
+    appendMutation.mutate();
+  }
+
+  function handleSaveAsNewUnit() {
+    const title = prompt('New section title (optional):', output?.title ?? 'Applied section');
+    if (title === null) return;
+    const confirmed = confirm('Create a new manuscript section from this output? A snapshot will be created first.');
+    if (!confirmed) return;
+    newUnitMutation.mutate(title || undefined);
   }
 
   const autoGoldStarted = useRef(false);
@@ -211,10 +269,14 @@ export default function OutputDetail() {
             onContinue={() => continueMutation.mutate()}
             onGold={handleGoldPass}
             onApply={handleApplyRevision}
+            onAppend={handleAppendToChapter}
+            onSaveAsNewUnit={handleSaveAsNewUnit}
             onExportMarkdown={exportMarkdown}
             continuePending={continueMutation.isPending}
             goldPending={goldMutation.isPending}
             applyPending={applyRevisionMutation.isPending}
+            appendPending={appendMutation.isPending}
+            newUnitPending={newUnitMutation.isPending}
           />
         </div>
       </header>
@@ -269,7 +331,9 @@ export default function OutputDetail() {
           <div className="py-8 text-center">
             <p className="font-serif text-xl text-[#171a22]">No readable text stored for this output.</p>
             <p className="mt-2 text-sm text-muted">
-              This may be a structure report, legacy record, or failed save. Apply, continue, and export are disabled.
+              {capabilities.isArchiveOnly
+                ? archiveOnlyEmptyMessage(provenance.kind)
+                : 'This may be a structure report, legacy record, or failed save. Apply, continue, and export are disabled.'}
             </p>
             {Boolean((output.metadata as Record<string, unknown>)?.unrecoverable) && (
               <p className="mt-2 text-xs text-red-700">Marked unrecoverable — rerun the tool to regenerate.</p>

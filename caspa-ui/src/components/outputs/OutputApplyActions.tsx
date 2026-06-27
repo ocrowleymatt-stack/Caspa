@@ -9,10 +9,14 @@ interface Props {
   onContinue?: () => void;
   onGold?: () => void;
   onApply?: () => void;
+  onAppend?: () => void;
+  onSaveAsNewUnit?: () => void;
   onExportMarkdown?: () => void;
   continuePending?: boolean;
   goldPending?: boolean;
   applyPending?: boolean;
+  appendPending?: boolean;
+  newUnitPending?: boolean;
 }
 
 export function OutputApplyActions({
@@ -22,10 +26,14 @@ export function OutputApplyActions({
   onContinue,
   onGold,
   onApply,
+  onAppend,
+  onSaveAsNewUnit,
   onExportMarkdown,
   continuePending,
   goldPending,
   applyPending,
+  appendPending,
+  newUnitPending,
 }: Props) {
   return (
     <div className="space-y-3">
@@ -73,6 +81,28 @@ export function OutputApplyActions({
           >
             {applyPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
             Replace chapter text
+          </button>
+        )}
+        {capabilities.canAppendToChapter && onAppend && (
+          <button
+            type="button"
+            onClick={onAppend}
+            disabled={appendPending}
+            className="btn-secondary text-sm"
+          >
+            {appendPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
+            Append to chapter
+          </button>
+        )}
+        {capabilities.canSaveAsNewUnit && onSaveAsNewUnit && (
+          <button
+            type="button"
+            onClick={onSaveAsNewUnit}
+            disabled={newUnitPending}
+            className="btn-secondary text-sm"
+          >
+            {newUnitPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
+            Save as new section
           </button>
         )}
         {capabilities.canExportMarkdown && onExportMarkdown && (

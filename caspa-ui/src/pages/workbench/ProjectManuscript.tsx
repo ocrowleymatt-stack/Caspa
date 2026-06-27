@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,6 +32,7 @@ export default function ProjectManuscript() {
     detectedType: string;
     confidence: string;
   } | null>(null);
+  const [showStructureSuggestion, setShowStructureSuggestion] = useState(false);
 
   const { data: chapters = [], isLoading } = useQuery({
     queryKey: ['chapters', projectId],
@@ -71,10 +72,18 @@ export default function ProjectManuscript() {
         detectedType: report.detectedType ?? 'unknown',
         confidence: report.confidence ?? 'medium',
       });
+      setShowStructureSuggestion(false);
       toast.success(`CASPA found ${report.units?.length ?? 0} possible sections`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  useEffect(() => {
+    if (structureReport || analyseMutation.isPending) return;
+    if (sorted.length <= 1 && totalWords > 1500) {
+      setShowStructureSuggestion(true);
+    }
+  }, [sorted.length, totalWords, structureReport, analyseMutation.isPending]);
 
   const applyMutation = useMutation({
     mutationFn: () => applyStructure(projectId, { importMode: 'split-into-units' }),
@@ -174,6 +183,31 @@ export default function ProjectManuscript() {
           </p>
         )}
       </header>
+
+      {showStructureSuggestion && !structureReport && sorted.length > 0 && (
+        <section className="rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 sm:p-5">
+          <div className="font-serif text-lg font-semibold text-[#171a22]">
+            This looks like one long block ({totalWords.toLocaleString()} words)
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            CASPA can detect chapters or scenes and split them into Current Work sections — nothing changes until you apply.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={analyseMutation.isPending}
+              onClick={() => analyseMutation.mutate()}
+            >
+              {analyseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              Analyse structure
+            </button>
+            <button type="button" className="btn-secondary text-sm" onClick={() => setShowStructureSuggestion(false)}>
+              Not now
+            </button>
+          </div>
+        </section>
+      )}
 
       {structureReport && structureReport.units.length > 0 && (
         <section className="rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 sm:p-5">

@@ -133,3 +133,33 @@ export function applyManuscriptOutput(
     body: JSON.stringify(body),
   });
 }
+
+export interface AssembledManuscript {
+  projectId: string;
+  title: string;
+  mode: 'read-only-assemble';
+  currentWordCount: number;
+  targetWordCount: number;
+  completionPercent: number;
+  sections: Array<{
+    unitId: string;
+    title: string;
+    order: number;
+    wordCount: number;
+    unitType?: string;
+    unitStatus?: string;
+    sourceRole?: string;
+    content: string;
+    relatedOutputs: Array<{ outputId: string; title: string; kind?: string; hasText: boolean }>;
+  }>;
+  fullText: string;
+  warnings: string[];
+  exportReady: boolean;
+  assembledAt: string;
+}
+
+export function assembleManuscript(projectId: string) {
+  return apiCall<AssembledManuscript>(`/api/projects/${projectId}/manuscript/assemble`, {
+    method: 'POST',
+  });
+}

@@ -1,4 +1,6 @@
+import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
 import { aiWithFallback, getProjectChapters } from '../../shared/elevationHelpers';
+import { productionBriefService } from '../studio/ProductionBriefService';
 import { projectBibleService } from '../manuscript/ProjectBibleService';
 import { ProjectService } from '../manuscript/ProjectService';
 import { ChapterService } from '../manuscript/ChapterService';
@@ -48,6 +50,8 @@ export class BookCompletionService {
     const context = await bookContextLoader.load(input.projectId, input.user);
     const bookMap = (await bookMapService.get(input.projectId, input.user))
       ?? (await bookMapService.buildDraft(input.projectId, input.user));
+    const brief = await productionBriefService.get(input.projectId, input.user);
+    const creativeSpec = buildCreativeSpecPrompt(brief);
 
     const fallbackMissing: MissingChapterSuggestion[] = (bookMap.missingSections.length
       ? bookMap.missingSections
@@ -65,7 +69,8 @@ export class BookCompletionService {
         'Return JSON: { "missingChapters": [{ "title", "purpose", "estimatedWords", "priority": "high|medium|low" }],',
         '"nextBestChapter": { ... }, "finishRoadmap": [] }',
         'Do not suggest writing the whole book in one pass.',
-      ].join('\n'),
+        creativeSpec,
+      ].filter(Boolean).join('\n'),
       [
         context.summaryBlock,
         input.manuscriptText ? `Manuscript excerpt:\n${input.manuscriptText.slice(0, 4000)}` : '',
@@ -106,6 +111,7 @@ export class BookCompletionService {
         missingChapters,
         nextBestChapter,
         finishRoadmap,
+        destination: 'writing-history',
       },
     });
 
@@ -132,6 +138,8 @@ export class BookCompletionService {
       ?? (await bookMapService.buildDraft(input.projectId, input.user));
     const chapters = await getProjectChapters(input.projectId);
     const bible = await projectBibleService.get(input.projectId);
+    const brief = await productionBriefService.get(input.projectId, input.user);
+    const creativeSpec = buildCreativeSpecPrompt(brief);
 
     const modePrompts: Record<FinishBookMode, string> = {
       diagnose: 'Diagnose manuscript state: strengths, gaps, weak sections, continuity risks. Return JSON with diagnosis, gaps, weakSections, nextAction.',
@@ -148,7 +156,8 @@ export class BookCompletionService {
         'Use Project Bible, Book Map, chapters, swarm, research and gold context.',
         'Do NOT collapse the book into an essay or blurb.',
         'Do NOT attempt to write the entire book in one response.',
-      ].join('\n'),
+        creativeSpec,
+      ].filter(Boolean).join('\n'),
       [
         context.summaryBlock,
         `Bible premise: ${bible.premise}`,
@@ -191,6 +200,7 @@ export class BookCompletionService {
         text: chapterDraft,
         provider: 'caspa',
         finishRoadmap: parsed.finishRoadmap ?? bookMap.finishRoadmap,
+        destination: chapterDraft ? 'beside-unit' : 'writing-history',
       },
     });
 

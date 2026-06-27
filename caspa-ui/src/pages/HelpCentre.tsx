@@ -66,11 +66,11 @@ const SECTIONS = [
     next: 'Project → Improve (Gold) or Agent Swarm.',
   },
   {
-    title: 'Saved Writing & Safe Apply',
+    title: 'Writing History & Safe Apply',
     icon: Package,
-    body: 'Every AI run lands in Saved Writing. Apply modes create snapshots before destructive changes.',
-    when: 'Use this to find outputs and merge them safely into chapters.',
-    next: 'Saved Writing → open output → Apply safely.',
+    body: 'Every AI run lands in Writing History — an archive, not your live manuscript. Replace, append, or save as a new section only after review; each apply creates a snapshot first.',
+    when: 'Use this to find outputs and merge them safely into Current Work.',
+    next: 'Writing History → open output → Apply safely.',
   },
   {
     title: 'Exports',

@@ -1,6 +1,8 @@
 import { readCollection, findById } from '../../shared';
 import type { Chapter, Project } from '../../shared';
 import { readJsonFile, writeJsonFile } from '../../shared/fileStore';
+import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
+import { productionBriefService } from '../studio/ProductionBriefService';
 import { aiOrchestrator } from '../ai';
 import { outputRegistry } from '../outputs';
 
@@ -127,6 +129,9 @@ export class ProjectBibleService {
       .map((o) => `- ${o.title} (${o.type})`)
       .join('\n');
 
+    const brief = await productionBriefService.get(projectId).catch(() => null);
+    const creativeSpec = buildCreativeSpecPrompt(brief);
+
     const prompt = `You are Caspa Project Bible generator. Create a concise project bible as JSON only.
 
 PROJECT
@@ -140,6 +145,7 @@ ${excerpt || '[No chapters yet]'}
 RECENT OUTPUTS
 ${outputNotes || '[None yet]'}
 
+${creativeSpec ? `CREATIVE TARGET\n${creativeSpec}\n` : ''}
 Return valid JSON with keys:
 premise, genre, tone, intendedAudience, characters (array of {name, role, wound, desire}),
 setting, themes (array), structure, sourceNotes, styleRules (array), formatDecision,

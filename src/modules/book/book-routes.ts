@@ -7,6 +7,7 @@ import { projectSnapshotService } from './ProjectSnapshotService';
 import { projectExportService } from './ProjectExportService';
 import { manuscriptViewService } from './ManuscriptViewService';
 import { manuscriptApplyOutputService } from './ManuscriptApplyOutputService';
+import { manuscriptAssembleService } from './ManuscriptAssembleService';
 import { cutTightenService } from './CutTightenService';
 import { ChapterService } from '../manuscript/ChapterService';
 
@@ -105,6 +106,13 @@ bookRouter.get(
       fullText: sorted.map((c) => `# ${c.title}\n\n${c.content ?? ''}`).join('\n\n'),
       sections: sorted,
     });
+  }),
+);
+
+bookRouter.post(
+  '/api/projects/:id/manuscript/assemble',
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, await manuscriptAssembleService.assemble(param(req, 'id'), req.user));
   }),
 );
 

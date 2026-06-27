@@ -117,7 +117,7 @@ casperRouter.post(
 
     try {
       await caspaJobService.startStage(job.id, 'plan');
-      const result = await novelWriteProService.generate(body);
+      const result = await novelWriteProService.generate({ ...body, caspaJobId: job.id });
       await caspaJobService.complete(job.id, {
         outputId: result.outputId,
         kind: result.kind,

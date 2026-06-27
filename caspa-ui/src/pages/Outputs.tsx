@@ -11,6 +11,7 @@ import {
   normalizeOutputKind,
   outputExcerpt,
   OUTPUT_KIND_LABELS,
+  archiveOnlyEmptyMessage,
   type OutputKind,
   type OutputRecord,
 } from '../lib/outputSemantics';
@@ -114,7 +115,13 @@ export function OutputsContent({ projectId }: { projectId: string }) {
                       </span>
                     )}
                   </div>
-                  {text && <p className="mt-3 text-sm leading-7 text-[#5f5648]">{outputExcerpt(text)}</p>}
+                  {text ? (
+                    <p className="mt-3 text-sm leading-7 text-[#5f5648]">{outputExcerpt(text)}</p>
+                  ) : (
+                    <p className="mt-3 text-sm leading-7 text-muted italic">
+                      {archiveOnlyEmptyMessage(kind)}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => navigate(`/outputs/${output.id}`)} className="btn-primary text-xs">
