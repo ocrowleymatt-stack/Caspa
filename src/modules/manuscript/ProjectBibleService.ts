@@ -187,6 +187,7 @@ No markdown fences. JSON only.`;
         bible,
         provider: response.model.includes('mistral') || response.model.includes('llama') ? 'ollama' : 'cloud',
         model: response.model,
+        destination: 'writing-history',
       },
     });
 

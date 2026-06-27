@@ -153,6 +153,7 @@ export class ResearchDeskService {
         topics: result.topics,
         query: input.query,
         disclaimer: result.disclaimer,
+        destination: 'writing-history',
       },
     });
     return { ...result, outputId: record.id };
@@ -188,6 +189,7 @@ export class ResearchDeskService {
         kind: 'claim-extraction',
         claims: result.claims,
         sourcePreview: input.text.slice(0, 500),
+        destination: 'writing-history',
       },
     });
     return { ...result, outputId: record.id };
@@ -314,6 +316,7 @@ export class ResearchDeskService {
         verdicts: result.verdicts,
         sourcePreview: input.sourceText?.slice(0, 500),
         confirmedLibraryUsed: result.confirmedLibraryUsed,
+        destination: 'writing-history',
       },
     });
     return { ...result, outputId: record.id };
@@ -402,6 +405,7 @@ export class ResearchDeskService {
         kind: 'research-depth-pass',
         outputId: undefined,
         ...result,
+        destination: 'writing-history',
       },
     });
     return { ...result, outputId: record.id };

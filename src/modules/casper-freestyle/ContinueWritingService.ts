@@ -120,9 +120,11 @@ Return only the new or revised prose. Match established voice. No meta commentar
         mode,
         instruction: body.instruction ?? '',
         chapterId: body.chapterId,
+        sourceChapterId: body.chapterId,
         parentOutputId: body.parentOutputId,
         provider,
         model: response.model,
+        destination: body.chapterId ? 'beside-unit' : 'writing-history',
       },
     });
 

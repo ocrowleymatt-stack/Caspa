@@ -132,6 +132,11 @@ export default function ProjectManuscript() {
           </div>
           <div className="flex flex-wrap gap-2">
             {sorted.length > 0 && (
+              <Link to={`/projects/${projectId}/chapters/${sorted[0].id}`} className="btn-primary text-sm">
+                <PenLine className="h-4 w-4" /> Writing workspace
+              </Link>
+            )}
+            {sorted.length > 0 && (
               <Link to={`/projects/${projectId}/read`} className="btn-primary text-sm">
                 <BookOpen className="h-4 w-4" /> Read full draft
               </Link>

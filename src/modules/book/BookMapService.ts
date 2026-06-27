@@ -169,6 +169,7 @@ export class BookMapService {
       metadata: {
         kind: 'book-map',
         ...bookMap,
+        destination: 'writing-history',
       },
     });
 

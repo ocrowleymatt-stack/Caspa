@@ -170,6 +170,7 @@ export class AwardsShelfService {
       metadata: {
         kind: 'award-assessment',
         ...result,
+        destination: 'writing-history',
       },
     });
 

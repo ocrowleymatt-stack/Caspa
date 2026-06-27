@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, BookOpen, Download, Loader2, PenLine } from 'lucide-react';
-import { listChapters } from '../api/chapters';
+import { assembleManuscript } from '../api/book';
 import { getProject } from '../api/projects';
 import { getProductionBrief } from '../api/studio';
 import { currentWorkLabel } from '../lib/currentWork';
@@ -28,19 +28,18 @@ export default function ProjectRead() {
     enabled: !!projectId,
   });
 
-  const { data: chapters = [], isLoading: chaptersLoading } = useQuery({
-    queryKey: ['chapters', projectId],
-    queryFn: () => listChapters(projectId!),
+  const { data: assembled, isLoading: assembleLoading } = useQuery({
+    queryKey: ['manuscript-assemble', projectId],
+    queryFn: () => assembleManuscript(projectId!),
     enabled: !!projectId,
   });
 
-
-  const sorted = [...chapters].sort((a, b) => a.order - b.order);
-  const totalWords = sorted.reduce((sum, c) => sum + (c.wordCount ?? 0), 0);
-  const targetWords = brief?.targetLength ?? project?.targetWordCount ?? 0;
+  const sorted = assembled?.sections ?? [];
+  const totalWords = assembled?.currentWordCount ?? 0;
+  const targetWords = assembled?.targetWordCount ?? brief?.targetLength ?? project?.targetWordCount ?? 0;
   const label = currentWorkLabel(project, brief);
 
-  if (projectLoading || chaptersLoading) {
+  if (projectLoading || assembleLoading) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-[#98711d]" />
@@ -64,7 +63,7 @@ export default function ProjectRead() {
               <Download className="h-3.5 w-3.5" /> Export
             </Link>
             {sorted[0] && (
-              <Link to={`/projects/${projectId}/chapters/${sorted[0].id}`} className="btn-primary text-xs">
+              <Link to={`/projects/${projectId}/chapters/${sorted[0].unitId}`} className="btn-primary text-xs">
                 <PenLine className="h-3.5 w-3.5" /> Edit
               </Link>
             )}
@@ -81,17 +80,24 @@ export default function ProjectRead() {
         </div>
         {sorted.length > 1 && (
           <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-            {sorted.map((ch) => (
+            {sorted.map((section) => (
               <a
-                key={ch.id}
-                href={`#section-${ch.id}`}
+                key={section.unitId}
+                href={`#section-${section.unitId}`}
                 className="shrink-0 rounded-full border border-[#eadfca] bg-white px-3 py-1 text-xs font-semibold text-[#5f5648]"
               >
-                {ch.title}
+                {section.title}
               </a>
             ))}
           </nav>
         )}
+        {assembled?.warnings?.length ? (
+          <ul className="mt-3 space-y-1 text-xs text-[#98711d]">
+            {assembled.warnings.map((warning) => (
+              <li key={warning}>• {warning}</li>
+            ))}
+          </ul>
+        ) : null}
       </header>
 
       {sorted.length === 0 ? (
@@ -104,17 +110,17 @@ export default function ProjectRead() {
         </div>
       ) : (
         <article className="space-y-10">
-          {sorted.map((chapter) => (
-            <section key={chapter.id} id={`section-${chapter.id}`} className="scroll-mt-32">
-              <h2 className="font-serif text-2xl font-semibold text-[#171a22] sm:text-3xl">{chapter.title}</h2>
-              <p className="mb-4 text-xs text-muted">{chapter.wordCount.toLocaleString()} words</p>
+          {sorted.map((section) => (
+            <section key={section.unitId} id={`section-${section.unitId}`} className="scroll-mt-32">
+              <h2 className="font-serif text-2xl font-semibold text-[#171a22] sm:text-3xl">{section.title}</h2>
+              <p className="mb-4 text-xs text-muted">{section.wordCount.toLocaleString()} words</p>
               <div className="whitespace-pre-wrap font-serif text-lg leading-9 text-[#20202a] sm:text-xl sm:leading-10">
-                {chapter.content?.trim() || (
+                {section.content?.trim() || (
                   <span className="text-muted italic">This section is empty.</span>
                 )}
               </div>
               <div className="mt-4">
-                <Link to={`/projects/${projectId}/chapters/${chapter.id}`} className="text-xs font-semibold text-[#98711d] hover:underline">
+                <Link to={`/projects/${projectId}/chapters/${section.unitId}`} className="text-xs font-semibold text-[#98711d] hover:underline">
                   Edit this section →
                 </Link>
               </div>

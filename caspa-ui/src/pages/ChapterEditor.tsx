@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, List, Loader2, PenLine, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Clock, Compass, List, Loader2, PenLine, Sparkles, X } from 'lucide-react';
 import { getChapter, getChapterHistory, listChapters, restoreChapter, updateChapter, createChapter } from '../api/chapters';
 import { continueWriting } from '../api/casper';
 import { getProject } from '../api/projects';
@@ -10,6 +10,7 @@ import { countWords } from '../lib/utils';
 import { useToast } from '../components/Toast';
 import { ImproveManuscriptPanel } from '../components/ImproveManuscriptPanel';
 import { ChapterRail } from '../components/chapter/ChapterRail';
+import { ManuscriptGuidePanel } from '../components/manuscript/ManuscriptGuidePanel';
 import { StagedProgressPanel } from '../components/StagedProgressPanel';
 import { CONTINUE_STAGES } from '../components/StagedProgress';
 import { finishBook } from '../api/book';
@@ -27,6 +28,7 @@ export default function ChapterEditor() {
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [showImprove, setShowImprove] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showGuideMobile, setShowGuideMobile] = useState(false);
   const [showRail, setShowRail] = useState(false);
   const [selectedText, setSelectedText] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -281,6 +283,16 @@ export default function ChapterEditor() {
             <button type="button" onClick={() => setShowHistory(!showHistory)} className="btn-secondary min-h-[44px] text-xs">
               <Clock className="h-3.5 w-3.5" /> <span className="hidden sm:inline">History</span>
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowGuideMobile(true);
+                setShowHistory(false);
+              }}
+              className="btn-secondary min-h-[44px] text-xs lg:hidden"
+            >
+              <Compass className="h-3.5 w-3.5" /> Guide
+            </button>
             <button type="button" onClick={() => setAiPanelOpen(true)} className="btn-primary min-h-[44px] text-xs">
               <Sparkles className="h-3.5 w-3.5" /> Casper
             </button>
@@ -402,6 +414,37 @@ export default function ChapterEditor() {
               </div>
             )}
           </aside>
+        )}
+
+        {!showHistory && projectId && (
+          <div className="hidden lg:flex">
+            <ManuscriptGuidePanel projectId={projectId} currentChapterId={chapterId} />
+          </div>
+        )}
+
+        {showGuideMobile && !showHistory && projectId && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <button
+              type="button"
+              className="absolute inset-0 bg-[#171a22]/45"
+              aria-label="Close guide"
+              onClick={() => setShowGuideMobile(false)}
+            />
+            <div className="relative ml-auto h-full max-w-sm">
+              <button
+                type="button"
+                className="absolute right-2 top-2 z-10 btn-ghost min-h-[44px] min-w-[44px] bg-white/90"
+                onClick={() => setShowGuideMobile(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <ManuscriptGuidePanel
+                projectId={projectId}
+                currentChapterId={chapterId}
+                className="h-full max-h-dvh shadow-2xl"
+              />
+            </div>
+          </div>
         )}
       </div>
 

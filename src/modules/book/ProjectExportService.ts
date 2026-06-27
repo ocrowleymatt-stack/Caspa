@@ -114,6 +114,7 @@ export class ProjectExportService {
         format: 'docx',
         docxPath,
         filename,
+        destination: 'export-package',
       },
     });
 
@@ -209,6 +210,7 @@ export class ProjectExportService {
         kind: 'export-package',
         format: 'zip',
         archivePath,
+        destination: 'export-package',
       },
     });
 

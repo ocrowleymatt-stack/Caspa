@@ -228,6 +228,7 @@ export class AgentSwarmService {
         targetAwardIds: input.targetAwardIds ?? project.targetPrizeIds ?? [],
         researchItemIds: input.researchItemIds ?? [],
         disclaimer: AGENT_SWARM_DISCLAIMER,
+        destination: revisedText ? 'beside-unit' : 'writing-history',
       },
     });
 

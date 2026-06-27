@@ -295,6 +295,7 @@ export class PierBuilderService {
         provider: response.model?.includes('mistral') ? 'ollama' : 'cloud',
         model: response.model,
         tone,
+        destination: 'writing-history',
       },
     });
 
@@ -391,6 +392,7 @@ export class PierBuilderService {
         addedWords,
         provider: response.model?.includes('mistral') ? 'ollama' : 'cloud',
         model: response.model,
+        destination: input.unitId ? 'beside-unit' : 'writing-history',
       },
     });
 

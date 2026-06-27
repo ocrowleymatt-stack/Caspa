@@ -122,6 +122,7 @@ export class TrashToTreasureService {
           'Here is the salvage plan.',
           'Nothing has been overwritten.',
         ],
+        destination: 'writing-history',
       },
     });
 
@@ -130,7 +131,7 @@ export class TrashToTreasureService {
       type: 'imported-source-analysis',
       title: 'Manuscript structure report — rescue',
       path: '',
-      metadata: { kind: 'manuscript-structure-report', ...structureReport },
+      metadata: { kind: 'manuscript-structure-report', ...structureReport, destination: 'writing-history' },
     });
 
     return {

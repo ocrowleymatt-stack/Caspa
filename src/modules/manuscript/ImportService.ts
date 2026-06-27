@@ -175,7 +175,7 @@ export class ImportService {
       type: 'imported-source-analysis',
       title: `Manuscript structure report — ${filename ?? 'import'}`,
       path: '',
-      metadata: { kind: 'manuscript-structure-report', ...report },
+      metadata: { kind: 'manuscript-structure-report', ...report, destination: 'writing-history' },
     });
   }
 }
