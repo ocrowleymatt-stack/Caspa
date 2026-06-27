@@ -14,7 +14,8 @@
     "qa:critical": "tsx scripts/critical-qa-swarm.ts",
     "qa:critical:full": "tsx scripts/critical-qa-swarm.ts --with-ai",
     "qa:responsive": "tsx scripts/responsive-qa.ts",
-    "casper": "tsx src/cli/casper.ts"
+    "casper": "tsx src/cli/casper.ts",
+    "repair:outputs": "tsx scripts/repair-empty-outputs.ts"
   },
   "dependencies": {
     "archiver": "^8.0.0",

@@ -1,4 +1,5 @@
 import { asyncHandler, createElevationRouter, param, sendError, sendSuccess } from '../../shared/routeHelpers';
+import { enrichOutputRecord } from '../../shared/outputSemantics';
 import { outputRegistry, type OutputType } from './OutputRegistry';
 
 export const outputsRouter = createElevationRouter();
@@ -8,7 +9,16 @@ outputsRouter.get(
   asyncHandler(async (req, res) => {
     const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
     const type = typeof req.query.type === 'string' ? req.query.type as OutputType : undefined;
-    sendSuccess(res, await outputRegistry.list({ projectId, type }));
+    const records = await outputRegistry.list({ projectId, type });
+    sendSuccess(res, records.map((record) => {
+      const enriched = enrichOutputRecord(record);
+      return {
+        ...enriched,
+        hasText: enriched.hasText,
+        excerpt: enriched.excerpt,
+        wordCount: enriched.wordCount,
+      };
+    }));
   }),
 );
 
@@ -20,7 +30,7 @@ outputsRouter.get(
       sendError(res, new Error('Output not found'), 404);
       return;
     }
-    sendSuccess(res, record);
+    sendSuccess(res, enrichOutputRecord(record));
   }),
 );
 

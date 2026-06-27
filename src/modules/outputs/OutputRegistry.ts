@@ -1,4 +1,5 @@
 import { generateId, writeJsonFile, readJsonFile, listJsonFiles } from '../../shared/fileStore';
+import { normalizeOutputMetadata } from '../../shared/outputSemantics';
 
 export type OutputType =
   | 'document'
@@ -22,6 +23,7 @@ export type OutputType =
   | 'claim-extraction'
   | 'imported-source-analysis'
   | 'export-package'
+  | 'ask-casper'
   | 'other';
 
 export interface OutputRecord {
@@ -38,13 +40,33 @@ export class OutputRegistry {
   private subPath = 'outputs';
 
   async register(opts: Omit<OutputRecord, 'id' | 'createdAt'>): Promise<OutputRecord> {
+    const metadata = normalizeOutputMetadata(opts.metadata ?? {}, {
+      type: opts.type,
+      requireText: false,
+    });
     const record: OutputRecord = {
       ...opts,
+      metadata,
       id: generateId(),
       createdAt: new Date().toISOString(),
     };
     await writeJsonFile(this.subPath, `${record.id}.json`, record);
     return record;
+  }
+
+  async update(id: string, patch: Partial<Pick<OutputRecord, 'title' | 'metadata'>>): Promise<OutputRecord | null> {
+    const current = await this.get(id);
+    if (!current) return null;
+    const metadata = patch.metadata
+      ? normalizeOutputMetadata({ ...current.metadata, ...patch.metadata }, { type: current.type })
+      : current.metadata;
+    const updated: OutputRecord = {
+      ...current,
+      ...patch,
+      metadata,
+    };
+    await writeJsonFile(this.subPath, `${updated.id}.json`, updated);
+    return updated;
   }
 
   async get(id: string): Promise<OutputRecord | null> {

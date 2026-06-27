@@ -135,11 +135,164 @@ export function outputKindLabel(type: string, metadata?: Record<string, unknown>
   return OUTPUT_KIND_LABELS[kind];
 }
 
+const TEXT_FALLBACK_KEYS = [
+  'text',
+  'content',
+  'revisedText',
+  'finalText',
+  'finalProse',
+  'improvedRewrite',
+  'rewrite',
+  'firstDraft',
+  'output',
+  'result',
+  'draft',
+  'report',
+] as const;
+
+export function countOutputWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).filter(Boolean).length;
+}
+
+export function outputExcerpt(text: string, limit = 220): string {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  if (!clean) return '';
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
+}
+
+function stringField(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
+
+function buildStructuredReadableSummary(metadata: Record<string, unknown>): string {
+  const kind = typeof metadata.kind === 'string' ? metadata.kind : '';
+
+  if (kind === 'manuscript-structure-report' || Array.isArray(metadata.units)) {
+    const units = metadata.units as Array<{ title?: string; type?: string }> | undefined;
+    const count = units?.length ?? 0;
+    const detected = metadata.detectedType ?? metadata.detectedWorkType ?? 'work';
+    const confidence = metadata.confidence ?? 'unknown';
+    const titles = units?.slice(0, 8).map((u) => u.title).filter(Boolean).join(', ');
+    return `Structure report: ${count} detected ${detected} units (${confidence} confidence).${titles ? `\n${titles}${count > 8 ? '…' : ''}` : ''}`;
+  }
+
+  const consensus = metadata.consensus as { summary?: string; revisionPlan?: string[] } | undefined;
+  if (consensus?.summary) return consensus.summary;
+  if (consensus?.revisionPlan?.length) {
+    return `Agent swarm revision plan:\n${consensus.revisionPlan.map((line) => `• ${line}`).join('\n')}`;
+  }
+
+  const bible = metadata.bible as { premise?: string; structure?: string } | undefined;
+  if (bible?.premise) {
+    return [bible.premise, bible.structure].filter(Boolean).join('\n\n');
+  }
+
+  if (metadata.finishRoadmap && Array.isArray(metadata.finishRoadmap)) {
+    return `Book Map roadmap:\n${(metadata.finishRoadmap as string[]).slice(0, 6).map((l) => `• ${l}`).join('\n')}`;
+  }
+
+  const synthesis = metadata.synthesis as { judgeAssessment?: string; revisionPlan?: string[] } | undefined;
+  if (synthesis?.judgeAssessment) return synthesis.judgeAssessment;
+  if (synthesis?.revisionPlan?.length) {
+    return synthesis.revisionPlan.map((line) => `• ${line}`).join('\n');
+  }
+
+  if (typeof metadata.critique === 'string' && metadata.critique.trim()) {
+    return metadata.critique.trim();
+  }
+
+  if (typeof metadata.verdict === 'string') return metadata.verdict.trim();
+
+  return '';
+}
+
+/** Extract readable body text from metadata using canonical + fallback keys. */
 export function extractOutputText(metadata?: Record<string, unknown>): string {
   if (!metadata) return '';
-  const text = metadata.text;
-  const revised = metadata.revisedText;
-  if (typeof text === 'string' && text.trim()) return text.trim();
-  if (typeof revised === 'string' && revised.trim()) return revised.trim();
-  return '';
+
+  for (const key of TEXT_FALLBACK_KEYS) {
+    const value = stringField(metadata[key]);
+    if (value) return value;
+  }
+
+  return buildStructuredReadableSummary(metadata);
+}
+
+export function outputHasText(metadata?: Record<string, unknown>): boolean {
+  return extractOutputText(metadata).length > 0;
+}
+
+const WRITING_OUTPUT_TYPES = new Set([
+  'novel-write-pro',
+  'continue-writing',
+  'gold-pass',
+  'manuscript-improvement',
+  'pier-boards',
+  'pier-stretch',
+  'agent-swarm',
+  'ask-casper',
+]);
+
+/** Normalise metadata at save time — ensures text, hasText, excerpt, wordCount. */
+export function normalizeOutputMetadata(
+  metadata: Record<string, unknown>,
+  opts?: { type?: string; requireText?: boolean },
+): Record<string, unknown> {
+  const normalised = { ...metadata };
+  const existingText = stringField(normalised.text);
+  const extracted = existingText || extractOutputText(normalised);
+
+  if (extracted) {
+    normalised.text = extracted;
+    normalised.content = extracted;
+    normalised.hasText = true;
+    normalised.wordCount = countOutputWords(extracted);
+    normalised.excerpt = outputExcerpt(extracted);
+  } else {
+    normalised.hasText = false;
+    normalised.textRecoverable = Boolean(buildStructuredReadableSummary(normalised));
+    if (normalised.textRecoverable) {
+      const summary = buildStructuredReadableSummary(normalised);
+      normalised.readableSummary = summary;
+      normalised.text = summary;
+      normalised.content = summary;
+      normalised.hasText = true;
+      normalised.wordCount = countOutputWords(summary);
+      normalised.excerpt = outputExcerpt(summary);
+    }
+  }
+
+  if (opts?.requireText && opts.type && WRITING_OUTPUT_TYPES.has(opts.type) && !normalised.hasText) {
+    throw new Error(`Output type "${opts.type}" requires non-empty text`);
+  }
+
+  return normalised;
+}
+
+export interface EnrichedOutputListItem {
+  id: string;
+  projectId?: string;
+  type: string;
+  title: string;
+  path: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  hasText: boolean;
+  excerpt: string;
+  wordCount: number;
+}
+
+export function enrichOutputRecord<T extends { metadata: Record<string, unknown> }>(
+  record: T,
+): T & { hasText: boolean; excerpt: string; wordCount: number } {
+  const meta = normalizeOutputMetadata(record.metadata);
+  return {
+    ...record,
+    metadata: meta,
+    hasText: Boolean(meta.hasText),
+    excerpt: stringField(meta.excerpt) || outputExcerpt(stringField(meta.text)),
+    wordCount: typeof meta.wordCount === 'number' ? meta.wordCount : countOutputWords(stringField(meta.text)),
+  };
 }
