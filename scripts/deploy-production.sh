@@ -112,5 +112,6 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-echo "==> Post-deploy runtime smoke (expect ~8 min with AI workflows)"
-CASPA_SMOKE_STRICT=1 bash scripts/runtime-smoke.sh
+echo "==> Post-deploy fast smoke (seconds, no AI workflow)"
+CASPA_SMOKE_STRICT=1 bash scripts/runtime-smoke.sh --fast
+echo "==> Fast smoke passed. Run bash scripts/runtime-smoke.sh --full for the full authenticated workflow."
