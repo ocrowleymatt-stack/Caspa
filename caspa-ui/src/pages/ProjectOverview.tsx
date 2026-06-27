@@ -4,18 +4,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FileText,
   Loader2,
-  Anchor,
-  Bot,
   BookMarked,
   BookOpen,
   PenLine,
   Plus,
   Sparkles,
-  Trophy,
   Upload,
   Wand2,
 } from 'lucide-react';
 import { getProject, getProjectStats } from '../api/projects';
+import { getProjectBible } from '../api/bible';
 import {
   createChapter,
   getChapter,
@@ -62,6 +60,12 @@ export default function ProjectOverview() {
     enabled: !!id,
   });
 
+  const { data: bible } = useQuery({
+    queryKey: ['bible', id],
+    queryFn: () => getProjectBible(id!),
+    enabled: !!id,
+  });
+
   const { data: outputs = [] } = useQuery({
     queryKey: ['outputs', id],
     queryFn: () => listOutputs(id!),
@@ -103,14 +107,22 @@ export default function ProjectOverview() {
     [chapters],
   );
 
+  const latestOutput = outputs[0] ?? null;
+  const hasBible = Boolean(bible?.premise?.trim() || bible?.structure?.trim());
+  const hasResearch = (stats?.noteCount ?? 0) > 0;
+
   const projectMode = useMemo(() => {
     if (!project) return 'blank' as const;
     if (outputs.length > 0 && chapters.length === 0) return 'output-led';
+    if (hasResearch && chapters.length === 0) return 'research-led';
+    if (hasBible && chapters.length === 0 && outputs.length === 0) return 'bible-led';
     if (project.genre === 'Manuscript Polish' || sourceChapter) return 'manuscript';
     if (chapters.length === 0) return 'blank';
     if (outputs.length > 0) return 'output-led';
+    if (hasResearch) return 'research-led';
+    if (hasBible) return 'bible-led';
     return 'writing';
-  }, [chapters.length, outputs.length, project, sourceChapter]);
+  }, [chapters.length, hasBible, hasResearch, outputs.length, project, sourceChapter]);
 
   if (projectLoading) {
     return (
@@ -130,10 +142,12 @@ export default function ProjectOverview() {
   );
 
   const modeCopy = {
-    blank: 'Blank room — no manuscript yet. Start from Casper or upload a file.',
-    manuscript: 'Manuscript project — your original upload is preserved as a separate chapter. Revisions save as new chapters and outputs.',
+    blank: 'Blank room — no manuscript yet. Auto-write, upload a file, or generate a Project Bible.',
+    manuscript: 'Manuscript project — your original upload is preserved. Revisions save as outputs until you apply them.',
     writing: 'Writing room — continue the latest draft or run Novel Write Pro for a new pass.',
-    'output-led': 'Output-led — saved AI drafts live in Outputs. Continue from there or open the latest chapter.',
+    'output-led': 'Output-led — saved AI drafts live in Outputs. Continue from the latest or run Gold before applying.',
+    'bible-led': 'Bible-led — premise and plan are ready. Write from the bible or generate structure next.',
+    'research-led': 'Research-led — confirmed notes are in the library. Use them in the next writing or accuracy pass.',
   } as const;
 
   return (
@@ -176,54 +190,96 @@ export default function ProjectOverview() {
                 </p>
               )}
             </div>
-            <div className="mt-7 flex flex-wrap gap-3">
-              {continueChapter && (
-                <Link to={`/projects/${id}/chapters/${continueChapter.id}`} className="btn-primary">
-                  <PenLine className="h-4 w-4" /> Continue Writing
-                </Link>
-              )}
-              {(projectMode === 'blank' || projectMode === 'manuscript') && projectMode === 'blank' && (
-                <Link to="/casper" className="btn-primary">
-                  <Sparkles className="h-4 w-4" /> Auto-write
-                </Link>
-              )}
-              {projectMode === 'manuscript' && improveChapterId && improveChapterDetail && (
-                <Link to={casperImproveUrl(id!, improveChapterId)} className="btn-secondary">
-                  <Sparkles className="h-4 w-4" /> Open in Casper
-                </Link>
-              )}
-              {projectMode === 'manuscript' && sourceChapter && (
-                <Link to={`/projects/${id}/chapters/${sourceChapter.id}`} className="btn-secondary">
-                  <FileText className="h-4 w-4" /> Open Original
-                </Link>
-              )}
-              <Link to={`/projects/${id}/gold`} className="btn-secondary">
-                <Wand2 className="h-4 w-4" /> Run Gold Pass
-              </Link>
-              <Link to={`/projects/${id}/manuscript`} className="btn-secondary">
-                <Plus className="h-4 w-4" /> Manuscript units
-              </Link>
-              <Link to={`/projects/${id}/bible`} className="btn-secondary">
-                <BookOpen className="h-4 w-4" /> Project Bible
-              </Link>
-              <Link to={`/projects/${id}/pier`} className="btn-secondary">
-                <Anchor className="h-4 w-4" /> Pier Builder
-              </Link>
-              <Link to={`/projects/${id}/research`} className="btn-secondary">
-                <BookMarked className="h-4 w-4" /> Research Desk
-              </Link>
-              <Link to={`/projects/${id}/awards`} className="btn-secondary">
-                <Trophy className="h-4 w-4" /> Awards Shelf
-              </Link>
-              <Link to={`/projects/${id}/swarm`} className="btn-secondary">
-                <Bot className="h-4 w-4" /> Agent Swarm
-              </Link>
-              <Link to={`/projects/${id}/outputs`} className="btn-secondary">
-                Open Outputs
-              </Link>
-              <Link to={`/projects/${id}/export`} className="btn-secondary">
-                <Upload className="h-4 w-4" /> Export
-              </Link>
+            <div className="mt-7 space-y-4">
+              <div>
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#98711d]">Start here</div>
+                <div className="flex flex-wrap gap-3">
+                  {projectMode === 'blank' && (
+                    <>
+                      <Link to="/casper" className="btn-primary">
+                        <Sparkles className="h-4 w-4" /> Auto-write
+                      </Link>
+                      <Link to={`/projects/${id}/bible`} className="btn-secondary">
+                        <BookOpen className="h-4 w-4" /> Generate Bible
+                      </Link>
+                    </>
+                  )}
+                  {projectMode === 'manuscript' && improveChapterId && (
+                    <Link to={casperImproveUrl(id!, improveChapterId)} className="btn-primary">
+                      <Sparkles className="h-4 w-4" /> Improve manuscript
+                    </Link>
+                  )}
+                  {projectMode === 'manuscript' && sourceChapter && (
+                    <Link to={`/projects/${id}/chapters/${sourceChapter.id}`} className="btn-secondary">
+                      <FileText className="h-4 w-4" /> Open original
+                    </Link>
+                  )}
+                  {projectMode === 'bible-led' && (
+                    <>
+                      <Link to={`/projects/${id}/bible`} className="btn-primary">
+                        <BookOpen className="h-4 w-4" /> Write from bible
+                      </Link>
+                      <Link to="/casper" className="btn-secondary">
+                        <Sparkles className="h-4 w-4" /> Auto-write scene
+                      </Link>
+                    </>
+                  )}
+                  {projectMode === 'research-led' && (
+                    <Link to={`/projects/${id}/research`} className="btn-primary">
+                      <BookMarked className="h-4 w-4" /> Open Research Desk
+                    </Link>
+                  )}
+                  {projectMode === 'output-led' && latestOutput && (
+                    <Link to={`/outputs/${latestOutput.id}`} className="btn-primary">
+                      <PenLine className="h-4 w-4" /> Continue from latest output
+                    </Link>
+                  )}
+                  {continueChapter && projectMode !== 'blank' && (
+                    <Link to={`/projects/${id}/chapters/${continueChapter.id}`} className="btn-secondary">
+                      <PenLine className="h-4 w-4" /> Continue writing
+                    </Link>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#98711d]">Polish & archive</div>
+                <div className="flex flex-wrap gap-3">
+                  <Link to={`/projects/${id}/gold`} className="btn-secondary">
+                    <Wand2 className="h-4 w-4" /> Run Gold Pass
+                  </Link>
+                  <Link to={`/projects/${id}/outputs`} className="btn-secondary">
+                    Open Outputs
+                  </Link>
+                  <Link to={`/projects/${id}/export`} className="btn-secondary">
+                    <Upload className="h-4 w-4" /> Export
+                  </Link>
+                </div>
+              </div>
+              <details className="rounded-[1.4rem] border border-[#eadfca] bg-[#fffdf8] p-4">
+                <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">
+                  Advanced tools
+                </summary>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link to={`/projects/${id}/manuscript`} className="btn-secondary text-xs">
+                    Manuscript units
+                  </Link>
+                  <Link to={`/projects/${id}/pier`} className="btn-secondary text-xs">
+                    Pier Builder
+                  </Link>
+                  <Link to={`/projects/${id}/research`} className="btn-secondary text-xs">
+                    Research Desk
+                  </Link>
+                  <Link to={`/projects/${id}/awards`} className="btn-secondary text-xs">
+                    Awards Shelf
+                  </Link>
+                  <Link to={`/projects/${id}/swarm`} className="btn-secondary text-xs">
+                    Agent Swarm
+                  </Link>
+                  <Link to={`/projects/${id}/bible`} className="btn-secondary text-xs">
+                    Project Bible
+                  </Link>
+                </div>
+              </details>
             </div>
           </div>
 

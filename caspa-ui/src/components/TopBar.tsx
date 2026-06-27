@@ -12,7 +12,7 @@ const pageTitles: Record<string, string> = {
   '/': 'Projects',
   '/home': 'The Studio',
   '/casper': 'Casper',
-  '/command': 'Natural Command',
+  '/command': 'Studio Command',
   '/show-factory': 'Show Factory',
   '/music-lab': 'Music Lab',
   '/production': 'Production',

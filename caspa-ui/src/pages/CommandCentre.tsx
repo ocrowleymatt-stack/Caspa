@@ -5,11 +5,9 @@ import {
   Clapperboard,
   FileText,
   Ghost,
-  Hammer,
   Music,
   Package,
   PenLine,
-  ShieldCheck,
   Sparkles,
 } from 'lucide-react';
 import { listProjects } from '../api/projects';
@@ -18,13 +16,12 @@ import { useAppStore } from '../store';
 import { ProviderStatus } from '../components/ProviderStatus';
 
 const quickLinks = [
-  { to: '/casper', label: 'Start with Casper', icon: Ghost, desc: 'Open the room: novel, script, manuscript, show or song.' },
-  { to: '/projects', label: 'Projects', icon: BookOpen, desc: 'Your books, scripts, shows and working drafts.' },
-  { to: '/forge', label: 'Forge', icon: Hammer, desc: 'Turn notes, sources and raw material into shaped work.' },
+  { to: '/casper', label: 'Novel Write Pro', icon: Ghost, desc: 'Auto-write, upload a manuscript, or improve an existing chapter.' },
+  { to: '/projects', label: 'Projects', icon: BookOpen, desc: 'Create a room, import structure, and pick up where you left off.' },
+  { to: '/command', label: 'Studio Command', icon: Sparkles, desc: 'Ask what to do next — routes to Pier, Gold, Research, Swarm or Outputs.' },
+  { to: '/outputs', label: 'Outputs', icon: Package, desc: 'Saved AI drafts — apply only when you are ready.' },
   { to: '/music-prompt', label: 'Music', icon: Music, desc: 'Lyrics, show numbers, prompts and musical sketches.' },
   { to: '/documents', label: 'Documents', icon: FileText, desc: 'Render, preview and prepare manuscripts.' },
-  { to: '/confidence', label: 'Confidence', icon: ShieldCheck, desc: 'Check readiness before export or publication.' },
-  { to: '/outputs', label: 'Outputs', icon: Package, desc: 'Collected exports, packs and generated materials.' },
 ];
 
 export default function CommandCentre() {

@@ -38,6 +38,23 @@ function ForgeContent({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-[1.6rem] border border-[#eadfca] bg-[#fff8e8] p-5 text-sm leading-7 text-[#5f5648]">
+        <p>
+          <strong className="text-[#171a22]">Forge is now part of the main workflow.</strong>{' '}
+          Messy notes and raw material belong in New Project import, Research Desk, and Project Bible — not a separate intake room.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link to="/projects" className="btn-primary text-xs">New Project / Import</Link>
+          {projectId ? (
+            <>
+              <Link to={`/projects/${projectId}/research`} className="btn-secondary text-xs">Research Desk</Link>
+              <Link to={`/projects/${projectId}/bible`} className="btn-secondary text-xs">Project Bible</Link>
+            </>
+          ) : (
+            <Link to="/command" className="btn-secondary text-xs">Studio Command</Link>
+          )}
+        </div>
+      </div>
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
@@ -76,8 +93,8 @@ function ForgeContent({ projectId }: { projectId: string }) {
 export default function ForgeIntake() {
   return (
     <ElevationWorkbench
-      title="Forge & Intake"
-      subtitle="Classify sources, assess potential, and recommend product formats"
+      title="Forge (legacy intake)"
+      subtitle="Raw material now flows through Import, Research Desk and Project Bible"
       icon={<Hammer className="h-7 w-7 text-accent" />}
       requireProject={false}
     >

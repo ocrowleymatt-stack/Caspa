@@ -8,16 +8,16 @@ import { WorkbenchSourceSelector } from './WorkbenchSourceSelector';
 import { useAppStore } from '../../store';
 
 const TABS = [
-  { slug: '', label: 'Overview' },
-  { slug: 'structure', label: 'Structure' },
-  { slug: 'manuscript', label: 'Manuscript' },
-  { slug: 'pier', label: 'Pier Builder' },
-  { slug: 'research', label: 'Research' },
-  { slug: 'swarm', label: 'Agent Swarm' },
-  { slug: 'awards', label: 'Awards Shelf' },
-  { slug: 'gold', label: 'Gold Pass' },
-  { slug: 'outputs', label: 'Outputs' },
-  { slug: 'export', label: 'Export' },
+  { slug: '', label: 'Overview', group: 'primary' as const },
+  { slug: 'structure', label: 'Structure', group: 'primary' as const },
+  { slug: 'manuscript', label: 'Manuscript', group: 'primary' as const },
+  { slug: 'pier', label: 'Pier Builder', group: 'primary' as const },
+  { slug: 'research', label: 'Research', group: 'primary' as const },
+  { slug: 'gold', label: 'Gold Pass', group: 'primary' as const },
+  { slug: 'outputs', label: 'Outputs', group: 'primary' as const },
+  { slug: 'awards', label: 'Awards Shelf', group: 'secondary' as const },
+  { slug: 'swarm', label: 'Agent Swarm', group: 'secondary' as const },
+  { slug: 'export', label: 'Export', group: 'secondary' as const },
 ] as const;
 
 const SOURCE_TABS = new Set(['pier', 'research', 'swarm', 'awards', 'gold']);
@@ -74,8 +74,8 @@ export function ProjectWorkbenchShell() {
             </Link>
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 py-3 md:px-5">
-          {TABS.map((tab) => {
+        <nav className="flex flex-wrap gap-1 overflow-x-auto px-3 py-3 md:px-5">
+          {TABS.filter((tab) => tab.group === 'primary').map((tab) => {
             const to = tab.slug ? `/projects/${id}/${tab.slug}` : `/projects/${id}`;
             return (
               <NavLink
@@ -87,6 +87,25 @@ export function ProjectWorkbenchShell() {
                     isActive
                       ? 'bg-[#171a22] text-[#fffdf8]'
                       : 'border border-[#eadfca] bg-[#fffdf8] text-[#5f5648] hover:border-[#caa044]'
+                  }`
+                }
+              >
+                {tab.label}
+              </NavLink>
+            );
+          })}
+          <span className="mx-1 hidden h-8 w-px self-center bg-[#eadfca] md:inline-block" aria-hidden />
+          {TABS.filter((tab) => tab.group === 'secondary').map((tab) => {
+            const to = `/projects/${id}/${tab.slug}`;
+            return (
+              <NavLink
+                key={tab.slug}
+                to={to}
+                className={({ isActive }) =>
+                  `shrink-0 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] transition ${
+                    isActive
+                      ? 'bg-[#fff1c9] text-[#171a22] border border-[#caa044]'
+                      : 'border border-[#eadfca] bg-white text-[#5f5648] hover:border-[#caa044]'
                   }`
                 }
               >

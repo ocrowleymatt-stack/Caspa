@@ -209,7 +209,7 @@ export default function CasperFreestyle() {
   const inExistingProject = Boolean(queryProjectId && existingProject && !showNewProjectFlow);
   const hasManuscriptText = Boolean(sourceChapter?.content?.trim());
 
-  const [mode, setMode] = useState<CasperMode>('script');
+  const [mode, setMode] = useState<CasperMode>('novel');
   const [premise, setPremise] = useState('');
   const [tone, setTone] = useState('Clear, vivid, witty, production-minded.');
   const [output, setOutput] = useState('Act One');

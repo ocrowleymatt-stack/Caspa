@@ -47,7 +47,11 @@ export function CommandPalette() {
 
   const items = useMemo<CommandItem[]>(() => {
     const nav: CommandItem[] = [
-      { id: 'nav-dash', label: 'Projects Dashboard', group: 'Navigate', icon: <BookOpen className="h-4 w-4" />, action: () => navigate('/') },
+      { id: 'nav-dash', label: 'Projects', group: 'Navigate', icon: <BookOpen className="h-4 w-4" />, action: () => navigate('/projects') },
+      { id: 'nav-home', label: 'Studio Home', group: 'Navigate', icon: <Sparkles className="h-4 w-4" />, action: () => navigate('/home') },
+      { id: 'nav-casper', label: 'Novel Write Pro', group: 'Navigate', icon: <BookOpen className="h-4 w-4" />, action: () => navigate('/casper') },
+      { id: 'nav-command', label: 'Studio Command', group: 'Navigate', icon: <Sparkles className="h-4 w-4" />, action: () => navigate('/command') },
+      { id: 'nav-outputs', label: 'Outputs Hub', group: 'Navigate', icon: <Package className="h-4 w-4" />, action: () => navigate('/outputs') },
       { id: 'nav-show', label: 'Show Factory', group: 'Navigate', icon: <Theater className="h-4 w-4" />, action: () => navigate('/show-factory') },
       { id: 'nav-music', label: 'Music Lab', group: 'Navigate', icon: <Music className="h-4 w-4" />, action: () => navigate('/music-lab') },
       { id: 'nav-prod', label: 'Production Jobs', group: 'Navigate', icon: <Sparkles className="h-4 w-4" />, action: () => navigate('/production') },

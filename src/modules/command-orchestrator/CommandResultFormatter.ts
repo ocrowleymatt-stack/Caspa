@@ -15,15 +15,20 @@ export interface FormattedCommandResult {
 export class CommandResultFormatter {
   formatInterpretation(intent: ClassifiedIntent, questions: string[]): FormattedCommandResult {
     const actionMap: Record<string, string[]> = {
+      next_step: ['Open project overview', 'Check Outputs for latest draft', 'Run Gold Pass when ready'],
+      pier: ['Survey manuscript', 'Place a structural pole', 'Lay boards between poles'],
+      gold_pass: ['Run Gold Pass', 'Review synthesis revision plan', 'Apply from Outputs after confirmation'],
+      swarm: ['Run Agent Swarm critique', 'Review distinct agent reports', 'Save consensus to Outputs'],
+      awards: ['Select award lenses', 'Run judge assessment', 'Feed assessment into Gold Pass'],
       quality_check: ['Run quality gates', 'Check for AI smell', 'Apply Wonder polish'],
       publish: ['Check publish confidence', 'Run final gate', 'Export EPUB'],
       music: ['Interpret music prompt', 'Start jam session'],
-      research: ['Plan research', 'Verify claims'],
-      intake: ['Analyse source material'],
-      product_plan: ['Recommend product formats'],
+      research: ['Suggest research topics', 'Extract claims', 'Check accuracy against library'],
+      intake: ['Import via New Project wizard', 'Open Manuscript tab'],
+      product_plan: ['Generate or refine Project Bible', 'Confirm structure type'],
       document: ['Preview document render'],
-      workflow: ['Execute full pipeline'],
-      unknown: ['Try Casper freestyle', 'Rephrase your command'],
+      workflow: ['Open Outputs archive', 'Continue from latest output'],
+      unknown: ['Try Studio Command quick actions', 'Rephrase with a project selected'],
     };
 
     return {

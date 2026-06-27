@@ -12,37 +12,38 @@ const ACTIONS = [
   { id: 'keep', label: 'Keep as output', icon: Archive, hint: 'Default — nothing touches the manuscript' },
   { id: 'append', label: 'Append to unit', icon: SplitSquareHorizontal, hint: 'Add to end of selected chapter' },
   { id: 'insert', label: 'Insert after point', icon: FilePlus, hint: 'Place after a structural marker' },
-  { id: 'replace', label: 'Replace selection', icon: Replace, hint: 'Requires confirmation in chapter editor' },
+  { id: 'replace', label: 'Replace selection', icon: Replace, hint: 'Requires confirmation in output view' },
   { id: 'new-unit', label: 'Save as new unit', icon: FilePlus, hint: 'Creates a draft unit — never overwrites source' },
 ] as const;
 
 export function WorkbenchApplyRail({ projectId, outputId, sourceChapterId, hasText }: Props) {
   const detailHref = outputId ? `/outputs/${outputId}` : `/projects/${projectId}/outputs`;
+  const canOpen = Boolean(hasText || outputId);
 
   return (
     <section className="rounded-[1.6rem] border border-[#eadfca] bg-white p-5 shadow-paper">
-      <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Apply actions</div>
+      <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Apply safely</div>
       <p className="mt-2 text-sm leading-6 text-muted">
         AI work stays in Outputs until you explicitly apply it. Original uploads are never overwritten silently.
       </p>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      <ul className="mt-4 space-y-3">
         {ACTIONS.map((action) => (
-          <div
-            key={action.id}
-            className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] px-4 py-3 text-left"
-          >
+          <li key={action.id} className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] px-4 py-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-[#171a22]">
               <action.icon className="h-4 w-4 text-[#98711d]" />
               {action.label}
             </div>
             <p className="mt-1 text-xs leading-5 text-[#5f5648]">{action.hint}</p>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
+      <p className="mt-4 text-xs leading-5 text-muted">
+        Apply actions run from the output detail view with confirmation — not from this panel.
+      </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
           to={detailHref}
-          className={`btn-primary text-xs ${!hasText && !outputId ? 'pointer-events-none opacity-50' : ''}`}
+          className={`btn-primary text-xs ${!canOpen ? 'pointer-events-none opacity-50' : ''}`}
         >
           Open output to apply
         </Link>

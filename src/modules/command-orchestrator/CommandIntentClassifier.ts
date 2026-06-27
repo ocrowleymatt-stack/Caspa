@@ -7,6 +7,11 @@ export type CommandIntent =
   | 'product_plan'
   | 'document'
   | 'workflow'
+  | 'pier'
+  | 'gold_pass'
+  | 'swarm'
+  | 'awards'
+  | 'next_step'
   | 'unknown';
 
 export interface ClassifiedIntent {
@@ -17,14 +22,19 @@ export interface ClassifiedIntent {
 }
 
 const INTENT_PATTERNS: Array<{ intent: CommandIntent; patterns: RegExp[] }> = [
-  { intent: 'quality_check', patterns: [/quality|smell|gate|polish|revise/i] },
+  { intent: 'next_step', patterns: [/what should i do next|next step|where do i go|what now/i] },
+  { intent: 'pier', patterns: [/pier|pole|lay board|structural|without padding|no filler|anti-filler/i] },
+  { intent: 'gold_pass', patterns: [/gold pass|gold against|run gold|synthes/i] },
+  { intent: 'swarm', patterns: [/swarm|multi-agent|agent critique|critique agents/i] },
+  { intent: 'awards', patterns: [/award shelf|award lens|judge|booker|prize target/i] },
+  { intent: 'quality_check', patterns: [/quality|smell|gate|polish|revise|improve manuscript/i] },
   { intent: 'publish', patterns: [/publish|confidence|export|epub|pdf/i] },
   { intent: 'music', patterns: [/music|song|jam|prompt|melody|track/i] },
-  { intent: 'research', patterns: [/research|verify|claim|fact|source/i] },
-  { intent: 'intake', patterns: [/intake|upload|source|receipt|import/i] },
-  { intent: 'product_plan', patterns: [/forge|product|plan|format|audiobook/i] },
+  { intent: 'research', patterns: [/research|verify|claim|fact|source|accuracy|depth pass/i] },
+  { intent: 'intake', patterns: [/intake|upload|import manuscript|paste notes/i] },
+  { intent: 'product_plan', patterns: [/bible|premise|logline|character plan|product format|audiobook/i] },
   { intent: 'document', patterns: [/document|render|preview|markdown|html/i] },
-  { intent: 'workflow', patterns: [/workflow|orchestr|pipeline|run all/i] },
+  { intent: 'workflow', patterns: [/workflow|orchestr|pipeline|run all|continue writing|output/i] },
 ];
 
 export class CommandIntentClassifier {

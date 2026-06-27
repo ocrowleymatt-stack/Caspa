@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Anchor,
   BookOpen,
   Briefcase,
   ChevronLeft,
@@ -10,7 +11,6 @@ import {
   FileText,
   Gem,
   Ghost,
-  Hammer,
   Home,
   LogOut,
   Map,
@@ -38,16 +38,21 @@ import { listProjects } from '../api/projects';
 import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
 
-const simpleNavItems = [
+const primaryNavItems = [
   { to: '/home', label: 'Studio', icon: Home },
   { to: '/casper', label: 'Casper', icon: Ghost },
   { to: '/projects', label: 'Projects', icon: BookOpen },
-  { to: '/command', label: 'Ask', icon: Command },
-  { to: '/forge', label: 'Forge', icon: Hammer },
+  { to: '/outputs', label: 'Outputs', icon: Package },
+];
+
+const secondaryNavItems = [
+  { to: '/command', label: 'Command', icon: Command },
+];
+
+const advancedWriterNavItems = [
   { to: '/music-prompt', label: 'Music', icon: Music2 },
   { to: '/documents', label: 'Documents', icon: FileText },
   { to: '/confidence', label: 'Confidence', icon: ShieldCheck },
-  { to: '/outputs', label: 'Outputs', icon: Package },
   { to: '/production', label: 'Production', icon: Clapperboard },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -57,6 +62,7 @@ const expertNavItems = [
   { to: '/music-lab', label: 'Music Lab', icon: Music },
   { to: '/show-in-a-box', label: 'Show In A Box', icon: Package },
   { to: '/publish', label: 'Publish', icon: Upload },
+  { to: '/forge', label: 'Forge (legacy)', icon: Sparkles },
 ];
 
 const elevationItems = [
@@ -72,6 +78,45 @@ const elevationItems = [
   { to: '/awards', label: 'Awards', icon: Trophy },
   { to: '/gold', label: 'Gold', icon: Gem },
 ];
+
+const projectPrimaryLinks = (projectId: string) => [
+  { to: `/projects/${projectId}`, label: 'Overview', icon: PenLine, end: true },
+  { to: `/projects/${projectId}/manuscript`, label: 'Write', icon: BookOpen },
+  { to: `/projects/${projectId}/structure`, label: 'Structure', icon: Map },
+  { to: `/projects/${projectId}/pier`, label: 'Pier', icon: Anchor },
+  { to: `/projects/${projectId}/research`, label: 'Research', icon: BookMarked },
+  { to: `/projects/${projectId}/gold`, label: 'Gold', icon: Gem },
+  { to: `/projects/${projectId}/outputs`, label: 'Outputs', icon: Package },
+];
+
+const projectSecondaryLinks = (projectId: string) => [
+  { to: `/projects/${projectId}/bible`, label: 'Bible', icon: BookOpen },
+  { to: `/projects/${projectId}/awards`, label: 'Awards', icon: Trophy },
+  { to: `/projects/${projectId}/swarm`, label: 'Swarm', icon: Users },
+  { to: `/projects/${projectId}/export`, label: 'Export', icon: Upload },
+];
+
+function NavSection({
+  title,
+  collapsed,
+  children,
+}: {
+  title?: string;
+  collapsed: boolean;
+  children: React.ReactNode;
+}) {
+  if (collapsed) return <>{children}</>;
+  return (
+    <div className="mt-3 border-t border-[#eadfca] pt-3">
+      {title && (
+        <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-[#98711d]">
+          {title}
+        </p>
+      )}
+      {children}
+    </div>
+  );
+}
 
 export function Sidebar() {
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -100,7 +145,31 @@ export function Sidebar() {
     queryFn: listProjects,
   });
 
-  const navItems = simpleMode ? simpleNavItems : [...simpleNavItems, ...expertNavItems];
+  const renderLink = (
+    to: string,
+    label: string,
+    Icon: typeof Home,
+    end = false,
+  ) => (
+    <NavLink
+      key={to}
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cn(
+          'flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all',
+          isActive
+            ? 'bg-[#171a22] text-white shadow-lg shadow-[#171a22]/10'
+            : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
+          collapsed && 'justify-center px-2',
+        )
+      }
+      title={label}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      {!collapsed && label}
+    </NavLink>
+  );
 
   return (
     <aside
@@ -158,26 +227,42 @@ export function Sidebar() {
       )}
 
       <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto p-2">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/home' || to === '/projects'}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all',
-                isActive
-                  ? 'bg-[#171a22] text-white shadow-lg shadow-[#171a22]/10'
-                  : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
-                collapsed && 'justify-center px-2',
-              )
-            }
-            title={label}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {!collapsed && label}
-          </NavLink>
-        ))}
+        {!collapsed && (
+          <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-[0.2em] text-[#98711d]">
+            Primary
+          </p>
+        )}
+        {primaryNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon, to === '/home' || to === '/projects'))}
+
+        <NavSection title={collapsed ? undefined : 'Tools'} collapsed={collapsed}>
+          {secondaryNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
+        </NavSection>
+
+        {activeProjectId && (
+          <NavSection title={collapsed ? undefined : 'This project'} collapsed={collapsed}>
+            {projectPrimaryLinks(activeProjectId).map(({ to, label, icon: Icon, end }) =>
+              renderLink(to, label, Icon, end),
+            )}
+            {!collapsed && (
+              <p className="mb-1 mt-3 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#b89b56]">
+                Also
+              </p>
+            )}
+            {projectSecondaryLinks(activeProjectId).map(({ to, label, icon: Icon }) =>
+              renderLink(to, label, Icon),
+            )}
+          </NavSection>
+        )}
+
+        <NavSection title={collapsed ? undefined : 'Advanced'} collapsed={collapsed}>
+          {advancedWriterNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
+        </NavSection>
+
+        {!simpleMode && (
+          <NavSection title={collapsed ? undefined : 'Producer'} collapsed={collapsed}>
+            {expertNavItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
+          </NavSection>
+        )}
 
         {!simpleMode && !collapsed && (
           <div className="mt-3 border-t border-[#eadfca] pt-4">
@@ -201,73 +286,7 @@ export function Sidebar() {
           </div>
         )}
 
-        {!simpleMode && collapsed && elevationItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center justify-center rounded-2xl px-2 py-2.5 text-sm transition-all',
-                isActive ? 'bg-[#171a22] text-white' : 'text-[#6d6354] hover:bg-[#fff8e8]',
-              )
-            }
-            title={label}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-          </NavLink>
-        ))}
-
-        {activeProjectId && !collapsed && (
-          <div className="mt-4 border-t border-[#eadfca] pt-4">
-            <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-[#98711d]">
-              Manuscript
-            </p>
-            <NavLink
-              to={`/projects/${activeProjectId}`}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
-                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
-                )
-              }
-            >
-              <PenLine className="h-4 w-4" /> Overview
-            </NavLink>
-            <NavLink
-              to={`/projects/${activeProjectId}/characters`}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
-                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
-                )
-              }
-            >
-              <Users className="h-4 w-4" /> Characters
-            </NavLink>
-            <NavLink
-              to={`/projects/${activeProjectId}/plot`}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
-                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
-                )
-              }
-            >
-              <Map className="h-4 w-4" /> Plot Board
-            </NavLink>
-            <NavLink
-              to={`/projects/${activeProjectId}/research`}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-all',
-                  isActive ? 'bg-[#fff1c9] text-[#171a22]' : 'text-[#6d6354] hover:bg-[#fff8e8] hover:text-[#171a22]',
-                )
-              }
-            >
-              <BookMarked className="h-4 w-4" /> Research
-            </NavLink>
-          </div>
-        )}
+        {!simpleMode && collapsed && elevationItems.map(({ to, label, icon: Icon }) => renderLink(to, label, Icon))}
       </nav>
 
       {!collapsed && (
