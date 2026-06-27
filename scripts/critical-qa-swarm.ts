@@ -590,6 +590,15 @@ async function runGoldFidelityAuditor(http: HttpClient): Promise<AgentReport> {
   const latestJob = await http.request('GET', `/api/projects/${pid}/jobs/latest`);
   if (!latestJob.ok) warn(r, 'Project jobs/latest route unavailable');
 
+  r.tested.push('POST /api/projects/:id/manuscript/apply-output confirm gate');
+  const blockedApply = await http.request('POST', `/api/projects/${pid}/manuscript/apply-output`, {
+    outputId: 'nonexistent',
+    mode: 'replace-unit',
+    confirmed: false,
+  });
+  if (blockedApply.ok) fail(r, 'apply-output allowed without confirmed:true', undefined, 'blocker');
+  else r.evidence.push('apply-output requires confirmed:true');
+
   finalize(r);
   return r;
 }
