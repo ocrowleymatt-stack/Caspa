@@ -95,9 +95,9 @@ export function TopBar() {
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 md:gap-2">
-        <GuideMeButton className="hidden min-h-[44px] sm:inline-flex" />
-        <ProviderStatus compact className="hidden xl:inline-flex" />
+      <div className="flex min-w-0 shrink-0 items-center gap-1 md:gap-2">
+        <GuideMeButton className="hidden min-h-[44px] shrink-0 sm:inline-flex" />
+        <ProviderStatus compact className="hidden max-w-[8rem] truncate xl:inline-flex xl:max-w-none" />
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}

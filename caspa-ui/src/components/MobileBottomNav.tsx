@@ -20,7 +20,7 @@ export function MobileBottomNav() {
       className="fixed inset-x-0 bottom-0 z-50 border-t border-[#eadfca] bg-[#fffaf0]/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(75,55,21,0.08)] backdrop-blur lg:hidden"
       aria-label="Primary navigation"
     >
-      <div className="mx-auto flex max-w-lg items-stretch justify-around px-1 pt-1">
+      <div className="mx-auto flex w-full min-w-0 max-w-lg items-stretch justify-around px-0.5 pt-1">
         {ITEMS.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -28,19 +28,19 @@ export function MobileBottomNav() {
             end={end}
             className={({ isActive }) =>
               cn(
-                'flex min-h-[44px] min-w-[56px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold transition',
+                'flex min-h-[44px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1 text-[9px] font-semibold leading-tight transition sm:text-[10px]',
                 isActive ? 'text-[#98711d]' : 'text-[#766b58]',
               )
             }
           >
             <Icon className="h-5 w-5 shrink-0" aria-hidden />
-            <span>{label}</span>
+            <span className="max-w-full truncate px-0.5">{label}</span>
           </NavLink>
         ))}
         <button
           type="button"
           onClick={() => setGuideOpen(true)}
-          className="flex min-h-[44px] min-w-[56px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1 text-[10px] font-semibold text-[#766b58]"
+          className="flex min-h-[44px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1 text-[9px] font-semibold leading-tight text-[#766b58] sm:text-[10px]"
           aria-label="Guide Me"
         >
           <Compass className="h-5 w-5 shrink-0" />

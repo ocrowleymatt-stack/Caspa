@@ -168,10 +168,10 @@ export default function ProjectOverview() {
   } as const;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-7">
-      <section className="overflow-hidden rounded-[2.4rem] border border-[#eadfca] bg-white shadow-room">
-        <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
-          <div className="p-7 md:p-10">
+    <div className="page-content mx-auto max-w-6xl space-y-6 sm:space-y-7">
+      <section className="page-panel shadow-room">
+        <div className="grid min-w-0 gap-0 lg:grid-cols-[1fr_320px]">
+          <div className="min-w-0 p-4 sm:p-7 md:p-10">
             <span className="badge mb-4">{workTypeLabel(project.workType) || project.genre}</span>
             <div className="mb-4 flex flex-wrap gap-2 text-xs text-muted">
               {project.fictionality && (
@@ -190,15 +190,15 @@ export default function ProjectOverview() {
                 </span>
               )}
             </div>
-            <h1 className="font-serif text-4xl font-semibold leading-none tracking-[-0.045em] text-[#171a22] md:text-5xl">
+            <h1 className="break-words font-serif text-2xl font-semibold leading-tight tracking-[-0.045em] text-[#171a22] sm:text-4xl md:text-5xl">
               {project.title}
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
+            <p className="mt-4 max-w-full text-base leading-7 text-muted">
               {project.description || 'No description yet. This room is waiting for its first proper sentence.'}
             </p>
             <nav
               aria-label="Project workflow"
-              className="mt-5 flex flex-wrap items-center gap-2 rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] px-4 py-3"
+              className="mt-5 grid grid-cols-2 gap-2 rounded-[1.25rem] border border-[#eadfca] bg-[#fffdf8] p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-2 sm:rounded-[1.5rem] sm:p-4"
             >
               {[
                 { to: `/projects/${id}/sources`, label: 'Sources' },
@@ -207,15 +207,15 @@ export default function ProjectOverview() {
                 { to: `/projects/${id}/gold`, label: 'Improve' },
                 { to: `/projects/${id}/export`, label: 'Export' },
               ].map((step, index, steps) => (
-                <span key={step.to} className="flex items-center gap-2">
+                <span key={step.to} className="flex min-w-0 items-center gap-2">
                   <Link
                     to={step.to}
-                    className="rounded-full border border-[#eadfca] bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-[#5f5648] transition hover:border-[#caa044] hover:text-[#171a22]"
+                    className="block w-full rounded-full border border-[#eadfca] bg-white px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-[0.1em] text-[#5f5648] transition hover:border-[#caa044] hover:text-[#171a22] sm:w-auto sm:text-xs sm:tracking-[0.12em]"
                   >
                     {step.label}
                   </Link>
                   {index < steps.length - 1 && (
-                    <span className="text-[#caa044]" aria-hidden>
+                    <span className="hidden shrink-0 text-[#caa044] sm:inline" aria-hidden>
                       →
                     </span>
                   )}
@@ -339,10 +339,10 @@ export default function ProjectOverview() {
             </div>
           </div>
 
-          <div className="border-t border-[#eadfca] bg-[#f7f1e6] p-7 lg:border-l lg:border-t-0">
-            <div className="rounded-[1.8rem] border border-[#eadfca] bg-[#fffdf8] p-5 shadow-paper">
+          <div className="min-w-0 border-t border-[#eadfca] bg-[#f7f1e6] p-4 sm:p-7 lg:border-l lg:border-t-0">
+            <div className="rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-4 shadow-paper sm:rounded-[1.8rem] sm:p-5">
               <div className="mb-4 text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Progress</div>
-              <div className="text-5xl font-semibold text-[#171a22]">{progress}%</div>
+              <div className="text-4xl font-semibold text-[#171a22] sm:text-5xl">{progress}%</div>
               <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#f1e6d2]">
                 <div className="h-full rounded-full bg-[#171a22]" style={{ width: `${progress}%` }} />
               </div>

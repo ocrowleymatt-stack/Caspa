@@ -26,7 +26,7 @@ export function Layout() {
       >
         <TopBar />
         <main className="page-scroll custom-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-6 lg:pb-6">
-          <div className="mx-auto w-full max-w-[1500px]">
+          <div className="page-content mx-auto w-full max-w-[1500px]">
             <Outlet />
           </div>
         </main>

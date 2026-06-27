@@ -46,42 +46,43 @@ export default function CommandCentre() {
   const latestOutputs = recentOutputs.slice(0, 4);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
-      <section className="overflow-hidden rounded-[2.4rem] border border-[#eadfca] bg-white shadow-room">
-        <div className="grid gap-0 lg:grid-cols-[1.08fr_0.92fr]">
-          <div className="space-y-7 p-7 md:p-10 lg:p-12">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.24em] text-[#98711d] shadow-sm">
-                <Sparkles className="h-4 w-4" /> The Studio
+    <div className="page-content mx-auto max-w-7xl space-y-6 sm:space-y-8">
+      <section className="page-panel shadow-room">
+        <div className="grid min-w-0 gap-0 lg:grid-cols-[1.08fr_0.92fr]">
+          <div className="min-w-0 space-y-5 p-4 sm:space-y-7 sm:p-7 md:p-10 lg:p-12">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#dfc991] bg-[#fffaf0] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#98711d] shadow-sm sm:px-4 sm:text-[11px] sm:tracking-[0.24em]">
+                <Sparkles className="h-4 w-4 shrink-0" /> The Studio
               </div>
-              <ProviderStatus compact />
+              <ProviderStatus compact className="max-w-full" />
             </div>
-            <div>
-              <h1 className="max-w-3xl font-serif text-3xl font-semibold leading-[0.96] tracking-[-0.045em] text-[#171a22] sm:text-5xl md:text-7xl">
+            <div className="min-w-0">
+              <h1 className="max-w-full break-words font-serif text-[1.75rem] font-semibold leading-tight tracking-[-0.045em] text-[#171a22] sm:text-4xl md:text-5xl lg:text-7xl">
                 What are we making today?
               </h1>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
+              <p className="mt-4 max-w-full text-base leading-7 text-muted sm:mt-5 sm:text-lg sm:leading-8">
                 Start blank, upload a manuscript, rescue rough material, or continue the book you already have.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link to="/projects" className="btn-primary">
-                <BookOpen className="h-4 w-4" /> Start with material
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              <Link to="/projects" className="btn-primary w-full sm:w-auto">
+                <BookOpen className="h-4 w-4 shrink-0" /> Start with material
               </Link>
               {activeProject ? (
-                <Link to={`/projects/${activeProject.id}`} className="btn-secondary">
-                  <PenLine className="h-4 w-4" /> Continue {activeProject.title}
+                <Link to={`/projects/${activeProject.id}`} className="btn-secondary w-full min-w-0 sm:w-auto">
+                  <PenLine className="h-4 w-4 shrink-0" />
+                  <span className="truncate">Continue {activeProject.title}</span>
                 </Link>
               ) : (
-                <Link to="/projects" className="btn-secondary">
-                  <PenLine className="h-4 w-4" /> Continue project
+                <Link to="/projects" className="btn-secondary w-full sm:w-auto">
+                  <PenLine className="h-4 w-4 shrink-0" /> Continue project
                 </Link>
               )}
-              <Link to="/casper/trash-to-treasure" className="btn-secondary">
-                <Gem className="h-4 w-4" /> Rescue rough material
+              <Link to="/casper/trash-to-treasure" className="btn-secondary w-full sm:w-auto">
+                <Gem className="h-4 w-4 shrink-0" /> Rescue rough material
               </Link>
-              <Link to="/outputs" className="btn-secondary">
-                <Package className="h-4 w-4" /> Open saved writing
+              <Link to="/outputs" className="btn-secondary w-full sm:w-auto">
+                <Package className="h-4 w-4 shrink-0" /> Open saved writing
               </Link>
             </div>
             <div className="flex flex-wrap gap-3 pt-2">
@@ -103,11 +104,11 @@ export default function CommandCentre() {
             </div>
           </div>
 
-          <div className="border-t border-[#eadfca] bg-[#f7f1e6] p-7 md:p-10 lg:border-l lg:border-t-0 lg:p-12">
-            <div className="space-y-4">
-              <div className="rounded-[2rem] border border-[#eadfca] bg-[#fffdf8] p-6 shadow-paper">
+          <div className="min-w-0 border-t border-[#eadfca] bg-[#f7f1e6] p-4 sm:p-7 md:p-10 lg:border-l lg:border-t-0 lg:p-12">
+            <div className="min-w-0 space-y-4">
+              <div className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4 shadow-paper sm:rounded-[2rem] sm:p-6">
                 <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Today’s page</div>
-                <div className="mt-5 space-y-5 font-serif text-xl leading-9 text-[#2a2520]">
+                <div className="mt-4 space-y-4 font-serif text-lg leading-8 text-[#2a2520] sm:mt-5 sm:space-y-5 sm:text-xl sm:leading-9">
                   <p>Start with a premise.</p>
                   <p>Open a room.</p>
                   <p>Write badly if necessary.</p>
@@ -124,13 +125,13 @@ export default function CommandCentre() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[1.8rem] border border-[#eadfca] bg-white p-5 shadow-paper lg:col-span-2">
+        <div className="min-w-0 rounded-[1.5rem] border border-[#eadfca] bg-white p-4 shadow-paper sm:rounded-[1.8rem] sm:p-5 lg:col-span-2">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Your project</div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {activeProject ? (
-              <Link to={`/projects/${activeProject.id}`} className="rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 transition hover:-translate-y-0.5">
+              <Link to={`/projects/${activeProject.id}`} className="min-w-0 rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 transition hover:-translate-y-0.5">
                 <PenLine className="h-5 w-5 text-[#98711d]" />
-                <div className="mt-2 font-serif text-lg font-semibold text-[#171a22]">Continue {activeProject.title}</div>
+                <div className="mt-2 break-words font-serif text-lg font-semibold text-[#171a22]">Continue {activeProject.title}</div>
                 <p className="mt-1 text-xs text-muted">Pick up the active project — chapters, Book Map, Saved Writing.</p>
               </Link>
             ) : (
@@ -199,12 +200,12 @@ export default function CommandCentre() {
             to={to}
             className="group rounded-[1.7rem] border border-[#eadfca] bg-white/85 p-5 shadow-paper transition-all hover:-translate-y-1 hover:border-accent hover:bg-[#fffaf0]"
           >
-            <div className="flex items-start gap-4">
-              <div className="rounded-2xl bg-[#fff1c9] p-3 text-[#98711d] transition group-hover:bg-[#171a22] group-hover:text-[#f5d37a]">
+            <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+              <div className="shrink-0 rounded-2xl bg-[#fff1c9] p-3 text-[#98711d] transition group-hover:bg-[#171a22] group-hover:text-[#f5d37a]">
                 <Icon className="h-5 w-5" />
               </div>
-              <div>
-                <h2 className="font-serif text-xl font-semibold text-[#171a22]">{label}</h2>
+              <div className="min-w-0">
+                <h2 className="break-words font-serif text-lg font-semibold text-[#171a22] sm:text-xl">{label}</h2>
                 <p className="mt-1 text-sm leading-6 text-muted">{desc}</p>
               </div>
             </div>

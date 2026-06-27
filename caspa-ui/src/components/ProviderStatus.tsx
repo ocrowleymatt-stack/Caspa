@@ -45,9 +45,9 @@ export function ProviderStatus({ compact = false, className }: ProviderStatusPro
 
   if (compact) {
     return (
-      <div className={cn('inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-white/80 px-3 py-1.5 text-xs font-semibold text-muted shadow-sm', className)}>
+      <div className={cn('inline-flex max-w-full items-center gap-2 rounded-full border border-[#eadfca] bg-white/80 px-3 py-1.5 text-xs font-semibold text-muted shadow-sm', className)}>
         {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#98711d]" /> : <span className={cn('h-2 w-2 rounded-full', readyCount ? 'bg-emerald-500' : 'bg-amber-400')} />}
-        <span>
+        <span className="min-w-0 break-words">
           {readyCount
             ? `${readyCount} engine${readyCount === 1 ? '' : 's'} ready`
             : ollama?.status === 'quota_failed' || providers.some((p) => p.status === 'quota_failed')

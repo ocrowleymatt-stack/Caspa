@@ -62,27 +62,27 @@ export function ProjectWorkbenchShell() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 overflow-x-hidden">
-      <header className="overflow-hidden rounded-[2rem] border border-[#eadfca] bg-white shadow-room">
-        <div className="border-b border-[#eadfca] px-6 py-5 md:px-8">
+    <div className="page-content mx-auto max-w-7xl space-y-6">
+      <header className="page-panel shadow-room">
+        <div className="border-b border-[#eadfca] px-4 py-4 sm:px-6 sm:py-5 md:px-8">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">
             Project workbench
           </div>
           <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h1 className="font-serif text-4xl font-semibold tracking-[-0.04em] text-[#171a22] md:text-5xl">
+            <div className="min-w-0 flex-1">
+              <h1 className="break-words font-serif text-2xl font-semibold tracking-[-0.04em] text-[#171a22] sm:text-4xl md:text-5xl">
                 {project.title}
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              <p className="mt-2 max-w-full text-sm leading-6 text-muted">
                 Sources → Plan → Write → Improve → Export. Advanced tools stay in the secondary tab row.
               </p>
             </div>
-            <Link to={`/projects/${id}/bible`} className="btn-secondary text-xs">
+            <Link to={`/projects/${id}/bible`} className="btn-secondary w-full shrink-0 text-xs sm:w-auto">
               Open Plan
             </Link>
           </div>
         </div>
-        <nav className="custom-scrollbar flex gap-1 overflow-x-auto px-3 py-3 md:px-5">
+        <nav className="custom-scrollbar flex max-w-full gap-1 overflow-x-auto overscroll-x-contain px-2 py-3 sm:px-3 md:px-5">
           {TABS.filter((tab) => tab.group === 'primary').map((tab) => {
             const to = tab.slug ? `/projects/${id}/${tab.slug}` : `/projects/${id}`;
             return (
@@ -129,7 +129,7 @@ export function ProjectWorkbenchShell() {
           <Outlet context={{ projectId: id, project }} />
         </div>
         {(showSource || showApply) && (
-          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+          <aside className="min-w-0 space-y-4 lg:sticky lg:top-6 lg:self-start">
             {showSource && <WorkbenchSourceSelector projectId={id} />}
             {showApply && <WorkbenchApplyRail projectId={id} hasText />}
           </aside>
