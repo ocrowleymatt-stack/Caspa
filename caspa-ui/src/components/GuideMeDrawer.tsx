@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, Compass, X } from 'lucide-react';
 import { getGuideState } from '../api/studio';
 import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
+import { useBodyScrollLock, useEscapeKey } from '../hooks/useOverlay';
 
 const DISMISS_KEY = 'caspa-guide-dismissed';
 
@@ -32,6 +34,10 @@ export function GuideMeDrawer() {
     enabled: open && !!projectId,
   });
 
+  const close = useCallback(() => setOpen(false), [setOpen]);
+  useEscapeKey(open, close);
+  useBodyScrollLock(open);
+
   if (!open) return null;
 
   return (
@@ -40,10 +46,10 @@ export function GuideMeDrawer() {
         type="button"
         aria-label="Close guide"
         className="absolute inset-0 bg-[#171a22]/55 backdrop-blur-md"
-        onClick={() => setOpen(false)}
+        onClick={close}
       />
-      <aside className="relative flex h-full w-full max-w-md flex-col border-l border-[#eadfca] bg-[#fffdf8] shadow-2xl">
-        <header className="flex items-center justify-between border-b border-[#eadfca] px-5 py-4">
+      <aside className="relative flex h-full max-h-dvh w-full max-w-md flex-col border-l border-[#eadfca] bg-[#fffdf8] shadow-2xl sm:max-w-md">
+        <header className="flex shrink-0 items-center justify-between border-b border-[#eadfca] px-4 py-4 sm:px-5">
           <div className="flex items-center gap-2">
             <Compass className="h-5 w-5 text-[#98711d]" />
             <div>
@@ -51,12 +57,12 @@ export function GuideMeDrawer() {
               <div className="font-serif text-lg font-semibold text-[#171a22]">What next?</div>
             </div>
           </div>
-          <button type="button" onClick={() => setOpen(false)} className="btn-ghost p-2">
+          <button type="button" onClick={close} className="btn-ghost min-h-[44px] min-w-[44px] p-2" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           {!projectId ? (
             <div className="space-y-4 text-sm leading-6 text-muted">
               <p>Select or create a project first — then CASPA can recommend the best next step.</p>
@@ -148,7 +154,7 @@ export function GuideMeDrawer() {
         </div>
 
         {projectId && (
-          <footer className="border-t border-[#eadfca] p-4">
+          <footer className="shrink-0 border-t border-[#eadfca] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
             <button
               type="button"
               className="btn-ghost w-full text-xs"

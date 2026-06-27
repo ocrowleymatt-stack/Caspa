@@ -149,7 +149,7 @@ export default function ProductionWizard() {
         </div>
       </header>
 
-      <form onSubmit={handleSubmit} className="rounded-[2rem] border border-[#eadfca] bg-[#fffdf8] p-8 shadow-paper">
+      <form onSubmit={handleSubmit} className="rounded-[2rem] border border-[#eadfca] bg-[#fffdf8] p-4 shadow-paper sm:p-8">
         {step === 1 && (
           <div className="space-y-4">
             <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Step 1 · Project</div>
@@ -267,7 +267,7 @@ export default function ProductionWizard() {
         )}
 
         {step < 4 && (
-          <div className="mt-8 flex justify-between">
+          <div className="sticky bottom-0 mt-8 flex flex-wrap justify-between gap-3 border-t border-[#eadfca] bg-[#fffdf8]/95 pt-4 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
             <button
               type="button"
               className="btn-ghost"

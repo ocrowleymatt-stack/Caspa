@@ -120,7 +120,7 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
   const busy = streaming || actionMutation.isPending || streamMutation.isPending;
 
   return (
-    <aside className="fixed right-0 top-0 z-40 flex h-full w-full max-w-[27rem] flex-col border-l border-[#eadfca] bg-[#fffaf0] shadow-[0_0_80px_rgba(75,55,21,0.18)]">
+    <aside className="fixed inset-y-0 right-0 z-40 flex h-full max-h-dvh w-full max-w-[27rem] flex-col border-l border-[#eadfca] bg-[#fffaf0] pb-[env(safe-area-inset-bottom)] shadow-[0_0_80px_rgba(75,55,21,0.18)]">
       <div className="border-b border-[#eadfca] px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -137,7 +137,7 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
         <ProviderStatus compact className="mt-4" />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 border-b border-[#eadfca] p-4">
+      <div className="grid grid-cols-2 gap-2 border-b border-[#eadfca] p-3 sm:p-4">
         {chapterId && (
           <button type="button" disabled={busy} onClick={() => actionMutation.mutate('continue')} className={actionClass}>
             <Wand2 className="mr-1 inline h-3.5 w-3.5 text-[#98711d]" /> Continue
@@ -189,7 +189,7 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
         ) : null}
       </div>
 
-      <div className="space-y-3 border-t border-[#eadfca] bg-white/55 p-4">
+      <div className="shrink-0 space-y-3 border-t border-[#eadfca] bg-white/55 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4">
         {response && onInsert && (
           <button type="button" onClick={() => onInsert(response)} className="btn-secondary w-full text-xs">
             Insert into chapter

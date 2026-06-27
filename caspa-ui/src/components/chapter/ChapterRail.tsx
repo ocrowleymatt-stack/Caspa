@@ -35,6 +35,7 @@ interface ChapterRailProps {
   onImprove?: () => void;
   onWriteNextMissing?: (title: string) => void;
   continuePending?: boolean;
+  className?: string;
 }
 
 export function ChapterRail({
@@ -44,6 +45,7 @@ export function ChapterRail({
   onImprove,
   onWriteNextMissing,
   continuePending,
+  className,
 }: ChapterRailProps) {
   const { data: chapters = [] } = useQuery({
     queryKey: ['chapters', projectId],
@@ -62,7 +64,7 @@ export function ChapterRail({
   const missingSections = bookMap?.missingSections ?? [];
 
   return (
-    <aside className="custom-scrollbar flex w-72 shrink-0 flex-col border-r border-[#eadfca] bg-[#fffaf0]">
+    <aside className={`custom-scrollbar flex w-full max-w-[18rem] shrink-0 flex-col border-r border-[#eadfca] bg-[#fffaf0] sm:w-72 ${className ?? ''}`}>
       <div className="border-b border-[#eadfca] p-4">
         <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Chapters</div>
         <div className="mt-3 flex gap-2">

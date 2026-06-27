@@ -57,13 +57,13 @@ export function OutputsContent({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 custom-scrollbar">
         {FILTER_OPTIONS.map((option) => (
           <button
             key={option.id}
             type="button"
             onClick={() => setKindFilter(option.id)}
-            className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+            className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold uppercase tracking-wide transition min-h-[44px] ${
               kindFilter === option.id
                 ? 'bg-[#171a22] text-white'
                 : 'border border-[#eadfca] bg-white text-[#766b58] hover:border-[#caa044]'

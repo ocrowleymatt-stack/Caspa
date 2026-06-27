@@ -46,7 +46,7 @@ export function StagedProgressPanel({
   if (!pending && !outputId) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 progress-reserve min-h-[6rem]">
       {pending && (
         <>
           <StagedProgress label={label} stages={stages} activeStage={activeStage} pending />

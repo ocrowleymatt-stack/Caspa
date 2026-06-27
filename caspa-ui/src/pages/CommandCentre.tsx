@@ -53,7 +53,7 @@ export default function CommandCentre() {
               <ProviderStatus compact />
             </div>
             <div>
-              <h1 className="max-w-3xl font-serif text-5xl font-semibold leading-[0.96] tracking-[-0.045em] text-[#171a22] md:text-7xl">
+              <h1 className="max-w-3xl font-serif text-3xl font-semibold leading-[0.96] tracking-[-0.045em] text-[#171a22] sm:text-5xl md:text-7xl">
                 What are we making today?
               </h1>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">

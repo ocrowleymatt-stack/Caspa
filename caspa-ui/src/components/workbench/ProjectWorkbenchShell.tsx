@@ -62,7 +62,7 @@ export function ProjectWorkbenchShell() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 overflow-x-hidden">
       <header className="overflow-hidden rounded-[2rem] border border-[#eadfca] bg-white shadow-room">
         <div className="border-b border-[#eadfca] px-6 py-5 md:px-8">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">
@@ -82,7 +82,7 @@ export function ProjectWorkbenchShell() {
             </Link>
           </div>
         </div>
-        <nav className="flex flex-wrap gap-1 overflow-x-auto px-3 py-3 md:px-5">
+        <nav className="custom-scrollbar flex gap-1 overflow-x-auto px-3 py-3 md:px-5">
           {TABS.filter((tab) => tab.group === 'primary').map((tab) => {
             const to = tab.slug ? `/projects/${id}/${tab.slug}` : `/projects/${id}`;
             return (

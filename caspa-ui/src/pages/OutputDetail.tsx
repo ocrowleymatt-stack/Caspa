@@ -158,8 +158,8 @@ export default function OutputDetail() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <header className="rounded-[2rem] border border-[#eadfca] bg-white p-6 shadow-room">
+    <div className="mx-auto max-w-5xl space-y-6 overflow-x-hidden pb-6">
+      <header className="rounded-[2rem] border border-[#eadfca] bg-white p-4 shadow-room sm:p-6">
         <Link
           to={output.projectId ? `/projects/${output.projectId}/outputs` : '/outputs'}
           className="btn-ghost mb-4 inline-flex text-sm"
@@ -167,7 +167,7 @@ export default function OutputDetail() {
           <ArrowLeft className="h-4 w-4" /> Outputs archive
         </Link>
         <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">{kindLabel}</div>
-        <h1 className="mt-2 font-serif text-4xl font-semibold text-[#171a22]">{output.title}</h1>
+        <h1 className="mt-2 break-words font-serif text-2xl font-semibold text-[#171a22] sm:text-4xl">{output.title}</h1>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <OutputProvenancePanel
