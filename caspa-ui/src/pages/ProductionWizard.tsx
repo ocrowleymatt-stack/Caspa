@@ -9,6 +9,7 @@ import {
   listProjectAssets,
   patchIntimacySettings,
   patchProductionBrief,
+  type CreativeTarget,
   type HeatLevel,
   type ProductType,
 } from '../api/studio';
@@ -49,7 +50,43 @@ const HEAT_OPTIONS: Array<{ level: HeatLevel; label: string; desc: string }> = [
   { level: 5, label: 'Explicit adult fiction', desc: 'Adult-only; explicit when requested.' },
 ];
 
-type Step = 1 | 2 | 3 | 4;
+const READER_EFFECTS = [
+  'gripped', 'moved', 'amused', 'unsettled', 'disturbed', 'haunted', 'heartbroken',
+  'hopeful', 'furious', 'seduced', 'shocked', 'cathartic', 'intellectually impressed',
+  'emotionally wrecked', 'morally uneasy', 'exhilarated',
+] as const;
+
+const AFTERTASTE_OPTIONS = [
+  'clean closure', 'bittersweet', 'dread', 'wonder', 'ache', 'comic release',
+  'moral unease', 'triumph', 'ambiguity', 'shock',
+] as const;
+
+const LENGTH_PRESETS: Array<{ id: string; label: string; words: number; chapters?: number }> = [
+  { id: 'short-piece', label: 'Short piece', words: 3000 },
+  { id: 'short-story', label: 'Short story', words: 7500 },
+  { id: 'novella', label: 'Novella', words: 35000, chapters: 12 },
+  { id: 'short-novel', label: 'Short novel', words: 55000, chapters: 18 },
+  { id: 'full-novel', label: 'Full novel', words: 80000, chapters: 24 },
+  { id: 'long-novel', label: 'Long novel', words: 110000, chapters: 32 },
+  { id: 'one-act', label: 'One-act play', words: 12000, chapters: 8 },
+  { id: 'full-play', label: 'Full-length play', words: 25000, chapters: 16 },
+  { id: 'short-musical', label: 'Short musical', words: 18000, chapters: 14 },
+  { id: 'full-musical', label: 'Full musical', words: 35000, chapters: 22 },
+];
+
+const AVOID_OPTIONS = [
+  'cliché', 'sentimentality', 'melodrama', 'purple prose', 'flat dialogue', 'generic AI voice',
+  'over-explaining', 'moralising', 'cheap shock', 'gratuitous sex', 'gratuitous violence',
+  'blandness', 'confusing structure', 'losing source truth',
+];
+
+const OPTIMIZE_OPTIONS = [
+  'readability', 'beauty', 'pace', 'comedy', 'darkness', 'stageability', 'psychological force',
+  'commercial appeal', 'literary originality', 'award-worthiness', 'emotional devastation',
+  'clarity', 'accessibility',
+];
+
+type Step = 1 | 2 | 3 | 4 | 5;
 
 export default function ProductionWizard() {
   const toast = useToast();
@@ -63,10 +100,20 @@ export default function ProductionWizard() {
   const [productType, setProductType] = useState<ProductType>('novel');
   const [audience, setAudience] = useState('');
   const [tone, setTone] = useState('');
-  const [targetLength, setTargetLength] = useState('');
   const [successCriteria, setSuccessCriteria] = useState('');
   const [heatLevel, setHeatLevel] = useState<HeatLevel>(0);
   const [askBeforeHeat, setAskBeforeHeat] = useState(true);
+  const [readerEffects, setReaderEffects] = useState<string[]>([]);
+  const [aftertaste, setAftertaste] = useState('');
+  const [audienceAfterthought, setAudienceAfterthought] = useState('');
+  const [intensity, setIntensity] = useState(4);
+  const [literaryBalance, setLiteraryBalance] = useState<CreativeTarget['literaryBalance']>('commercial-intelligent');
+  const [lengthPreset, setLengthPreset] = useState('full-novel');
+  const [customWordCount, setCustomWordCount] = useState('');
+  const [targetChapterCount, setTargetChapterCount] = useState('');
+  const [optimizeFor, setOptimizeFor] = useState<string[]>(['readability', 'pace']);
+  const [avoid, setAvoid] = useState<string[]>(['generic AI voice', 'cliché']);
+  const [sourceTruthMode, setSourceTruthMode] = useState<CreativeTarget['sourceTruthMode']>('keep-close');
 
   const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: listProjects });
   const { data: assets = [] } = useQuery({
@@ -88,15 +135,35 @@ export default function ProductionWizard() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!projectId) throw new Error('Select a project first.');
+      const preset = LENGTH_PRESETS.find((p) => p.id === lengthPreset);
+      const resolvedWords = customWordCount ? Number(customWordCount) : preset?.words;
+      const resolvedChapters = targetChapterCount
+        ? Number(targetChapterCount)
+        : preset?.chapters;
+
+      const creativeTarget: CreativeTarget = {
+        readerEffects,
+        audienceAfterthought: audienceAfterthought.trim() || undefined,
+        aftertaste: aftertaste || undefined,
+        intensity,
+        literaryBalance,
+        optimizeFor,
+        avoid,
+        sourceTruthMode,
+        lengthPreset,
+        targetChapterCount: resolvedChapters,
+      };
+
       await patchProductionBrief(projectId, {
         productType,
         audience: audience.trim() || undefined,
         tone: tone.trim() || undefined,
-        targetLength: targetLength ? Number(targetLength) : undefined,
+        targetLength: resolvedWords,
         successCriteria: successCriteria.trim() || undefined,
         sourceAssets: assets.map((a) => a.id),
         exportTargets: ['markdown', 'docx'],
         privacyMode: 'local-first',
+        creativeTarget,
       });
       await patchIntimacySettings(projectId, {
         enabled: heatLevel > 0,
@@ -110,8 +177,8 @@ export default function ProductionWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production-brief', projectId] });
       queryClient.invalidateQueries({ queryKey: ['guide-state', projectId] });
-      toast.success('Production Brief saved — CASPA knows what finished means.');
-      setStep(4);
+      toast.success('Creative Target saved — CASPA knows what finished means.');
+      setStep(5);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -122,11 +189,15 @@ export default function ProductionWizard() {
       toast.error('Pick a project from Projects first, or open this wizard from a project.');
       return;
     }
-    if (step < 3) {
+    if (step < 4) {
       setStep((s) => (s + 1) as Step);
       return;
     }
     saveMutation.mutate();
+  }
+
+  function toggleChip(list: string[], value: string, setter: (v: string[]) => void) {
+    setter(list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
   }
 
   return (
@@ -191,7 +262,170 @@ export default function ProductionWizard() {
 
         {step === 3 && (
           <div className="space-y-5">
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Step 3 · Brief &amp; intimacy</div>
+            <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Step 3 · Creative Target</div>
+            <p className="text-sm text-muted">
+              What should this work do to the reader? CASPA uses this for expansion, finishing, and quality passes.
+            </p>
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold">What should the reader feel?</legend>
+              <div className="flex flex-wrap gap-2">
+                {READER_EFFECTS.map((effect) => (
+                  <button
+                    key={effect}
+                    type="button"
+                    onClick={() => toggleChip(readerEffects, effect, setReaderEffects)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition ${
+                      readerEffects.includes(effect)
+                        ? 'bg-[#171a22] text-white'
+                        : 'border border-[#eadfca] bg-white text-[#5f5648]'
+                    }`}
+                  >
+                    {effect}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <label className="block text-sm">
+              What should they think afterwards?
+              <textarea
+                value={audienceAfterthought}
+                onChange={(e) => setAudienceAfterthought(e.target.value)}
+                className="input mt-1 min-h-[72px]"
+                placeholder="They cannot stop thinking about… / They feel complicit in…"
+              />
+            </label>
+
+            <label className="block text-sm">
+              Desired aftertaste
+              <select value={aftertaste} onChange={(e) => setAftertaste(e.target.value)} className="input mt-1">
+                <option value="">Choose…</option>
+                {AFTERTASTE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-sm">
+              Intensity ({intensity}/7)
+              <input
+                type="range"
+                min={1}
+                max={7}
+                value={intensity}
+                onChange={(e) => setIntensity(Number(e.target.value))}
+                className="mt-2 w-full"
+              />
+            </label>
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold">Target length</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {LENGTH_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setLengthPreset(preset.id)}
+                    className={`rounded-xl border px-3 py-2 text-left text-sm ${
+                      lengthPreset === preset.id
+                        ? 'border-[#171a22] bg-[#171a22] text-white'
+                        : 'border-[#eadfca] bg-white'
+                    }`}
+                  >
+                    <div className="font-semibold">{preset.label}</div>
+                    <div className={`text-xs ${lengthPreset === preset.id ? 'text-white/70' : 'text-muted'}`}>
+                      ~{preset.words.toLocaleString()} words
+                      {preset.chapters ? ` · ~${preset.chapters} sections` : ''}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">
+                  Custom word count
+                  <input value={customWordCount} onChange={(e) => setCustomWordCount(e.target.value)} className="input mt-1" type="number" min={0} placeholder="80000" />
+                </label>
+                <label className="text-sm">
+                  Target chapters/scenes
+                  <input value={targetChapterCount} onChange={(e) => setTargetChapterCount(e.target.value)} className="input mt-1" type="number" min={0} placeholder="24" />
+                </label>
+              </div>
+            </fieldset>
+
+            <label className="block text-sm">
+              Literary / commercial balance
+              <select
+                value={literaryBalance}
+                onChange={(e) => setLiteraryBalance(e.target.value as CreativeTarget['literaryBalance'])}
+                className="input mt-1"
+              >
+                <option value="very-commercial">Very commercial</option>
+                <option value="commercial-intelligent">Commercial but intelligent</option>
+                <option value="upmarket">Upmarket</option>
+                <option value="literary">Literary</option>
+                <option value="prize-target">Prize-target</option>
+                <option value="experimental">Experimental</option>
+              </select>
+            </label>
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold">Optimise for</legend>
+              <div className="flex flex-wrap gap-2">
+                {OPTIMIZE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => toggleChip(optimizeFor, opt, setOptimizeFor)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize ${
+                      optimizeFor.includes(opt) ? 'bg-[#98711d] text-white' : 'border border-[#eadfca] bg-white'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold">Avoid</legend>
+              <div className="flex flex-wrap gap-2">
+                {AVOID_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => toggleChip(avoid, opt, setAvoid)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                      avoid.includes(opt) ? 'bg-red-900 text-white' : 'border border-[#eadfca] bg-white'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <label className="block text-sm">
+              Source truth / fiction handling
+              <select
+                value={sourceTruthMode}
+                onChange={(e) => setSourceTruthMode(e.target.value as CreativeTarget['sourceTruthMode'])}
+                className="input mt-1"
+              >
+                <option value="keep-close">Keep close to source</option>
+                <option value="light-fiction">Lightly fictionalise</option>
+                <option value="heavy-fiction">Heavily fictionalise</option>
+                <option value="anonymise">Anonymise</option>
+                <option value="pure-fiction">Transform into pure fiction</option>
+                <option value="ask">Ask case by case</option>
+              </select>
+            </label>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-5">
+            <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Step 4 · Brief &amp; intimacy</div>
             <label className="block text-sm">
               Audience
               <input value={audience} onChange={(e) => setAudience(e.target.value)} className="input mt-1" placeholder="Who is this for?" />
@@ -199,10 +433,6 @@ export default function ProductionWizard() {
             <label className="block text-sm">
               Tone
               <input value={tone} onChange={(e) => setTone(e.target.value)} className="input mt-1" placeholder="Warm, literary, commercial…" />
-            </label>
-            <label className="block text-sm">
-              Target length (words, optional)
-              <input value={targetLength} onChange={(e) => setTargetLength(e.target.value)} className="input mt-1" type="number" min={0} />
             </label>
             <label className="block text-sm">
               What does finished look like?
@@ -239,9 +469,9 @@ export default function ProductionWizard() {
           </div>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <div className="space-y-4 text-center">
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Production Brief ready</div>
+            <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Creative Target ready</div>
             <p className="font-serif text-2xl text-[#171a22]">CASPA knows what you are making.</p>
             {brief?.successCriteria && (
               <p className="text-sm text-muted">{brief.successCriteria}</p>
@@ -249,10 +479,12 @@ export default function ProductionWizard() {
             <div className="flex flex-wrap justify-center gap-3 pt-4">
               {projectId && (
                 <>
-                  <Link to={`/projects/${projectId}/bible`} className="btn-primary">
-                    Generate Project Bible <ArrowRight className="h-4 w-4" />
+                  <Link to={`/projects/${projectId}/manuscript`} className="btn-primary">
+                    Open current work <ArrowRight className="h-4 w-4" />
                   </Link>
-                  <Link to={`/projects/${projectId}/sources`} className="btn-secondary">Source Library</Link>
+                  <Link to={`/projects/${projectId}/bible`} className="btn-secondary">
+                    Generate Project Bible
+                  </Link>
                   <button
                     type="button"
                     className="btn-secondary"
@@ -266,7 +498,7 @@ export default function ProductionWizard() {
           </div>
         )}
 
-        {step < 4 && (
+        {step < 5 && (
           <div className="sticky bottom-0 mt-8 flex flex-wrap justify-between gap-3 border-t border-[#eadfca] bg-[#fffdf8]/95 pt-4 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
             <button
               type="button"
@@ -277,7 +509,7 @@ export default function ProductionWizard() {
               Back
             </button>
             <button type="submit" className="btn-primary" disabled={saveMutation.isPending}>
-              {step === 3 ? (saveMutation.isPending ? 'Generating…' : 'Save & generate brief') : 'Continue'}
+              {step === 4 ? (saveMutation.isPending ? 'Saving…' : 'Save creative target') : 'Continue'}
             </button>
           </div>
         )}

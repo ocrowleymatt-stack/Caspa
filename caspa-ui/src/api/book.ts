@@ -71,6 +71,39 @@ export function exportProjectArchive(projectId: string) {
   });
 }
 
+export interface ManuscriptStructureReport {
+  detectedType: string;
+  confidence: string;
+  units: Array<{ id: string; title: string; type: string; wordCount: number; order: number }>;
+  warnings?: string[];
+  suggestedNextSteps?: string[];
+}
+
+export function analyseStructure(projectId: string, body?: { rawText?: string; filename?: string }) {
+  return apiCall<{ report: ManuscriptStructureReport; outputId?: string } | ManuscriptStructureReport>(
+    `/api/projects/${projectId}/structure/analyse`,
+    { method: 'POST', body: JSON.stringify(body ?? {}) },
+  );
+}
+
+export function applyStructure(
+  projectId: string,
+  body?: {
+    importMode?: 'split-into-units' | 'whole-manuscript-source' | 'single-unit';
+    rawText?: string;
+  },
+) {
+  return apiCall<{
+    snapshotId: string;
+    chaptersCreated: number;
+    unitTitles: string[];
+    importMode: string;
+  }>(`/api/projects/${projectId}/structure/apply`, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
 export function createProjectSnapshot(projectId: string, body?: { label?: string; reason?: string }) {
   return apiCall<{ id: string }>(`/api/projects/${projectId}/snapshot`, {
     method: 'POST',

@@ -71,6 +71,35 @@ export type ProductType =
   | 'educational-resource'
   | 'custom';
 
+export interface CreativeTarget {
+  readerEffects?: string[];
+  audienceAfterthought?: string;
+  aftertaste?: string;
+  intensity?: number;
+  literaryBalance?:
+    | 'very-commercial'
+    | 'commercial-intelligent'
+    | 'upmarket'
+    | 'literary'
+    | 'prize-target'
+    | 'experimental';
+  optimizeFor?: string[];
+  avoid?: string[];
+  sourceTruthMode?:
+    | 'keep-close'
+    | 'light-fiction'
+    | 'heavy-fiction'
+    | 'anonymise'
+    | 'pure-fiction'
+    | 'ask';
+  targetChapterCount?: number;
+  targetSceneCount?: number;
+  targetActCount?: number;
+  idealChapterLength?: number;
+  idealSceneLength?: number;
+  lengthPreset?: string;
+}
+
 export interface ProductionBrief {
   projectId: string;
   productType: ProductType;
@@ -86,6 +115,7 @@ export interface ProductionBrief {
   aiStrategy?: string;
   exportTargets: string[];
   successCriteria?: string;
+  creativeTarget?: CreativeTarget;
   updatedAt: string;
 }
 

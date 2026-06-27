@@ -1,4 +1,5 @@
 import { asyncHandler, createElevationRouter, param, sendError, sendSuccess } from '../../shared/routeHelpers';
+import type { DetectedUnit } from '../manuscript/ImportAnalyser';
 import { bookMapService } from './BookMapService';
 import { manuscriptStructureService } from './ManuscriptStructureService';
 import { projectMemoryService } from './ProjectMemoryService';
@@ -59,6 +60,24 @@ bookRouter.post(
       return;
     }
     sendSuccess(res, await manuscriptStructureService.analyseProjectManuscript(id, req.user), 201);
+  }),
+);
+
+bookRouter.post(
+  '/api/projects/:id/structure/apply',
+  asyncHandler(async (req, res) => {
+    const id = param(req, 'id');
+    const body = req.body as {
+      importMode?: 'split-into-units' | 'whole-manuscript-source' | 'single-unit';
+      rawText?: string;
+      filename?: string;
+      detectedUnits?: DetectedUnit[];
+    };
+    sendSuccess(
+      res,
+      await manuscriptStructureService.applyStructure(id, body, req.user),
+      201,
+    );
   }),
 );
 

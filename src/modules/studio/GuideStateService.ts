@@ -22,20 +22,34 @@ export class GuideStateService {
     ]);
 
     const hasAssets = assets.length > 0;
-    const hasBrief = Boolean(brief.productType && brief.successCriteria);
+    const hasCreativeTarget = Boolean(
+      brief.targetLength || brief.creativeTarget?.readerEffects?.length || brief.successCriteria,
+    );
+    const hasBrief = Boolean(brief.productType && (brief.successCriteria || hasCreativeTarget));
     const hasBible = Boolean(bible?.premise?.trim());
     const hasBookMap = Boolean(bookMap?.finishRoadmap?.length);
     const hasChapters = chapters.length > 0;
+    const hasMultiUnits = chapters.filter((c) => (c.wordCount ?? 0) > 100).length >= 2;
     const hasOutputs = outputs.length > 0;
-    const hasStructure = chapters.some((c) => c.title.toLowerCase().includes('chapter') || c.order > 1);
+    const totalWords = chapters.reduce((sum, c) => sum + (c.wordCount ?? 0), 0);
+    const targetWords = brief.targetLength ?? project.targetWordCount ?? 0;
+    const needsExpansion = targetWords > 0 && totalWords < targetWords * 0.15;
+    const missingSections = bookMap?.missingSections ?? [];
+    const unappliedDraft = outputs.find(
+      (o) =>
+        !o.metadata?.applied &&
+        ['novel-write-pro', 'continue-writing', 'next-chapter-draft', 'trash-to-treasure'].includes(
+          String(o.metadata?.kind ?? o.type),
+        ),
+    );
 
     let state: GuideProjectState = 'blank';
-    if (hasOutputs && hasBookMap) state = 'export-ready';
-    else if (hasOutputs) state = 'revising';
-    else if (hasChapters && chapters.some((c) => (c.wordCount ?? 0) > 200)) state = 'drafting';
+    if (hasOutputs && hasBookMap && !needsExpansion) state = 'export-ready';
+    else if (hasOutputs && unappliedDraft) state = 'revising';
+    else if (hasChapters && totalWords > 500) state = 'drafting';
     else if (hasBookMap) state = 'book-map-ready';
     else if (hasBible) state = 'bible-ready';
-    else if (hasStructure) state = 'structured';
+    else if (hasMultiUnits) state = 'structured';
     else if (hasChapters) state = 'manuscript-imported';
     else if (hasAssets) state = 'assets-uploaded';
     else if (project.description?.trim()) state = 'idea';
@@ -44,91 +58,107 @@ export class GuideStateService {
       {
         id: 'assets',
         label: 'Add material',
-        status: hasAssets ? 'done' : state === 'blank' || state === 'idea' ? 'recommended' : 'missing',
+        status: hasAssets ? 'done' : 'recommended',
         actionPath: `/projects/${projectId}/sources`,
-        explanation: 'Upload manuscripts, notes, receipts, fragments — originals are preserved.',
+        explanation: 'Upload manuscripts, notes, receipts, fragments — originals preserved.',
       },
       {
-        id: 'classify',
-        label: 'Classify assets',
-        status: hasAssets ? 'recommended' : 'optional',
-        actionPath: `/projects/${projectId}/sources`,
-        explanation: 'Tag what is research, prop, manuscript, or ignore for generation.',
-      },
-      {
-        id: 'product',
-        label: 'Choose product',
-        status: hasBrief ? 'done' : 'recommended',
+        id: 'creative-target',
+        label: 'Set creative target',
+        status: hasCreativeTarget ? 'done' : hasAssets ? 'recommended' : 'missing',
         actionPath: `/start?projectId=${projectId}`,
-        explanation: 'Tell CASPA what finished product you want.',
+        explanation: 'Target length, reader effect, and what finished means.',
       },
       {
-        id: 'brief',
-        label: 'Production Brief',
-        status: hasBrief ? 'done' : 'missing',
-        actionPath: `/start?projectId=${projectId}`,
-        explanation: 'Define audience, tone, length, and success criteria.',
-      },
-      {
-        id: 'bible',
-        label: 'Project Bible',
-        status: hasBible ? 'done' : hasBrief ? 'recommended' : 'optional',
-        actionPath: `/projects/${projectId}/bible`,
-        explanation: 'Premise, characters, themes, and structure.',
+        id: 'current-work',
+        label: 'Open current work',
+        status: hasChapters ? 'done' : hasAssets ? 'recommended' : 'missing',
+        actionPath: `/projects/${projectId}/manuscript`,
+        explanation: 'Read and work on the live manuscript — not Writing History.',
       },
       {
         id: 'structure',
-        label: 'Analyse structure',
-        status: hasStructure ? 'done' : hasChapters ? 'recommended' : 'optional',
-        actionPath: `/projects/${projectId}/structure`,
-        explanation: 'Detect chapters, scenes, and gaps without losing source text.',
+        label: 'Create chapters/scenes',
+        status: hasMultiUnits ? 'done' : hasChapters ? 'recommended' : hasAssets ? 'recommended' : 'optional',
+        actionPath: `/projects/${projectId}/manuscript`,
+        explanation: 'Analyse structure and split into chapters without losing source text.',
+      },
+      {
+        id: 'bible',
+        label: 'Project plan',
+        status: hasBible ? 'done' : hasBrief ? 'recommended' : 'optional',
+        actionPath: `/projects/${projectId}/bible`,
+        explanation: 'Premise, characters, themes — feeds every draft.',
       },
       {
         id: 'book-map',
         label: 'Book Map',
         status: hasBookMap ? 'done' : hasBible ? 'recommended' : 'optional',
         actionPath: `/projects/${projectId}/book-map`,
-        explanation: 'Map arcs, missing chapters, and finish roadmap.',
+        explanation: 'Missing chapters, arcs, finish roadmap.',
       },
       {
-        id: 'draft',
-        label: 'Draft next section',
-        status: hasOutputs ? 'done' : hasBookMap ? 'recommended' : 'optional',
-        actionPath: `/casper?projectId=${projectId}`,
-        explanation: 'Novel Write Pro — structured draft with critic room.',
+        id: 'expand',
+        label: needsExpansion ? 'Build toward target length' : 'Expand a section',
+        status: needsExpansion ? 'recommended' : 'optional',
+        actionPath: `/projects/${projectId}/manuscript`,
+        explanation: targetWords
+          ? `${totalWords.toLocaleString()} / ${targetWords.toLocaleString()} words — expand or write missing sections.`
+          : 'Expand or continue the section you are working on.',
+      },
+      {
+        id: 'missing',
+        label: 'Write next missing section',
+        status: missingSections.length > 0 ? 'recommended' : 'optional',
+        actionPath: `/projects/${projectId}/book-map`,
+        explanation: missingSections.length
+          ? `Missing: ${missingSections.slice(0, 3).join(', ')}`
+          : 'Book Map will show gaps when ready.',
+      },
+      {
+        id: 'apply',
+        label: 'Review saved draft',
+        status: unappliedDraft ? 'recommended' : hasOutputs ? 'optional' : 'missing',
+        actionPath: unappliedDraft ? `/outputs/${unappliedDraft.id}` : `/projects/${projectId}/outputs`,
+        explanation: 'Compare and apply safely — originals stay protected.',
       },
       {
         id: 'export',
-        label: 'Export',
-        status: hasOutputs ? 'optional' : 'missing',
+        label: 'Export current work',
+        status: hasChapters && totalWords > 1000 ? 'optional' : 'missing',
         actionPath: `/projects/${projectId}/export`,
-        explanation: 'Markdown, DOCX, or full archive when ready.',
+        explanation: 'Markdown or DOCX from the current manuscript.',
       },
     ];
 
-    const recommended = steps.find((s) => s.status === 'recommended' || s.status === 'missing') ?? steps[0];
+    const recommended =
+      steps.find((s) => s.status === 'recommended' || s.status === 'missing') ?? steps[0];
+
     const secondaryActions = steps
       .filter((s) => s.id !== recommended.id && s.status !== 'done')
       .slice(0, 4)
       .map((s) => ({ label: s.label, path: s.actionPath ?? `/projects/${projectId}` }));
 
-    const missingSteps = steps.filter((s) => s.status === 'missing').map((s) => s.label);
     const warnings: string[] = [];
     if (!hasAssets && !hasChapters) warnings.push('No source material yet — upload or paste before heavy generation.');
-    if (hasAssets && !hasBrief) warnings.push('Production Brief not set — CASPA may not know what “finished” means.');
+    if (hasAssets && !hasCreativeTarget) warnings.push('Creative Target not set — CASPA may not know length or reader effect.');
+    if (unappliedDraft) warnings.push('A generated draft is waiting — review and apply from Writing History or Current Work.');
+    if (needsExpansion && targetWords) {
+      warnings.push(`Current work is ${Math.round((totalWords / targetWords) * 100)}% of target length.`);
+    }
 
     return {
       projectId,
       state,
-      missingSteps,
+      missingSteps: steps.filter((s) => s.status === 'missing').map((s) => s.label),
       recommendedNextAction: {
         label: recommended.label,
-        path: recommended.actionPath ?? `/projects/${projectId}`,
+        path: recommended.actionPath ?? `/projects/${projectId}/manuscript`,
         reason: recommended.explanation,
       },
       secondaryActions,
       warnings,
-      confidence: hasBrief && hasBible ? 0.85 : hasAssets ? 0.6 : 0.35,
+      confidence: hasBrief && hasBible ? 0.9 : hasChapters ? 0.75 : hasAssets ? 0.55 : 0.35,
       steps,
     };
   }

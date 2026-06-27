@@ -3,18 +3,20 @@ import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { getProject } from '../../api/projects';
+import { getProductionBrief } from '../../api/studio';
 import { WorkbenchApplyRail } from './WorkbenchApplyRail';
 import { WorkbenchSourceSelector } from './WorkbenchSourceSelector';
 import { DEFAULT_WORKBENCH_SOURCE } from '../../lib/workbenchSource';
+import { currentWorkLabel } from '../../lib/currentWork';
 import { useAppStore } from '../../store';
 
-const TABS = [
+const BASE_TABS = [
   { slug: '', label: 'Overview', group: 'primary' as const },
   { slug: 'sources', label: 'Sources', group: 'primary' as const },
   { slug: 'bible', label: 'Plan', group: 'primary' as const },
-  { slug: 'manuscript', label: 'Write', group: 'primary' as const },
+  { slug: 'manuscript', label: 'Write', group: 'primary' as const, dynamic: true as const },
   { slug: 'gold', label: 'Improve', group: 'primary' as const },
-  { slug: 'outputs', label: 'Saved Writing', group: 'primary' as const },
+  { slug: 'outputs', label: 'Writing History', group: 'primary' as const },
   { slug: 'export', label: 'Export', group: 'primary' as const },
   { slug: 'book-map', label: 'Book Map', group: 'secondary' as const },
   { slug: 'structure', label: 'Structure', group: 'secondary' as const },
@@ -23,6 +25,8 @@ const TABS = [
   { slug: 'awards', label: 'Awards Shelf', group: 'secondary' as const },
   { slug: 'swarm', label: 'Agent Swarm', group: 'secondary' as const },
 ] as const;
+
+const TABS = BASE_TABS;
 
 const SOURCE_TABS = new Set(['pier', 'research', 'swarm', 'awards', 'gold']);
 
@@ -44,6 +48,14 @@ export function ProjectWorkbenchShell() {
     queryFn: () => getProject(id!),
     enabled: !!id,
   });
+
+  const { data: brief } = useQuery({
+    queryKey: ['production-brief', id],
+    queryFn: () => getProductionBrief(id!),
+    enabled: !!id,
+  });
+
+  const workLabel = currentWorkLabel(project, brief);
 
   const activeSlug = location.pathname.replace(`/projects/${id}`, '').replace(/^\//, '') || '';
   const showSource = SOURCE_TABS.has(activeSlug);
@@ -74,7 +86,7 @@ export function ProjectWorkbenchShell() {
                 {project.title}
               </h1>
               <p className="mt-2 max-w-full text-sm leading-6 text-muted">
-                Sources → Plan → Write → Improve → Export. Advanced tools stay in the secondary tab row.
+                Sources → Plan → {workLabel} → Improve → Export. Advanced tools stay in the secondary tab row.
               </p>
             </div>
             <Link to={`/projects/${id}/bible`} className="btn-secondary w-full shrink-0 text-xs sm:w-auto">
@@ -85,6 +97,7 @@ export function ProjectWorkbenchShell() {
         <nav className="custom-scrollbar flex max-w-full gap-1 overflow-x-auto overscroll-x-contain px-2 py-3 sm:px-3 md:px-5">
           {TABS.filter((tab) => tab.group === 'primary').map((tab) => {
             const to = tab.slug ? `/projects/${id}/${tab.slug}` : `/projects/${id}`;
+            const label = tab.slug === 'manuscript' && 'dynamic' in tab && tab.dynamic ? workLabel : tab.label;
             return (
               <NavLink
                 key={tab.slug || 'overview'}
@@ -98,7 +111,7 @@ export function ProjectWorkbenchShell() {
                   }`
                 }
               >
-                {tab.label}
+                {label}
               </NavLink>
             );
           })}

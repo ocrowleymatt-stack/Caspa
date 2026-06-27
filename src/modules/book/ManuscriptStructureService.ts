@@ -2,11 +2,13 @@ import { generateId } from '../../shared';
 import { aiWithFallback, getProjectChapters, getProjectFullText } from '../../shared/elevationHelpers';
 import {
   analyseManuscriptImport,
+  type DetectedUnit,
   type ImportAnalysisResult,
 } from '../manuscript/ImportAnalyser';
-import { projectBibleService } from '../manuscript/ProjectBibleService';
+import { importService } from '../manuscript/ImportService';
 import { ProjectService } from '../manuscript/ProjectService';
 import { outputRegistry } from '../outputs';
+import { projectSnapshotService } from './ProjectSnapshotService';
 import type { ManuscriptStructureReport } from './types';
 
 function buildSuggestedNextSteps(analysis: ImportAnalysisResult): string[] {
@@ -118,6 +120,78 @@ export class ManuscriptStructureService {
       projectId,
       user,
     });
+  }
+
+  async applyStructure(
+    projectId: string,
+    body: {
+      importMode?: 'split-into-units' | 'whole-manuscript-source' | 'single-unit';
+      rawText?: string;
+      filename?: string;
+      detectedUnits?: DetectedUnit[];
+    },
+    user?: import('../auth/types').UserPublic,
+  ): Promise<{
+    snapshotId: string;
+    chaptersCreated: number;
+    unitTitles: string[];
+    importMode: string;
+  }> {
+    const project = await this.projectService.getProject(projectId, user);
+    const chapters = await getProjectChapters(projectId);
+    const sourceChapter = chapters.find((c) => c.sourceRole === 'original')
+      ?? chapters.find((c) => c.unitStatus === 'source')
+      ?? chapters[0];
+    const rawText = body.rawText?.trim()
+      || sourceChapter?.content?.trim()
+      || (await getProjectFullText(projectId, 200_000));
+    if (!rawText) {
+      throw new Error('No manuscript text found — add source material or paste text first.');
+    }
+
+    const analysis = analyseManuscriptImport({
+      rawText,
+      filename: body.filename ?? sourceChapter?.title ?? project.title,
+      declaredWorkType: project.workType,
+    });
+
+    const importMode = body.importMode
+      ?? analysis.recommendedImportMode
+      ?? (analysis.detectedUnits.length >= 2 ? 'split-into-units' : 'whole-manuscript-source');
+
+    const snapshot = await projectSnapshotService.create(
+      projectId,
+      { label: 'Before structure apply', reason: 'structure-apply' },
+      user,
+    );
+
+    const detectedUnits = body.detectedUnits
+      ?? analysis.detectedUnits.map((unit) => ({
+        type: unit.type,
+        title: unit.title,
+        startIndex: unit.startIndex,
+        endIndex: unit.endIndex,
+        wordCount: unit.wordCount,
+      }));
+
+    const result = await importService.apply(
+      {
+        projectId,
+        rawText,
+        filename: body.filename ?? sourceChapter?.title ?? project.title,
+        importMode: importMode as 'split-into-units' | 'whole-manuscript-source' | 'single-unit',
+        detectedUnits,
+        workType: project.workType,
+      },
+      user!,
+    );
+
+    return {
+      snapshotId: snapshot.id,
+      chaptersCreated: result.chaptersCreated,
+      unitTitles: result.unitTitles,
+      importMode: result.importMode,
+    };
   }
 }
 

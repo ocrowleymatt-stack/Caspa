@@ -1,174 +1,333 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { FileText, GripVertical, Loader2, Plus } from 'lucide-react';
-import {
-  createChapter,
-  listChapters,
-  reorderChapters,
-} from '../../api/chapters';
-import { formatRelative } from '../../lib/utils';
+  BookOpen,
+  FileText,
+  Loader2,
+  PenLine,
+  Plus,
+  Sparkles,
+  Upload,
+  Wand2,
+} from 'lucide-react';
+import { listChapters, createChapter } from '../../api/chapters';
+import { analyseStructure, applyStructure } from '../../api/book';
+import { getProductionBrief } from '../../api/studio';
+import { getBookMap } from '../../api/book';
+import { listOutputs } from '../../api/outputs';
+import { currentWorkDescription, currentWorkLabel } from '../../lib/currentWork';
 import { sourceRoleLabel, structureUnitLabel } from '../../lib/structureUnit';
+import { formatRelative } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
-import type { Chapter } from '../../types';
 import type { ProjectWorkbenchContext } from '../../components/workbench/ProjectWorkbenchShell';
 
-function SortableChapter({ chapter, projectId }: { chapter: Chapter; projectId: string }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: chapter.id });
-  const style = { transform: CSS.Transform.toString(transform), transition };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="group flex items-center gap-3 rounded-[1.6rem] border border-[#eadfca] bg-white px-4 py-3 shadow-paper transition-all hover:-translate-y-0.5 hover:border-accent"
-    >
-      <button
-        type="button"
-        className="cursor-grab rounded-xl p-2 text-muted hover:bg-[#fff8e8] hover:text-foreground"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <Link to={`/projects/${projectId}/chapters/${chapter.id}`} className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3">
-          <span className="truncate font-serif text-xl font-semibold text-[#171a22]">{chapter.title}</span>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-            {chapter.unitType && (
-              <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#98711d]">
-                {structureUnitLabel(chapter.unitType)}
-              </span>
-            )}
-            {sourceRoleLabel(chapter.sourceRole) && (
-              <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#5f5648]">
-                {sourceRoleLabel(chapter.sourceRole)}
-              </span>
-            )}
-            <span className="badge capitalize">{chapter.status}</span>
-          </div>
-        </div>
-        <p className="mt-1 text-xs text-muted">
-          {chapter.wordCount.toLocaleString()} words · {formatRelative(chapter.updatedAt)}
-        </p>
-      </Link>
-    </div>
-  );
-}
-
 export default function ProjectManuscript() {
-  const { projectId } = useOutletContext<ProjectWorkbenchContext>();
+  const { projectId, project } = useOutletContext<ProjectWorkbenchContext>();
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [structureReport, setStructureReport] = useState<{
+    units: Array<{ title: string; wordCount: number; type: string }>;
+    detectedType: string;
+    confidence: string;
+  } | null>(null);
 
   const { data: chapters = [], isLoading } = useQuery({
     queryKey: ['chapters', projectId],
     queryFn: () => listChapters(projectId),
   });
 
+  const { data: brief } = useQuery({
+    queryKey: ['production-brief', projectId],
+    queryFn: () => getProductionBrief(projectId),
+  });
+
+  const { data: bookMap } = useQuery({
+    queryKey: ['book-map', projectId],
+    queryFn: () => getBookMap(projectId),
+  });
+
+  const { data: outputs = [] } = useQuery({
+    queryKey: ['outputs', projectId],
+    queryFn: () => listOutputs(projectId),
+  });
+
+  const label = currentWorkLabel(project, brief);
+  const sorted = useMemo(
+    () => [...chapters].sort((a, b) => a.order - b.order),
+    [chapters],
+  );
+  const totalWords = sorted.reduce((sum, c) => sum + (c.wordCount ?? 0), 0);
+  const targetWords = brief?.targetLength ?? project.targetWordCount ?? 0;
+  const progress = targetWords > 0 ? Math.min(100, Math.round((totalWords / targetWords) * 100)) : 0;
+
+  const analyseMutation = useMutation({
+    mutationFn: () => analyseStructure(projectId),
+    onSuccess: (result) => {
+      const report = 'report' in result ? result.report : result;
+      setStructureReport({
+        units: report.units ?? [],
+        detectedType: report.detectedType ?? 'unknown',
+        confidence: report.confidence ?? 'medium',
+      });
+      toast.success(`CASPA found ${report.units?.length ?? 0} possible sections`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: () => applyStructure(projectId, { importMode: 'split-into-units' }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['guide-state', projectId] });
+      setStructureReport(null);
+      toast.success(`Created ${result.chaptersCreated} section(s) — snapshot saved`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const createMutation = useMutation({
     mutationFn: () =>
       createChapter(projectId, {
-        title: `Chapter ${chapters.length + 1}`,
-        order: chapters.length,
+        title: `Section ${sorted.length + 1}`,
+        order: sorted.length,
       }),
     onSuccess: (chapter) => {
       queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
-      toast.success('Unit created');
       navigate(`/projects/${projectId}/chapters/${chapter.id}`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const reorderMutation = useMutation({
-    mutationFn: (orderedIds: string[]) => reorderChapters(projectId, orderedIds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chapters', projectId] });
-      toast.success('Units reordered');
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const sorted = useMemo(
-    () => [...chapters].sort((a, b) => a.order - b.order),
-    [chapters],
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = sorted.findIndex((c) => c.id === active.id);
-    const newIndex = sorted.findIndex((c) => c.id === over.id);
-    const reordered = arrayMove(sorted, oldIndex, newIndex);
-    queryClient.setQueryData(['chapters', projectId], reordered);
-    reorderMutation.mutate(reordered.map((c) => c.id));
-  };
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-[#98711d]" />
+      </div>
+    );
+  }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#98711d]">Manuscript</div>
-          <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Structure units</h2>
-          <p className="mt-2 text-sm text-muted">Drag to reorder. Open a unit to edit in the chapter canvas.</p>
+    <div className="page-content space-y-6">
+      <header className="page-panel p-4 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">{label}</div>
+            <h2 className="mt-1 break-words font-serif text-2xl font-semibold text-[#171a22] sm:text-3xl">
+              Where you read the actual work
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-muted">
+              {currentWorkDescription(label)} Writing History holds alternatives — this is the live assembly.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sorted.length > 0 && (
+              <Link to={`/projects/${projectId}/read`} className="btn-primary text-sm">
+                <BookOpen className="h-4 w-4" /> Read full draft
+              </Link>
+            )}
+            <Link to={`/start?projectId=${projectId}`} className="btn-secondary text-sm">
+              Creative Target
+            </Link>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => createMutation.mutate()}
-          disabled={createMutation.isPending}
-          className="btn-primary"
-        >
-          {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Add unit
-        </button>
-      </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-[#98711d]" />
-        </div>
-      ) : sorted.length === 0 ? (
-        <div className="rounded-[2rem] border border-[#eadfca] bg-white/85 py-14 text-center shadow-paper">
-          <FileText className="mx-auto mb-4 h-12 w-12 text-[#98711d] opacity-60" />
-          <p className="mb-5 text-muted">No units yet. Import via Casper or create the first page.</p>
-          <button type="button" onClick={() => createMutation.mutate()} className="btn-primary">
-            <Plus className="h-4 w-4" /> Create first unit
-          </button>
-        </div>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={sorted.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {sorted.map((chapter) => (
-                <SortableChapter key={chapter.id} chapter={chapter} projectId={projectId} />
-              ))}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#98711d]">Current words</div>
+            <div className="mt-1 text-2xl font-semibold text-[#171a22]">{totalWords.toLocaleString()}</div>
+          </div>
+          <div className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#98711d]">Target</div>
+            <div className="mt-1 text-2xl font-semibold text-[#171a22]">
+              {targetWords > 0 ? targetWords.toLocaleString() : 'Not set'}
             </div>
-          </SortableContext>
-        </DndContext>
+          </div>
+          <div className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#98711d]">Sections</div>
+            <div className="mt-1 text-2xl font-semibold text-[#171a22]">{sorted.length}</div>
+          </div>
+          <div className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#98711d]">Progress</div>
+            <div className="mt-1 text-2xl font-semibold text-[#171a22]">{targetWords > 0 ? `${progress}%` : '—'}</div>
+          </div>
+        </div>
+
+        {targetWords > 0 && (
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#f1e6d2]">
+            <div className="h-full rounded-full bg-[#98711d]" style={{ width: `${progress}%` }} />
+          </div>
+        )}
+
+        {brief?.creativeTarget?.readerEffects?.length ? (
+          <p className="mt-4 text-xs leading-6 text-muted">
+            Reader effect: {brief.creativeTarget.readerEffects.join(', ')}
+            {brief.creativeTarget.intensity ? ` · intensity ${brief.creativeTarget.intensity}/7` : ''}
+          </p>
+        ) : null}
+
+        {bookMap && bookMap.missingSections.length > 0 && (
+          <p className="mt-2 text-xs text-[#98711d]">
+            Missing: {bookMap.missingSections.slice(0, 4).join(' · ')}
+            {bookMap.missingSections.length > 4 ? '…' : ''}
+          </p>
+        )}
+      </header>
+
+      {structureReport && structureReport.units.length > 0 && (
+        <section className="rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 sm:p-5">
+          <div className="font-serif text-lg font-semibold text-[#171a22]">
+            CASPA found {structureReport.units.length} possible {structureReport.detectedType} sections
+          </div>
+          <p className="mt-1 text-sm text-muted">Confidence: {structureReport.confidence}. Review before applying — snapshot created on apply.</p>
+          <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto text-sm">
+            {structureReport.units.slice(0, 12).map((u, i) => (
+              <li key={i} className="truncate">
+                {u.title} · {u.wordCount.toLocaleString()} words
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={applyMutation.isPending}
+              onClick={() => applyMutation.mutate()}
+            >
+              {applyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Create chapters/scenes
+            </button>
+            <button type="button" className="btn-secondary text-sm" onClick={() => setStructureReport(null)}>
+              Cancel
+            </button>
+          </div>
+        </section>
       )}
-    </section>
+
+      {sorted.length === 0 ? (
+        <section className="page-panel py-12 text-center sm:py-14">
+          <FileText className="mx-auto mb-4 h-12 w-12 text-[#98711d] opacity-60" />
+          <p className="font-serif text-xl font-semibold text-[#171a22]">No current work assembled yet</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted">
+            Add source material, set your creative target, then analyse structure or auto-write the first section.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Link to={`/projects/${projectId}/sources`} className="btn-primary">
+              <Upload className="h-4 w-4" /> Add material
+            </Link>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={analyseMutation.isPending}
+              onClick={() => analyseMutation.mutate()}
+            >
+              {analyseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              Analyse structure
+            </button>
+            <Link to={`/casper?projectId=${projectId}`} className="btn-secondary">
+              <Sparkles className="h-4 w-4" /> Auto-write first section
+            </Link>
+            <button type="button" className="btn-secondary" onClick={() => createMutation.mutate()}>
+              <Plus className="h-4 w-4" /> Start blank section
+            </button>
+          </div>
+        </section>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-muted">{sorted.length} section{sorted.length === 1 ? '' : 's'} in current work</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={analyseMutation.isPending}
+                onClick={() => analyseMutation.mutate()}
+              >
+                Analyse structure
+              </button>
+              <Link to={`/projects/${projectId}/book-map`} className="btn-secondary text-xs">
+                Finish roadmap
+              </Link>
+              <Link to={`/projects/${projectId}/gold`} className="btn-secondary text-xs">
+                Make better
+              </Link>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {sorted.map((chapter) => {
+              const relatedOutput = outputs.find(
+                (o) =>
+                  o.metadata?.chapterId === chapter.id
+                  && !(o.metadata as Record<string, unknown> | undefined)?.applied,
+              );
+              return (
+                <article
+                  key={chapter.id}
+                  className="rounded-2xl border border-[#eadfca] bg-white p-4 shadow-paper sm:p-5"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        to={`/projects/${projectId}/chapters/${chapter.id}`}
+                        className="font-serif text-xl font-semibold text-[#171a22] hover:text-[#98711d]"
+                      >
+                        {chapter.title}
+                      </Link>
+                      <p className="mt-1 text-xs text-muted">
+                        {chapter.wordCount.toLocaleString()} words · {formatRelative(chapter.updatedAt)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {chapter.unitType && (
+                          <span className="rounded-full border border-[#eadfca] bg-[#fffdf8] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#98711d]">
+                            {structureUnitLabel(chapter.unitType)}
+                          </span>
+                        )}
+                        {sourceRoleLabel(chapter.sourceRole) && (
+                          <span className="rounded-full border border-[#eadfca] px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                            {sourceRoleLabel(chapter.sourceRole)}
+                          </span>
+                        )}
+                        <span className="badge capitalize">{chapter.status}</span>
+                      </div>
+                      {relatedOutput && (
+                        <p className="mt-2 text-xs text-[#98711d]">
+                          Draft waiting: {relatedOutput.title}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Link to={`/projects/${projectId}/chapters/${chapter.id}`} className="btn-primary text-xs">
+                        <PenLine className="h-3.5 w-3.5" /> Edit
+                      </Link>
+                      <Link
+                        to={`/casper?projectId=${projectId}&chapterId=${chapter.id}`}
+                        className="btn-secondary text-xs"
+                      >
+                        Expand
+                      </Link>
+                      {relatedOutput && (
+                        <Link to={`/outputs/${relatedOutput.id}`} className="btn-secondary text-xs">
+                          Apply draft
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <p className="text-center text-xs text-muted">
+        Alternatives and old versions live in{' '}
+        <Link to={`/projects/${projectId}/outputs`} className="font-semibold text-[#98711d] hover:underline">
+          Writing History
+        </Link>
+        {' '}— not here.
+      </p>
+    </div>
   );
 }

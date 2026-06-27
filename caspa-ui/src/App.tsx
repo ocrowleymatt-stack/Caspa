@@ -30,6 +30,7 @@ import ProjectExport from './pages/workbench/ProjectExport';
 import ProjectOverview from './pages/ProjectOverview';
 import ProjectBookMap from './pages/workbench/ProjectBookMap';
 import ProjectSourceLibrary from './pages/workbench/ProjectSourceLibrary';
+import ProjectRead from './pages/ProjectRead';
 import ChapterEditor from './pages/ChapterEditor';
 import Characters from './pages/Characters';
 import PlotBoard from './pages/PlotBoard';
@@ -123,7 +124,8 @@ export default function App() {
                 <Route path="admin/users" element={<AdminUsers />} />
               </Route>
             </Route>
-            <Route path="projects/:id/chapters/:chapterId" element={<ChapterEditor />} />
+              <Route path="projects/:id/chapters/:chapterId" element={<ChapterEditor />} />
+              <Route path="projects/:id/read" element={<ProjectRead />} />
           </Route>
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
