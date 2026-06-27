@@ -67,7 +67,7 @@ export function StagedProgressPanel({
       )}
       {outputId && !pending && (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Saved to Saved Writing ·{' '}
+          Saved to Writing History ·{' '}
           <Link to={`/outputs/${outputId}`} className="font-semibold underline">
             Open output
           </Link>

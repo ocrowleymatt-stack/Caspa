@@ -7,10 +7,10 @@ export default function ProjectOutputs() {
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Outputs archive</div>
-        <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Project memory</h2>
+        <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Writing History</div>
+        <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Draft archive</h2>
         <p className="mt-2 text-sm text-muted">
-          Every AI pass saves here first. Apply to manuscript only when you choose.
+          Alternatives and past passes — compare and apply. Read the live work on Manuscript / Current Work.
         </p>
       </div>
       <OutputsContent projectId={projectId} />

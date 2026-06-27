@@ -42,7 +42,7 @@ const primaryNavItems = [
   { to: '/home', label: 'Today', icon: Home },
   { to: '/projects', label: 'Projects', icon: BookOpen },
   { to: '/casper', label: 'Write', icon: Ghost },
-  { to: '/outputs', label: 'Saved Writing', icon: Package },
+  { to: '/outputs', label: 'Writing History', icon: Package },
 ];
 
 const authorToolsNavItems = [
@@ -87,7 +87,7 @@ const projectPrimaryLinks = (projectId: string) => [
   { to: `/projects/${projectId}/bible`, label: 'Plan', icon: BookOpen },
   { to: `/projects/${projectId}/manuscript`, label: 'Write', icon: BookOpen },
   { to: `/projects/${projectId}/gold`, label: 'Improve', icon: Gem },
-  { to: `/projects/${projectId}/outputs`, label: 'Saved Writing', icon: Package },
+  { to: `/projects/${projectId}/outputs`, label: 'Writing History', icon: Package },
   { to: `/projects/${projectId}/export`, label: 'Export', icon: Upload },
 ];
 

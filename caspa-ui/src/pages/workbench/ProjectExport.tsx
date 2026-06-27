@@ -131,7 +131,7 @@ export default function ProjectExport() {
         <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Export / publishing</div>
         <h2 className="mt-1 font-serif text-3xl font-semibold text-[#171a22]">Submission packages</h2>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">
-          Export manuscript, bible, Book Map, and Saved Writing. AI drafts in Outputs are included in the full archive.
+          Export current work, bible, Book Map, and Writing History. Draft archive is included in the full archive.
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <button type="button" onClick={() => markdownMutation.mutate()} disabled={busy} className="btn-secondary">

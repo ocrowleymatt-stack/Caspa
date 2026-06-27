@@ -265,7 +265,7 @@ export default function TrashToTreasure() {
           <div className="flex flex-wrap gap-3">
             {outputId && (
               <Link to={`/outputs/${outputId}`} className="btn-primary">
-                <Sparkles className="h-4 w-4" /> Open Saved Writing
+                <Sparkles className="h-4 w-4" /> Open Writing History
               </Link>
             )}
             {rescuedProjectId && (

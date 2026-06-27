@@ -23,7 +23,7 @@ import { normalizeOutputKind, OUTPUT_KIND_LABELS, outputExcerpt, extractOutputTe
 const coreQuickLinks = [
   { to: '/projects', label: 'Projects', icon: BookOpen, desc: 'Add material, choose a product, and pick up where you left off.' },
   { to: '/casper', label: 'Novel Write Pro', icon: Ghost, desc: 'Auto-write, upload a manuscript, or improve an existing chapter.' },
-  { to: '/outputs', label: 'Saved Writing', icon: Package, desc: 'Every AI draft and report — apply only when you are ready.' },
+  { to: '/outputs', label: 'Writing History', icon: Package, desc: 'Every AI draft and report — compare and apply when you are ready.' },
   { to: '/help', label: 'Help Centre', icon: FileText, desc: 'Practical guides for material, plan, write, improve, and export.' },
 ];
 
@@ -81,8 +81,13 @@ export default function CommandCentre() {
               <Link to="/casper/trash-to-treasure" className="btn-secondary w-full sm:w-auto">
                 <Gem className="h-4 w-4 shrink-0" /> Rescue rough material
               </Link>
+              {activeProject && (
+                <Link to={`/projects/${activeProject.id}/read`} className="btn-secondary w-full sm:w-auto">
+                  <BookOpen className="h-4 w-4 shrink-0" /> Read current draft
+                </Link>
+              )}
               <Link to="/outputs" className="btn-secondary w-full sm:w-auto">
-                <Package className="h-4 w-4 shrink-0" /> Open saved writing
+                <Package className="h-4 w-4 shrink-0" /> Writing History
               </Link>
             </div>
             <div className="flex flex-wrap gap-3 pt-2">
@@ -132,7 +137,7 @@ export default function CommandCentre() {
               <Link to={`/projects/${activeProject.id}`} className="min-w-0 rounded-2xl border border-[#caa044] bg-[#fff8e8] p-4 transition hover:-translate-y-0.5">
                 <PenLine className="h-5 w-5 text-[#98711d]" />
                 <div className="mt-2 break-words font-serif text-lg font-semibold text-[#171a22]">Continue {activeProject.title}</div>
-                <p className="mt-1 text-xs text-muted">Pick up the active project — chapters, Book Map, Saved Writing.</p>
+                <p className="mt-1 text-xs text-muted">Pick up the active project — current work, Book Map, Writing History.</p>
               </Link>
             ) : (
               <Link to="/projects" className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
@@ -148,6 +153,11 @@ export default function CommandCentre() {
             </Link>
             {activeProject && (
               <>
+                <Link to={`/projects/${activeProject.id}/read`} className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4 transition hover:border-[#caa044]">
+                  <BookOpen className="h-5 w-5 text-[#98711d]" />
+                  <div className="mt-2 font-serif text-lg font-semibold">Read current draft</div>
+                  <p className="mt-1 text-xs text-muted">Clean read mode — the assembled work, no tool clutter.</p>
+                </Link>
                 <Link to={`/projects/${activeProject.id}/book-map`} className="rounded-2xl border border-[#eadfca] bg-[#fffdf8] p-4">
                   <Map className="h-5 w-5 text-[#98711d]" />
                   <div className="mt-2 font-serif text-lg font-semibold">Finish this book</div>
@@ -166,11 +176,11 @@ export default function CommandCentre() {
         <div className="space-y-4">
           <div className="rounded-[1.8rem] border border-[#eadfca] bg-white p-5 shadow-paper">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Latest saved writing</div>
+              <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#98711d]">Latest Writing History</div>
               <Link to="/outputs" className="text-xs font-semibold text-[#98711d] hover:underline">All</Link>
             </div>
             {latestOutputs.length === 0 ? (
-              <p className="mt-3 text-sm text-muted">No outputs yet — run Novel Write Pro or Trash to Treasure.</p>
+              <p className="mt-3 text-sm text-muted">No drafts yet — run Novel Write Pro or Trash to Treasure.</p>
             ) : (
               <ul className="mt-3 space-y-2">
                 {latestOutputs.map((output) => {

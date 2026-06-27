@@ -21,6 +21,7 @@ import {
   suggestPlotPoints,
 } from '../api/assistant';
 import { continueWriting } from '../api/casper';
+import { registerOutput } from '../api/outputs';
 import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
 import { useToast } from './Toast';
@@ -72,6 +73,26 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
     onSuccess: () => toast.success('Casper finished'),
     onError: (err: Error) => toast.error(err.message),
     onSettled: () => setStreaming(false),
+  });
+
+  const saveHistoryMutation = useMutation({
+    mutationFn: async () => {
+      if (!response.trim()) throw new Error('Nothing to save yet.');
+      return registerOutput({
+        projectId,
+        type: 'ask-casper',
+        title: prompt.trim().slice(0, 80) || 'Ask Casper reply',
+        metadata: {
+          text: response,
+          prompt: prompt.trim() || undefined,
+          chapterId,
+          destination: chapterId ? 'current-chapter' : 'writing-history',
+          source: 'ask-casper',
+        },
+      });
+    },
+    onSuccess: () => toast.success('Saved to Writing History'),
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const actionMutation = useMutation({
@@ -242,10 +263,22 @@ export function AIPanel({ chapterId, projectId, chapterContent, selectedText, on
         </div>
 
         <div className="shrink-0 space-y-3 border-t border-[#eadfca] bg-white/55 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-4">
-          {response && onInsert && (
-            <button type="button" onClick={() => onInsert(response)} className="btn-secondary w-full text-xs">
-              Insert into chapter
-            </button>
+          {response && (
+            <div className="flex flex-wrap gap-2">
+              {onInsert && (
+                <button type="button" onClick={() => onInsert(response)} className="btn-secondary flex-1 text-xs">
+                  Insert into chapter
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={saveHistoryMutation.isPending}
+                onClick={() => saveHistoryMutation.mutate()}
+                className="btn-secondary flex-1 text-xs"
+              >
+                {saveHistoryMutation.isPending ? 'Saving…' : 'Save to Writing History'}
+              </button>
+            </div>
           )}
           <div className="flex min-w-0 gap-2">
             <input

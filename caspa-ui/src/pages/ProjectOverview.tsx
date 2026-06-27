@@ -304,7 +304,7 @@ export default function ProjectOverview() {
                     <Wand2 className="h-4 w-4" /> Run Gold Pass
                   </Link>
                   <Link to={`/projects/${id}/outputs`} className="btn-secondary">
-                    Open Saved Writing
+                    Open Writing History
                   </Link>
                   <Link to={`/projects/${id}/export`} className="btn-secondary">
                     <Upload className="h-4 w-4" /> Export

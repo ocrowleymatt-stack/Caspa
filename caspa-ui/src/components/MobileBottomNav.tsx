@@ -7,7 +7,7 @@ const ITEMS = [
   { to: '/home', label: 'Today', icon: Home, end: true as const },
   { to: '/projects', label: 'Projects', icon: BookOpen, end: false as const },
   { to: '/casper', label: 'Write', icon: Ghost, end: false as const },
-  { to: '/outputs', label: 'Saved', icon: Package, end: false as const },
+  { to: '/outputs', label: 'History', icon: Package, end: false as const },
   { to: '/help', label: 'Help', icon: HelpCircle, end: false as const },
 ] as const;
 

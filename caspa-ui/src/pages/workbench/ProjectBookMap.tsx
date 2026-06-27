@@ -137,7 +137,7 @@ export default function ProjectBookMap() {
           </ol>
           <div className="mt-5 flex flex-wrap gap-2">
             <Link to={`/casper?projectId=${id}`} className="btn-primary text-xs">Write next chapter</Link>
-            <Link to={`/projects/${id}/outputs`} className="btn-secondary text-xs">Saved Writing</Link>
+            <Link to={`/projects/${id}/outputs`} className="btn-secondary text-xs">Writing History</Link>
           </div>
         </article>
       </section>

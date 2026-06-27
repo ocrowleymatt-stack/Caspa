@@ -128,8 +128,8 @@ export function routeForText(text: string, projectId?: string | null): CommandRo
 
   if (/find my saved writing|saved output/.test(t)) {
     return projectId
-      ? { label: 'Saved Writing', path: `/projects/${projectId}/outputs` }
-      : { label: 'Saved Writing', path: '/outputs' };
+      ? { label: 'Writing History', path: `/projects/${projectId}/outputs` }
+      : { label: 'Writing History', path: '/outputs' };
   }
 
   if (/help me finish this book|finish this book/.test(t)) {
