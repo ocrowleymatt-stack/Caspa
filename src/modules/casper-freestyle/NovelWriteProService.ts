@@ -1,3 +1,5 @@
+import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
+import { productionBriefService } from '../studio/ProductionBriefService';
 import { aiOrchestrator } from '../ai';
 import { projectBibleService } from '../manuscript/ProjectBibleService';
 import { outputRegistry } from '../outputs';
@@ -116,6 +118,11 @@ export class NovelWriteProService {
       ? (await bookContextLoader.load(body.projectId)).summaryBlock.slice(0, 6000)
       : '';
 
+    const brief = body.projectId?.trim()
+      ? await productionBriefService.get(body.projectId).catch(() => null)
+      : null;
+    const creativeSpec = buildCreativeSpecPrompt(brief);
+
     if (improveExisting && !sourceText.trim()) {
       throw new Error('Source manuscript text is required when improving an existing project.');
     }
@@ -146,6 +153,7 @@ export class NovelWriteProService {
       prompt: [
         buildPlanningPrompt(promptInput),
         bookContextBlock ? `\n--- BOOK CONTEXT ---\n${bookContextBlock}` : '',
+        creativeSpec ? `\n--- CREATIVE TARGET ---\n${creativeSpec}` : '',
         '\nBOOK RULES: Do not summarize the whole manuscript unless asked. Do not collapse the book into one essay or blurb. Preserve existing structure. For novel mode produce chapter-scale work or a book-scale plan — never a single stanza summary.',
       ].join(''),
       temperature: 0.45,
@@ -166,6 +174,7 @@ export class NovelWriteProService {
       prompt: [
         buildFirstDraftPrompt(promptInput, plan),
         bookContextBlock ? `\n--- BOOK CONTEXT ---\n${bookContextBlock}` : '',
+        creativeSpec ? `\n--- CREATIVE TARGET ---\n${creativeSpec}` : '',
         '\nWrite chapter-scale prose. Minimum meaningful length for the target output. Do not produce poetry unless mode is poetry.',
       ].join(''),
     });
@@ -186,7 +195,10 @@ export class NovelWriteProService {
 
     const rewriteResponse = await aiOrchestrator.generate({
       ...generateOpts,
-      prompt: buildRewritePrompt(promptInput, plan, firstDraft, criticReport),
+      prompt: [
+        buildRewritePrompt(promptInput, plan, firstDraft, criticReport),
+        creativeSpec ? `\n--- CREATIVE TARGET ---\n${creativeSpec}` : '',
+      ].join(''),
     });
     const improvedRewrite = rewriteResponse.text.trim() || firstDraft;
 

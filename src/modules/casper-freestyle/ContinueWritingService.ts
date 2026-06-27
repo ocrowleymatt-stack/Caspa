@@ -1,3 +1,5 @@
+import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
+import { productionBriefService } from '../studio/ProductionBriefService';
 import { findById } from '../../shared';
 import type { Chapter } from '../../shared';
 import { aiOrchestrator } from '../ai';
@@ -65,6 +67,8 @@ export class ContinueWritingService {
     }
 
     const mode = body.mode ?? 'continue';
+    const brief = await productionBriefService.get(body.projectId).catch(() => null);
+    const creativeSpec = buildCreativeSpecPrompt(brief);
     const chapter = body.chapterId
       ? await findById<Chapter>('chapters', body.chapterId)
       : null;
@@ -77,6 +81,7 @@ export class ContinueWritingService {
 
 MODE: ${mode}
 DIRECTION: ${modeInstructions[mode]}${extra}
+${creativeSpec ? `\n${creativeSpec}\n` : ''}
 
 CURRENT TEXT (continue from here or transform as directed):
 ${body.currentText.slice(-12000)}

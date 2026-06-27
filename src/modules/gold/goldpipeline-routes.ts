@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { generateId } from '../../shared';
 import { asyncHandler, sendError } from '../../shared/routeHelpers';
+import { caspaJobService } from '../jobs/CaspaJobService';
+import { goldSourceLockService } from './GoldSourceLockService';
 import { goldPipeline } from './GoldPipeline';
 
 const UI_PIPELINE_STEPS = [
@@ -101,16 +103,23 @@ export const goldPipelineRoutes = Router();
 goldPipelineRoutes.post(
   '/execute',
   asyncHandler(async (req, res) => {
-    const { projectId, config, chapters } = req.body as {
+    const { projectId, config, chapters, sourceLockId } = req.body as {
       projectId?: string;
       config?: Record<string, unknown>;
       chapters?: string[];
+      sourceLockId?: string;
     };
 
     if (!projectId?.trim()) {
       sendError(res, new Error('projectId is required'), 400);
       return;
     }
+    if (!sourceLockId?.trim()) {
+      sendError(res, new Error('sourceLockId is required — confirm manuscript source before running Gold pipeline.'), 400);
+      return;
+    }
+
+    const sourceLock = await goldSourceLockService.verifyLock(sourceLockId, projectId);
 
     setupSse(res);
 
@@ -130,6 +139,14 @@ goldPipelineRoutes.post(
 
     const abortController = new AbortController();
     req.on('close', () => abortController.abort());
+
+    const job = await caspaJobService.create({
+      projectId,
+      type: 'gold-pipeline',
+      stages: UI_PIPELINE_STEPS.map((step) => ({ id: step.stage, label: step.label })),
+      payload: { sourceLockId, chapters, config },
+    });
+    await caspaJobService.startStage(job.id, UI_PIPELINE_STEPS[0].stage);
 
     try {
       for (let idx = 0; idx < UI_PIPELINE_STEPS.length; idx++) {
@@ -171,9 +188,11 @@ goldPipelineRoutes.post(
 
       if (disconnected || abortController.signal.aborted) return;
 
-      const report = await goldPipeline.run(projectId);
+      const report = await goldPipeline.run(projectId, { sourceText: sourceLock.sourceText });
 
       if (disconnected || res.writableEnded) return;
+
+      await caspaJobService.complete(job.id, { reportId: report.id, overallScore: report.overallScore });
 
       res.write(
         `event: complete\ndata: ${JSON.stringify({ type: 'complete', run_id: runId, report })}\n\n`,
@@ -183,6 +202,7 @@ goldPipelineRoutes.post(
       if (disconnected || abortController.signal.aborted) return;
 
       const message = err instanceof Error ? err.message : 'Gold pipeline failed';
+      await caspaJobService.fail(job.id, message);
       if (!res.writableEnded) {
         res.write(`event: error\ndata: ${JSON.stringify({ type: 'error', message })}\n\n`);
         res.end();

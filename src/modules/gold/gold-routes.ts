@@ -126,6 +126,8 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     payload: {
       sourceLockId: body.sourceLockId,
       mode: body.mode,
+      improveText: body.improveText ?? true,
+      stage: body.stage,
     },
   });
 
