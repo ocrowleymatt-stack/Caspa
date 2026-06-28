@@ -1,4 +1,5 @@
 import { buildCreativeSpecPrompt } from '../../shared/creativeSpecPrompt';
+import { isPlanOrOutlineText } from '../../shared/manuscriptIntent';
 import { productionBriefService } from '../studio/ProductionBriefService';
 import { aiOrchestrator } from '../ai';
 import { caspaJobService } from '../jobs/CaspaJobService';
@@ -111,19 +112,25 @@ export class NovelWriteProService {
       }
     };
 
-    const mode = body.mode ?? 'script';
-    const output = body.output ?? 'Act One';
-    const modeTitle = body.modeTitle ?? modeTitles[mode];
-    const genre = body.genre ?? modeGenres[mode];
-    const premise = body.spark ?? '';
-    const tone = body.tone ?? 'Clear, vivid, witty, production-minded.';
-    const improveExisting = Boolean(body.improveExisting && body.projectId?.trim());
+    let improveExisting = Boolean(body.improveExisting && body.projectId?.trim());
     let sourceText = body.source ?? '';
 
     if (body.projectId?.trim() && !sourceText.trim() && !improveExisting) {
       const bookContext = await bookContextLoader.load(body.projectId);
       sourceText = bookContext.sourceText.slice(0, 12_000);
     }
+
+    const sourceIsPlan = isPlanOrOutlineText(sourceText);
+    if (improveExisting && sourceIsPlan) {
+      improveExisting = false;
+    }
+
+    const output = body.output ?? (sourceIsPlan ? 'Full chapter' : 'Act One');
+    const mode = body.mode ?? (sourceIsPlan ? 'novel' : 'script');
+    const modeTitle = body.modeTitle ?? modeTitles[mode];
+    const genre = body.genre ?? modeGenres[mode];
+    const premise = body.spark ?? '';
+    const tone = body.tone ?? 'Clear, vivid, witty, production-minded.';
 
     const bookContextBlock = body.projectId?.trim()
       ? (await bookContextLoader.load(body.projectId)).summaryBlock.slice(0, 6000)
@@ -159,6 +166,10 @@ export class NovelWriteProService {
       maxTokens: 4200,
     };
 
+    const planGuard = sourceIsPlan
+      ? '\nSOURCE TYPE: Book plan / outline. Write full prose for the target output. Do NOT rewrite, reorganize, or replace the plan document itself.'
+      : '';
+
     await touchStage('plan', 'start');
     const planResponse = await aiOrchestrator.generate({
       ...generateOpts,
@@ -166,6 +177,7 @@ export class NovelWriteProService {
         buildPlanningPrompt(promptInput),
         bookContextBlock ? `\n--- BOOK CONTEXT ---\n${bookContextBlock}` : '',
         creativeSpec ? `\n--- CREATIVE TARGET ---\n${creativeSpec}` : '',
+        planGuard,
         '\nBOOK RULES: Do not summarize the whole manuscript unless asked. Do not collapse the book into one essay or blurb. Preserve existing structure. For novel mode produce chapter-scale work or a book-scale plan — never a single stanza summary.',
       ].join(''),
       temperature: 0.45,
@@ -189,6 +201,7 @@ export class NovelWriteProService {
         buildFirstDraftPrompt(promptInput, plan),
         bookContextBlock ? `\n--- BOOK CONTEXT ---\n${bookContextBlock}` : '',
         creativeSpec ? `\n--- CREATIVE TARGET ---\n${creativeSpec}` : '',
+        planGuard,
         '\nWrite chapter-scale prose. Minimum meaningful length for the target output. Do not produce poetry unless mode is poetry.',
       ].join(''),
     });

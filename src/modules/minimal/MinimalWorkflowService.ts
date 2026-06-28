@@ -1,4 +1,5 @@
 import { getProjectFullText } from '../../shared/elevationHelpers';
+import { isPlanOrOutlineText, isSourceMaterialChapter } from '../../shared/manuscriptIntent';
 import { readJsonFile, writeJsonFile } from '../../shared/fileStore';
 import { bookMapService } from '../book/BookMapService';
 import { manuscriptApplyOutputService } from '../book/ManuscriptApplyOutputService';
@@ -350,34 +351,59 @@ export class MinimalWorkflowService {
       throw new Error('No manuscript sections yet — run Auto Build after adding more material.');
     }
 
+    const assets = await projectAssetService.list(projectId, user);
     const sorted = [...chapters].sort((a, b) => a.order - b.order);
-    const target = sorted.find((chapter) => (chapter.wordCount ?? 0) < 800) ?? sorted[0];
-    const sourceText = target.content?.trim() || (await getProjectFullText(projectId, 12_000));
+    const sourceChapters = sorted.filter((chapter) => isSourceMaterialChapter(chapter));
+    const assetPlanText = assets.map((asset) => asset.sourceText.trim()).filter(Boolean).join('\n\n---\n\n');
+    const chapterPlanText = sourceChapters.map((chapter) => chapter.content?.trim() ?? '').filter(Boolean).join('\n\n---\n\n');
+    const planContext = [assetPlanText, chapterPlanText].filter(Boolean).join('\n\n---\n\n')
+      || (await getProjectFullText(projectId, 12_000));
+
+    const draftChapters = sorted.filter((chapter) => !isSourceMaterialChapter(chapter));
+    let target = draftChapters.find((chapter) => {
+      const text = chapter.content?.trim() ?? '';
+      return (chapter.wordCount ?? 0) < 800 && (!text || !isPlanOrOutlineText(text));
+    });
+
+    if (!target) {
+      target = await this.chapterService.createChapter({
+        projectId,
+        title: 'Chapter One — Draft',
+        content: '',
+        order: sorted.length + 1,
+        status: 'draft',
+        unitType: 'chapter',
+        unitStatus: 'draft',
+        sourceRole: 'ai-output',
+      });
+    }
 
     await this.touchStage(caspaJobId, 'prepare', async () => {
       await this.writeFlags(projectId, { writeProgress: 30 });
-      return { chapterId: target.id, title: target.title };
+      return { chapterId: target!.id, title: target!.title, fromPlan: isPlanOrOutlineText(planContext) };
     });
 
     const result = await this.touchStage(caspaJobId, 'draft', () =>
       novelWriteProService.generate({
         projectId,
-        chapterId: target.id,
-        sourceChapterTitle: target.title,
-        improveExisting: Boolean(target.content?.trim()),
+        chapterId: target!.id,
+        sourceChapterTitle: target!.title,
+        improveExisting: false,
         mode: 'novel',
-        source: sourceText,
+        output: 'Full chapter',
+        spark: 'Write the next chapter of the book in full prose. Use the plan as structure only — do not rewrite or replace the plan.',
+        source: planContext,
       }));
 
     await this.writeFlags(projectId, { writeProgress: 70 });
 
-    const applyMode = target.content?.trim() ? 'append-unit' : 'replace-unit';
+    const applyMode = target!.content?.trim() ? 'append-unit' : 'replace-unit';
     const applied = await this.touchStage(caspaJobId, 'apply', () =>
       manuscriptApplyOutputService.apply({
         projectId,
         outputId: (result as { outputId: string }).outputId,
         mode: applyMode,
-        unitId: target.id,
+        unitId: target!.id,
         confirmed: true,
       }, user));
 
@@ -389,7 +415,7 @@ export class MinimalWorkflowService {
     return {
       outputId: (result as { outputId: string }).outputId,
       applied,
-      message: `Auto Write complete — "${target.title}" updated in your manuscript.`,
+      message: `Auto Write complete — "${target!.title}" updated in your manuscript.`,
       state: await this.getState(projectId, user),
     };
   }

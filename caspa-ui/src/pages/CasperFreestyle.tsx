@@ -25,7 +25,7 @@ import {
   buildNovelWriteProOpenWebUIPrompt,
 } from '../lib/novelWritePro';
 import { isSupportedManuscriptFile, readManuscriptFile } from '../lib/manuscriptUpload';
-import { pickImprovementSourceChapter } from '../lib/manuscriptWorkflow';
+import { isPlanOrOutlineText, pickImprovementSourceChapter } from '../lib/manuscriptWorkflow';
 import { workModelFromCasperMode } from '../lib/casperWorkModel';
 import { useAppStore } from '../store';
 import { useToast } from '../components/Toast';
@@ -257,7 +257,12 @@ export default function CasperFreestyle() {
       const finalMode = override?.mode ?? mode;
       const finalPremise = override?.premise ?? premise;
       const finalOutput = override?.output ?? output;
-      const finalModeCard = getMode(finalMode);
+      const planSource = isPlanOrOutlineText(whitePage);
+      const resolvedMode = planSource && finalMode === 'polish' ? 'novel' : finalMode;
+      const resolvedOutput = planSource && (finalOutput === 'Project bible' || finalMode === 'polish')
+        ? 'Full chapter'
+        : finalOutput;
+      const finalModeCard = getMode(resolvedMode);
       const useExistingProjectId = queryProjectId && !showNewProjectFlow ? queryProjectId : '';
 
       let project;
@@ -284,23 +289,29 @@ export default function CasperFreestyle() {
 
         if (whitePage.trim()) {
           await createChapter(project.id, {
-            title: uploadedName ? `Source manuscript: ${uploadedName}` : 'Source White Page',
+            title: uploadedName
+              ? (planSource ? `Book plan: ${uploadedName}` : `Source manuscript: ${uploadedName}`)
+              : (planSource ? 'Book plan' : 'Source White Page'),
             order: 1,
             content: whitePage,
-            status: finalMode === 'polish' ? 'draft' : 'outline',
+            status: planSource ? 'outline' : (resolvedMode === 'polish' ? 'draft' : 'outline'),
+            unitStatus: planSource ? 'source' : undefined,
+            sourceRole: planSource ? 'original' : undefined,
           });
         }
       }
 
       const draft = await runNovelWritePro({
         projectId: project.id,
-        mode: finalMode,
+        mode: resolvedMode,
         modeTitle: finalModeCard.title,
         genre: finalModeCard.genre,
-        spark: finalPremise,
+        spark: planSource
+          ? (finalPremise.trim() || 'Write the book from this plan — draft full prose, do not rewrite the plan.')
+          : finalPremise,
         source: whitePage,
         tone,
-        output: finalOutput,
+        output: resolvedOutput,
         uploadedName,
       });
 
@@ -311,7 +322,7 @@ export default function CasperFreestyle() {
 
       const existingCount = useExistingProjectId ? existingChapters.length : (whitePage.trim() ? 1 : 0);
       const chapter = await createChapter(project.id, {
-        title: draft.title || firstDraftTitle(finalMode, finalOutput),
+        title: draft.title || firstDraftTitle(resolvedMode, resolvedOutput),
         order: existingCount + 1,
         content: generated,
         status: 'draft',
@@ -345,12 +356,23 @@ export default function CasperFreestyle() {
     }
 
     const { title, text } = await readManuscriptFile(file);
+    const planSource = isPlanOrOutlineText(text);
     setUploadedName(file.name);
-    setPremise(`Uploaded manuscript: ${title}`);
-    setMode('polish');
-    setOutput('Project bible');
+    if (planSource) {
+      setPremise(`Write the book from this plan: ${title}`);
+      setMode('novel');
+      setOutput('Full chapter');
+    } else {
+      setPremise(`Uploaded manuscript: ${title}`);
+      setMode('polish');
+      setOutput('Award Pass Rewrite');
+    }
     handleWhitePageChange(text);
-    toast.success('Manuscript loaded. Press Auto-write to run Novel Write Pro.');
+    toast.success(
+      planSource
+        ? 'Book plan loaded — Auto-write will draft Chapter One from your plan.'
+        : 'Manuscript loaded. Press Auto-write to run Novel Write Pro.',
+    );
     event.target.value = '';
   }
 
