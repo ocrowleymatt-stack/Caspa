@@ -8,7 +8,7 @@ import { getGoldReport, runGoldPass, runGoldPipeline, type GoldRunOptions } from
 import { GoldSourceConfirmModal, type GoldSourceChoice } from './GoldSourceConfirmModal';
 import { JobRecoveryBanner } from '../JobRecoveryBanner';
 import {
-  executeGoldPipelineStream,
+  executeGoldPipelineJob,
   isGoldPipelineStreamEvent,
   type GoldPipelineStreamEvent,
 } from '../../api/goldPipeline';
@@ -370,14 +370,14 @@ export default function GoldPipelinePanel({ embedded = false }: { embedded?: boo
     };
 
     try {
-      await executeGoldPipelineStream(
+      await executeGoldPipelineJob(
         streamBody,
         (raw) => {
           if (isGoldPipelineStreamEvent(raw)) {
             handleStreamEvent(raw, scopeLabel, options);
           }
         },
-        controller.signal,
+        { scopeLabel, signal: controller.signal },
       );
 
       if (!streamCompleteRef.current && !controller.signal.aborted) {

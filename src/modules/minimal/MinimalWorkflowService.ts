@@ -13,6 +13,7 @@ import { projectBibleService } from '../manuscript/ProjectBibleService';
 import { ProjectService } from '../manuscript/ProjectService';
 import { projectAssetService } from '../studio/ProjectAssetService';
 import { importService } from '../manuscript/ImportService';
+import { caspaJobService } from '../jobs/CaspaJobService';
 
 const STATE_PATH = 'minimal-workflow';
 const MIN_MATERIAL_CHARS = 80;
@@ -231,6 +232,23 @@ export class MinimalWorkflowService {
     });
   }
 
+  private async touchStage(
+    jobId: string | undefined,
+    stageId: string,
+    fn: () => Promise<unknown>,
+  ): Promise<unknown> {
+    if (jobId) await caspaJobService.startStage(jobId, stageId);
+    const result = await fn();
+    if (jobId) await caspaJobService.completeStage(jobId, stageId, result);
+    return result;
+  }
+
+  private async skipStage(jobId: string | undefined, stageId: string, partial?: unknown) {
+    if (!jobId) return;
+    await caspaJobService.startStage(jobId, stageId);
+    await caspaJobService.completeStage(jobId, stageId, partial ?? { skipped: true });
+  }
+
   private statusForPhase(
     nextAction: MinimalStepId,
     capabilities: MinimalCapabilities,
@@ -252,7 +270,11 @@ export class MinimalWorkflowService {
     return 'Drop notes, drafts, or files to begin.';
   }
 
-  async autoBuild(projectId: string, user?: import('../auth/types').UserPublic) {
+  async autoBuild(
+    projectId: string,
+    user?: import('../auth/types').UserPublic,
+    caspaJobId?: string,
+  ) {
     await this.projectService.getProject(projectId, user);
     const assets = await projectAssetService.list(projectId, user);
     const combined = assets.map((asset) => asset.sourceText.trim()).filter(Boolean).join('\n\n---\n\n');
@@ -274,29 +296,36 @@ export class MinimalWorkflowService {
     }
 
     if (chapterWords < 20 && combined) {
-      await importService.apply({
-        projectId,
-        rawText: combined,
-        filename: assets[0]?.originalFilename ?? assets[0]?.title ?? 'sources',
-        importMode: 'whole-manuscript-source',
-      }, user as import('../auth/types').UserPublic);
+      await this.touchStage(caspaJobId, 'import', () =>
+        importService.apply({
+          projectId,
+          rawText: combined,
+          filename: assets[0]?.originalFilename ?? assets[0]?.title ?? 'sources',
+          importMode: 'whole-manuscript-source',
+        }, user as import('../auth/types').UserPublic));
       chapters = await this.chapterService.listChapters(projectId);
+    } else {
+      await this.skipStage(caspaJobId, 'import');
     }
 
-    await manuscriptStructureService.analyseAndSave({
-      rawText,
-      filename: assets[0]?.title ?? 'manuscript',
-      projectId,
-      user,
+    const applied = await this.touchStage(caspaJobId, 'structure', async () => {
+      await manuscriptStructureService.analyseAndSave({
+        rawText,
+        filename: assets[0]?.title ?? 'manuscript',
+        projectId,
+        user,
+      });
+      return manuscriptStructureService.applyStructure(projectId, { rawText }, user);
     });
 
-    const applied = await manuscriptStructureService.applyStructure(projectId, { rawText }, user);
+    await this.touchStage(caspaJobId, 'bible', () => projectBibleService.generate(projectId));
+    await this.touchStage(caspaJobId, 'book-map', () => bookMapService.generate(projectId, user));
 
-    await projectBibleService.generate(projectId);
-    await bookMapService.generate(projectId, user);
-
-    await this.projectService.updateProject(projectId, { workflowStage: 'analysing' });
-    await this.writeFlags(projectId, { builtAt: new Date().toISOString(), writeProgress: 30 });
+    await this.touchStage(caspaJobId, 'finalize', async () => {
+      await this.projectService.updateProject(projectId, { workflowStage: 'analysing' });
+      await this.writeFlags(projectId, { builtAt: new Date().toISOString(), writeProgress: 30 });
+      return { ready: true };
+    });
 
     return {
       applied,
@@ -305,7 +334,11 @@ export class MinimalWorkflowService {
     };
   }
 
-  async autoWrite(projectId: string, user?: import('../auth/types').UserPublic) {
+  async autoWrite(
+    projectId: string,
+    user?: import('../auth/types').UserPublic,
+    caspaJobId?: string,
+  ) {
     await this.projectService.getProject(projectId, user);
     const flags = await this.readFlags(projectId);
     if (!flags.builtAt) {
@@ -321,27 +354,32 @@ export class MinimalWorkflowService {
     const target = sorted.find((chapter) => (chapter.wordCount ?? 0) < 800) ?? sorted[0];
     const sourceText = target.content?.trim() || (await getProjectFullText(projectId, 12_000));
 
-    await this.writeFlags(projectId, { writeProgress: 30 });
-
-    const result = await novelWriteProService.generate({
-      projectId,
-      chapterId: target.id,
-      sourceChapterTitle: target.title,
-      improveExisting: Boolean(target.content?.trim()),
-      mode: 'novel',
-      source: sourceText,
+    await this.touchStage(caspaJobId, 'prepare', async () => {
+      await this.writeFlags(projectId, { writeProgress: 30 });
+      return { chapterId: target.id, title: target.title };
     });
+
+    const result = await this.touchStage(caspaJobId, 'draft', () =>
+      novelWriteProService.generate({
+        projectId,
+        chapterId: target.id,
+        sourceChapterTitle: target.title,
+        improveExisting: Boolean(target.content?.trim()),
+        mode: 'novel',
+        source: sourceText,
+      }));
 
     await this.writeFlags(projectId, { writeProgress: 70 });
 
     const applyMode = target.content?.trim() ? 'append-unit' : 'replace-unit';
-    const applied = await manuscriptApplyOutputService.apply({
-      projectId,
-      outputId: result.outputId,
-      mode: applyMode,
-      unitId: target.id,
-      confirmed: true,
-    }, user);
+    const applied = await this.touchStage(caspaJobId, 'apply', () =>
+      manuscriptApplyOutputService.apply({
+        projectId,
+        outputId: (result as { outputId: string }).outputId,
+        mode: applyMode,
+        unitId: target.id,
+        confirmed: true,
+      }, user));
 
     await this.writeFlags(projectId, {
       draftedAt: new Date().toISOString(),
@@ -349,14 +387,18 @@ export class MinimalWorkflowService {
     });
 
     return {
-      outputId: result.outputId,
+      outputId: (result as { outputId: string }).outputId,
       applied,
       message: `Auto Write complete — "${target.title}" updated in your manuscript.`,
       state: await this.getState(projectId, user),
     };
   }
 
-  async improve(projectId: string, user?: import('../auth/types').UserPublic) {
+  async improve(
+    projectId: string,
+    user?: import('../auth/types').UserPublic,
+    caspaJobId?: string,
+  ) {
     await this.projectService.getProject(projectId, user);
     const flags = await this.readFlags(projectId);
     if (!flags.builtAt) {
@@ -369,35 +411,42 @@ export class MinimalWorkflowService {
       throw new Error(`Write at least ${MIN_IMPROVE_WORDS} words before Improve — run Auto Write first.`);
     }
 
-    const lock = await goldSourceLockService.createLock({
-      projectId,
-      sourceType: 'current-manuscript',
-      mode: 'improve-same-story',
-      user,
-    });
+    const lock = await this.touchStage(caspaJobId, 'lock', () =>
+      goldSourceLockService.createLock({
+        projectId,
+        sourceType: 'current-manuscript',
+        mode: 'improve-same-story',
+        user,
+      })) as Awaited<ReturnType<typeof goldSourceLockService.createLock>>;
 
-    const result = await goldPassRunService.execute({
-      projectId,
-      sourceText: lock.sourceText,
-      sourceLock: lock,
-      improveText: true,
-      stage: 'revision',
-      user,
-    });
+    const result = await this.touchStage(caspaJobId, 'improve', () =>
+      goldPassRunService.execute({
+        projectId,
+        sourceText: lock.sourceText,
+        sourceLock: lock,
+        improveText: true,
+        stage: 'revision',
+        user,
+      })) as Awaited<ReturnType<typeof goldPassRunService.execute>>;
 
     let applied = null as Awaited<ReturnType<typeof manuscriptApplyOutputService.apply>> | null;
     if (!result.driftBlocked && result.outputId) {
-      const chapters = await this.chapterService.listChapters(projectId);
-      const primary = [...chapters].sort((a, b) => (b.wordCount ?? 0) - (a.wordCount ?? 0))[0];
+      const improveChapters = await this.chapterService.listChapters(projectId);
+      const primary = [...improveChapters].sort((a, b) => (b.wordCount ?? 0) - (a.wordCount ?? 0))[0];
       if (primary) {
-        applied = await manuscriptApplyOutputService.apply({
-          projectId,
-          outputId: result.outputId,
-          mode: 'replace-unit',
-          unitId: primary.id,
-          confirmed: true,
-        }, user);
+        applied = await this.touchStage(caspaJobId, 'apply', () =>
+          manuscriptApplyOutputService.apply({
+            projectId,
+            outputId: result.outputId,
+            mode: 'replace-unit',
+            unitId: primary.id,
+            confirmed: true,
+          }, user)) as Awaited<ReturnType<typeof manuscriptApplyOutputService.apply>>;
+      } else {
+        await this.skipStage(caspaJobId, 'apply', { skipped: true });
       }
+    } else {
+      await this.skipStage(caspaJobId, 'apply', { driftBlocked: result.driftBlocked });
     }
 
     await this.writeFlags(projectId, { improvedAt: new Date().toISOString() });

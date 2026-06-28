@@ -1,4 +1,9 @@
 import { apiCall, apiDownload } from './client';
+import {
+  startJobBackedRequest,
+  type CaspaJob,
+  type JobProgress,
+} from './caspaJobs';
 import type { Project } from '../types';
 
 export type MinimalPhase = 'empty' | 'material' | 'built' | 'drafted' | 'improved' | 'exported';
@@ -50,6 +55,15 @@ export interface MinimalActionResult {
   docxFilename?: string;
 }
 
+type JobBackedOptions = {
+  onProgress?: (progress: JobProgress) => void;
+  onJobStarted?: (jobId: string) => void;
+};
+
+function extractMinimalResult(job: CaspaJob): MinimalActionResult {
+  return job.result as unknown as MinimalActionResult;
+}
+
 export async function createMinimalProject(input?: {
   title?: string;
   targetWordCount?: number;
@@ -64,25 +78,46 @@ export async function getMinimalState(projectId: string): Promise<MinimalWorkflo
   return apiCall<MinimalWorkflowState>(`/api/projects/${projectId}/minimal/state`);
 }
 
-export async function minimalAutoBuild(projectId: string): Promise<MinimalActionResult> {
-  return apiCall<MinimalActionResult>(`/api/projects/${projectId}/minimal/auto-build`, {
-    method: 'POST',
-    body: '{}',
-  });
+export async function minimalAutoBuild(
+  projectId: string,
+  options?: JobBackedOptions,
+): Promise<MinimalActionResult> {
+  return startJobBackedRequest(
+    () =>
+      apiCall(`/api/projects/${projectId}/minimal/auto-build`, {
+        method: 'POST',
+        body: '{}',
+      }),
+    { ...options, extractResult: extractMinimalResult },
+  );
 }
 
-export async function minimalAutoWrite(projectId: string): Promise<MinimalActionResult> {
-  return apiCall<MinimalActionResult>(`/api/projects/${projectId}/minimal/auto-write`, {
-    method: 'POST',
-    body: '{}',
-  });
+export async function minimalAutoWrite(
+  projectId: string,
+  options?: JobBackedOptions,
+): Promise<MinimalActionResult> {
+  return startJobBackedRequest(
+    () =>
+      apiCall(`/api/projects/${projectId}/minimal/auto-write`, {
+        method: 'POST',
+        body: '{}',
+      }),
+    { ...options, extractResult: extractMinimalResult },
+  );
 }
 
-export async function minimalImprove(projectId: string): Promise<MinimalActionResult> {
-  return apiCall<MinimalActionResult>(`/api/projects/${projectId}/minimal/improve`, {
-    method: 'POST',
-    body: '{}',
-  });
+export async function minimalImprove(
+  projectId: string,
+  options?: JobBackedOptions,
+): Promise<MinimalActionResult> {
+  return startJobBackedRequest(
+    () =>
+      apiCall(`/api/projects/${projectId}/minimal/improve`, {
+        method: 'POST',
+        body: '{}',
+      }),
+    { ...options, extractResult: extractMinimalResult },
+  );
 }
 
 export async function minimalExport(projectId: string): Promise<MinimalActionResult> {

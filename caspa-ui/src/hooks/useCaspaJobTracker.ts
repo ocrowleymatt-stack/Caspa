@@ -60,6 +60,11 @@ export function jobTitle(job: CaspaJob | null | undefined): string {
   if (!job) return 'Background job';
   if (job.type === 'novel-write-pro') return 'Novel Write Pro';
   if (job.type === 'gold-pass') return 'Gold Pass';
+  if (job.type === 'gold-pipeline') return 'Gold Pipeline';
+  if (job.type === 'agent-swarm') return 'Agent Swarm';
+  if (job.type === 'minimal-auto-build') return 'Auto Build';
+  if (job.type === 'minimal-auto-write') return 'Auto Write';
+  if (job.type === 'minimal-improve') return 'Improve';
   if (job.type === 'project-bible') return 'Project Bible';
   if (job.type === 'book-map') return 'Book Map';
   if (job.type === 'cut-analyse') return 'Cut / Tighten analysis';

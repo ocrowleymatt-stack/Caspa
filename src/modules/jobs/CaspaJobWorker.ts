@@ -1,6 +1,28 @@
-import { logger } from '../../shared';
+import { config, logger } from '../../shared';
+import { UserService } from '../auth/UserService';
+import type { UserPublic } from '../auth/types';
 import { caspaJobRunner } from './CaspaJobRunner';
-import { caspaJobService } from './CaspaJobService';
+import { caspaJobService, type CaspaJob } from './CaspaJobService';
+
+const userService = new UserService();
+
+const LOCAL_USER: UserPublic = {
+  id: 'local',
+  email: 'local@caspa.local',
+  displayName: 'Local User',
+  role: 'admin',
+  status: 'active',
+  createdAt: new Date(0).toISOString(),
+};
+
+async function resolveJobUser(job: CaspaJob): Promise<UserPublic | undefined> {
+  if (job.userId) {
+    const user = await userService.getById(job.userId);
+    if (user) return userService.toPublic(user);
+  }
+  if (!config.authEnabled) return LOCAL_USER;
+  return undefined;
+}
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -38,8 +60,8 @@ export class CaspaJobWorker {
       if (!job) break;
       if (this.activeJobs.has(job.id)) break;
       this.activeJobs.add(job.id);
-      void caspaJobRunner
-        .run(job.id)
+      void resolveJobUser(job)
+        .then((user) => caspaJobRunner.run(job.id, user))
         .catch((err) => {
           logger.error(`Background job ${job.id} error: ${err instanceof Error ? err.message : String(err)}`);
         })

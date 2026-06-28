@@ -2,6 +2,8 @@ import { asyncHandler, createElevationRouter, sendError, sendSuccess } from '../
 import { config } from '../../shared';
 import type { SwarmMode } from '../../shared/agentSwarm';
 import type { UserPublic } from '../auth/types';
+import { enqueueCaspaJob, startCaspaJobSync } from '../jobs/caspa-jobs-routes';
+import { AGENT_SWARM_JOB_STAGES, buildJobStartResponse } from '../jobs/jobHelpers';
 import { ProjectService } from '../manuscript/ProjectService';
 import { agentSwarmService } from './AgentSwarmService';
 
@@ -48,15 +50,32 @@ agentSwarmRouter.post(
       return;
     }
     await projectService.getProject(body.projectId, getUser(req));
-    sendSuccess(res, await agentSwarmService.swarm({
+
+    const sync = req.query.sync === '1';
+    const job = await enqueueCaspaJob({
+      userId: req.user?.id,
       projectId: body.projectId,
-      sourceText: body.sourceText,
-      workType: body.workType,
-      agentIds: body.agentIds,
-      targetAwardIds: body.targetAwardIds,
-      researchItemIds: body.researchItemIds,
-      mode: body.mode,
-      user: getUser(req),
-    }), 201);
+      type: 'agent-swarm',
+      stages: [...AGENT_SWARM_JOB_STAGES],
+      payload: {
+        sourceText: body.sourceText,
+        workType: body.workType,
+        agentIds: body.agentIds,
+        targetAwardIds: body.targetAwardIds,
+        researchItemIds: body.researchItemIds,
+        mode: body.mode,
+      },
+    });
+
+    if (sync) {
+      const completed = await startCaspaJobSync(job.id, getUser(req));
+      sendSuccess(res, {
+        jobId: job.id,
+        ...(completed.result as object),
+      }, 201);
+      return;
+    }
+
+    sendSuccess(res, buildJobStartResponse(job), 202);
   }),
 );

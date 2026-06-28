@@ -13,6 +13,7 @@ import {
   type MinimalStepId,
 } from '../api/minimal';
 import { createProjectAsset } from '../api/studio';
+import { JobProgressPanel } from '../components/JobProgressPanel';
 import { MinimalShell } from '../components/minimal/MinimalShell';
 import { MinimalStepList } from '../components/minimal/MinimalStepList';
 import { useToast } from '../components/Toast';
@@ -38,6 +39,7 @@ export default function CaspaMinimal() {
   const [projectId, setProjectId] = useState<string | null>(() => localStorage.getItem(PROJECT_KEY));
   const [dragOver, setDragOver] = useState(false);
   const [busyAction, setBusyAction] = useState<ActionId | 'drop' | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState('');
 
   const ensureProject = useCallback(async (): Promise<string> => {
@@ -100,9 +102,13 @@ export default function CaspaMinimal() {
     mutationFn: async (action: ActionId) => {
       const id = await ensureProject();
       setBusyAction(action);
-      if (action === 'build') return minimalAutoBuild(id);
-      if (action === 'write') return minimalAutoWrite(id);
-      if (action === 'improve') return minimalImprove(id);
+      setActiveJobId(null);
+      const jobOptions = {
+        onJobStarted: (jobId: string) => setActiveJobId(jobId),
+      };
+      if (action === 'build') return minimalAutoBuild(id, jobOptions);
+      if (action === 'write') return minimalAutoWrite(id, jobOptions);
+      if (action === 'improve') return minimalImprove(id, jobOptions);
       return minimalExport(id);
     },
     onSuccess: async (result, action) => {
@@ -117,7 +123,10 @@ export default function CaspaMinimal() {
       }
     },
     onError: (err: Error) => toast.error(err.message),
-    onSettled: () => setBusyAction(null),
+    onSettled: () => {
+      setBusyAction(null);
+      setActiveJobId(null);
+    },
   });
 
   async function handleFiles(files: FileList | File[]) {
@@ -185,7 +194,13 @@ export default function CaspaMinimal() {
     >
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden">
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-4 sm:px-6">
-          {working && busyAction && (
+          {activeJobId && busyAction && busyAction !== 'export' && (
+            <div className="mb-4">
+              <JobProgressPanel jobId={activeJobId} projectId={projectId ?? undefined} />
+            </div>
+          )}
+
+          {working && busyAction && !activeJobId && (
             <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
               <p className="inline-flex items-center gap-2 text-sm text-amber-200">
                 <Loader2 className="h-4 w-4 animate-spin" />

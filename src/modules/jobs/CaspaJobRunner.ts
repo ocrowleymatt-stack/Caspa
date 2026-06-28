@@ -1,6 +1,9 @@
 import { logger } from '../../shared';
 import type { GoldSynthesisStage } from '../../shared/goldSynthesis';
+import type { SwarmMode } from '../../shared/agentSwarm';
 import { novelWriteProService, type NovelWriteProRequest } from '../casper-freestyle/NovelWriteProService';
+import { agentSwarmService } from '../agent-swarm/AgentSwarmService';
+import { minimalWorkflowService } from '../minimal/MinimalWorkflowService';
 import { goldPassRunService } from '../gold/GoldPassRunService';
 import { goldPipeline } from '../gold/GoldPipeline';
 import { goldSourceLockService } from '../gold/GoldSourceLockService';
@@ -51,6 +54,18 @@ export class CaspaJobRunner {
       }
       if (job.type === 'cut-analyse') {
         return await this.runCutAnalyse(jobId, job, user);
+      }
+      if (job.type === 'agent-swarm') {
+        return await this.runAgentSwarm(jobId, job, user);
+      }
+      if (job.type === 'minimal-auto-build') {
+        return await this.runMinimalAutoBuild(jobId, job, user);
+      }
+      if (job.type === 'minimal-auto-write') {
+        return await this.runMinimalAutoWrite(jobId, job, user);
+      }
+      if (job.type === 'minimal-improve') {
+        return await this.runMinimalImprove(jobId, job, user);
       }
       throw new Error(`Unsupported job type: ${job.type}`);
     } catch (err) {
@@ -178,26 +193,33 @@ export class CaspaJobRunner {
     const resumeStage = job.resumeFromStage ?? job.currentStage ?? job.stages[0]?.id;
     const startIdx = Math.max(0, job.stages.findIndex((stage) => stage.id === resumeStage));
 
+    let pipelineReportId: string | undefined;
+    let pipelineOverallScore: number | undefined;
+
     for (let idx = startIdx; idx < job.stages.length; idx++) {
       const stage = job.stages[idx];
       if (stage.id === 'complete') continue;
+
       await caspaJobService.startStage(jobId, stage.id);
-      if (idx === job.stages.length - 2 || stage.id === 'pipeline-run') {
+      if (stage.id === 'final_gold_framework') {
         const report = await goldPipeline.run(projectId, { sourceText: sourceLock.sourceText });
+        pipelineReportId = report.id;
+        pipelineOverallScore = report.overallScore;
         await caspaJobService.completeStage(jobId, stage.id, { reportId: report.id });
-        await caspaJobService.startStage(jobId, 'complete');
-        await caspaJobService.completeStage(jobId, 'complete');
-        const completed = await caspaJobService.complete(jobId, {
-          reportId: report.id,
-          overallScore: report.overallScore,
-        });
-        if (!completed) throw new Error('Job update failed after Gold pipeline');
-        return completed;
+      } else {
+        await caspaJobService.completeStage(jobId, stage.id);
       }
-      await caspaJobService.completeStage(jobId, stage.id);
     }
 
-    throw new Error('Gold pipeline found no runnable stages');
+    await caspaJobService.startStage(jobId, 'complete');
+    await caspaJobService.completeStage(jobId, 'complete');
+
+    const completed = await caspaJobService.complete(jobId, {
+      reportId: pipelineReportId,
+      overallScore: pipelineOverallScore,
+    });
+    if (!completed) throw new Error('Job update failed after Gold pipeline');
+    return completed;
   }
 
   private async runProjectBible(jobId: string, job: CaspaJob, user?: UserPublic): Promise<CaspaJob> {
@@ -247,6 +269,84 @@ export class CaspaJobRunner {
 
     const completed = await caspaJobService.complete(jobId, analysis);
     if (!completed) throw new Error('Job update failed after Cut analyse');
+    return completed;
+  }
+
+  private async runAgentSwarm(jobId: string, job: CaspaJob, user?: UserPublic): Promise<CaspaJob> {
+    const projectId = job.projectId;
+    if (!projectId) throw new Error('Agent swarm job missing projectId');
+
+    await this.projectService.getProject(projectId, user);
+    const payload = job.input;
+
+    await runStage(jobId, 'load', async () => ({ projectId }));
+
+    await caspaJobService.startStage(jobId, 'agents');
+    const result = await agentSwarmService.swarm({
+      projectId,
+      sourceText: typeof payload.sourceText === 'string' ? payload.sourceText : undefined,
+      workType: typeof payload.workType === 'string' ? payload.workType : undefined,
+      agentIds: Array.isArray(payload.agentIds) ? payload.agentIds as string[] : undefined,
+      targetAwardIds: Array.isArray(payload.targetAwardIds) ? payload.targetAwardIds as string[] : undefined,
+      researchItemIds: Array.isArray(payload.researchItemIds) ? payload.researchItemIds as string[] : undefined,
+      mode: typeof payload.mode === 'string' ? payload.mode as SwarmMode : undefined,
+      user,
+    });
+    await caspaJobService.completeStage(jobId, 'agents', { agentCount: result.agentReports.length });
+
+    await runStage(jobId, 'consensus', async () => ({ summary: result.consensus.summary.slice(0, 160) }));
+
+    const needsRevision = result.mode === 'collaborative-revision' || result.mode === 'final-polish';
+    await runStage(jobId, 'revision', async () => ({
+      revised: Boolean(result.revisedText),
+      skipped: !needsRevision,
+    }));
+
+    await runStage(jobId, 'save', async () => ({ outputId: result.outputId }));
+    await caspaJobService.startStage(jobId, 'complete');
+    await caspaJobService.completeStage(jobId, 'complete');
+
+    const completed = await caspaJobService.complete(jobId, result);
+    if (!completed) throw new Error('Job update failed after Agent swarm');
+    return completed;
+  }
+
+  private async runMinimalAutoBuild(jobId: string, job: CaspaJob, user?: UserPublic): Promise<CaspaJob> {
+    const projectId = job.projectId;
+    if (!projectId) throw new Error('Minimal auto-build job missing projectId');
+
+    const result = await minimalWorkflowService.autoBuild(projectId, user, jobId);
+    await caspaJobService.startStage(jobId, 'complete');
+    await caspaJobService.completeStage(jobId, 'complete');
+
+    const completed = await caspaJobService.complete(jobId, result);
+    if (!completed) throw new Error('Job update failed after Minimal auto-build');
+    return completed;
+  }
+
+  private async runMinimalAutoWrite(jobId: string, job: CaspaJob, user?: UserPublic): Promise<CaspaJob> {
+    const projectId = job.projectId;
+    if (!projectId) throw new Error('Minimal auto-write job missing projectId');
+
+    const result = await minimalWorkflowService.autoWrite(projectId, user, jobId);
+    await caspaJobService.startStage(jobId, 'complete');
+    await caspaJobService.completeStage(jobId, 'complete');
+
+    const completed = await caspaJobService.complete(jobId, result);
+    if (!completed) throw new Error('Job update failed after Minimal auto-write');
+    return completed;
+  }
+
+  private async runMinimalImprove(jobId: string, job: CaspaJob, user?: UserPublic): Promise<CaspaJob> {
+    const projectId = job.projectId;
+    if (!projectId) throw new Error('Minimal improve job missing projectId');
+
+    const result = await minimalWorkflowService.improve(projectId, user, jobId);
+    await caspaJobService.startStage(jobId, 'complete');
+    await caspaJobService.completeStage(jobId, 'complete');
+
+    const completed = await caspaJobService.complete(jobId, result);
+    if (!completed) throw new Error('Job update failed after Minimal improve');
     return completed;
   }
 }

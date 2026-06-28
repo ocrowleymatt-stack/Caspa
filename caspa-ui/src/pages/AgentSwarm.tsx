@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Bot, Loader2, Sparkles, Users } from 'lucide-react';
+import { JobProgressPanel } from '../components/JobProgressPanel';
 import { StagedProgressPanel } from '../components/StagedProgressPanel';
 import { SWARM_STAGES } from '../components/StagedProgress';
 import { ElevationWorkbench } from '../components/ElevationWorkbench';
@@ -25,6 +26,7 @@ function AgentSwarmContentInner({ projectId }: { projectId: string }) {
   const [mode, setMode] = useState<SwarmMode>('critique');
   const [sourceText, setSourceText] = useState('');
   const [result, setResult] = useState<AgentSwarmResult | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const { data: agents = [] } = useQuery({
     queryKey: ['swarm-agents'],
@@ -44,19 +46,27 @@ function AgentSwarmContentInner({ projectId }: { projectId: string }) {
   }, [agents, selectedAgents.length]);
 
   const swarmMutation = useMutation({
-    mutationFn: () =>
-      runAgentSwarm({
+    mutationFn: () => {
+      setActiveJobId(null);
+      return runAgentSwarm({
         projectId,
         sourceText: sourceText.trim() || workbenchText || undefined,
         agentIds: selectedAgents,
         targetAwardIds: shelf?.selectedAwardIds,
         mode,
-      }),
+      }, {
+        onJobStarted: (jobId) => setActiveJobId(jobId),
+      });
+    },
     onSuccess: (data) => {
       setResult(data);
+      setActiveJobId(null);
       toast.success(`Swarm saved · ${data.outputId.slice(0, 8)}`);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => {
+      setActiveJobId(null);
+      toast.error(error.message);
+    },
   });
 
   const toggleAgent = (id: string) => {
@@ -144,7 +154,10 @@ function AgentSwarmContentInner({ projectId }: { projectId: string }) {
           )}
           Run swarm ({selectedAgents.length} agents)
         </button>
-        <div className="mt-4">
+        <div className="mt-4 space-y-4">
+          {activeJobId && (
+            <JobProgressPanel jobId={activeJobId} projectId={projectId} />
+          )}
           <StagedProgressPanel
             label="Agent Swarm"
             stages={SWARM_STAGES}

@@ -66,3 +66,51 @@ export const CUT_ANALYSE_JOB_STAGES = [
   { id: 'save', label: 'Saving analysis' },
   { id: 'complete', label: 'Complete' },
 ] as const;
+
+export const GOLD_PIPELINE_JOB_STAGES = [
+  { id: 'manuscript_ingest', label: 'Manuscript Ingest' },
+  { id: 'structural_vector_mapping', label: 'Structural Vector Mapping' },
+  { id: 'scene_function_analysis', label: 'Scene Function Analysis' },
+  { id: 'prose_quality_pass', label: 'Prose Quality Pass' },
+  { id: 'voice_consistency_calibration', label: 'Voice Consistency Calibration' },
+  { id: 'dialogue_veracity_audit', label: 'Dialogue Veracity Audit' },
+  { id: 'subtext_motif_detection', label: 'Subtext & Motif Detection' },
+  { id: 'sensory_detail_expansion', label: 'Sensory Detail Expansion' },
+  { id: 'pacing_tension_mapping', label: 'Pacing & Tension Mapping' },
+  { id: 'lexical_density_sweep', label: 'Lexical Density Sweep' },
+  { id: 'micro_tension_polish', label: 'Micro-Tension Polish' },
+  { id: 'final_gold_framework', label: 'Final Gold Framework' },
+  { id: 'complete', label: 'Complete' },
+] as const;
+
+export const AGENT_SWARM_JOB_STAGES = [
+  { id: 'load', label: 'Loading project context' },
+  { id: 'agents', label: 'Running agent reports' },
+  { id: 'consensus', label: 'Synthesizing consensus' },
+  { id: 'revision', label: 'Revision pass' },
+  { id: 'save', label: 'Saving swarm output' },
+  { id: 'complete', label: 'Complete' },
+] as const;
+
+export const MINIMAL_AUTO_BUILD_JOB_STAGES = [
+  { id: 'import', label: 'Importing material' },
+  { id: 'structure', label: 'Analysing structure' },
+  { id: 'bible', label: 'Generating story bible' },
+  { id: 'book-map', label: 'Generating book map' },
+  { id: 'finalize', label: 'Finalizing build' },
+  { id: 'complete', label: 'Complete' },
+] as const;
+
+export const MINIMAL_AUTO_WRITE_JOB_STAGES = [
+  { id: 'prepare', label: 'Preparing section' },
+  { id: 'draft', label: 'Drafting with Novel Write Pro' },
+  { id: 'apply', label: 'Applying to manuscript' },
+  { id: 'complete', label: 'Complete' },
+] as const;
+
+export const MINIMAL_IMPROVE_JOB_STAGES = [
+  { id: 'lock', label: 'Locking source' },
+  { id: 'improve', label: 'Gold Pass polish' },
+  { id: 'apply', label: 'Applying improvements' },
+  { id: 'complete', label: 'Complete' },
+] as const;
