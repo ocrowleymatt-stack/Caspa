@@ -140,6 +140,41 @@ function unwrap<T>(data: unknown): T {
   return data as T;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollCreativeJob<T = Record<string, unknown>>(
+  http: HttpClient,
+  jobId: string,
+  maxMs = 180_000,
+): Promise<T> {
+  const started = Date.now();
+  while (Date.now() - started < maxMs) {
+    const res = await http.request('GET', `/api/jobs/${jobId}/progress`, undefined, 15_000);
+    const progress = unwrap<{ status?: string; result?: T; error?: string }>(res.data);
+    if (progress.status === 'completed') return (progress.result ?? {}) as T;
+    if (progress.status === 'failed' || progress.status === 'cancelled') {
+      throw new Error(progress.error ?? `Job ${progress.status}`);
+    }
+    await sleep(2500);
+  }
+  throw new Error(`Job ${jobId} timed out after ${maxMs}ms`);
+}
+
+async function postCreativeJob<T = Record<string, unknown>>(
+  http: HttpClient,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const res = await http.request('POST', path, body, 15_000);
+  const payload = unwrap<{ jobId?: string } & T>(res.data);
+  if (payload.jobId) {
+    return pollCreativeJob<T>(http, payload.jobId);
+  }
+  return payload as T;
+}
+
 function makeAgent(agent: string): AgentReport {
   return {
     agent,
@@ -309,9 +344,12 @@ async function runAngryNovelist(http: HttpClient, withAi: boolean): Promise<Agen
     return r;
   }
 
-  const mapRes = await http.request('POST', `/api/projects/${project.id}/book-map/generate`, {}, 180_000);
-  const bookMap = unwrap<{ outputId?: string; finishRoadmap?: string[]; missingSections?: string[]; nextRecommendedChapter?: string }>(mapRes.data);
-  if (!mapRes.ok || !bookMap.outputId) {
+  const bookMap = await postCreativeJob<{ outputId?: string; finishRoadmap?: string[]; missingSections?: string[]; nextRecommendedChapter?: string }>(
+    http,
+    `/api/projects/${project.id}/book-map/generate`,
+    {},
+  );
+  if (!bookMap.outputId) {
     fail(r, 'Book Map generate did not return outputId', 'Fix book-map/generate persistence', 'high');
   } else {
     r.evidence.push(`Book Map outputId=${bookMap.outputId.slice(0, 8)}`);
@@ -1221,7 +1259,7 @@ async function run504RecoveryAuditor(http: HttpClient, uiText: string): Promise<
 
   const lockRes = await http.request('POST', '/api/gold/source-lock', {
     projectId: project.id,
-    sourceType: 'current-manuscript',
+    sourceType: 'pasted-text',
     pastedText: 'Gold 504 recovery auditor sample paragraph with enough words for a source lock.',
     mode: 'improve-same-story',
   });
@@ -1247,8 +1285,8 @@ async function run504RecoveryAuditor(http: HttpClient, uiText: string): Promise<
     }
   }
 
-  if (!/JobProgressPanel|still working on this in the background|Background job/i.test(uiText)) {
-    warn(r, 'UI may lack JobProgressPanel / background job copy', 'Mount JobProgressPanel on long operations');
+  if (!/still working on this in the background|Working…|Job progress|progressUrl/i.test(uiText)) {
+    warn(r, 'UI may lack background job progress copy', 'Mount JobProgressPanel on long operations');
   }
 
   finalize(r);
