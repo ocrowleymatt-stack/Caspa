@@ -5,8 +5,8 @@ import type { GoldReport } from '../../shared';
 import type { GoldSynthesisStage } from '../../shared/goldSynthesis';
 import type { UserPublic } from '../auth/types';
 import { ProjectService } from '../manuscript/ProjectService';
-import { caspaJobService } from '../jobs/CaspaJobService';
-import { goldPassRunService } from './GoldPassRunService';
+import { buildJobStartResponse, GOLD_PASS_JOB_STAGES } from '../jobs/jobHelpers';
+import { enqueueCaspaJob, startCaspaJobSync } from '../jobs/caspa-jobs-routes';
 import { goldPipeline } from './GoldPipeline';
 import {
   goldSourceLockService,
@@ -112,77 +112,35 @@ goldRouter.post('/api/gold/run', asyncHandler(async (req, res) => {
     return;
   }
 
-  const job = await caspaJobService.create({
+  const sync = req.query.sync === '1';
+  const job = await enqueueCaspaJob({
     userId: req.user?.id,
     projectId: body.projectId,
     type: 'gold-pass',
-    stages: [
-      { id: 'synthesis', label: 'Gold synthesis' },
-      ...(body.includeElevationSteps ? [{ id: 'elevation', label: 'Elevation steps' }] : []),
-    ],
+    stages: [...GOLD_PASS_JOB_STAGES],
     payload: {
       sourceLockId: body.sourceLockId,
+      source: body.source,
       mode: body.mode,
-      improveText: body.improveText ?? true,
-      stage: body.stage,
-    },
-  });
-
-  let runResult;
-
-  try {
-    await caspaJobService.startStage(job.id, 'synthesis');
-    runResult = await goldPassRunService.execute({
-      projectId: body.projectId,
-      sourceText,
-      sourceLock,
       improveText: body.improveText ?? true,
       stage: body.stage,
       swarmOutputId: body.swarmOutputId,
       awardAssessmentOutputId: body.awardAssessmentOutputId,
       includeElevationSteps: body.includeElevationSteps,
-      providedSource: body.source,
-      user: getUser(req),
+    },
+  });
+
+  if (sync) {
+    const completed = await startCaspaJobSync(job.id, getUser(req));
+    sendSuccess(res, {
+      jobId: job.id,
+      caspaJobId: job.id,
+      ...(completed.result as object),
     });
-    await caspaJobService.completeStage(job.id, 'synthesis', {
-      stage: runResult.synthesis.stage,
-      outputId: runResult.outputId,
-    });
-    if (body.includeElevationSteps && runResult.report) {
-      await caspaJobService.startStage(job.id, 'elevation');
-      await caspaJobService.completeStage(job.id, 'elevation', {
-        reportId: runResult.report.id,
-        overallScore: runResult.report.overallScore,
-      });
-    }
-  } catch (err) {
-    await caspaJobService.fail(job.id, err instanceof Error ? err.message : 'Gold Pass failed');
-    throw err;
+    return;
   }
 
-  await caspaJobService.complete(job.id, {
-    outputId: runResult.outputId,
-    driftBlocked: runResult.driftBlocked,
-    fidelity: runResult.fidelity,
-  });
-
-  sendSuccess(res, {
-    jobId: job.id,
-    caspaJobId: job.id,
-    goldReportId: runResult.report?.id,
-    status: 'complete',
-    outputId: runResult.outputId,
-    synthesis: runResult.synthesis,
-    report: runResult.report,
-    improved: runResult.improved,
-    critique: runResult.critique,
-    fidelity: runResult.fidelity,
-    driftBlocked: runResult.driftBlocked,
-    destination: sourceLock?.unitId ? `Draft saved beside ${sourceLock.title}` : 'Draft saved to Writing History',
-    nextActions: runResult.driftBlocked
-      ? ['Keep as alternative', 'Review source lock', 'Run again with line-edit only']
-      : ['Apply safely', 'Compare', 'Continue from this', 'Export'],
-  });
+  sendSuccess(res, buildJobStartResponse(job), 202);
 }));
 
 goldRouter.get('/api/gold/progress/:jobId', asyncHandler(async (req, res) => {

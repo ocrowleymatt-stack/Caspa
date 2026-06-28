@@ -1177,6 +1177,84 @@ async function runAgentSafely(name: string, fn: () => Promise<AgentReport>): Pro
   }
 }
 
+async function run504RecoveryAuditor(http: HttpClient, uiText: string): Promise<AgentReport> {
+  const r = makeAgent('504 Recovery Auditor');
+  r.tested.push('POST /api/casper/novel-write-pro returns jobId quickly');
+  r.tested.push('POST /api/gold/run returns jobId quickly');
+  r.tested.push('GET /api/jobs/:id/progress');
+  r.tested.push('UI job progress panel');
+
+  const projectRes = await http.request('POST', '/api/projects', {
+    title: `QA 504 ${Date.now()}`,
+    genre: 'Novel',
+    workType: 'novel',
+    targetWordCount: 50000,
+    status: 'draft',
+  });
+  const project = unwrap<{ id: string }>(projectRes.data);
+  if (!project.id) {
+    fail(r, 'Project create failed', undefined, 'blocker');
+    finalize(r);
+    return r;
+  }
+
+  const nwpStart = Date.now();
+  const nwpRes = await http.request('POST', '/api/casper/novel-write-pro', {
+    projectId: project.id,
+    mode: 'novel',
+    spark: '504 recovery QA',
+    source: 'A short paragraph used by the 504 recovery auditor to verify async job enqueue.',
+  });
+  const nwpElapsed = Date.now() - nwpStart;
+  const nwpData = unwrap<{ jobId?: string }>(nwpRes.data);
+
+  if (!nwpRes.ok) fail(r, 'NWP route failed to start', 'Fix POST /api/casper/novel-write-pro job enqueue', 'blocker');
+  else if (!nwpData.jobId) {
+    fail(r, 'NWP blocks HTTP until final prose (no jobId) — 504 risk', 'Return jobId immediately; run in CaspaJobWorker', 'blocker');
+  } else {
+    r.evidence.push(`NWP jobId in ${nwpElapsed}ms`);
+    if (nwpElapsed > 5000) warn(r, `NWP HTTP response slow (${nwpElapsed}ms)`, 'Keep enqueue under 2s');
+    const prog = await http.request('GET', `/api/jobs/${nwpData.jobId}/progress`);
+    if (!prog.ok) fail(r, 'Missing GET /api/jobs/:id/progress', 'Add progress polling endpoint', 'blocker');
+    else r.evidence.push('Job progress endpoint reachable');
+  }
+
+  const lockRes = await http.request('POST', '/api/gold/source-lock', {
+    projectId: project.id,
+    sourceType: 'current-manuscript',
+    pastedText: 'Gold 504 recovery auditor sample paragraph with enough words for a source lock.',
+    mode: 'improve-same-story',
+  });
+  const lock = unwrap<{ sourceLockId?: string }>(lockRes.data);
+  if (!lock.sourceLockId) {
+    fail(r, 'Gold source lock failed', undefined, 'high');
+  } else {
+    const goldStart = Date.now();
+    const goldRes = await http.request('POST', '/api/gold/run', {
+      projectId: project.id,
+      sourceLockId: lock.sourceLockId,
+      improveText: true,
+      stage: 'revision',
+    });
+    const goldElapsed = Date.now() - goldStart;
+    const goldData = unwrap<{ jobId?: string }>(goldRes.data);
+    if (!goldRes.ok) fail(r, 'Gold route failed to start', undefined, 'blocker');
+    else if (!goldData.jobId) {
+      fail(r, 'Gold blocks HTTP until final prose (no jobId)', 'Return jobId immediately from /api/gold/run', 'blocker');
+    } else {
+      r.evidence.push(`Gold jobId in ${goldElapsed}ms`);
+      if (goldElapsed > 5000) warn(r, `Gold HTTP response slow (${goldElapsed}ms)`);
+    }
+  }
+
+  if (!/JobProgressPanel|still working on this in the background|Background job/i.test(uiText)) {
+    warn(r, 'UI may lack JobProgressPanel / background job copy', 'Mount JobProgressPanel on long operations');
+  }
+
+  finalize(r);
+  return r;
+}
+
 async function runAllAgents(http: HttpClient, uiText: string, withAi: boolean): Promise<AgentReport[]> {
   const steps: Array<[string, () => Promise<AgentReport>]> = [
     ['Impatient New User', () => runImpatientNewUser(http, uiText)],
@@ -1194,6 +1272,7 @@ async function runAllAgents(http: HttpClient, uiText: string, withAi: boolean): 
     ['Guidance Annoyance Tester', () => runGuidanceAnnoyanceTester(http, uiText)],
     ['AI Router Auditor', () => runAiRouterAuditor(http)],
     ['Asset Ingestion Auditor', () => runAssetIngestionAuditor(http)],
+    ['504 Recovery Auditor', () => run504RecoveryAuditor(http, uiText)],
     ['Intimacy Editor', () => runIntimacyEditor(http, uiText)],
     ['Export Inspector', () => runExportInspector(http)],
     ['James Usability Tester', () => runJamesUsabilityTester(http, uiText)],

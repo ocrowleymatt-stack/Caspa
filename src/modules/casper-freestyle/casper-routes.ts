@@ -3,8 +3,9 @@ import { toolRegistry } from '../command-orchestrator/ToolRegistry';
 import { casperFreestyleEngine } from './CasperFreestyleEngine';
 import { freestyleSessionStore } from './FreestyleSessionStore';
 import { caspaJobService } from '../jobs/CaspaJobService';
+import { buildJobStartResponse, NWP_JOB_STAGES } from '../jobs/jobHelpers';
+import { enqueueCaspaJob, startCaspaJobSync } from '../jobs/caspa-jobs-routes';
 import { novelQualityPassService } from './NovelQualityPassService';
-import { novelWriteProService } from './NovelWriteProService';
 import { continueWritingService, type ContinueMode } from './ContinueWritingService';
 import { bookCompletionService } from '../book/BookCompletionService';
 import { trashToTreasureService } from '../book/TrashToTreasureService';
@@ -98,36 +99,22 @@ casperRouter.post(
       return;
     }
 
-    const job = await caspaJobService.create({
+    const sync = req.query.sync === '1';
+    const job = await enqueueCaspaJob({
       userId: req.user?.id,
       projectId: body.projectId,
       type: 'novel-write-pro',
-      stages: [
-        { id: 'plan', label: 'Plan' },
-        { id: 'draft', label: 'First draft' },
-        { id: 'critic', label: 'Critic pass' },
-        { id: 'rewrite', label: 'Rewrite' },
-      ],
-      payload: {
-        improveExisting: body.improveExisting ?? false,
-        mode: body.mode ?? 'novel',
-        chapterId: body.chapterId,
-      },
+      stages: [...NWP_JOB_STAGES],
+      payload: { ...body },
     });
 
-    try {
-      await caspaJobService.startStage(job.id, 'plan');
-      const result = await novelWriteProService.generate({ ...body, caspaJobId: job.id });
-      await caspaJobService.complete(job.id, {
-        outputId: result.outputId,
-        kind: result.kind,
-        title: result.title,
-      });
-      sendSuccess(res, { ...result, caspaJobId: job.id }, 201);
-    } catch (err) {
-      await caspaJobService.fail(job.id, err instanceof Error ? err.message : 'Novel Write Pro failed');
-      throw err;
+    if (sync) {
+      const completed = await startCaspaJobSync(job.id, req.user);
+      sendSuccess(res, { ...(completed.result as object), caspaJobId: job.id }, 201);
+      return;
     }
+
+    sendSuccess(res, buildJobStartResponse(job), 202);
   }),
 );
 

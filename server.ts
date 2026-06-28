@@ -36,6 +36,7 @@ import { documentRenderRouter } from './src/modules/document-renderer/index';
 import { publishConfidenceRouter } from './src/modules/publish-confidence/index';
 import { outputsRouter } from './src/modules/outputs/index';
 import { caspaJobsRouter } from './src/modules/jobs/index';
+import { caspaJobWorker } from './src/modules/jobs/CaspaJobWorker';
 import { showCatalogueRouter } from './src/modules/show-catalogue/index';
 import { agentSwarmRouter } from './src/modules/agent-swarm/index';
 import { bookRouter } from './src/modules/book/index';
@@ -169,6 +170,7 @@ app.use(aiRouter);
 app.use(ollamaRouter);
 app.use(showFactoryRouter);
 app.use(musicLabRouter);
+app.use(caspaJobsRouter);
 app.use(orchestraRouter);
 app.use(publishingRouter);
 app.use(showBoxRouter);
@@ -195,7 +197,6 @@ app.use(musicPromptRouter);
 app.use(documentRenderRouter);
 app.use(publishConfidenceRouter);
 app.use(outputsRouter);
-app.use(caspaJobsRouter);
 app.use(agentSwarmRouter);
 app.use(bookRouter);
 app.use(studioRouter);
@@ -243,6 +244,7 @@ app.use(errorHandler);
 
 async function start(): Promise<void> {
   await bootstrapAuth();
+  caspaJobWorker.start();
   jobWorker.start();
   app.listen(config.port, () => {
     logger.info(`CASPA Studio running on port ${config.port}`);

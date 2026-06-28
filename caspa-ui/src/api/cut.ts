@@ -1,4 +1,5 @@
 import { apiCall } from './client';
+import { startJobBackedRequest, type JobProgress, type JobStartResponse } from './caspaJobs';
 
 export type CutDepth = 'light' | 'moderate' | 'ruthless';
 
@@ -38,11 +39,22 @@ export interface CutAnalyseResult {
   cutReport: string;
 }
 
-export async function analyseCut(projectId: string, body: CutAnalyseRequest) {
-  return apiCall<CutAnalyseResult>(`/api/projects/${projectId}/cut/analyse`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+export async function analyseCut(
+  projectId: string,
+  body: CutAnalyseRequest,
+  options?: { onProgress?: (progress: JobProgress) => void },
+) {
+  return startJobBackedRequest<CutAnalyseResult>(
+    () =>
+      apiCall<JobStartResponse | CutAnalyseResult>(`/api/projects/${projectId}/cut/analyse`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    {
+      onProgress: options?.onProgress,
+      extractResult: (job) => job.result as unknown as CutAnalyseResult,
+    },
+  );
 }
 
 export async function generateCutDraft(

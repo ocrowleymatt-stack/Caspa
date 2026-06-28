@@ -142,6 +142,54 @@ export class CaspaJobService {
     });
   }
 
+  async markFailed(id: string, error: string): Promise<CaspaJob | null> {
+    return this.patch(id, {
+      status: 'failed',
+      error,
+      resumeFromStage: (await this.get(id))?.currentStage,
+      completedAt: new Date().toISOString(),
+    });
+  }
+
+  async claimNextJob(): Promise<CaspaJob | null> {
+    const jobs = await this.list();
+    const next = [...jobs]
+      .filter((job) => job.status === 'queued')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (!next) return null;
+    return this.patch(next.id, {
+      status: 'running',
+      startedAt: next.startedAt ?? new Date().toISOString(),
+    });
+  }
+
+  async recoverStuckJobs(): Promise<number> {
+    const jobs = await this.list();
+    let recovered = 0;
+    for (const job of jobs) {
+      if (job.status !== 'running') continue;
+      await this.patch(job.id, {
+        status: 'partial',
+        error: 'Server restarted while this job was running — retry to resume.',
+        resumeFromStage: job.currentStage,
+      });
+      recovered += 1;
+    }
+    return recovered;
+  }
+
+  async retry(id: string): Promise<CaspaJob | null> {
+    const job = await this.get(id);
+    if (!job) return null;
+    if (job.status === 'cancelled') return job;
+    return this.patch(id, {
+      status: 'queued',
+      error: undefined,
+      retryCount: job.retryCount + 1,
+      completedAt: undefined,
+    });
+  }
+
   async latestForProject(projectId: string): Promise<CaspaJob | null> {
     const jobs = await this.list({ projectId });
     return jobs.find((j) => ['running', 'partial', 'queued', 'needs-review'].includes(j.status)) ?? jobs[0] ?? null;

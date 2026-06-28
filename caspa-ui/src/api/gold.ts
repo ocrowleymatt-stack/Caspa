@@ -1,5 +1,6 @@
 import { apiCall } from './client';
 import type { GoldReport } from '../types';
+import { startJobBackedRequest, type JobProgress, type JobStartResponse } from './caspaJobs';
 
 export type GoldPassDepth = 'surface' | 'structural' | 'deep';
 export type GoldModelRoute = 'local' | 'hybrid' | 'cloud' | 'manual';
@@ -81,10 +82,30 @@ export async function runGoldPass(
     awardAssessmentOutputId?: string;
     includeElevationSteps?: boolean;
     mode?: string;
+    onProgress?: (progress: JobProgress) => void;
   },
 ) {
-  return apiCall<GoldPassResult>('/api/gold/run', {
-    method: 'POST',
-    body: JSON.stringify({ projectId, source, ...options }),
-  });
+  const { onProgress, ...payload } = options ?? {};
+  return startJobBackedRequest<GoldPassResult>(
+    () =>
+      apiCall<JobStartResponse | GoldPassResult>('/api/gold/run', {
+        method: 'POST',
+        body: JSON.stringify({ projectId, source, ...payload }),
+      }),
+    {
+      onProgress,
+      extractResult: (job) => ({
+        jobId: job.id,
+        caspaJobId: job.id,
+        status: 'complete',
+        outputId: String(job.result?.outputId ?? ''),
+        improved: String((job.result as { improved?: string })?.improved ?? ''),
+        critique: String((job.result as { critique?: string })?.critique ?? ''),
+        driftBlocked: Boolean(job.result?.driftBlocked),
+        fidelity: job.result?.fidelity as GoldPassResult['fidelity'],
+        report: job.result?.report as GoldReport | undefined,
+        synthesis: job.result?.synthesis as GoldPassResult['synthesis'],
+      }),
+    },
+  );
 }

@@ -1,14 +1,19 @@
 import { apiCall, apiDownload } from './client';
 import type { BookMap } from '../types/book';
+import { startJobBackedRequest, type JobProgress, type JobStartResponse } from './caspaJobs';
 
 export function getBookMap(projectId: string) {
   return apiCall<BookMap>(`/api/projects/${projectId}/book-map`);
 }
 
-export function generateBookMap(projectId: string) {
-  return apiCall<BookMap & { outputId: string }>(`/api/projects/${projectId}/book-map/generate`, {
-    method: 'POST',
-  });
+export function generateBookMap(projectId: string, options?: { onProgress?: (progress: JobProgress) => void }) {
+  return startJobBackedRequest<BookMap & { outputId: string }>(
+    () => apiCall<JobStartResponse>(`/api/projects/${projectId}/book-map/generate`, { method: 'POST', body: '{}' }),
+    {
+      onProgress: options?.onProgress,
+      extractResult: (job) => job.result as unknown as BookMap & { outputId: string },
+    },
+  );
 }
 
 export function finishBook(body: {

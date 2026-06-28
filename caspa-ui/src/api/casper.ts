@@ -1,4 +1,5 @@
 import { apiCall, apiPostStream } from './client';
+import { startJobBackedRequest, type JobProgress, type JobStartResponse } from './caspaJobs';
 
 export function casperFreestyle(body: { input?: string; sessionId?: string; projectId?: string }) {
   return apiCall<unknown>('/api/casper/freestyle', { method: 'POST', body: JSON.stringify(body) });
@@ -72,24 +73,44 @@ export function runNovelQualityPass(body: {
   });
 }
 
-export function runNovelWritePro(body: {
-  projectId?: string;
-  chapterId?: string;
-  sourceChapterTitle?: string;
-  improveExisting?: boolean;
-  mode?: string;
-  output?: string;
-  spark?: string;
-  source?: string;
-  tone?: string;
-  uploadedName?: string | null;
-  modeTitle?: string;
-  genre?: string;
-}) {
-  return apiCall<NovelWriteProResult>('/api/casper/novel-write-pro', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+export function runNovelWritePro(
+  body: {
+    projectId?: string;
+    chapterId?: string;
+    sourceChapterTitle?: string;
+    improveExisting?: boolean;
+    mode?: string;
+    output?: string;
+    spark?: string;
+    source?: string;
+    tone?: string;
+    uploadedName?: string | null;
+    modeTitle?: string;
+    genre?: string;
+  },
+  options?: { onProgress?: (progress: JobProgress) => void; onJobStarted?: (jobId: string) => void },
+) {
+  return startJobBackedRequest<NovelWriteProResult>(
+    () =>
+      apiCall<JobStartResponse | NovelWriteProResult>('/api/casper/novel-write-pro', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    {
+      onProgress: options?.onProgress,
+      onJobStarted: options?.onJobStarted,
+      extractResult: (job) => ({
+        ...(job.result as unknown as NovelWriteProResult),
+        outputId: String(job.result?.outputId ?? ''),
+        title: String(job.result?.title ?? 'Draft'),
+        kind: (job.result?.kind as NovelWriteProResult['kind']) ?? 'novel-write-pro',
+        text: String((job.result as { text?: string })?.text ?? ''),
+        provider: String((job.result as { provider?: string })?.provider ?? 'local'),
+        model: String((job.result as { model?: string })?.model ?? ''),
+        createdAt: job.completedAt ?? job.updatedAt,
+      }),
+    },
+  );
 }
 
 export interface ContinueWritingResult {

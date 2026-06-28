@@ -1,6 +1,17 @@
 import { apiCall, apiStream } from './client';
 import type { JobStatus, QueueStats } from '../types';
 
+export {
+  cancelCaspaJob as cancelCreativeJob,
+  getCaspaJob as getCreativeJob,
+  getJobProgress,
+  getLatestProjectJob,
+  listCaspaJobs as listCreativeJobs,
+  retryCaspaJob as retryCreativeJob,
+  resumeCaspaJob,
+  waitForCaspaJob,
+} from './caspaJobs';
+
 export async function listJobs(filters?: {
   type?: string;
   status?: string;

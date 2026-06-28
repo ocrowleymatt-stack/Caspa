@@ -1,9 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Loader2, ShieldCheck, Sparkles, Wand2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createChapter, listChapters } from '../api/chapters';
 import { runNovelQualityPass, runNovelWritePro } from '../api/casper';
 import { countWords } from '../lib/utils';
+import { JobProgressPanel } from './JobProgressPanel';
 import { JobRecoveryBanner } from './JobRecoveryBanner';
 import { useToast } from './Toast';
 import type { StructureUnitType } from '../lib/structureUnit';
@@ -31,6 +33,7 @@ export function ImproveManuscriptPanel({
 }: ImproveManuscriptPanelProps) {
   const toast = useToast();
   const navigate = useNavigate();
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const wordCount = countWords(sourceText);
   const pendingLabel = 'Novel Write Pro is drafting... (plan → draft → critic → rewrite — ~4–5 min on Ollama)';
 
@@ -63,7 +66,7 @@ export function ImproveManuscriptPanel({
         source: sourceText,
         tone,
         output: 'Award Pass Rewrite',
-      });
+      }, { onJobStarted: setActiveJobId });
 
       let revisionChapterId: string | undefined;
       if (createRevisionChapter) {
@@ -107,6 +110,7 @@ export function ImproveManuscriptPanel({
   return (
     <div className="space-y-4">
       <JobRecoveryBanner projectId={projectId} />
+      {activeJobId ? <JobProgressPanel jobId={activeJobId} projectId={projectId} /> : null}
       <div className={`rounded-[1.5rem] border border-[#eadfca] bg-[#fffdf8] p-4 ${compact ? '' : 'shadow-paper'}`}>
       <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#98711d]">Source for improvement</div>
       <ul className="mt-3 space-y-1 text-sm leading-7 text-[#3d352b]">

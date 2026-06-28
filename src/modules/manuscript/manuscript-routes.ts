@@ -8,6 +8,8 @@ import { NotFoundError, ProjectService } from './ProjectService';
 import { PlotService } from './PlotService';
 import { ResearchService } from './ResearchService';
 import { projectBibleService } from './ProjectBibleService';
+import { enqueueCaspaJob, startCaspaJobSync } from '../jobs/caspa-jobs-routes';
+import { buildJobStartResponse, BIBLE_JOB_STAGES } from '../jobs/jobHelpers';
 import { importService } from './ImportService';
 import { pierBuilderService } from './PierBuilderService';
 import { buildStructureTree } from './structureUnitMigration';
@@ -344,8 +346,22 @@ manuscriptRouter.get(
 manuscriptRouter.post(
   '/api/projects/:id/bible/generate',
   asyncHandler(async (req, res) => {
-    await projectService.getProject(param(req, 'id'), getUser(req));
-    sendSuccess(res, await projectBibleService.generate(param(req, 'id')), 201);
+    const projectId = param(req, 'id');
+    await projectService.getProject(projectId, getUser(req));
+    const sync = req.query.sync === '1';
+    const job = await enqueueCaspaJob({
+      userId: getUser(req).id,
+      projectId,
+      type: 'project-bible',
+      stages: [...BIBLE_JOB_STAGES],
+      payload: { projectId },
+    });
+    if (sync) {
+      const completed = await startCaspaJobSync(job.id, getUser(req));
+      sendSuccess(res, completed.result, 201);
+      return;
+    }
+    sendSuccess(res, buildJobStartResponse(job), 202);
   }),
 );
 

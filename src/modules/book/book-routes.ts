@@ -10,6 +10,8 @@ import { manuscriptApplyOutputService } from './ManuscriptApplyOutputService';
 import { manuscriptAssembleService } from './ManuscriptAssembleService';
 import { cutTightenService } from './CutTightenService';
 import { ChapterService } from '../manuscript/ChapterService';
+import { enqueueCaspaJob, startCaspaJobSync } from '../jobs/caspa-jobs-routes';
+import { BOOK_MAP_JOB_STAGES, buildJobStartResponse, CUT_ANALYSE_JOB_STAGES } from '../jobs/jobHelpers';
 
 export const bookRouter = createElevationRouter();
 const chapterService = new ChapterService();
@@ -30,7 +32,21 @@ bookRouter.get(
 bookRouter.post(
   '/api/projects/:id/book-map/generate',
   asyncHandler(async (req, res) => {
-    sendSuccess(res, await bookMapService.generate(param(req, 'id'), req.user), 201);
+    const projectId = param(req, 'id');
+    const sync = req.query.sync === '1';
+    const job = await enqueueCaspaJob({
+      userId: req.user?.id,
+      projectId,
+      type: 'book-map',
+      stages: [...BOOK_MAP_JOB_STAGES],
+      payload: { projectId },
+    });
+    if (sync) {
+      const completed = await startCaspaJobSync(job.id, req.user);
+      sendSuccess(res, completed.result, 201);
+      return;
+    }
+    sendSuccess(res, buildJobStartResponse(job), 202);
   }),
 );
 
@@ -159,7 +175,21 @@ bookRouter.post(
 bookRouter.post(
   '/api/projects/:id/cut/analyse',
   asyncHandler(async (req, res) => {
-    sendSuccess(res, await cutTightenService.analyse({ ...req.body, projectId: param(req, 'id') }, req.user), 201);
+    const projectId = param(req, 'id');
+    const sync = req.query.sync === '1';
+    const job = await enqueueCaspaJob({
+      userId: req.user?.id,
+      projectId,
+      type: 'cut-analyse',
+      stages: [...CUT_ANALYSE_JOB_STAGES],
+      payload: { ...req.body, projectId },
+    });
+    if (sync) {
+      const completed = await startCaspaJobSync(job.id, req.user);
+      sendSuccess(res, completed.result, 201);
+      return;
+    }
+    sendSuccess(res, buildJobStartResponse(job), 202);
   }),
 );
 
@@ -173,11 +203,22 @@ bookRouter.post(
 bookRouter.post(
   '/api/projects/:id/structure/:unitId/cut/analyse',
   asyncHandler(async (req, res) => {
-    sendSuccess(
-      res,
-      await cutTightenService.analyse({ ...req.body, projectId: param(req, 'id'), unitId: param(req, 'unitId') }, req.user),
-      201,
-    );
+    const projectId = param(req, 'id');
+    const unitId = param(req, 'unitId');
+    const sync = req.query.sync === '1';
+    const job = await enqueueCaspaJob({
+      userId: req.user?.id,
+      projectId,
+      type: 'cut-analyse',
+      stages: [...CUT_ANALYSE_JOB_STAGES],
+      payload: { ...req.body, projectId, unitId },
+    });
+    if (sync) {
+      const completed = await startCaspaJobSync(job.id, req.user);
+      sendSuccess(res, completed.result, 201);
+      return;
+    }
+    sendSuccess(res, buildJobStartResponse(job), 202);
   }),
 );
 
