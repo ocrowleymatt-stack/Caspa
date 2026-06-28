@@ -175,6 +175,47 @@ async function postCreativeJob<T = Record<string, unknown>>(
   return payload as T;
 }
 
+async function assertQuickJobEnqueue(
+  report: AgentReport,
+  http: HttpClient,
+  label: string,
+  path: string,
+  body: unknown,
+  opts?: { maxMs?: number; verifyProgress?: boolean },
+): Promise<string | null> {
+  const maxMs = opts?.maxMs ?? 5000;
+  const start = Date.now();
+  const res = await http.request('POST', path, body, 15_000);
+  const elapsed = Date.now() - start;
+  const data = unwrap<{ jobId?: string }>(res.data);
+
+  if (!res.ok) {
+    fail(report, `${label} route failed (${res.status})`, `Fix POST ${path} job enqueue`, 'blocker');
+    return null;
+  }
+  if (!data.jobId) {
+    fail(
+      report,
+      `${label} blocks HTTP until done (no jobId) — 504 risk`,
+      `Return jobId immediately from ${path}`,
+      'blocker',
+    );
+    return null;
+  }
+
+  report.evidence.push(`${label} jobId in ${elapsed}ms`);
+  if (elapsed > maxMs) warn(report, `${label} HTTP response slow (${elapsed}ms)`, 'Keep enqueue under 2s');
+
+  if (opts?.verifyProgress) {
+    const prog = await http.request('GET', `/api/jobs/${data.jobId}/progress`);
+    if (!prog.ok) {
+      fail(report, `${label} missing GET /api/jobs/:id/progress`, 'Add progress polling endpoint', 'blocker');
+    }
+  }
+
+  return data.jobId;
+}
+
 function makeAgent(agent: string): AgentReport {
   return {
     agent,
@@ -1219,6 +1260,11 @@ async function run504RecoveryAuditor(http: HttpClient, uiText: string): Promise<
   const r = makeAgent('504 Recovery Auditor');
   r.tested.push('POST /api/casper/novel-write-pro returns jobId quickly');
   r.tested.push('POST /api/gold/run returns jobId quickly');
+  r.tested.push('POST /api/goldpipeline/execute returns jobId quickly');
+  r.tested.push('POST /api/agents/swarm returns jobId quickly');
+  r.tested.push('POST /api/projects/:id/minimal/auto-build returns jobId quickly');
+  r.tested.push('POST /api/projects/:id/minimal/auto-write returns jobId quickly');
+  r.tested.push('POST /api/projects/:id/minimal/improve returns jobId quickly');
   r.tested.push('GET /api/jobs/:id/progress');
   r.tested.push('UI job progress panel');
 
@@ -1236,26 +1282,13 @@ async function run504RecoveryAuditor(http: HttpClient, uiText: string): Promise<
     return r;
   }
 
-  const nwpStart = Date.now();
-  const nwpRes = await http.request('POST', '/api/casper/novel-write-pro', {
+  const nwpJobId = await assertQuickJobEnqueue(r, http, 'NWP', '/api/casper/novel-write-pro', {
     projectId: project.id,
     mode: 'novel',
     spark: '504 recovery QA',
     source: 'A short paragraph used by the 504 recovery auditor to verify async job enqueue.',
-  });
-  const nwpElapsed = Date.now() - nwpStart;
-  const nwpData = unwrap<{ jobId?: string }>(nwpRes.data);
-
-  if (!nwpRes.ok) fail(r, 'NWP route failed to start', 'Fix POST /api/casper/novel-write-pro job enqueue', 'blocker');
-  else if (!nwpData.jobId) {
-    fail(r, 'NWP blocks HTTP until final prose (no jobId) — 504 risk', 'Return jobId immediately; run in CaspaJobWorker', 'blocker');
-  } else {
-    r.evidence.push(`NWP jobId in ${nwpElapsed}ms`);
-    if (nwpElapsed > 5000) warn(r, `NWP HTTP response slow (${nwpElapsed}ms)`, 'Keep enqueue under 2s');
-    const prog = await http.request('GET', `/api/jobs/${nwpData.jobId}/progress`);
-    if (!prog.ok) fail(r, 'Missing GET /api/jobs/:id/progress', 'Add progress polling endpoint', 'blocker');
-    else r.evidence.push('Job progress endpoint reachable');
-  }
+  }, { verifyProgress: true });
+  if (nwpJobId) r.evidence.push('Job progress endpoint reachable');
 
   const lockRes = await http.request('POST', '/api/gold/source-lock', {
     projectId: project.id,
@@ -1267,25 +1300,71 @@ async function run504RecoveryAuditor(http: HttpClient, uiText: string): Promise<
   if (!lock.sourceLockId) {
     fail(r, 'Gold source lock failed', undefined, 'high');
   } else {
-    const goldStart = Date.now();
-    const goldRes = await http.request('POST', '/api/gold/run', {
+    await assertQuickJobEnqueue(r, http, 'Gold Pass', '/api/gold/run', {
       projectId: project.id,
       sourceLockId: lock.sourceLockId,
       improveText: true,
       stage: 'revision',
     });
-    const goldElapsed = Date.now() - goldStart;
-    const goldData = unwrap<{ jobId?: string }>(goldRes.data);
-    if (!goldRes.ok) fail(r, 'Gold route failed to start', undefined, 'blocker');
-    else if (!goldData.jobId) {
-      fail(r, 'Gold blocks HTTP until final prose (no jobId)', 'Return jobId immediately from /api/gold/run', 'blocker');
-    } else {
-      r.evidence.push(`Gold jobId in ${goldElapsed}ms`);
-      if (goldElapsed > 5000) warn(r, `Gold HTTP response slow (${goldElapsed}ms)`);
-    }
+
+    await assertQuickJobEnqueue(r, http, 'Gold Pipeline', '/api/goldpipeline/execute', {
+      projectId: project.id,
+      sourceLockId: lock.sourceLockId,
+      chapters: ['book'],
+      config: {
+        depth: 'structural',
+        biases: ['literary'],
+        route: 'hybrid',
+        runMode: 'controlled',
+        chapterIds: ['book'],
+      },
+    });
   }
 
-  if (!/still working on this in the background|Working…|Job progress|progressUrl/i.test(uiText)) {
+  await assertQuickJobEnqueue(r, http, 'Agent Swarm', '/api/agents/swarm', {
+    projectId: project.id,
+    mode: 'critique',
+    agentIds: ['voice-guardian', 'anti-filler-inspector', 'structural-editor'],
+    sourceText: 'Swarm 504 recovery sample paragraph with enough substance for critique agents.',
+  });
+
+  const minimalRes = await http.request('POST', '/api/minimal/projects', {
+    title: `QA Minimal 504 ${Date.now()}`,
+    targetWordCount: 50000,
+  });
+  const minimalProject = unwrap<{ id: string }>(minimalRes.data);
+  if (!minimalProject.id) {
+    fail(r, 'Minimal project create failed', undefined, 'high');
+  } else {
+    await http.request('POST', `/api/projects/${minimalProject.id}/assets`, {
+      title: '504 QA notes',
+      sourceText: 'Minimal mode 504 recovery auditor material with enough characters to satisfy the auto-build gate without blocking HTTP.',
+    });
+
+    await assertQuickJobEnqueue(
+      r,
+      http,
+      'Minimal Auto Build',
+      `/api/projects/${minimalProject.id}/minimal/auto-build`,
+      {},
+    );
+    await assertQuickJobEnqueue(
+      r,
+      http,
+      'Minimal Auto Write',
+      `/api/projects/${minimalProject.id}/minimal/auto-write`,
+      {},
+    );
+    await assertQuickJobEnqueue(
+      r,
+      http,
+      'Minimal Improve',
+      `/api/projects/${minimalProject.id}/minimal/improve`,
+      {},
+    );
+  }
+
+  if (!/still working on this in the background|Working…|Job progress|progressUrl|JobProgressPanel/i.test(uiText)) {
     warn(r, 'UI may lack background job progress copy', 'Mount JobProgressPanel on long operations');
   }
 
