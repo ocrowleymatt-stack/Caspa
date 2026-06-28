@@ -21,19 +21,36 @@ function elapsedLabel(startedAt?: string) {
 export function JobProgressPanel({ jobId, projectId, className, onComplete }: JobProgressPanelProps) {
   const { job, progress, cancel, retry, isFetching } = useCaspaJobTracker(jobId);
 
-  if (!jobId || !job) return null;
-
-  const pct = progress?.progress ?? 0;
-  const failed = job.status === 'failed' || job.status === 'cancelled';
-  const done = job.status === 'completed';
-  const running = ['queued', 'running', 'waiting', 'partial'].includes(job.status);
-  const outputId = typeof job.result?.outputId === 'string' ? job.result.outputId : undefined;
+  const done = job?.status === 'completed';
+  const outputId = typeof job?.result?.outputId === 'string' ? job.result.outputId : undefined;
 
   useEffect(() => {
     if (done && onComplete) {
       onComplete(outputId);
     }
   }, [done, onComplete, outputId]);
+
+  if (!jobId) return null;
+
+  if (!job) {
+    return (
+      <section
+        className={cn(
+          'rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4',
+          className,
+        )}
+      >
+        <p className="inline-flex items-center gap-2 text-sm text-amber-200">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Starting background job…
+        </p>
+      </section>
+    );
+  }
+
+  const pct = progress?.progress ?? 0;
+  const failed = job.status === 'failed' || job.status === 'cancelled';
+  const running = ['queued', 'running', 'waiting', 'partial'].includes(job.status);
 
   return (
     <section

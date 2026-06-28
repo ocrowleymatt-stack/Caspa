@@ -112,14 +112,19 @@ export default function CaspaMinimal() {
       return minimalExport(id);
     },
     onSuccess: async (result, action) => {
-      syncState(result.state);
-      if (result.driftBlocked) {
-        toast.info(result.message);
-      } else {
-        toast.success(result.message);
+      const id = result.state?.projectId ?? projectId;
+      if (result.state) {
+        syncState(result.state);
+      } else if (id) {
+        syncState(await getMinimalState(id));
       }
-      if (action === 'export') {
-        await downloadMinimalDocx(result.state.projectId, result.docxFilename);
+      if (result.driftBlocked) {
+        toast.info(result.message ?? 'Saved as an alternative — nothing overwritten.');
+      } else {
+        toast.success(result.message ?? 'Done.');
+      }
+      if (action === 'export' && id) {
+        await downloadMinimalDocx(id, result.docxFilename);
       }
     },
     onError: (err: Error) => toast.error(err.message),
