@@ -29,8 +29,11 @@ import {
   Sparkles,
   UploadCloud,
   Wand2,
+  Hammer,
   X,
 } from 'lucide-react';
+
+import CommissionStudio from './components/CommissionStudio';
 
 declare const process: any;
 
@@ -54,6 +57,7 @@ type ViewType =
   | 'write'
   | 'bible'
   | 'redpen'
+  | 'workshop'
   | 'gold'
   | 'openwebui'
   | 'library'
@@ -109,7 +113,8 @@ const navItems: NavItem[] = [
   { id: 'project', label: 'Current Project', detail: 'Brief, plan, next moves', group: 'work', icon: Home },
   { id: 'write', label: 'White Page', detail: 'Draft in a calm canvas', group: 'work', icon: PenLine },
   { id: 'bible', label: 'Story Bible', detail: 'Characters, rules, canon', group: 'work', icon: BookOpen },
-  { id: 'redpen', label: 'Red Pen', detail: 'Find weak spots', group: 'improve', icon: CircleAlert },
+  { id: 'workshop', label: 'Workshop', detail: 'Paste, diagnose, write it', group: 'improve', icon: Hammer },
+  { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'improve', icon: CircleAlert },
   { id: 'gold', label: 'Gold Refinery', detail: 'Polish existing text', group: 'improve', icon: Wand2 },
   { id: 'openwebui', label: 'Open WebUI Driver', detail: 'Clean white control page', group: 'improve', icon: UploadCloud },
   { id: 'library', label: 'Library', detail: 'Projects and shelves', group: 'produce', icon: Library },
@@ -391,8 +396,19 @@ function CaspaUI() {
         return <WhitePageView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} setCurrentView={setCurrentView} />;
       case 'bible':
         return <StoryBibleView brief={brief} />;
+      case 'workshop':
+        return (
+          <CommissionStudio
+            brief={brief}
+            draftPage={draftPage}
+            onArtefactReady={(text) => {
+              setDraftPage(text);
+              setCurrentView('write');
+            }}
+          />
+        );
       case 'redpen':
-        return <RedPenView brief={brief} draftPage={draftPage} />;
+        return <RedPenView brief={brief} draftPage={draftPage} setCurrentView={setCurrentView} />;
       case 'gold':
         return <GoldRefineryView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
       case 'openwebui':
@@ -568,6 +584,7 @@ function ProjectView({ brief, setCurrentView }: { brief: ProjectBrief; setCurren
           <div style={{ display: 'grid', gap: 10 }}>
             <button onClick={() => setCurrentView('write')} style={actionButton}><PenLine size={18} /> Open white page</button>
             <button onClick={() => setCurrentView('openwebui')} style={actionButton}><UploadCloud size={18} /> Open WebUI driver</button>
+            <button onClick={() => setCurrentView('workshop')} style={actionButton}><Hammer size={18} /> Workshop — paste & write it</button>
             <button onClick={() => setCurrentView('gold')} style={actionButton}><Wand2 size={18} /> Gold polish route</button>
           </div>
         </article>
@@ -673,14 +690,20 @@ function StoryBibleView({ brief }: { brief: ProjectBrief }) {
   );
 }
 
-function RedPenView({ brief, draftPage }: { brief: ProjectBrief; draftPage: string }) {
+function RedPenView({ brief, draftPage, setCurrentView }: { brief: ProjectBrief; draftPage: string; setCurrentView: (view: ViewType) => void }) {
   const wordCount = draftPage.trim().split(/\s+/).filter(Boolean).length;
   return (
-    <PageShell kicker="Red Pen" title="Issue finder" subtitle="Structural warnings before the work trips over its own cloak.">
+    <PageShell kicker="Red Pen" title="Quick scan" subtitle="For full diagnose-and-write, use Workshop.">
       <div style={cardGrid}>
         <article style={cardStyle}><h2 style={sectionTitle}>Project</h2><p style={bigText}>{brief.title}</p><p>{brief.idea}</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>Draft status</h2><p style={bigText}>{wordCount} words</p><p>{wordCount ? 'Ready for a targeted pass.' : 'No draft on the white page yet.'}</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>Checks</h2><ul><li>Spine and promise</li><li>Scene pressure</li><li>Character logic</li><li>Pacing drag</li><li>Tone wobble</li></ul></article>
+        <article style={cardStyle}><h2 style={sectionTitle}>Draft status</h2><p style={bigText}>{wordCount} words</p><p>{wordCount ? 'Ready for Workshop.' : 'Paste a draft in Workshop or White Page first.'}</p></article>
+        <article style={cardStyle}>
+          <h2 style={sectionTitle}>Full pipeline</h2>
+          <p style={{ color: '#73695d', lineHeight: 1.6 }}>Workshop gives structured recommendations and one-click Write it — no fishing through logs.</p>
+          <button type="button" onClick={() => setCurrentView('workshop')} style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', marginTop: 14 }}>
+            <Hammer size={18} /> Open Workshop
+          </button>
+        </article>
       </div>
     </PageShell>
   );
