@@ -1,14 +1,23 @@
 /**
- * In-memory job queue for Gold Pipeline and quality passes (audit-friendly)
+ * Job queue with JSON persistence — survives server restarts
  */
 
 import { randomUUID } from 'crypto';
 import type { CaspaJobRecord, JobAuditSnapshot } from '../types/gold';
+import { loadJobStore, persistJobStore } from './jobStoreService';
 
-const MAX_COMPLETED = 50;
-const jobs = new Map<string, CaspaJobRecord>();
+const MAX_COMPLETED = 100;
+
+function store(): Map<string, CaspaJobRecord> {
+  return loadJobStore();
+}
+
+function save(jobs: Map<string, CaspaJobRecord>): void {
+  persistJobStore(jobs);
+}
 
 export function createJob(type: CaspaJobRecord['type'], stage = 'queued'): CaspaJobRecord {
+  const jobs = store();
   const now = new Date().toISOString();
   const job: CaspaJobRecord = {
     id: randomUUID(),
@@ -20,26 +29,35 @@ export function createJob(type: CaspaJobRecord['type'], stage = 'queued'): Caspa
     stage,
   };
   jobs.set(job.id, job);
+  save(jobs);
   return job;
 }
 
 export function updateJob(
   id: string,
-  patch: Partial<Pick<CaspaJobRecord, 'status' | 'progress' | 'stage' | 'error'>>
+  patch: Partial<Pick<CaspaJobRecord, 'status' | 'progress' | 'stage' | 'error' | 'result'>>
 ): CaspaJobRecord | null {
+  const jobs = store();
   const job = jobs.get(id);
   if (!job) return null;
   Object.assign(job, patch, { updatedAt: new Date().toISOString() });
   jobs.set(id, job);
-  pruneCompleted();
+  pruneCompleted(jobs);
+  save(jobs);
   return job;
 }
 
 export function getJob(id: string): CaspaJobRecord | null {
-  return jobs.get(id) || null;
+  return store().get(id) || null;
 }
 
-function pruneCompleted(): void {
+export function listRecentJobs(limit = 20): CaspaJobRecord[] {
+  return [...store().values()]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, limit);
+}
+
+function pruneCompleted(jobs: Map<string, CaspaJobRecord>): void {
   const completed = [...jobs.values()]
     .filter((j) => j.status === 'complete' || j.status === 'failed')
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -50,7 +68,7 @@ function pruneCompleted(): void {
 }
 
 export function getJobAudit(): JobAuditSnapshot {
-  const all = [...jobs.values()];
+  const all = [...store().values()];
   const active = all.filter((j) => j.status === 'queued' || j.status === 'running');
   const completed = all.filter((j) => j.status === 'complete');
   const failed = all.filter((j) => j.status === 'failed');
@@ -67,5 +85,6 @@ export function getJobAudit(): JobAuditSnapshot {
     failedJobs: failed.length,
     queueDepth: active.filter((j) => j.status === 'queued').length,
     oldestActiveAgeMs,
+    persisted: true,
   };
 }

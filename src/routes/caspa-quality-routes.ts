@@ -68,7 +68,7 @@ router.post('/quality-pass', async (req, res) => {
       mode: safeMode,
     };
 
-    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete', result: { overallScore: result.overallScore } });
     res.json({ success: true, data: result, jobId: job.id });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Quality pass failed';

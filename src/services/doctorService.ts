@@ -5,6 +5,8 @@
 import fs from 'fs';
 import path from 'path';
 import { getJobAudit } from './jobQueueService';
+import { jobStorePresent } from './jobStoreService';
+import { backupsPresent, listBackups } from './localBackupService';
 
 const OLLAMA_API = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api';
 
@@ -61,10 +63,18 @@ export async function getDoctorSnapshot() {
       serverPrintExport: true,
       goldPipeline: true,
       novelWritePro: true,
+      localStorageBackup: true,
     },
     jobs: {
-      inMemoryQueue: true,
+      inMemoryQueue: false,
+      persisted: jobStorePresent(),
       ...getJobAudit(),
+    },
+    storage: {
+      localJsonDb: true,
+      usingDefaultDataDir: !process.env.CASPA_DATA_DIR,
+      backupsPresent: backupsPresent(),
+      backupCount: listBackups().length,
     },
   };
 }

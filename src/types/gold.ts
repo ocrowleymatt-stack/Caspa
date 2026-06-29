@@ -103,6 +103,7 @@ export interface JobAuditSnapshot {
   failedJobs: number;
   queueDepth: number;
   oldestActiveAgeMs: number | null;
+  persisted?: boolean;
 }
 
 export interface CaspaJobRecord {
@@ -114,4 +115,8 @@ export interface CaspaJobRecord {
   progress: number;
   stage?: string;
   error?: string;
+  result?: {
+    finalText?: string;
+    overallScore?: number;
+  };
 }

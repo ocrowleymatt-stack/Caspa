@@ -42,6 +42,8 @@ import PsychologyStudio from './components/PsychologyStudio';
 import StoryCanvas from './components/StoryCanvas';
 import ProjectShelf from './components/ProjectShelf';
 import GoldRefinery from './components/GoldRefinery';
+import RedPenStudio from './components/RedPenStudio';
+import SettingsStudio from './components/SettingsStudio';
 import { recordProjectSnapshot } from './services/projectShelfService';
 
 declare const process: any;
@@ -431,7 +433,13 @@ function CaspaUI() {
           />
         );
       case 'redpen':
-        return <RedPenView brief={brief} draftPage={draftPage} setCurrentView={setCurrentView} />;
+        return (
+          <RedPenStudio
+            brief={brief}
+            draftPage={draftPage}
+            onOpenWorkshop={() => setCurrentView('workshop')}
+          />
+        );
       case 'gold':
         return <GoldRefinery brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
       case 'openwebui':
@@ -477,7 +485,7 @@ function CaspaUI() {
           />
         );
       case 'settings':
-        return <SettingsView user={authContext.user} />;
+        return <SettingsStudio userEmail={authContext.user?.email} />;
       default:
         return <LaunchpadView onStart={startProject} />;
     }
@@ -736,31 +744,8 @@ function StoryBibleView({ brief }: { brief: ProjectBrief }) {
   );
 }
 
-function RedPenView({ brief, draftPage, setCurrentView }: { brief: ProjectBrief; draftPage: string; setCurrentView: (view: ViewType) => void }) {
-  const wordCount = draftPage.trim().split(/\s+/).filter(Boolean).length;
-  return (
-    <PageShell kicker="Red Pen" title="Quick scan" subtitle="For full diagnose-and-write, use Workshop.">
-      <div style={cardGrid}>
-        <article style={cardStyle}><h2 style={sectionTitle}>Project</h2><p style={bigText}>{brief.title}</p><p>{brief.idea}</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>Draft status</h2><p style={bigText}>{wordCount} words</p><p>{wordCount ? 'Ready for Workshop.' : 'Paste a draft in Workshop or White Page first.'}</p></article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Full pipeline</h2>
-          <p style={{ color: '#73695d', lineHeight: 1.6 }}>Workshop gives structured recommendations and one-click Write it — no fishing through logs.</p>
-          <button type="button" onClick={() => setCurrentView('workshop')} style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', marginTop: 14 }}>
-            <Hammer size={18} /> Open Workshop
-          </button>
-        </article>
-      </div>
-    </PageShell>
-  );
-}
-
 function SimpleWorkspace({ title, text }: { title: string; text: string }) {
   return <PageShell kicker="Workspace" title={title} subtitle={text}><article style={cardStyle}><p style={bigText}>This room is now placed correctly in the product. Next pass can wire its live functions.</p></article></PageShell>;
-}
-
-function SettingsView({ user }: { user: User | null }) {
-  return <PageShell kicker="Settings" title="Account and privacy" subtitle={user?.email || 'Private workspace'}><article style={cardStyle}><p>Authentication is still preserved. The redesign changes the working experience, not the access model.</p></article></PageShell>;
 }
 
 function PageShell({ kicker, title, subtitle, children }: { kicker: string; title: string; subtitle: string; children: React.ReactNode }) {

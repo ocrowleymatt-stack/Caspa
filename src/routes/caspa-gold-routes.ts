@@ -4,7 +4,7 @@
 
 import express from 'express';
 import { GOLD_PASSES, runGoldPipeline } from '../services/goldPipelineService';
-import { createJob, getJob, getJobAudit, updateJob } from '../services/jobQueueService';
+import { createJob, getJob, getJobAudit, listRecentJobs, updateJob } from '../services/jobQueueService';
 import type { GoldPipelineProgressEvent } from '../types/gold';
 
 const router = express.Router();
@@ -15,6 +15,10 @@ function writeSse(res: express.Response, payload: GoldPipelineProgressEvent): vo
 
 router.get('/passes', (_req, res) => {
   res.json({ success: true, data: { passes: GOLD_PASSES } });
+});
+
+router.get('/jobs', (_req, res) => {
+  res.json({ success: true, data: { jobs: listRecentJobs() } });
 });
 
 router.get('/jobs/audit', (_req, res) => {
@@ -83,7 +87,7 @@ router.post('/pipeline', async (req, res) => {
         }
       );
 
-      updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+      updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete', result: { finalText } });
       writeSse(res, {
         type: 'complete',
         jobId: job.id,
