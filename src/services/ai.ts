@@ -562,7 +562,8 @@ ${wordTargetBlock}`;
       prompt, 
       json: true, 
       schema, 
-      model: deep ? "gemini-2.5-pro" : "gemini-2.0-flash"
+      model: deep ? "gemini-2.5-pro" : "gemini-2.0-flash",
+      useWebSearch: deep,
     });
 
     const data = safeParseJSON(text || "{}");
