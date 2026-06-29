@@ -35,6 +35,7 @@ import {
 
 import CommissionStudio from './components/CommissionStudio';
 import ResearchLibrary from './components/ResearchLibrary';
+import PublishPack from './components/PublishPack';
 
 declare const process: any;
 
@@ -438,7 +439,13 @@ function CaspaUI() {
       case 'library':
         return <SimpleWorkspace title="Library" text="Your projects, shelves, exports and recoverable scraps of genius." />;
       case 'publish':
-        return <SimpleWorkspace title="Publish Pack" text="Generate pitch packs, rehearsal packs, exports, treatments and reader-facing summaries." />;
+        return (
+          <PublishPack
+            brief={brief}
+            authorEmail={authContext.user?.email}
+            onGoWorkshop={() => setCurrentView('workshop')}
+          />
+        );
       case 'settings':
         return <SettingsView user={authContext.user} />;
       default:
@@ -605,6 +612,7 @@ function ProjectView({ brief, setCurrentView }: { brief: ProjectBrief; setCurren
             <button onClick={() => setCurrentView('write')} style={actionButton}><PenLine size={18} /> Open white page</button>
             <button onClick={() => setCurrentView('openwebui')} style={actionButton}><UploadCloud size={18} /> Open WebUI driver</button>
             <button onClick={() => setCurrentView('workshop')} style={actionButton}><Hammer size={18} /> Workshop — paste & write it</button>
+            <button onClick={() => setCurrentView('publish')} style={actionButton}><Download size={18} /> Publish Pack</button>
             <button onClick={() => setCurrentView('gold')} style={actionButton}><Wand2 size={18} /> Gold polish route</button>
           </div>
         </article>
