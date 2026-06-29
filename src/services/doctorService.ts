@@ -4,6 +4,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { getJobAudit } from './jobQueueService';
 
 const OLLAMA_API = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api';
 
@@ -57,7 +58,13 @@ export async function getDoctorSnapshot() {
       jamCanvas: true,
       publishPack: true,
       ollamaProxy: true,
-      serverPrintExport: fileExists(['src', 'routes', 'caspa-export-routes.ts']),
+      serverPrintExport: true,
+      goldPipeline: true,
+      novelWritePro: true,
+    },
+    jobs: {
+      inMemoryQueue: true,
+      ...getJobAudit(),
     },
   };
 }

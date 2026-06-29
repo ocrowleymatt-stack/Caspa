@@ -41,6 +41,7 @@ import PublishPack from './components/PublishPack';
 import PsychologyStudio from './components/PsychologyStudio';
 import StoryCanvas from './components/StoryCanvas';
 import ProjectShelf from './components/ProjectShelf';
+import GoldRefinery from './components/GoldRefinery';
 import { recordProjectSnapshot } from './services/projectShelfService';
 
 declare const process: any;
@@ -432,7 +433,7 @@ function CaspaUI() {
       case 'redpen':
         return <RedPenView brief={brief} draftPage={draftPage} setCurrentView={setCurrentView} />;
       case 'gold':
-        return <GoldRefineryView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
+        return <GoldRefinery brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
       case 'openwebui':
         return (
           <OpenWebUIDriverView
@@ -720,37 +721,6 @@ function OpenWebUIDriverView({
       </div>
       <style>{`@media (max-width: 1050px) { .responsive-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
-  );
-}
-
-function GoldRefineryView({ brief, draftPage, setDraftPage }: { brief: ProjectBrief; draftPage: string; setDraftPage: (value: string) => void }) {
-  const passes = [
-    ['Structure Pass', 'Does the spine hold, or is it wearing a hat and pretending?'],
-    ['Depth Pass', 'Characters, stakes, world, relationships, pressure.'],
-    ['Subtext Pass', 'Meaning underneath the words. Less furniture, more voltage.'],
-    ['Line Edit', 'Pace, clarity, rhythm, voice, cuts.'],
-    ['Ruthless Final Cut', 'Remove what is decorative, dead, duplicated or showing off.'],
-  ];
-  return (
-    <PageShell kicker="Gold Refinery" title="Polish existing work" subtitle="Gold is no longer the front door. It is the finishing room.">
-      <div style={cardGrid}>
-        <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
-          <h2 style={sectionTitle}>Paste or refine text</h2>
-          <textarea value={draftPage} onChange={(e) => setDraftPage(e.target.value)} placeholder="Paste chapter, scene, treatment or script extract here." style={{ ...textareaStyle, minHeight: 360, fontFamily: 'Georgia, Cambria, serif', fontSize: 18 }} />
-        </article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Refinement route</h2>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {passes.map(([name, detail], index) => <div key={name} style={{ display: 'flex', gap: 12, padding: 12, borderRadius: 14, background: '#fff8ea', border: '1px solid #eadfce' }}><strong>{index + 1}</strong><span><b>{name}</b><small style={{ display: 'block', color: '#73695d' }}>{detail}</small></span></div>)}
-          </div>
-        </article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Current project</h2>
-          <p style={bigText}>{brief.title}</p>
-          <p style={{ color: '#6f6252' }}>{brief.idea}</p>
-        </article>
-      </div>
-    </PageShell>
   );
 }
 

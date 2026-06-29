@@ -15,6 +15,8 @@ import caspaResearchRoutes from './src/routes/caspa-research-routes';
 import caspaCanvasRoutes from './src/routes/caspa-canvas-routes';
 import caspaExportRoutes from './src/routes/caspa-export-routes';
 import caspaDoctorRoutes from './src/routes/caspa-doctor-routes';
+import caspaGoldRoutes from './src/routes/caspa-gold-routes';
+import caspaQualityRoutes from './src/routes/caspa-quality-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 
 dotenv.config();
@@ -879,6 +881,8 @@ app.use("/api/ollama", ollamaRoutes);
 app.use("/api/caspa/research", caspaResearchRoutes);
 app.use("/api/caspa/canvas", caspaCanvasRoutes);
 app.use("/api/caspa/export", caspaExportRoutes);
+app.use("/api/caspa/gold", caspaGoldRoutes);
+app.use("/api/caspa/novel-write-pro", caspaQualityRoutes);
 app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
 
