@@ -3,6 +3,14 @@
  * Diagnose manuscripts → structured recommendations → one-click execution
  */
 
+import {
+  getProjectKey,
+  loadLibrary,
+  findRelevantForChapter,
+  suggestResearchTopics,
+  deepResearchTopic,
+  addNote,
+} from './researchLibraryService';
 import { AIService } from './ai';
 import type { Chapter, Project, ProjectType, ResearchNote, ExternalReview } from '../types';
 import type {
@@ -280,10 +288,34 @@ export async function executeCommission(
   diagnosis: Diagnosis,
   selectedRecommendationIds: string[],
   scope: CommissionScope,
-  onProgress: (p: CommissionProgress) => void
+  onProgress: (p: CommissionProgress) => void,
+  options?: { autoResearch?: boolean }
 ): Promise<{ chapters: Chapter[]; artefact: string }> {
   const project = briefToProject(brief);
   let working = [...chapters].sort((a, b) => a.order - b.order);
+  const projectKey = getProjectKey(brief);
+
+  if (options?.autoResearch !== false) {
+    onProgress({ phase: 'research', message: 'Checking research library…', percent: 8 });
+    const library = loadLibrary(projectKey);
+    const manuscriptSample = working.map((c) => c.content || c.summary).join('\n').slice(0, 12000);
+
+    if (library.length < 3 && manuscriptSample.trim()) {
+      onProgress({ phase: 'research', message: 'Detecting research gaps…', percent: 12 });
+      try {
+        const topics = (await suggestResearchTopics(brief, manuscriptSample)).slice(0, 3);
+        for (const topic of topics) {
+          onProgress({ phase: 'research', message: `Researching: ${topic.slice(0, 60)}…`, percent: 14 });
+          const note = await deepResearchTopic(topic, brief, manuscriptSample);
+          addNote(projectKey, note);
+        }
+      } catch (err) {
+        console.warn('[Commission] Auto-research skipped:', err);
+      }
+    }
+  }
+
+  const researchLibrary = loadLibrary(projectKey);
 
   const selectedRecs = diagnosis.recommendations.filter((r) =>
     selectedRecommendationIds.includes(r.id)
@@ -360,6 +392,8 @@ export async function executeCommission(
 
     const mergedDirectives = [...(chap.directives || []), ...selectedRecs.map((r) => r.detail)];
 
+    const chapterResearch = findRelevantForChapter(researchLibrary, chap, brief);
+
     try {
       const content = await AIService.writeDraft(
         chap.title,
@@ -367,7 +401,7 @@ export async function executeCommission(
         earlierContent,
         project.type,
         [],
-        [],
+        chapterResearch,
         project.maturity,
         [],
         mergedDirectives,

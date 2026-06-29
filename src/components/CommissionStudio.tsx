@@ -25,13 +25,17 @@ import type {
 } from '../types/commission';
 import { defaultCommissionState, defaultCommissionScope } from '../types/commission';
 import {
-  briefToProject,
-  chaptersFromStorage,
-  chaptersToStorage,
   diagnoseManuscript,
   executeCommission,
   ingestManuscript,
 } from '../services/commissionService';
+import {
+  addNote,
+  deepResearchTopic,
+  getProjectKey,
+  loadLibrary,
+  suggestResearchTopics,
+} from '../services/researchLibraryService';
 
 export interface ProjectBriefLike {
   title: string;
@@ -46,6 +50,7 @@ interface Props {
   brief: ProjectBriefLike;
   draftPage: string;
   onArtefactReady: (text: string) => void;
+  onManuscriptChange?: (text: string) => void;
 }
 
 type StudioTab = 'inbox' | 'recommendations' | 'workshop';
@@ -77,11 +82,19 @@ function saveState(state: CommissionState) {
   );
 }
 
-export default function CommissionStudio({ brief, draftPage, onArtefactReady }: Props) {
+export default function CommissionStudio({ brief, draftPage, onArtefactReady, onManuscriptChange }: Props) {
+  const projectKey = getProjectKey(brief);
   const [tab, setTab] = useState<StudioTab>('inbox');
   const [state, setState] = useState<CommissionState>(loadState);
-  const [inboxText, setInboxText] = useState(state.rawInput || draftPage || '');
+  const [inboxText, setInboxText] = useState(() => {
+    const fromJam = localStorage.getItem('caspa.manuscriptSource');
+    return state.rawInput || fromJam || draftPage || '';
+  });
   const [statusLine, setStatusLine] = useState('');
+  const [suggestedResearch, setSuggestedResearch] = useState<string[]>([]);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [autoResearch, setAutoResearch] = useState(true);
+  const [libraryCount, setLibraryCount] = useState(() => loadLibrary(projectKey).length);
 
   useEffect(() => {
     saveState(state);
@@ -125,6 +138,16 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady }: 
         scope: diagnosis.suggestRebuild ? { type: 'whole' } : defaultCommissionScope,
       });
 
+      onManuscriptChange?.(inboxText);
+      setLibraryCount(loadLibrary(projectKey).length);
+
+      try {
+        const topics = await suggestResearchTopics(brief, inboxText);
+        setSuggestedResearch(topics.slice(0, 6));
+      } catch {
+        setSuggestedResearch([]);
+      }
+
       setTab('recommendations');
       setStatusLine('');
     } catch (err) {
@@ -152,6 +175,18 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady }: 
     update({ selectedRecommendationIds: ids });
   };
 
+  const handleResearchTopic = async (topic: string) => {
+    setResearchLoading(true);
+    try {
+      const note = await deepResearchTopic(topic, brief, inboxText.slice(0, 8000));
+      addNote(projectKey, note);
+      setLibraryCount(loadLibrary(projectKey).length);
+      setSuggestedResearch((prev) => prev.filter((t) => t !== topic));
+    } finally {
+      setResearchLoading(false);
+    }
+  };
+
   const handleWriteIt = async () => {
     if (!state.diagnosis || state.chapters.length === 0) return;
 
@@ -170,7 +205,8 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady }: 
         state.diagnosis,
         state.selectedRecommendationIds,
         scope,
-        (p) => update({ progress: p })
+        (p) => update({ progress: p }),
+        { autoResearch }
       );
 
       update({
@@ -262,9 +298,7 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady }: 
 
         {tab === 'recommendations' && state.diagnosis && (
           <RecommendationsPanel
-            brief={brief}
             diagnosis={state.diagnosis}
-            chapters={state.chapters}
             selectedIds={state.selectedRecommendationIds}
             scope={state.scope}
             onToggle={toggleRecommendation}
@@ -272,6 +306,12 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady }: 
             onWriteIt={handleWriteIt}
             executing={state.phase === 'executing'}
             chapterMax={chapterMax}
+            suggestedResearch={suggestedResearch}
+            onResearchTopic={handleResearchTopic}
+            researchLoading={researchLoading}
+            libraryCount={libraryCount}
+            autoResearch={autoResearch}
+            onAutoResearchChange={setAutoResearch}
           />
         )}
 
@@ -383,9 +423,7 @@ function InboxPanel({
 }
 
 function RecommendationsPanel({
-  brief,
   diagnosis,
-  chapters,
   selectedIds,
   scope,
   onToggle,
@@ -393,10 +431,14 @@ function RecommendationsPanel({
   onWriteIt,
   executing,
   chapterMax,
+  suggestedResearch,
+  onResearchTopic,
+  researchLoading,
+  libraryCount,
+  autoResearch,
+  onAutoResearchChange,
 }: {
-  brief: ProjectBriefLike;
   diagnosis: Diagnosis;
-  chapters: Chapter[];
   selectedIds: string[];
   scope: CommissionScope;
   onToggle: (id: string) => void;
@@ -404,6 +446,12 @@ function RecommendationsPanel({
   onWriteIt: () => void;
   executing: boolean;
   chapterMax: number;
+  suggestedResearch: string[];
+  onResearchTopic: (topic: string) => void;
+  researchLoading: boolean;
+  libraryCount: number;
+  autoResearch: boolean;
+  onAutoResearchChange: (v: boolean) => void;
 }) {
   const viabilityColor =
     diagnosis.viabilityScore >= 70 ? '#15803d' : diagnosis.viabilityScore >= 40 ? '#b45309' : '#b91c1c';
@@ -444,11 +492,52 @@ function RecommendationsPanel({
           </div>
         </article>
 
+        {suggestedResearch.length > 0 && (
+          <article style={card}>
+            <h2 style={sectionTitle}>Research gaps</h2>
+            <p style={{ color: '#73695d', marginTop: 0, fontSize: 14 }}>
+              {libraryCount} note{libraryCount !== 1 ? 's' : ''} in library. Commission research before writing so
+              Edinburgh stays Edinburgh.
+            </p>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {suggestedResearch.map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  disabled={researchLoading}
+                  onClick={() => onResearchTopic(topic)}
+                  style={{
+                    textAlign: 'left',
+                    padding: 12,
+                    borderRadius: 12,
+                    border: '1px solid #eadfce',
+                    background: '#fffdf8',
+                    cursor: researchLoading ? 'wait' : 'pointer',
+                    fontSize: 13,
+                  }}
+                >
+                  {researchLoading ? 'Researching…' : `+ ${topic}`}
+                </button>
+              ))}
+            </div>
+          </article>
+        )}
+
         <aside style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
           <article style={card}>
             <h2 style={sectionTitle}>Scope</h2>
             <ScopePicker scope={scope} chapterMax={chapterMax} onChange={onScopeChange} />
           </article>
+
+          <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#5b4724', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={autoResearch}
+              onChange={(e) => onAutoResearchChange(e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span>Auto-research gaps before drafting (uses deep web search when configured)</span>
+          </label>
 
           <button type="button" onClick={onWriteIt} disabled={executing || selectedIds.length === 0} style={primaryBtn}>
             {executing ? <Loader size={20} className="spin" /> : <Wand2 size={20} />}
@@ -778,5 +867,3 @@ const numInput: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid #e2d6c3',
 };
-
-export { chaptersFromStorage, chaptersToStorage };

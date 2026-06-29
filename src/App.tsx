@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 
 import CommissionStudio from './components/CommissionStudio';
+import ResearchLibrary from './components/ResearchLibrary';
 
 declare const process: any;
 
@@ -233,7 +234,9 @@ CURRENT WHITE PAGE / CANVAS
 ${canvas || '[Blank page — start by proposing the strongest opening move.]'}
 
 TASK
-Drive the project forward. Give the next best creative output now.`;
+Drive the project forward. Give the next best creative output now.
+
+When the author says "commission this" or "write it", produce a clean manuscript-ready block they can send to Kesper Workshop.`;
 }
 
 function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void }) {
@@ -366,10 +369,15 @@ function CaspaUI() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [brief, setBrief] = useState<ProjectBrief>(() => loadBrief());
   const [draftPage, setDraftPage] = useState(() => localStorage.getItem('caspa.whitePage') || '');
+  const [manuscriptSource, setManuscriptSource] = useState(() => localStorage.getItem('caspa.manuscriptSource') || '');
 
   useEffect(() => {
     localStorage.setItem('caspa.whitePage', draftPage);
   }, [draftPage]);
+
+  useEffect(() => {
+    localStorage.setItem('caspa.manuscriptSource', manuscriptSource);
+  }, [manuscriptSource]);
 
   const startProject = (mode: CreativeMode, idea: string, tone: string, output: string, audience: string) => {
     const nextBrief: ProjectBrief = {
@@ -403,8 +411,10 @@ function CaspaUI() {
             draftPage={draftPage}
             onArtefactReady={(text) => {
               setDraftPage(text);
+              setManuscriptSource(text);
               setCurrentView('write');
             }}
+            onManuscriptChange={setManuscriptSource}
           />
         );
       case 'redpen':
@@ -412,11 +422,21 @@ function CaspaUI() {
       case 'gold':
         return <GoldRefineryView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
       case 'openwebui':
-        return <OpenWebUIDriverView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
+        return (
+          <OpenWebUIDriverView
+            brief={brief}
+            draftPage={draftPage}
+            setDraftPage={setDraftPage}
+            onSendToWorkshop={(text) => {
+              setManuscriptSource(text);
+              setCurrentView('workshop');
+            }}
+          />
+        );
+      case 'research':
+        return <ResearchLibrary brief={brief} manuscriptText={manuscriptSource || draftPage} />;
       case 'library':
         return <SimpleWorkspace title="Library" text="Your projects, shelves, exports and recoverable scraps of genius." />;
-      case 'research':
-        return <SimpleWorkspace title="Research Desk" text="Drop sources, notes, transcripts and weird reference material here before adapting them." />;
       case 'publish':
         return <SimpleWorkspace title="Publish Pack" text="Generate pitch packs, rehearsal packs, exports, treatments and reader-facing summaries." />;
       case 'settings':
@@ -611,7 +631,17 @@ function WhitePageView({ brief, draftPage, setDraftPage, setCurrentView }: { bri
   );
 }
 
-function OpenWebUIDriverView({ brief, draftPage, setDraftPage }: { brief: ProjectBrief; draftPage: string; setDraftPage: (value: string) => void }) {
+function OpenWebUIDriverView({
+  brief,
+  draftPage,
+  setDraftPage,
+  onSendToWorkshop,
+}: {
+  brief: ProjectBrief;
+  draftPage: string;
+  setDraftPage: (value: string) => void;
+  onSendToWorkshop: (text: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const prompt = buildOpenWebUIPrompt(brief, draftPage);
 
@@ -635,6 +665,14 @@ function OpenWebUIDriverView({ brief, draftPage, setDraftPage }: { brief: Projec
             <h2 style={sectionTitle}>Driver prompt</h2>
             <p style={{ color: '#62584c', lineHeight: 1.6 }}>Copy this into Open WebUI to make any model behave like the project room, not a random chatbot with opinions and no shoes.</p>
             <button onClick={copyPrompt} style={primaryButton(copied ? '#15803d' : '#1f2937', '#fff')}>{copied ? <Check size={18} /> : <Copy size={18} />}{copied ? 'Copied' : 'Copy Open WebUI prompt'}</button>
+            <button
+              type="button"
+              onClick={() => onSendToWorkshop(draftPage)}
+              disabled={!draftPage.trim()}
+              style={{ ...primaryButton('#d6a846', '#1d1408'), marginTop: 10 }}
+            >
+              <Hammer size={18} /> Commission this in Workshop
+            </button>
           </article>
           <article style={cardStyle}>
             <h2 style={sectionTitle}>Project packet</h2>
