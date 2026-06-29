@@ -18,6 +18,7 @@ import {
   auditPromises,
   formatPromisesForDraft,
 } from './promiseRegistryService';
+import { loadBlueprint, formatPsychologyForChapter } from './psychologyEngineService';
 import { AIService } from './ai';
 import type { Chapter, Project, ProjectType, ResearchNote, ExternalReview } from '../types';
 import type {
@@ -325,6 +326,7 @@ export async function executeCommission(
 
   const researchLibrary = loadLibrary(projectKey);
   let activePromises = options?.promises ?? loadPromises(projectKey);
+  const psychologyBlueprint = loadBlueprint(projectKey);
 
   const selectedRecs = diagnosis.recommendations.filter((r) =>
     selectedRecommendationIds.includes(r.id)
@@ -411,6 +413,7 @@ export async function executeCommission(
       ...(chap.directives || []),
       ...selectedRecs.map((r) => r.detail),
       ...formatPromisesForDraft(activePromises, chap.order),
+      ...(psychologyBlueprint ? formatPsychologyForChapter(psychologyBlueprint, chap.order) : []),
     ];
 
     const chapterResearch = findRelevantForChapter(researchLibrary, chap, brief);

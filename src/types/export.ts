@@ -5,7 +5,7 @@
 import type { Diagnosis } from './commission';
 import type { StoryPromise } from './promise';
 
-export type ExportProfile = 'kdp-novel' | 'course-book' | 'subject-bible' | 'markdown' | 'screen-pdf';
+export type ExportProfile = 'kdp-novel' | 'course-book' | 'subject-bible' | 'screen-pdf' | 'professional-print' | 'markdown';
 
 export interface ExportProfileMeta {
   id: ExportProfile;
@@ -19,6 +19,7 @@ export const EXPORT_PROFILES: ExportProfileMeta[] = [
   { id: 'course-book', label: 'Course Book', detail: 'A4 modules, callout boxes, exercise blocks', trim: 'A4' },
   { id: 'subject-bible', label: 'Subject Bible', detail: 'Reference layout, dense typography, index-friendly', trim: 'A4' },
   { id: 'screen-pdf', label: 'Screen PDF', detail: 'Fast digital PDF for review and sharing', trim: 'Letter' },
+  { id: 'professional-print', label: 'Professional Print', detail: 'Server-rendered 6×9 print-ready PDF (Puppeteer)', trim: '6×9 in · print' },
   { id: 'markdown', label: 'Markdown', detail: 'Plain .md file for version control or other tools', trim: '—' },
 ];
 

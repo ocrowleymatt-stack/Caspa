@@ -12,6 +12,8 @@ import phase6Routes from './src/services/phase6-routes';
 import ollamaRoutes from './src/routes/ollama-routes';
 import assistantRoutes from './src/routes/assistant-routes';
 import caspaResearchRoutes from './src/routes/caspa-research-routes';
+import caspaCanvasRoutes from './src/routes/caspa-canvas-routes';
+import caspaExportRoutes from './src/routes/caspa-export-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 
 dotenv.config();
@@ -871,6 +873,8 @@ app.use("/api/service", serviceApiRoutes);
 app.use("/api/phase6", phase6Routes);
 app.use("/api/ollama", ollamaRoutes);
 app.use("/api/caspa/research", caspaResearchRoutes);
+app.use("/api/caspa/canvas", caspaCanvasRoutes);
+app.use("/api/caspa/export", caspaExportRoutes);
 app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
 

@@ -246,7 +246,30 @@ export function downloadMarkdown(ctx: ExportContext): void {
 }
 
 export async function downloadPdf(ctx: ExportContext, profile: ExportProfile): Promise<void> {
-  const html = buildPrintHtml(ctx, profile);
+  const html = buildPrintHtml(ctx, profile === 'professional-print' ? 'kdp-novel' : profile);
+  const slug = slugify(ctx.title);
+  const filename = `${slug}_${profile}.pdf`;
+
+  const useServer = profile === 'professional-print' || profile === 'kdp-novel' || profile === 'course-book' || profile === 'subject-bible';
+
+  if (useServer) {
+    try {
+      const response = await fetch('/api/caspa/export/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html, profile, filename }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        triggerDownload(blob, filename);
+        return;
+      }
+    } catch {
+      /* fall through to client PDF */
+    }
+  }
+
   const container = document.createElement('div');
   container.innerHTML = html;
   container.style.position = 'absolute';

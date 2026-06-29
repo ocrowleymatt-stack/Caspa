@@ -30,12 +30,16 @@ import {
   UploadCloud,
   Wand2,
   Hammer,
+  Brain,
+  Pencil,
   X,
 } from 'lucide-react';
 
 import CommissionStudio from './components/CommissionStudio';
 import ResearchLibrary from './components/ResearchLibrary';
 import PublishPack from './components/PublishPack';
+import PsychologyStudio from './components/PsychologyStudio';
+import StoryCanvas from './components/StoryCanvas';
 
 declare const process: any;
 
@@ -65,6 +69,8 @@ type ViewType =
   | 'library'
   | 'research'
   | 'publish'
+  | 'psychology'
+  | 'canvas'
   | 'settings';
 
 type ProjectBrief = {
@@ -111,11 +117,13 @@ const modeLabels: Record<CreativeMode, string> = {
 };
 
 const navItems: NavItem[] = [
+  { id: 'canvas', label: 'Jam Canvas', detail: 'Draw storyboards, extract structure', group: 'make', icon: Pencil },
   { id: 'launchpad', label: 'New Work', detail: 'Choose what to make', group: 'make', icon: Sparkles },
   { id: 'project', label: 'Current Project', detail: 'Brief, plan, next moves', group: 'work', icon: Home },
   { id: 'write', label: 'White Page', detail: 'Draft in a calm canvas', group: 'work', icon: PenLine },
   { id: 'bible', label: 'Story Bible', detail: 'Characters, rules, canon', group: 'work', icon: BookOpen },
   { id: 'workshop', label: 'Workshop', detail: 'Paste, diagnose, write it', group: 'improve', icon: Hammer },
+  { id: 'psychology', label: 'Psychology', detail: 'Design emotional journeys', group: 'improve', icon: Brain },
   { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'improve', icon: CircleAlert },
   { id: 'gold', label: 'Gold Refinery', detail: 'Polish existing text', group: 'improve', icon: Wand2 },
   { id: 'openwebui', label: 'Open WebUI Driver', detail: 'Clean white control page', group: 'improve', icon: UploadCloud },
@@ -438,6 +446,18 @@ function CaspaUI() {
         return <ResearchLibrary brief={brief} manuscriptText={manuscriptSource || draftPage} />;
       case 'library':
         return <SimpleWorkspace title="Library" text="Your projects, shelves, exports and recoverable scraps of genius." />;
+      case 'psychology':
+        return <PsychologyStudio brief={brief} manuscriptText={manuscriptSource || draftPage} />;
+      case 'canvas':
+        return (
+          <StoryCanvas
+            brief={brief}
+            onCommission={(text) => {
+              setManuscriptSource(text);
+              setCurrentView('workshop');
+            }}
+          />
+        );
       case 'publish':
         return (
           <PublishPack
@@ -611,6 +631,7 @@ function ProjectView({ brief, setCurrentView }: { brief: ProjectBrief; setCurren
           <div style={{ display: 'grid', gap: 10 }}>
             <button onClick={() => setCurrentView('write')} style={actionButton}><PenLine size={18} /> Open white page</button>
             <button onClick={() => setCurrentView('openwebui')} style={actionButton}><UploadCloud size={18} /> Open WebUI driver</button>
+            <button onClick={() => setCurrentView('canvas')} style={actionButton}><Pencil size={18} /> Jam on canvas</button>
             <button onClick={() => setCurrentView('workshop')} style={actionButton}><Hammer size={18} /> Workshop — paste & write it</button>
             <button onClick={() => setCurrentView('publish')} style={actionButton}><Download size={18} /> Publish Pack</button>
             <button onClick={() => setCurrentView('gold')} style={actionButton}><Wand2 size={18} /> Gold polish route</button>
