@@ -1,5 +1,5 @@
 /**
- * Kesper Research Library — independent deep research, stored per project
+ * Caspa Research Library — independent deep research, stored per project
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -97,7 +97,7 @@ export default function ResearchLibrary({ brief, manuscriptText = '' }: Props) {
             Facts that don&apos;t lie
           </h1>
           <p style={{ margin: 0, maxWidth: 720, color: '#73695d', fontSize: 18, lineHeight: 1.5 }}>
-            Research places, smells, road names, and niche knowledge. Notes are injected into every Kesper draft for
+            Research places, smells, road names, and niche knowledge. Notes are injected into every Caspa draft for
             this project.
           </p>
         </header>
@@ -114,7 +114,7 @@ export default function ResearchLibrary({ brief, manuscriptText = '' }: Props) {
                 <input
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  placeholder="What should Kesper research?"
+                  placeholder="What should Caspa research?"
                   style={{ ...inputStyle, flex: 1, minWidth: 220 }}
                   onKeyDown={(e) => e.key === 'Enter' && runDeepResearch(topic)}
                 />

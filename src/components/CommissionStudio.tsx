@@ -1,5 +1,5 @@
 /**
- * Kesper Commission Studio — Inbox → Recommendations → Workshop
+ * Caspa Commission Studio — Inbox → Recommendations → Workshop
  * Paste a manuscript, get recommendations, click Write it.
  */
 
@@ -232,12 +232,12 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
     <section style={{ minHeight: '100vh', padding: '48px clamp(20px, 5vw, 72px)', background: '#f5efe5' }}>
       <div style={{ maxWidth: 1240, margin: '0 auto' }}>
         <header style={{ marginBottom: 28 }}>
-          <div style={kicker}>Kesper Workshop</div>
+          <div style={kicker}>Caspa Workshop</div>
           <h1 style={{ margin: '6px 0 8px', fontSize: 'clamp(36px, 5vw, 56px)', lineHeight: 1, letterSpacing: -2 }}>
             Paste. Diagnose. Write it.
           </h1>
           <p style={{ margin: 0, maxWidth: 720, color: '#73695d', fontSize: 18, lineHeight: 1.5 }}>
-            Drop a crap manuscript. Kesper tells you what&apos;s wrong. You tick what you agree with and click Write it.
+            Drop a crap manuscript. Caspa tells you what&apos;s wrong. You tick what you agree with and click Write it.
           </p>
         </header>
 
@@ -357,7 +357,7 @@ function InboxPanel({
       <article style={card}>
         <h2 style={sectionTitle}>Drop your manuscript</h2>
         <p style={{ color: '#73695d', marginTop: 0 }}>
-          Paste prose, a book plan, a treatment — or upload a .txt / .md file. Kesper will recognise what it is.
+          Paste prose, a book plan, a treatment — or upload a .txt / .md file. Caspa will recognise what it is.
         </p>
         <textarea
           value={inboxText}
@@ -410,7 +410,7 @@ function InboxPanel({
         <article style={card}>
           <h2 style={sectionTitle}>What happens next</h2>
           <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9, color: '#4a3b28' }}>
-            <li>Kesper recognises plan vs manuscript</li>
+            <li>Caspa recognises plan vs manuscript</li>
             <li>Structured recommendations — not a wall of text</li>
             <li>You pick scope and click Write it</li>
             <li>Finished prose lands in Workshop</li>
@@ -479,7 +479,7 @@ function RecommendationsPanel({
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(300px, 0.8fr)', gap: 20 }} className="commission-grid">
         <article style={card}>
           <h2 style={sectionTitle}>Recommendations</h2>
-          <p style={{ color: '#73695d', marginTop: 0 }}>Tick what you agree with. Kesper executes only approved fixes.</p>
+          <p style={{ color: '#73695d', marginTop: 0 }}>Tick what you agree with. Caspa executes only approved fixes.</p>
           <div style={{ display: 'grid', gap: 10 }}>
             {diagnosis.recommendations.map((rec) => (
               <RecommendationRow
@@ -546,7 +546,7 @@ function RecommendationsPanel({
 
           {diagnosis.suggestRebuild && (
             <p style={{ fontSize: 13, color: '#b45309', margin: 0, lineHeight: 1.5 }}>
-              Kesper thinks this needs a full restructure. Tick &quot;Rip up and rebuild&quot; if you agree.
+              Caspa thinks this needs a full restructure. Tick &quot;Rip up and rebuild&quot; if you agree.
             </p>
           )}
         </aside>

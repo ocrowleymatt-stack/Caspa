@@ -1,5 +1,5 @@
 /**
- * Kesper Research API — deep web-grounded research notes
+ * Caspa Research API — deep web-grounded research notes
  */
 
 import express from 'express';
@@ -38,7 +38,7 @@ async function grokWebSearch(prompt: string): Promise<string | null> {
     const data = await response.json();
     return data.choices?.[0]?.message?.content || null;
   } catch (err) {
-    console.error('[Kesper Research] Grok search failed:', err);
+    console.error('[Caspa Research] Grok search failed:', err);
     return null;
   }
 }
@@ -140,7 +140,7 @@ Return ONLY valid JSON:
       },
     });
   } catch (err: any) {
-    console.error('[Kesper Research] deep error:', err);
+    console.error('[Caspa Research] deep error:', err);
     return res.status(500).json({ success: false, message: err.message || 'Research failed' });
   }
 });

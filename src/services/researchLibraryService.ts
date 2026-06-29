@@ -1,5 +1,5 @@
 /**
- * Kesper Research Library — local storage + deep research API
+ * Caspa Research Library — local storage + deep research API
  */
 
 import type { ResearchNote } from '../types';
@@ -62,7 +62,7 @@ export async function deepResearchTopic(
   const context = `${brief.idea}\n${brief.tone}\n${extraContext}`.trim();
 
   try {
-    const response = await fetch('/api/kesper/research/deep', {
+    const response = await fetch('/api/caspa/research/deep', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -117,7 +117,7 @@ export async function suggestResearchTopics(
   const project = briefToProject(brief);
 
   try {
-    const response = await fetch('/api/kesper/research/suggest-topics', {
+    const response = await fetch('/api/caspa/research/suggest-topics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -1,5 +1,5 @@
 /**
- * Kesper Commission Model — structured diagnosis and execution contracts
+ * Caspa Commission Model — structured diagnosis and execution contracts
  */
 
 import type { Chapter } from '../types';

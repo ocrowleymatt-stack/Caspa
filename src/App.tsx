@@ -236,7 +236,7 @@ ${canvas || '[Blank page — start by proposing the strongest opening move.]'}
 TASK
 Drive the project forward. Give the next best creative output now.
 
-When the author says "commission this" or "write it", produce a clean manuscript-ready block they can send to Kesper Workshop.`;
+When the author says "commission this" or "write it", produce a clean manuscript-ready block they can send to Caspa Workshop.`;
 }
 
 function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void }) {

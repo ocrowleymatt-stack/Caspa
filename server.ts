@@ -11,7 +11,7 @@ import serviceApiRoutes from './src/services/service-api-routes';
 import phase6Routes from './src/services/phase6-routes';
 import ollamaRoutes from './src/routes/ollama-routes';
 import assistantRoutes from './src/routes/assistant-routes';
-import kesperResearchRoutes from './src/routes/kesper-research-routes';
+import caspaResearchRoutes from './src/routes/caspa-research-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 
 dotenv.config();
@@ -870,7 +870,7 @@ app.use("/api/metadata", createBookMetadataRoutes(process.env.GEMINI_API_KEY!));
 app.use("/api/service", serviceApiRoutes);
 app.use("/api/phase6", phase6Routes);
 app.use("/api/ollama", ollamaRoutes);
-app.use("/api/kesper/research", kesperResearchRoutes);
+app.use("/api/caspa/research", caspaResearchRoutes);
 app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
 

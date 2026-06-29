@@ -1,5 +1,5 @@
 /**
- * Kesper Commission Service
+ * Caspa Commission Service
  * Diagnose manuscripts → structured recommendations → one-click execution
  */
 
@@ -161,7 +161,7 @@ export async function diagnoseManuscript(
     };
   });
 
-  const prompt = `You are Kesper's Master Editor. Analyse this ${inputType} for "${brief.title}" (${project.type}).
+  const prompt = `You are Caspa's Master Editor. Analyse this ${inputType} for "${brief.title}" (${project.type}).
 
 ${LITERARY_BRIEF}
 
@@ -325,7 +325,7 @@ export async function executeCommission(
 
   const analysisReview: ExternalReview = {
     id: 'commission-diagnosis',
-    source: 'Kesper Diagnosis',
+    source: 'Caspa Diagnosis',
     content: `${diagnosis.verdict}\n\n${diagnosis.editorNotes}\n\nApproved fixes:\n${directiveBlock}`,
     date: Date.now(),
     isImplemented: true,
