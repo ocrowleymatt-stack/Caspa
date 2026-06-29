@@ -44,6 +44,7 @@ import ProjectShelf from './components/ProjectShelf';
 import GoldRefinery from './components/GoldRefinery';
 import RedPenStudio from './components/RedPenStudio';
 import SettingsStudio from './components/SettingsStudio';
+import StoryBibleStudio from './components/StoryBibleStudio';
 import { recordProjectSnapshot } from './services/projectShelfService';
 
 declare const process: any;
@@ -418,7 +419,14 @@ function CaspaUI() {
       case 'write':
         return <WhitePageView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} setCurrentView={setCurrentView} />;
       case 'bible':
-        return <StoryBibleView brief={brief} />;
+        return (
+          <StoryBibleStudio
+            brief={brief}
+            onOpenWorkshop={() => setCurrentView('workshop')}
+            onOpenPsychology={() => setCurrentView('psychology')}
+            onOpenResearch={() => setCurrentView('research')}
+          />
+        );
       case 'workshop':
         return (
           <CommissionStudio
@@ -729,18 +737,6 @@ function OpenWebUIDriverView({
       </div>
       <style>{`@media (max-width: 1050px) { .responsive-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
-  );
-}
-
-function StoryBibleView({ brief }: { brief: ProjectBrief }) {
-  return (
-    <PageShell kicker="Story Bible" title="Canon, characters and rules" subtitle={brief.title}>
-      <div style={cardGrid}>
-        <article style={cardStyle}><h2 style={sectionTitle}>Characters</h2><p>Protagonist, antagonist, allies, comic engines, secrets and reversals.</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>World rules</h2><p>Setting, period, tone laws, what is allowed, what breaks the spell.</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>Continuity</h2><p>Facts that must stay true unless deliberately subverted.</p></article>
-      </div>
-    </PageShell>
   );
 }
 

@@ -87,7 +87,6 @@ function saveState(state: CommissionState) {
       selectedRecommendationIds: state.selectedRecommendationIds,
       scope: state.scope,
       artefact: state.artefact,
-      promises: state.promises,
     })
   );
 }

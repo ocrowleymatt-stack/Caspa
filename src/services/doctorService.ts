@@ -64,6 +64,7 @@ export async function getDoctorSnapshot() {
       goldPipeline: true,
       novelWritePro: true,
       localStorageBackup: true,
+      storyBible: true,
     },
     jobs: {
       inMemoryQueue: false,
