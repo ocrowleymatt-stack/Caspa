@@ -40,6 +40,8 @@ import ResearchLibrary from './components/ResearchLibrary';
 import PublishPack from './components/PublishPack';
 import PsychologyStudio from './components/PsychologyStudio';
 import StoryCanvas from './components/StoryCanvas';
+import ProjectShelf from './components/ProjectShelf';
+import { recordProjectSnapshot } from './services/projectShelfService';
 
 declare const process: any;
 
@@ -202,6 +204,7 @@ const surface: React.CSSProperties = {
 
 function saveBrief(brief: ProjectBrief) {
   localStorage.setItem('caspa.currentBrief', JSON.stringify(brief));
+  recordProjectSnapshot(brief);
 }
 
 function loadBrief(): ProjectBrief {
@@ -445,7 +448,13 @@ function CaspaUI() {
       case 'research':
         return <ResearchLibrary brief={brief} manuscriptText={manuscriptSource || draftPage} />;
       case 'library':
-        return <SimpleWorkspace title="Library" text="Your projects, shelves, exports and recoverable scraps of genius." />;
+        return (
+          <ProjectShelf
+            brief={brief}
+            onOpenWorkshop={() => setCurrentView('workshop')}
+            onOpenPublish={() => setCurrentView('publish')}
+          />
+        );
       case 'psychology':
         return <PsychologyStudio brief={brief} manuscriptText={manuscriptSource || draftPage} />;
       case 'canvas':

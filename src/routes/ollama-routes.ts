@@ -17,6 +17,25 @@ interface OllamaGenerateRequest {
   stream?: boolean;
 }
 
+// Lightweight smoke test for deployment verification (no prompt, no secrets)
+router.get('/smoke', async (_req, res) => {
+  try {
+    const response = await fetch(`${OLLAMA_API}/tags`, { signal: AbortSignal.timeout(5000) });
+    return res.json({
+      success: true,
+      data: {
+        available: response.ok,
+        status: response.ok ? 'online' : 'offline',
+      },
+    });
+  } catch {
+    return res.json({
+      success: true,
+      data: { available: false, status: 'offline' },
+    });
+  }
+});
+
 // Health check - is Ollama available?
 router.get('/health', async (req, res) => {
   try {

@@ -14,6 +14,7 @@ import assistantRoutes from './src/routes/assistant-routes';
 import caspaResearchRoutes from './src/routes/caspa-research-routes';
 import caspaCanvasRoutes from './src/routes/caspa-canvas-routes';
 import caspaExportRoutes from './src/routes/caspa-export-routes';
+import caspaDoctorRoutes from './src/routes/caspa-doctor-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 
 dotenv.config();
@@ -34,6 +35,9 @@ app.get("/health", (req, res) => {
     env: process.env.NODE_ENV || "production (default)"
   });
 });
+
+// Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.
+app.use("/api/doctor", caspaDoctorRoutes);
 
 // Initialize Google Gen AI
 const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
