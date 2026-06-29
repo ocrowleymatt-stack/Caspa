@@ -10,12 +10,15 @@ import {
   Check,
   FileText,
   Hammer,
+  Link2,
   Loader,
   PenLine,
   Sparkles,
   Upload,
   Wand2,
 } from 'lucide-react';
+import type { StoryPromise } from '../types/promise';
+import { computePromiseHealth } from '../types/promise';
 import type { Chapter } from '../types';
 import type {
   CommissionScope,
@@ -36,6 +39,11 @@ import {
   loadLibrary,
   suggestResearchTopics,
 } from '../services/researchLibraryService';
+import {
+  extractPromises,
+  savePromises,
+  openPromiseWarnings,
+} from '../services/promiseRegistryService';
 
 export interface ProjectBriefLike {
   title: string;
@@ -53,7 +61,7 @@ interface Props {
   onManuscriptChange?: (text: string) => void;
 }
 
-type StudioTab = 'inbox' | 'recommendations' | 'workshop';
+type StudioTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
 
 const STORAGE_KEY = 'caspa.commission';
 
@@ -75,6 +83,7 @@ function saveState(state: CommissionState) {
       rawInput: state.rawInput,
       chapters: state.chapters,
       diagnosis: state.diagnosis,
+      promises: state.promises,
       selectedRecommendationIds: state.selectedRecommendationIds,
       scope: state.scope,
       artefact: state.artefact,
@@ -126,6 +135,16 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
       setStatusLine('Editorial diagnosis in progress…');
 
       const diagnosis = await diagnoseManuscript(chapters, brief, inputType);
+      setStatusLine('Tracking story promises…');
+
+      let promises: StoryPromise[] = [];
+      try {
+        promises = await extractPromises(chapters, brief);
+        savePromises(projectKey, promises);
+      } catch {
+        promises = [];
+      }
+
       const defaultSelected = diagnosis.recommendations
         .filter((r) => r.defaultSelected)
         .map((r) => r.id);
@@ -133,6 +152,7 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
       update({
         chapters,
         diagnosis,
+        promises,
         selectedRecommendationIds: defaultSelected,
         phase: 'ready',
         scope: diagnosis.suggestRebuild ? { type: 'whole' } : defaultCommissionScope,
@@ -206,12 +226,13 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
         state.selectedRecommendationIds,
         scope,
         (p) => update({ progress: p }),
-        { autoResearch }
+        { autoResearch, promises: state.promises }
       );
 
       update({
         chapters: result.chapters,
         artefact: result.artefact,
+        promises: result.promises,
         phase: 'complete',
         progress: { phase: 'complete', message: 'Done.', percent: 100 },
       });
@@ -227,6 +248,7 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
   };
 
   const chapterMax = state.chapters.length || 1;
+  const promiseHealth = useMemo(() => computePromiseHealth(state.promises), [state.promises]);
 
   return (
     <section style={{ minHeight: '100vh', padding: '48px clamp(20px, 5vw, 72px)', background: '#f5efe5' }}>
@@ -246,11 +268,13 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
             [
               ['inbox', 'Inbox', Upload],
               ['recommendations', 'Recommendations', AlertCircle],
+              ['promises', 'Promises', Link2],
               ['workshop', 'Workshop', Hammer],
             ] as const
           ).map(([id, label, Icon]) => {
             const active = tab === id;
-            const disabled = id === 'recommendations' && !state.diagnosis;
+            const disabled =
+              (id === 'recommendations' || id === 'promises') && !state.diagnosis;
             return (
               <button
                 key={id}
@@ -276,6 +300,19 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
                 {id === 'recommendations' && state.diagnosis && (
                   <span style={{ background: '#d6a846', color: '#1d1408', borderRadius: 999, padding: '2px 8px', fontSize: 11 }}>
                     {state.diagnosis.recommendations.length}
+                  </span>
+                )}
+                {id === 'promises' && state.promises.length > 0 && (
+                  <span
+                    style={{
+                      background: promiseHealth.broken > 0 ? '#fecaca' : '#d6a846',
+                      color: '#1d1408',
+                      borderRadius: 999,
+                      padding: '2px 8px',
+                      fontSize: 11,
+                    }}
+                  >
+                    {promiseHealth.open} open
                   </span>
                 )}
               </button>
@@ -315,6 +352,10 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
           />
         )}
 
+        {tab === 'promises' && state.diagnosis && (
+          <PromisesPanel promises={state.promises} health={promiseHealth} />
+        )}
+
         {tab === 'workshop' && (
           <WorkshopPanel
             progress={state.progress}
@@ -322,6 +363,7 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
             chapters={state.chapters}
             phase={state.phase}
             error={state.error}
+            promises={state.promises}
             onUseArtefact={() => onArtefactReady(state.artefact)}
           />
         )}
@@ -715,12 +757,83 @@ function ScopePicker({
   );
 }
 
+function PromisesPanel({
+  promises,
+  health,
+}: {
+  promises: StoryPromise[];
+  health: ReturnType<typeof computePromiseHealth>;
+}) {
+  const statusColor: Record<string, string> = {
+    paid_off: '#15803d',
+    broken: '#b91c1c',
+    cut_advised: '#b45309',
+    planted: '#6366f1',
+    developing: '#0891b2',
+    open: '#8a7a66',
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+      <article style={card}>
+        <h2 style={sectionTitle}>Promise health</h2>
+        <p style={{ color: '#73695d', marginTop: 0, lineHeight: 1.55 }}>
+          What the book promised the reader — and whether those promises are still alive.
+        </p>
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 12 }}>
+          <Stat label="Total" value={health.total} />
+          <Stat label="Open" value={health.open} />
+          <Stat label="Paid off" value={health.paidOff} color="#15803d" />
+          <Stat label="Broken" value={health.broken} color="#b91c1c" />
+          <Stat label="High risk" value={health.overdue} color="#b45309" />
+        </div>
+      </article>
+
+      {promises.length === 0 ? (
+        <article style={card}>
+          <p style={{ margin: 0, color: '#8a7a66' }}>Analyse a manuscript to extract story promises.</p>
+        </article>
+      ) : (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {promises.map((p) => (
+            <article key={p.id} style={{ ...card, borderLeft: `4px solid ${statusColor[p.status] || '#d6a846'}` }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#f3f4f6', textTransform: 'uppercase' }}>
+                  {p.type}
+                </span>
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: statusColor[p.status] + '33', color: statusColor[p.status] }}>
+                  {p.status.replace('_', ' ')}
+                </span>
+                <span style={{ fontSize: 12, color: '#8a7a66' }}>Risk {p.riskScore}%</span>
+                {p.setupChapter && <span style={{ fontSize: 12, color: '#8a7a66' }}>Setup ch.{p.setupChapter}</span>}
+                {p.payoffChapter && <span style={{ fontSize: 12, color: '#8a7a66' }}>Payoff ch.{p.payoffChapter}</span>}
+              </div>
+              <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5, color: '#21180f' }}>{p.statement}</p>
+              {p.notes && <p style={{ margin: '8px 0 0', fontSize: 13, color: '#6f6252' }}>{p.notes}</p>}
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: color || '#21180f' }}>{value}</div>
+      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: '#8a7a66' }}>{label}</div>
+    </div>
+  );
+}
+
 function WorkshopPanel({
   progress,
   artefact,
   chapters,
   phase,
   error,
+  promises,
   onUseArtefact,
 }: {
   progress: CommissionState['progress'];
@@ -728,6 +841,7 @@ function WorkshopPanel({
   chapters: Chapter[];
   phase: CommissionState['phase'];
   error: string | null;
+  promises: StoryPromise[];
   onUseArtefact: () => void;
 }) {
   const totalWords = chapters.reduce(
@@ -764,6 +878,17 @@ function WorkshopPanel({
 
       {phase === 'complete' && artefact && (
         <>
+          {openPromiseWarnings(promises).length > 0 && (
+            <article style={{ ...card, borderColor: '#fecaca' }}>
+              <h2 style={sectionTitle}>Open promises</h2>
+              <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8, color: '#7f1d1d' }}>
+                {openPromiseWarnings(promises).map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </article>
+          )}
+
           <article style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
               <div>

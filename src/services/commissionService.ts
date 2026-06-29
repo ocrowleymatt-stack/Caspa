@@ -11,6 +11,13 @@ import {
   deepResearchTopic,
   addNote,
 } from './researchLibraryService';
+import {
+  loadPromises,
+  savePromises,
+  extractPromises,
+  auditPromises,
+  formatPromisesForDraft,
+} from './promiseRegistryService';
 import { AIService } from './ai';
 import type { Chapter, Project, ProjectType, ResearchNote, ExternalReview } from '../types';
 import type {
@@ -20,6 +27,7 @@ import type {
   Recommendation,
   ChapterSummary,
 } from '../types/commission';
+import type { StoryPromise } from '../types/promise';
 
 export interface ProjectBriefLike {
   title: string;
@@ -289,8 +297,8 @@ export async function executeCommission(
   selectedRecommendationIds: string[],
   scope: CommissionScope,
   onProgress: (p: CommissionProgress) => void,
-  options?: { autoResearch?: boolean }
-): Promise<{ chapters: Chapter[]; artefact: string }> {
+  options?: { autoResearch?: boolean; promises?: StoryPromise[] }
+): Promise<{ chapters: Chapter[]; artefact: string; promises: StoryPromise[] }> {
   const project = briefToProject(brief);
   let working = [...chapters].sort((a, b) => a.order - b.order);
   const projectKey = getProjectKey(brief);
@@ -316,6 +324,7 @@ export async function executeCommission(
   }
 
   const researchLibrary = loadLibrary(projectKey);
+  let activePromises = options?.promises ?? loadPromises(projectKey);
 
   const selectedRecs = diagnosis.recommendations.filter((r) =>
     selectedRecommendationIds.includes(r.id)
@@ -323,10 +332,18 @@ export async function executeCommission(
 
   const directiveBlock = selectedRecs.map((r) => `- ${r.title}: ${r.detail}`).join('\n');
 
+  const promiseBlock =
+    activePromises.length > 0
+      ? `\n\nSTORY PROMISES (must honour or deliberately subvert):\n${activePromises
+          .filter((p) => p.status !== 'paid_off')
+          .map((p) => `- [${p.type}] ${p.statement} (${p.status})`)
+          .join('\n')}`
+      : '';
+
   const analysisReview: ExternalReview = {
     id: 'commission-diagnosis',
     source: 'Caspa Diagnosis',
-    content: `${diagnosis.verdict}\n\n${diagnosis.editorNotes}\n\nApproved fixes:\n${directiveBlock}`,
+    content: `${diagnosis.verdict}\n\n${diagnosis.editorNotes}\n\nApproved fixes:\n${directiveBlock}${promiseBlock}`,
     date: Date.now(),
     isImplemented: true,
   };
@@ -390,7 +407,11 @@ export async function executeCommission(
       .join('\n\n')
       .slice(-5000);
 
-    const mergedDirectives = [...(chap.directives || []), ...selectedRecs.map((r) => r.detail)];
+    const mergedDirectives = [
+      ...(chap.directives || []),
+      ...selectedRecs.map((r) => r.detail),
+      ...formatPromisesForDraft(activePromises, chap.order),
+    ];
 
     const chapterResearch = findRelevantForChapter(researchLibrary, chap, brief);
 
@@ -438,9 +459,18 @@ export async function executeCommission(
     .map((c) => `# ${c.title}\n\n${c.content}`)
     .join('\n\n---\n\n');
 
+  onProgress({ phase: 'promises', message: 'Auditing story promises…', percent: 96 });
+
+  try {
+    activePromises = await auditPromises(working, brief, activePromises);
+    savePromises(projectKey, activePromises);
+  } catch (err) {
+    console.warn('[Commission] Promise audit skipped:', err);
+  }
+
   onProgress({ phase: 'complete', message: 'Commission complete.', percent: 100 });
 
-  return { chapters: working, artefact };
+  return { chapters: working, artefact, promises: activePromises };
 }
 
 export function chaptersToStorage(chapters: Chapter[]): string {

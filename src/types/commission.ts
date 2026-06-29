@@ -3,6 +3,7 @@
  */
 
 import type { Chapter } from '../types';
+import type { StoryPromise } from './promise';
 
 export type CommissionScopeType = 'whole' | 'chapters' | 'single' | 'rebuild' | 'autowrite';
 
@@ -56,6 +57,7 @@ export interface CommissionState {
   rawInput: string;
   chapters: Chapter[];
   diagnosis: Diagnosis | null;
+  promises: StoryPromise[];
   selectedRecommendationIds: string[];
   scope: CommissionScope;
   progress: CommissionProgress | null;
@@ -70,6 +72,7 @@ export const defaultCommissionState: CommissionState = {
   rawInput: '',
   chapters: [],
   diagnosis: null,
+  promises: [],
   selectedRecommendationIds: [],
   scope: defaultCommissionScope,
   progress: null,
