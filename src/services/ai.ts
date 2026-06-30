@@ -5,6 +5,7 @@
 
 import { Type } from "@google/genai";
 import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
+import { callCheapTask } from "./llmRouter";
 
 const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined;
 const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
@@ -133,13 +134,15 @@ export const AIService = {
 
   async detectIngestionType(text: string): Promise<'manuscript' | 'plan'> {
     const prompt = `Analyze this text and determine if it is a "Manuscript" (raw narrative prose, partial book, draft) or a "Plan" (outline, chapter-by-chapter instructions, structural blueprint, beat sheet).
-    
-    TEXT SAMPLE:
-    "${text.slice(0, 10000)}"
-    
-    Return ONLY the word "manuscript" or "plan".`;
-    
-    const response = await callAI({ prompt, model: "gemini-2.0-flash" });
+
+TEXT SAMPLE:
+"${text.slice(0, 10000)}"
+
+Return ONLY the word "manuscript" or "plan".`;
+
+    const { text: response } = await callCheapTask(prompt, () =>
+      callAI({ prompt, model: "gemini-2.0-flash" })
+    );
     return response?.toLowerCase().includes('plan') ? 'plan' : 'manuscript';
   },
 

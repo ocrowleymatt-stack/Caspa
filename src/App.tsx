@@ -40,6 +40,12 @@ import ResearchLibrary from './components/ResearchLibrary';
 import PublishPack from './components/PublishPack';
 import PsychologyStudio from './components/PsychologyStudio';
 import StoryCanvas from './components/StoryCanvas';
+import ProjectShelf from './components/ProjectShelf';
+import GoldRefinery from './components/GoldRefinery';
+import RedPenStudio from './components/RedPenStudio';
+import SettingsStudio from './components/SettingsStudio';
+import StoryBibleStudio from './components/StoryBibleStudio';
+import { recordProjectSnapshot } from './services/projectShelfService';
 
 declare const process: any;
 
@@ -202,6 +208,7 @@ const surface: React.CSSProperties = {
 
 function saveBrief(brief: ProjectBrief) {
   localStorage.setItem('caspa.currentBrief', JSON.stringify(brief));
+  recordProjectSnapshot(brief);
 }
 
 function loadBrief(): ProjectBrief {
@@ -412,7 +419,14 @@ function CaspaUI() {
       case 'write':
         return <WhitePageView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} setCurrentView={setCurrentView} />;
       case 'bible':
-        return <StoryBibleView brief={brief} />;
+        return (
+          <StoryBibleStudio
+            brief={brief}
+            onOpenWorkshop={() => setCurrentView('workshop')}
+            onOpenPsychology={() => setCurrentView('psychology')}
+            onOpenResearch={() => setCurrentView('research')}
+          />
+        );
       case 'workshop':
         return (
           <CommissionStudio
@@ -427,9 +441,15 @@ function CaspaUI() {
           />
         );
       case 'redpen':
-        return <RedPenView brief={brief} draftPage={draftPage} setCurrentView={setCurrentView} />;
+        return (
+          <RedPenStudio
+            brief={brief}
+            draftPage={draftPage}
+            onOpenWorkshop={() => setCurrentView('workshop')}
+          />
+        );
       case 'gold':
-        return <GoldRefineryView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
+        return <GoldRefinery brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
       case 'openwebui':
         return (
           <OpenWebUIDriverView
@@ -445,7 +465,13 @@ function CaspaUI() {
       case 'research':
         return <ResearchLibrary brief={brief} manuscriptText={manuscriptSource || draftPage} />;
       case 'library':
-        return <SimpleWorkspace title="Library" text="Your projects, shelves, exports and recoverable scraps of genius." />;
+        return (
+          <ProjectShelf
+            brief={brief}
+            onOpenWorkshop={() => setCurrentView('workshop')}
+            onOpenPublish={() => setCurrentView('publish')}
+          />
+        );
       case 'psychology':
         return <PsychologyStudio brief={brief} manuscriptText={manuscriptSource || draftPage} />;
       case 'canvas':
@@ -467,7 +493,7 @@ function CaspaUI() {
           />
         );
       case 'settings':
-        return <SettingsView user={authContext.user} />;
+        return <SettingsStudio userEmail={authContext.user?.email} />;
       default:
         return <LaunchpadView onStart={startProject} />;
     }
@@ -714,74 +740,8 @@ function OpenWebUIDriverView({
   );
 }
 
-function GoldRefineryView({ brief, draftPage, setDraftPage }: { brief: ProjectBrief; draftPage: string; setDraftPage: (value: string) => void }) {
-  const passes = [
-    ['Structure Pass', 'Does the spine hold, or is it wearing a hat and pretending?'],
-    ['Depth Pass', 'Characters, stakes, world, relationships, pressure.'],
-    ['Subtext Pass', 'Meaning underneath the words. Less furniture, more voltage.'],
-    ['Line Edit', 'Pace, clarity, rhythm, voice, cuts.'],
-    ['Ruthless Final Cut', 'Remove what is decorative, dead, duplicated or showing off.'],
-  ];
-  return (
-    <PageShell kicker="Gold Refinery" title="Polish existing work" subtitle="Gold is no longer the front door. It is the finishing room.">
-      <div style={cardGrid}>
-        <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
-          <h2 style={sectionTitle}>Paste or refine text</h2>
-          <textarea value={draftPage} onChange={(e) => setDraftPage(e.target.value)} placeholder="Paste chapter, scene, treatment or script extract here." style={{ ...textareaStyle, minHeight: 360, fontFamily: 'Georgia, Cambria, serif', fontSize: 18 }} />
-        </article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Refinement route</h2>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {passes.map(([name, detail], index) => <div key={name} style={{ display: 'flex', gap: 12, padding: 12, borderRadius: 14, background: '#fff8ea', border: '1px solid #eadfce' }}><strong>{index + 1}</strong><span><b>{name}</b><small style={{ display: 'block', color: '#73695d' }}>{detail}</small></span></div>)}
-          </div>
-        </article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Current project</h2>
-          <p style={bigText}>{brief.title}</p>
-          <p style={{ color: '#6f6252' }}>{brief.idea}</p>
-        </article>
-      </div>
-    </PageShell>
-  );
-}
-
-function StoryBibleView({ brief }: { brief: ProjectBrief }) {
-  return (
-    <PageShell kicker="Story Bible" title="Canon, characters and rules" subtitle={brief.title}>
-      <div style={cardGrid}>
-        <article style={cardStyle}><h2 style={sectionTitle}>Characters</h2><p>Protagonist, antagonist, allies, comic engines, secrets and reversals.</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>World rules</h2><p>Setting, period, tone laws, what is allowed, what breaks the spell.</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>Continuity</h2><p>Facts that must stay true unless deliberately subverted.</p></article>
-      </div>
-    </PageShell>
-  );
-}
-
-function RedPenView({ brief, draftPage, setCurrentView }: { brief: ProjectBrief; draftPage: string; setCurrentView: (view: ViewType) => void }) {
-  const wordCount = draftPage.trim().split(/\s+/).filter(Boolean).length;
-  return (
-    <PageShell kicker="Red Pen" title="Quick scan" subtitle="For full diagnose-and-write, use Workshop.">
-      <div style={cardGrid}>
-        <article style={cardStyle}><h2 style={sectionTitle}>Project</h2><p style={bigText}>{brief.title}</p><p>{brief.idea}</p></article>
-        <article style={cardStyle}><h2 style={sectionTitle}>Draft status</h2><p style={bigText}>{wordCount} words</p><p>{wordCount ? 'Ready for Workshop.' : 'Paste a draft in Workshop or White Page first.'}</p></article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Full pipeline</h2>
-          <p style={{ color: '#73695d', lineHeight: 1.6 }}>Workshop gives structured recommendations and one-click Write it — no fishing through logs.</p>
-          <button type="button" onClick={() => setCurrentView('workshop')} style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', marginTop: 14 }}>
-            <Hammer size={18} /> Open Workshop
-          </button>
-        </article>
-      </div>
-    </PageShell>
-  );
-}
-
 function SimpleWorkspace({ title, text }: { title: string; text: string }) {
   return <PageShell kicker="Workspace" title={title} subtitle={text}><article style={cardStyle}><p style={bigText}>This room is now placed correctly in the product. Next pass can wire its live functions.</p></article></PageShell>;
-}
-
-function SettingsView({ user }: { user: User | null }) {
-  return <PageShell kicker="Settings" title="Account and privacy" subtitle={user?.email || 'Private workspace'}><article style={cardStyle}><p>Authentication is still preserved. The redesign changes the working experience, not the access model.</p></article></PageShell>;
 }
 
 function PageShell({ kicker, title, subtitle, children }: { kicker: string; title: string; subtitle: string; children: React.ReactNode }) {
