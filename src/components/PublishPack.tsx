@@ -3,7 +3,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Download, FileText, Loader, Shield, Sparkles } from 'lucide-react';
+import { AlertCircle, Archive, CheckCircle2, Download, FileText, Loader, Shield, Sparkles } from 'lucide-react';
 import type { ProjectBriefLike } from '../services/commissionService';
 import {
   analyzeForExport,
@@ -18,9 +18,10 @@ interface Props {
   brief: ProjectBriefLike;
   authorEmail?: string;
   onGoWorkshop?: () => void;
+  onMoveToLibrary?: () => void;
 }
 
-export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props) {
+export default function PublishPack({ brief, authorEmail, onGoWorkshop, onMoveToLibrary }: Props) {
   const [profile, setProfile] = useState<ExportProfile>('kdp-novel');
   const [overrideGate, setOverrideGate] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -62,10 +63,10 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props)
     try {
       if (profile === 'markdown') {
         downloadMarkdown(ctx);
-        setStatus('Markdown downloaded.');
+        setStatus('Markdown downloaded. Move this manuscript to your library when you are done.');
       } else {
         await downloadPdf(ctx, profile);
-        setStatus('PDF downloaded.');
+        setStatus('PDF downloaded. Move this manuscript to your library when you are done.');
       }
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Export failed');
@@ -102,11 +103,14 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props)
               </p>
 
               {gate.blockers.length > 0 && !overrideGate && (
-                <ul style={{ margin: '0 0 12px', paddingLeft: 20, color: '#b91c1c', lineHeight: 1.6 }}>
-                  {gate.blockers.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 13, color: '#7f1d1d', fontWeight: 700 }}>What you need before export:</p>
+                  <ul style={{ margin: 0, paddingLeft: 20, color: '#b91c1c', lineHeight: 1.6 }}>
+                    {gate.blockers.map((b) => (
+                      <li key={b}>{b}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
 
               {gate.warnings.length > 0 && (
@@ -198,6 +202,18 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props)
               {exporting ? <Loader size={20} className="spin" /> : <Download size={20} />}
               {exporting ? 'Exporting…' : profile === 'markdown' ? 'Download Markdown' : 'Download PDF'}
             </button>
+
+            {gate.canExport && onMoveToLibrary && (
+              <article style={{ ...card, borderLeft: '4px solid #15803d' }}>
+                <h2 style={sectionTitle}>Finished?</h2>
+                <p style={{ margin: '0 0 12px', color: '#5b4724', lineHeight: 1.55, fontSize: 14 }}>
+                  A completed manuscript belongs in the library — not on the active workbench. This frees the studio for your next project.
+                </p>
+                <button type="button" onClick={onMoveToLibrary} style={primaryBtn}>
+                  <Archive size={18} /> Move to library
+                </button>
+              </article>
+            )}
 
             {status && (
               <p style={{ margin: 0, fontSize: 14, color: '#9b6d16', display: 'flex', alignItems: 'center', gap: 8 }}>
