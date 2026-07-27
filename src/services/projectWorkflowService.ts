@@ -11,6 +11,8 @@ export type WorkflowView =
   | 'launchpad'
   | 'project'
   | 'write'
+  | 'quickwrite'
+  | 'design'
   | 'workshop'
   | 'publish'
   | 'library'
@@ -129,9 +131,9 @@ export function getWorkflowSteps(
     steps.push({
       id: 'draft_or_paste',
       title: 'Get words on the page',
-      why: 'Write fresh in White Page, or paste existing material into Workshop. Caspa needs text to diagnose.',
-      action: words > 0 ? 'Continue writing' : 'Start in White Page',
-      view: words > 0 && !hasDiagnosis ? 'workshop' : 'write',
+      why: 'Use Just write for a prize-target draft, or paste into Workshop. Caspa needs text to diagnose.',
+      action: words > 0 ? 'Continue writing' : 'Open Just write',
+      view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
       done: words >= 50,
     });
 
@@ -168,11 +170,23 @@ export function getWorkflowSteps(
     title: 'Export when ready',
     why: gate.blockers.length
       ? `Blocked: ${gate.blockers[0]}`
-      : 'Publish Pack checks promises and word count so nothing broken leaves the building.',
+      : 'Design covers & picture spreads, then Publish Pack for manuscript export.',
     action: gate.canExport ? 'Export manuscript' : 'Check export gate',
     view: 'publish',
     done: gate.canExport,
   });
+
+  if (!gold) {
+    steps.splice(steps.findIndex((s) => s.id === 'export'), 0, {
+      id: 'polish_optional',
+      title: 'Design cover & pages',
+      why: 'For illustrated and children’s books: age bands, spreads, wraparound covers. Optional for prose-only novels.',
+      action: 'Open Design',
+      view: 'design',
+      optional: true,
+      done: false,
+    });
+  }
 
   steps.push({
     id: 'complete_to_library',

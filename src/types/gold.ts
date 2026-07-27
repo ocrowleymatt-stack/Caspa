@@ -108,7 +108,16 @@ export interface JobAuditSnapshot {
 
 export interface CaspaJobRecord {
   id: string;
-  type: 'gold-pipeline' | 'quality-pass';
+  type:
+    | 'gold-pipeline'
+    | 'quality-pass'
+    | 'seed-to-story'
+    | 'auto-write'
+    | 'prize-draft'
+    | 'prize-pass'
+    | 'cover-generate'
+    | 'picture-illustrate'
+    | 'picture-book-pipeline';
   status: 'queued' | 'running' | 'complete' | 'failed';
   createdAt: string;
   updatedAt: string;
@@ -118,5 +127,8 @@ export interface CaspaJobRecord {
   result?: {
     finalText?: string;
     overallScore?: number;
+    words?: number;
+    score?: number;
+    [key: string]: unknown;
   };
 }

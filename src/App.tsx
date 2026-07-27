@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  BookImage,
   BookOpen,
   Check,
   ChevronDown,
@@ -34,6 +35,7 @@ import {
   Hammer,
   Brain,
   Pencil,
+  Zap,
   X,
 } from 'lucide-react';
 
@@ -48,6 +50,8 @@ import RedPenStudio from './components/RedPenStudio';
 import SettingsStudio from './components/SettingsStudio';
 import StoryBibleStudio from './components/StoryBibleStudio';
 import GuidedNextStep, { WorkflowChecklist } from './components/GuidedNextStep';
+import BookDesignStudio from './components/BookDesignStudio';
+import QuickWrite from './components/QuickWrite';
 import {
   completeProject,
   loadProjectSnapshot,
@@ -62,6 +66,7 @@ import {
   type WorkflowView,
 } from './services/projectWorkflowService';
 import { getProjectKey } from './services/researchLibraryService';
+import { clearPlotHold } from './services/plotHoldService';
 
 declare const process: any;
 
@@ -83,6 +88,8 @@ type ViewType =
   | 'launchpad'
   | 'project'
   | 'write'
+  | 'quickwrite'
+  | 'design'
   | 'bible'
   | 'redpen'
   | 'workshop'
@@ -140,14 +147,16 @@ const modeLabels: Record<CreativeMode, string> = {
 
 const primaryNav: NavItem[] = [
   { id: 'project', label: 'Next step', detail: 'What to do now', group: 'primary', icon: Home },
+  { id: 'quickwrite', label: 'Just write', detail: 'Seed → draft → cut', group: 'primary', icon: Zap },
   { id: 'write', label: 'White Page', detail: 'Draft and edit', group: 'primary', icon: PenLine },
-  { id: 'workshop', label: 'Workshop', detail: 'Diagnose and write', group: 'primary', icon: Hammer },
+  { id: 'design', label: 'Design', detail: 'Cover & picture pages', group: 'primary', icon: BookImage },
   { id: 'publish', label: 'Publish', detail: 'Export when ready', group: 'primary', icon: Download },
   { id: 'library', label: 'Library', detail: 'Open work & finished', group: 'primary', icon: Library },
 ];
 
 const advancedNav: NavItem[] = [
   { id: 'launchpad', label: 'New Work', detail: 'Start another project', group: 'advanced', icon: Sparkles },
+  { id: 'workshop', label: 'Workshop', detail: 'Diagnose and write', group: 'advanced', icon: Hammer },
   { id: 'bible', label: 'Story Bible', detail: 'Canon and characters', group: 'advanced', icon: BookOpen },
   { id: 'psychology', label: 'Psychology', detail: 'Emotional journeys', group: 'advanced', icon: Brain },
   { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'advanced', icon: CircleAlert },
@@ -480,7 +489,8 @@ function CaspaUI() {
     localStorage.setItem('caspa.whitePage', '');
     localStorage.setItem('caspa.manuscriptSource', '');
     localStorage.removeItem('caspa.commission');
-    goTo('project');
+    clearPlotHold();
+    goTo(mode === 'gold' ? 'gold' : 'quickwrite');
   };
 
   const renderView = () => {
@@ -500,6 +510,27 @@ function CaspaUI() {
         );
       case 'write':
         return <WhitePageView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} setCurrentView={goTo} />;
+      case 'quickwrite':
+        return (
+          <PageShell kicker="Auto write" title="Just write" subtitle="Simple steps. Prize-calibre engine underneath.">
+            <QuickWrite
+              brief={brief}
+              draftPage={draftPage}
+              onDraftChange={setDraftPage}
+              onGoPublish={() => goTo('publish')}
+              onGoWorkshop={() => goTo('workshop')}
+            />
+          </PageShell>
+        );
+      case 'design':
+        return (
+          <BookDesignStudio
+            brief={brief}
+            draftPage={draftPage}
+            authorName={authContext.user?.displayName || ''}
+            onDraftChange={setDraftPage}
+          />
+        );
       case 'bible':
         return (
           <StoryBibleStudio
