@@ -283,6 +283,75 @@ router.post('/prize-pass', async (req, res) => {
   }
 });
 
+router.post('/continue', async (req, res) => {
+  const {
+    mode = 'novel',
+    genre = 'Literary fiction',
+    premise = '',
+    tone = '',
+    sourceText = '',
+    prizeLensId,
+    plotHold,
+  } = req.body as {
+    mode?: NovelWriteProMode;
+    genre?: string;
+    premise?: string;
+    tone?: string;
+    sourceText?: string;
+    prizeLensId?: string;
+    plotHold?: ServerPlotHold;
+  };
+
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const lens = getAwardLens(prizeLensId);
+  const holdBlock = buildServerPlotHoldBlock(plotHold);
+  const pending =
+    plotHold?.beats?.find((b) => (b.status || 'pending') === 'pending') ||
+    plotHold?.beats?.find((b) => b.status !== 'drafted') ||
+    null;
+  const focusBeat = pending ? `${pending.title}: ${pending.turn}` : 'Continue from the last page with the next inevitable turn.';
+
+  const job = createJob('auto-write', 'continue');
+  updateJob(job.id, { status: 'running' });
+
+  try {
+    const route = routeCaspaIntent(sourceText, 'continue writing the next scene');
+    const prompt = buildAutoWritePrompt({
+      mode: safeMode,
+      modeTitle: modeTitle(safeMode),
+      genre: genre || plotHold?.genre || 'Literary fiction',
+      premise: premise || plotHold?.premise || '',
+      tone: tone || plotHold?.tone || '',
+      output: 'Next scene / chapter section only (900–1600 words). Do not restart the book.',
+      sourceText: sourceText.slice(-8000),
+      prizeLens: awardLensPromptBlock(lens),
+      plotHoldBlock: holdBlock,
+      focusBeat,
+    });
+
+    const text = await callServerAi(
+      `${route.systemInstruction}\n\n${AWARD_BAR}\n\n${prompt}\n\nAppend only new material. Do not repeat prior pages.`
+    );
+
+    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+    res.json({
+      success: true,
+      jobId: job.id,
+      data: {
+        text,
+        focusBeat,
+        beatTitle: pending?.title || null,
+        wordCount: text.trim().split(/\s+/).filter(Boolean).length,
+        awardLens: lens,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Continue failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    res.status(500).json({ success: false, message });
+  }
+});
+
 router.get('/engine', (_req, res) => {
   res.json({
     success: true,
@@ -296,3 +365,4 @@ router.get('/engine', (_req, res) => {
 });
 
 export default router;
+

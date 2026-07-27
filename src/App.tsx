@@ -82,7 +82,7 @@ type AuthContextType = {
   signOut: () => Promise<void>;
 };
 
-type CreativeMode = 'novel' | 'script' | 'musical' | 'adaptation' | 'gold' | 'chaos';
+type CreativeMode = 'novel' | 'picture' | 'script' | 'musical' | 'adaptation' | 'gold' | 'chaos';
 
 type ViewType =
   | 'launchpad'
@@ -138,6 +138,7 @@ const defaultBrief: ProjectBrief = {
 
 const modeLabels: Record<CreativeMode, string> = {
   novel: 'Novel',
+  picture: 'Picture book',
   script: 'Script',
   musical: 'Musical / Show',
   adaptation: 'Adaptation',
@@ -173,13 +174,31 @@ const modeCards: Array<{
   subtitle: string;
   examples: string[];
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  hero?: boolean;
 }> = [
   {
     mode: 'novel',
-    title: 'Write a Novel',
-    subtitle: 'Chapters, plot, voice, character arcs, continuity.',
+    title: 'Just write',
+    subtitle: 'Seed → spine → prize draft. Plot held under the hood.',
     examples: ['Gothic literary thriller', 'Comic revenge novel', 'Queer horror with teeth'],
-    icon: BookOpen,
+    icon: Zap,
+    hero: true,
+  },
+  {
+    mode: 'picture',
+    title: 'Picture book',
+    subtitle: 'Age bands, spreads, wraparound covers, character lock.',
+    examples: ['Fox who lost the moon', 'Toddler and the night bus', 'Quiet dragon learns to share'],
+    icon: BookImage,
+    hero: true,
+  },
+  {
+    mode: 'gold',
+    title: 'Polish',
+    subtitle: 'Paste existing work. Gold pipeline. Same story, sharper.',
+    examples: ['Tighten chapter', 'Fix pacing', 'Make it prize-ready'],
+    icon: Wand2,
+    hero: true,
   },
   {
     mode: 'script',
@@ -201,13 +220,6 @@ const modeCards: Array<{
     subtitle: 'Turn notes, evidence, transcripts or chaos into story.',
     examples: ['Transcript to drama', 'Memoir to play', 'Evidence to thriller'],
     icon: FileText,
-  },
-  {
-    mode: 'gold',
-    title: 'Polish Existing Work',
-    subtitle: 'Structure, subtext, line edit and ruthless final cut.',
-    examples: ['Tighten chapter', 'Fix pacing', 'Make it prize-ready'],
-    icon: Wand2,
   },
   {
     mode: 'chaos',
@@ -490,7 +502,9 @@ function CaspaUI() {
     localStorage.setItem('caspa.manuscriptSource', '');
     localStorage.removeItem('caspa.commission');
     clearPlotHold();
-    goTo(mode === 'gold' ? 'gold' : 'quickwrite');
+    if (mode === 'gold') goTo('gold');
+    else if (mode === 'picture') goTo('design');
+    else goTo('quickwrite');
   };
 
   const renderView = () => {
@@ -606,6 +620,7 @@ function CaspaUI() {
             brief={brief}
             authorEmail={authContext.user?.email}
             onGoWorkshop={() => goTo('workshop')}
+            onGoDesign={() => goTo('design')}
             onMoveToLibrary={handleCompleteProject}
           />
         );
@@ -702,69 +717,103 @@ function CaspaUI() {
 function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string, tone: string, output: string, audience: string) => void }) {
   const [mode, setMode] = useState<CreativeMode>('novel');
   const [idea, setIdea] = useState('');
-  const [tone, setTone] = useState('Sharp, vivid, structurally solid.');
-  const [output, setOutput] = useState('Outline, then first draft.');
-  const [audience, setAudience] = useState('Readers or producers for this format.');
+  const [showMore, setShowMore] = useState(false);
 
   const selected = modeCards.find((card) => card.mode === mode)!;
   const SelectedIcon = selected.icon;
+  const heroCards = modeCards.filter((c) => c.hero);
+  const moreCards = modeCards.filter((c) => !c.hero);
+
+  const defaultsFor = (m: CreativeMode) => {
+    if (m === 'picture') {
+      return {
+        tone: 'Warm, concrete, image-led, read-aloud friendly.',
+        output: '32-page picture book with wraparound cover.',
+        audience: 'Children 3–5 and the adults who read with them.',
+      };
+    }
+    if (m === 'gold') {
+      return {
+        tone: 'Preserve the author voice. Sharpen only.',
+        output: 'Polished manuscript ready for export.',
+        audience: 'Same readers as the source draft.',
+      };
+    }
+    return {
+      tone: 'Sharp, vivid, structurally solid.',
+      output: 'Opening chapter, then continue by beat.',
+      audience: 'Literary / general readers.',
+    };
+  };
+
+  const launch = () => {
+    const d = defaultsFor(mode);
+    onStart(mode, idea, d.tone, d.output, d.audience);
+  };
 
   return (
     <section style={{ minHeight: '100vh', padding: '54px clamp(24px, 5vw, 72px)', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
-      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, .9fr)', gap: 28, alignItems: 'stretch' }} className="responsive-grid">
-          <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)' }}>
-            <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa Launchpad</div>
-            <h1 style={{ fontSize: 'clamp(42px, 7vw, 82px)', lineHeight: .88, margin: 0, letterSpacing: -3 }}>What are we making today?</h1>
-            <p style={{ maxWidth: 720, color: '#d7c8aa', fontSize: 19, lineHeight: 1.55, marginTop: 24 }}>Start with the creative intention, not the plumbing. Novel, script, musical, adaptation, polish, or glorious nonsense — then Caspa routes the machinery.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 32 }}>
-              {modeCards.map((card) => {
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)', marginBottom: 24 }}>
+          <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
+          <h1 style={{ fontSize: 'clamp(40px, 7vw, 72px)', lineHeight: .9, margin: 0, letterSpacing: -2.5 }}>What are we making?</h1>
+          <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 18, lineHeight: 1.5, marginTop: 18 }}>
+            Three doors. Powerful engines underneath. No dashboard maze.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 28 }}>
+            {heroCards.map((card) => {
+              const Icon = card.icon;
+              const active = card.mode === mode;
+              return (
+                <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `2px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 20, textAlign: 'left', cursor: 'pointer' }}>
+                  <Icon size={26} style={{ color: '#d6a846', marginBottom: 12 }} />
+                  <strong style={{ display: 'block', marginBottom: 6, fontSize: 18 }}>{card.title}</strong>
+                  <small style={{ color: '#c4b18b', lineHeight: 1.4 }}>{card.subtitle}</small>
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" onClick={() => setShowMore(!showMore)} style={{ marginTop: 18, background: 'transparent', border: 'none', color: '#a89572', cursor: 'pointer', fontSize: 13 }}>
+            {showMore ? 'Hide other formats' : 'More formats (script, musical, adaptation…)'}
+          </button>
+          {showMore && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 12 }}>
+              {moreCards.map((card) => {
                 const Icon = card.icon;
                 const active = card.mode === mode;
                 return (
-                  <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 18, textAlign: 'left', cursor: 'pointer' }}>
-                    <Icon size={24} style={{ color: '#d6a846', marginBottom: 12 }} />
-                    <strong style={{ display: 'block', marginBottom: 6 }}>{card.title}</strong>
-                    <small style={{ color: '#c4b18b', lineHeight: 1.4 }}>{card.subtitle}</small>
+                  <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#1a140e', color: '#fffaf2', borderRadius: 16, padding: 14, textAlign: 'left', cursor: 'pointer' }}>
+                    <Icon size={18} style={{ color: '#d6a846', marginBottom: 8 }} />
+                    <strong style={{ display: 'block', fontSize: 14 }}>{card.title}</strong>
                   </button>
                 );
               })}
             </div>
+          )}
+        </div>
+
+        <div style={{ borderRadius: 28, padding: 28, ...surface }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fff3d5', color: '#7a5514', display: 'grid', placeItems: 'center' }}><SelectedIcon size={24} /></div>
+            <div>
+              <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>{selected.title}</div>
+              <h2 style={{ margin: 0, fontSize: 24 }}>One idea is enough</h2>
+            </div>
           </div>
 
-          <div style={{ borderRadius: 34, padding: 28, ...surface }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fff3d5', color: '#7a5514', display: 'grid', placeItems: 'center' }}><SelectedIcon size={24} /></div>
-              <div>
-                <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>{selected.title}</div>
-                <h2 style={{ margin: 0, fontSize: 26 }}>Project brief</h2>
-              </div>
-            </div>
+          <Field label="Idea / premise">
+            <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder={selected.examples[0] || 'Start with a wound, a place, a desire…'} />
+          </Field>
 
-            <Field label="Idea / premise">
-              <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder="Example: Dick Turpin in Milton Keynes, but make it stageable..." />
-            </Field>
-            <Field label="Tone">
-              <input value={tone} onChange={(e) => setTone(e.target.value)} style={inputStyle} />
-            </Field>
-            <Field label="Output wanted">
-              <input value={output} onChange={(e) => setOutput(e.target.value)} style={inputStyle} />
-            </Field>
-            <Field label="Audience">
-              <input value={audience} onChange={(e) => setAudience(e.target.value)} style={inputStyle} />
-            </Field>
-
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-              {selected.examples.map((example) => <button key={example} onClick={() => setIdea(example)} style={chipButton}>{example}</button>)}
-            </div>
-
-            <button onClick={() => onStart(mode, idea, tone, output, audience)} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
-              <Sparkles size={19} /> Build this project
-            </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+            {selected.examples.map((example) => <button key={example} onClick={() => setIdea(example)} style={chipButton}>{example}</button>)}
           </div>
+
+          <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
+            <Sparkles size={19} /> {mode === 'picture' ? 'Open Design' : mode === 'gold' ? 'Open Gold' : 'Start writing'}
+          </button>
         </div>
       </div>
-      <style>{`@media (max-width: 1050px) { .responsive-grid { grid-template-columns: 1fr !important; } }`}</style>
     </section>
   );
 }

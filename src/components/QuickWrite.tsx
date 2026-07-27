@@ -69,7 +69,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
       const res = await fetch('/api/caspa/write/seed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, mode: brief.mode === 'gold' ? 'novel' : brief.mode }),
+        body: JSON.stringify({ seed, mode: brief.mode === 'gold' || brief.mode === 'picture' ? 'novel' : brief.mode }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Seed failed');
@@ -97,7 +97,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: brief.mode === 'gold' ? 'novel' : brief.mode,
+          mode: brief.mode === 'gold' || brief.mode === 'picture' ? 'novel' : brief.mode,
           genre: proposal?.genre || hold?.genre || 'Literary fiction',
           premise: proposal?.premise || hold?.premise || seed || brief.idea,
           tone: proposal?.tone || hold?.tone || brief.tone,
@@ -126,6 +126,43 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
       setStatus('Draft written against held plot. Cut sludge, then pack.');
     } catch (err: any) {
       setError(err.message || 'Prize draft failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runContinue = async () => {
+    setBusy(true);
+    setError('');
+    setStatus('Writing the next held beat…');
+    try {
+      const hold = plotHold || loadPlotHold();
+      const focus = nextPendingBeat(hold);
+      const res = await fetch('/api/caspa/write/continue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: brief.mode === 'gold' || brief.mode === 'picture' ? 'novel' : brief.mode,
+          genre: proposal?.genre || hold?.genre || 'Literary fiction',
+          premise: proposal?.premise || hold?.premise || seed || brief.idea,
+          tone: proposal?.tone || hold?.tone || brief.tone,
+          sourceText: draftPage,
+          prizeLensId,
+          plotHold: hold || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Continue failed');
+      const addition = String(json.data.text || '').trim();
+      onDraftChange(draftPage.trim() ? `${draftPage.trim()}\n\n${addition}` : addition);
+      if (focus) {
+        const updated = markBeatDrafted(focus.id);
+        if (updated) setPlotHold(updated);
+      }
+      setStep('draft');
+      setStatus(focus ? `Wrote: ${focus.title}` : 'Next section appended.');
+    } catch (err: any) {
+      setError(err.message || 'Continue failed');
     } finally {
       setBusy(false);
     }
@@ -304,6 +341,15 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
           <button type="button" disabled={busy} onClick={runPrizeDraft} style={btn('#d6a846', '#1d1408')}>
             {busy ? <Loader size={16} className="spin" /> : <Wand2 size={16} />}
             Write prize-target chapter
+          </button>
+          <button
+            type="button"
+            disabled={busy || !draftPage.trim()}
+            onClick={runContinue}
+            style={{ ...btn('#1f2937', '#fff'), marginLeft: 10 }}
+          >
+            {busy ? <Loader size={16} className="spin" /> : <PenLine size={16} />}
+            Continue next beat
           </button>
           {draftPage.trim() && (
             <textarea value={draftPage} onChange={(e) => onDraftChange(e.target.value)} rows={16} style={{ ...textarea, marginTop: 14 }} />

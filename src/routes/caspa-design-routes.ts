@@ -321,6 +321,65 @@ router.post('/picture-book/preview-html', (req, res) => {
   res.json({ success: true, data: { html } });
 });
 
+router.post('/picture-book/pdf', async (req, res) => {
+  const plan = req.body?.plan as PictureBookPlan | undefined;
+  if (!plan?.pages?.length) {
+    return res.status(400).json({ success: false, message: 'plan required' });
+  }
+
+  const facing = req.body?.facing !== false;
+  const html = composeSpreadHtml({
+    pages: plan.pages,
+    trim: plan.trim,
+    age: AGE_BANDS.find((a) => a.id === plan.ageBand) || AGE_BANDS[1],
+    title: plan.title,
+    facing,
+  });
+
+  const job = createJob('picture-book-pipeline', 'pdf');
+  updateJob(job.id, { status: 'running', progress: 20 });
+
+  try {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+      const width = facing ? plan.trim.widthIn * 2 : plan.trim.widthIn;
+      const height = plan.trim.heightIn;
+      const pdf = await page.pdf({
+        width: `${width}in`,
+        height: `${height}in`,
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
+      updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${(plan.title || 'picture-book').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-spreads.pdf"`
+      );
+      res.send(Buffer.from(pdf));
+    } finally {
+      await browser.close();
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Picture book PDF failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    // Fallback: return HTML so client can print / html2pdf
+    res.status(200).json({
+      success: false,
+      message,
+      data: { html, fallback: true },
+    });
+  }
+});
+
 router.post('/picture-book/from-manuscript', async (req, res) => {
   const {
     title = 'Untitled',

@@ -425,6 +425,50 @@ export default function BookDesignStudio({ brief, draftPage, authorName = '', on
             >
               <Download size={16} /> Spread HTML
             </button>
+            <button
+              type="button"
+              disabled={busy || !plan}
+              onClick={async () => {
+                if (!plan) return;
+                setBusy(true);
+                setError('');
+                setStatus('Building picture-book PDF…');
+                try {
+                  const res = await fetch('/api/caspa/design/picture-book/pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan, facing: true }),
+                  });
+                  const ctype = res.headers.get('content-type') || '';
+                  if (ctype.includes('application/pdf')) {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${slug(brief.title)}-spreads.pdf`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    setStatus('PDF downloaded.');
+                  } else {
+                    const json = await res.json();
+                    if (json?.data?.html) {
+                      setPagesHtml(json.data.html);
+                      downloadHtml(json.data.html, `${slug(brief.title)}-spreads.html`);
+                      setStatus(json.message || 'PDF engine unavailable — downloaded HTML instead.');
+                    } else {
+                      throw new Error(json.message || 'PDF failed');
+                    }
+                  }
+                } catch (err: any) {
+                  setError(err.message || 'PDF export failed');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              style={secondaryBtn}
+            >
+              <Download size={16} /> Picture-book PDF
+            </button>
           </div>
           {plan && (
             <ul style={{ marginTop: 18, color: '#5a4a38', lineHeight: 1.6 }}>
