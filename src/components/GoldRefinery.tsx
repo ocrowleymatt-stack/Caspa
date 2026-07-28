@@ -7,6 +7,7 @@ import { Check, Loader, Play, Sparkles } from 'lucide-react';
 import type { ProjectBriefLike } from '../services/commissionService';
 import type { GoldPassDefinition, GoldPassResult, GoldPipelineProgressEvent } from '../types/gold';
 import { GOLD_PASS_DEFINITIONS } from '../types/gold';
+import { loadPlotHold, plotHoldSummary } from '../services/plotHoldService';
 
 interface Props {
   brief: ProjectBriefLike;
@@ -23,6 +24,7 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
   const [passResults, setPassResults] = useState<Record<string, GoldPassResult>>({});
   const [qualityScore, setQualityScore] = useState<number | null>(null);
   const [rewritePrompt, setRewritePrompt] = useState('');
+  const plotHold = useMemo(() => loadPlotHold(), [draftPage, brief.title]);
 
   const wordCount = useMemo(
     () => draftPage.trim().split(/\s+/).filter(Boolean).length,
@@ -85,6 +87,7 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
           title: brief.title,
           tone: brief.tone,
           stream: true,
+          plotHold: plotHold || undefined,
         }),
       });
 
@@ -145,7 +148,7 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
     } finally {
       setRunning(false);
     }
-  }, [brief, draftPage, setDraftPage]);
+  }, [brief, draftPage, setDraftPage, plotHold]);
 
   return (
     <section style={{ minHeight: '100vh', padding: '48px clamp(20px, 5vw, 72px)', background: '#f5efe5' }}>
@@ -156,8 +159,13 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
             Polish existing work
           </h1>
           <p style={{ margin: 0, maxWidth: 720, color: '#73695d', fontSize: 17, lineHeight: 1.5 }}>
-            Novel Write Pro quality pass plus five-pass Gold Pipeline — streamed live, no log fishing.
+            Five-pass Gold Pipeline with plot hold locked underneath — same story, sharper prose.
           </p>
+          {plotHold && (
+            <p style={{ margin: '10px 0 0', fontSize: 13, color: '#8a6a28' }}>
+              Holding plot: {plotHoldSummary(plotHold)}
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(280px, 1fr)', gap: 20 }}>

@@ -1,0 +1,368 @@
+/**
+ * Quick Write + prize draft routes — seed → spine → draft → critic → rewrite.
+ */
+
+import express from 'express';
+import { callServerAi } from '../services/serverAiHelper';
+import { createJob, updateJob } from '../services/jobQueueService';
+import {
+  buildAutoWritePrompt,
+  buildSeedToStoryPrompt,
+  buildCutPrompt,
+  modeTitle,
+  type NovelWriteProMode,
+} from '../services/literary/novelWritePro';
+import {
+  buildPlanningPrompt,
+  buildFirstDraftPrompt,
+  buildCriticPrompt,
+  buildRewritePrompt,
+  parseStructuredPlan,
+} from '../services/literary/structuredPipeline';
+import { BUILTIN_AWARD_LENSES, awardLensPromptBlock, getAwardLens } from '../services/literary/awardsShelf';
+import { routeCaspaIntent } from '../services/intent-router';
+import { LITERARY_ENGINE_RULES, AWARD_BAR, ARTEFACT_FIRST } from '../services/literary/novelWritePro';
+import { runQualityGates, aggregateQuality } from '../services/qualityGateService';
+import { buildServerPlotHoldBlock, type ServerPlotHold } from '../services/literary/plotHoldServer';
+
+const router = express.Router();
+
+const VALID_MODES: NovelWriteProMode[] = ['novel', 'script', 'musical', 'adaptation', 'polish', 'chaos'];
+
+router.get('/awards', (_req, res) => {
+  res.json({ success: true, data: { lenses: BUILTIN_AWARD_LENSES } });
+});
+
+router.post('/seed', async (req, res) => {
+  const { seed = '', mode = 'novel' } = req.body as { seed?: string; mode?: NovelWriteProMode };
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const job = createJob('seed-to-story', 'proposing');
+  updateJob(job.id, { status: 'running' });
+
+  try {
+    const raw = await callServerAi(buildSeedToStoryPrompt(seed, safeMode), true);
+    let proposal: Record<string, unknown> = {};
+    try {
+      proposal = JSON.parse(raw);
+    } catch {
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
+      if (start >= 0 && end > start) proposal = JSON.parse(raw.slice(start, end + 1));
+    }
+    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete', result: proposal });
+    res.json({ success: true, data: proposal, jobId: job.id });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Seed proposal failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    res.status(500).json({ success: false, message });
+  }
+});
+
+router.post('/auto-write', async (req, res) => {
+  const {
+    mode = 'novel',
+    genre = 'Literary fiction',
+    premise = '',
+    tone = '',
+    output = 'Chapter One (1500–2500 words)',
+    sourceText = '',
+    prizeLensId,
+    plotHold,
+    focusBeat,
+  } = req.body as {
+    mode?: NovelWriteProMode;
+    genre?: string;
+    premise?: string;
+    tone?: string;
+    output?: string;
+    sourceText?: string;
+    prizeLensId?: string;
+    plotHold?: ServerPlotHold;
+    focusBeat?: string;
+  };
+
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const lens = getAwardLens(prizeLensId);
+  const job = createJob('auto-write', 'drafting');
+  updateJob(job.id, { status: 'running' });
+
+  try {
+    const route = routeCaspaIntent(sourceText, `write ${output}`);
+    const prompt = buildAutoWritePrompt({
+      mode: safeMode,
+      modeTitle: modeTitle(safeMode),
+      genre,
+      premise,
+      tone,
+      output,
+      sourceText,
+      prizeLens: awardLensPromptBlock(lens),
+      plotHoldBlock: buildServerPlotHoldBlock(plotHold),
+      focusBeat,
+    });
+
+    const text = await callServerAi(`${route.systemInstruction}\n\n${prompt}`);
+    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+    res.json({
+      success: true,
+      data: {
+        text,
+        awardLens: lens,
+        routing: route,
+        wordCount: text.trim().split(/\s+/).filter(Boolean).length,
+      },
+      jobId: job.id,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Auto-write failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    res.status(500).json({ success: false, message });
+  }
+});
+
+router.post('/prize-draft', async (req, res) => {
+  const {
+    mode = 'novel',
+    genre = 'Literary fiction',
+    premise = '',
+    tone = '',
+    output = 'Opening chapter (1800–2800 words)',
+    sourceText = '',
+    prizeLensId,
+    plotHold,
+    focusBeat,
+  } = req.body as {
+    mode?: NovelWriteProMode;
+    genre?: string;
+    premise?: string;
+    tone?: string;
+    output?: string;
+    sourceText?: string;
+    prizeLensId?: string;
+    plotHold?: ServerPlotHold;
+    focusBeat?: string;
+  };
+
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const lens = getAwardLens(prizeLensId);
+  const input = {
+    mode: safeMode,
+    modeTitle: modeTitle(safeMode),
+    genre,
+    premise,
+    tone,
+    output,
+    sourceText,
+    prizeLens: awardLensPromptBlock(lens),
+    plotHoldBlock: buildServerPlotHoldBlock(plotHold),
+    focusBeat,
+  };
+
+  const job = createJob('prize-draft', 'planning');
+  updateJob(job.id, { status: 'running', progress: 5, stage: 'planning' });
+
+  try {
+    const planRaw = await callServerAi(buildPlanningPrompt(input), true);
+    const plan = parseStructuredPlan(planRaw, {
+      premise,
+      genre,
+      tone,
+      formatDecision: output,
+    });
+
+    updateJob(job.id, { progress: 25, stage: 'drafting' });
+    const draft = await callServerAi(buildFirstDraftPrompt(input, plan));
+
+    updateJob(job.id, { progress: 55, stage: 'critic' });
+    const criticReport = await callServerAi(buildCriticPrompt(plan, draft));
+
+    updateJob(job.id, { progress: 75, stage: 'rewrite' });
+    const rewritten = await callServerAi(buildRewritePrompt(input, plan, draft, criticReport));
+
+    const findings = runQualityGates(rewritten, safeMode === 'polish' ? 'novel' : safeMode);
+    const quality = aggregateQuality(findings);
+
+    updateJob(job.id, {
+      status: 'complete',
+      progress: 100,
+      stage: 'complete',
+      result: { words: rewritten.trim().split(/\s+/).filter(Boolean).length, score: quality.overallScore },
+    });
+
+    res.json({
+      success: true,
+      jobId: job.id,
+      data: {
+        plan,
+        draft,
+        criticReport,
+        text: rewritten,
+        awardLens: lens,
+        quality,
+        wordCount: rewritten.trim().split(/\s+/).filter(Boolean).length,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Prize draft failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    res.status(500).json({ success: false, message });
+  }
+});
+
+router.post('/cut', async (req, res) => {
+  const { content = '', reduction = 0.3 } = req.body as { content?: string; reduction?: number };
+  if (!content.trim()) return res.status(400).json({ success: false, message: 'content is required' });
+
+  try {
+    const text = await callServerAi(buildCutPrompt(content, Math.min(0.5, Math.max(0.15, reduction))));
+    res.json({
+      success: true,
+      data: {
+        text,
+        beforeWords: content.trim().split(/\s+/).filter(Boolean).length,
+        afterWords: text.trim().split(/\s+/).filter(Boolean).length,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err instanceof Error ? err.message : 'Cut failed' });
+  }
+});
+
+router.post('/prize-pass', async (req, res) => {
+  const { content = '', prizeLensId, title = 'Untitled' } = req.body as {
+    content?: string;
+    prizeLensId?: string;
+    title?: string;
+  };
+  if (!content.trim()) return res.status(400).json({ success: false, message: 'content is required' });
+
+  const lens = getAwardLens(prizeLensId);
+  const job = createJob('prize-pass', 'assessing');
+  updateJob(job.id, { status: 'running' });
+
+  try {
+    const findings = runQualityGates(content, 'novel');
+    const quality = aggregateQuality(findings);
+
+    const assessPrompt = [
+      'You are a prize-committee literary assessor using an inspired-by lens (not official criteria).',
+      `Title: ${title}`,
+      awardLensPromptBlock(lens),
+      LITERARY_ENGINE_RULES,
+      AWARD_BAR,
+      '',
+      'Score the excerpt 0–100 on: voice, control, originality, structure, emotionalForce, language, pace, depth.',
+      'Return JSON: {"overallReadiness":0-100,"prose":{...scores},"strengths":[],"risks":[],"fixes":["top 5 concrete fixes"],"judgeComment":"2 sentences"}',
+      '',
+      content.slice(0, 10000),
+    ].join('\n');
+
+    const raw = await callServerAi(assessPrompt, true);
+    let assessment: Record<string, unknown> = {};
+    try {
+      assessment = JSON.parse(raw);
+    } catch {
+      assessment = { overallReadiness: quality.overallScore, judgeComment: raw.slice(0, 500), fixes: [] };
+    }
+
+    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+    res.json({
+      success: true,
+      jobId: job.id,
+      data: {
+        awardLens: lens,
+        quality,
+        assessment,
+        readyEnough: Number(assessment.overallReadiness || quality.overallScore) >= 78,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Prize pass failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    res.status(500).json({ success: false, message });
+  }
+});
+
+router.post('/continue', async (req, res) => {
+  const {
+    mode = 'novel',
+    genre = 'Literary fiction',
+    premise = '',
+    tone = '',
+    sourceText = '',
+    prizeLensId,
+    plotHold,
+  } = req.body as {
+    mode?: NovelWriteProMode;
+    genre?: string;
+    premise?: string;
+    tone?: string;
+    sourceText?: string;
+    prizeLensId?: string;
+    plotHold?: ServerPlotHold;
+  };
+
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const lens = getAwardLens(prizeLensId);
+  const holdBlock = buildServerPlotHoldBlock(plotHold);
+  const pending =
+    plotHold?.beats?.find((b) => (b.status || 'pending') === 'pending') ||
+    plotHold?.beats?.find((b) => b.status !== 'drafted') ||
+    null;
+  const focusBeat = pending ? `${pending.title}: ${pending.turn}` : 'Continue from the last page with the next inevitable turn.';
+
+  const job = createJob('auto-write', 'continue');
+  updateJob(job.id, { status: 'running' });
+
+  try {
+    const route = routeCaspaIntent(sourceText, 'continue writing the next scene');
+    const prompt = buildAutoWritePrompt({
+      mode: safeMode,
+      modeTitle: modeTitle(safeMode),
+      genre: genre || plotHold?.genre || 'Literary fiction',
+      premise: premise || plotHold?.premise || '',
+      tone: tone || plotHold?.tone || '',
+      output: 'Next scene / chapter section only (900–1600 words). Do not restart the book.',
+      sourceText: sourceText.slice(-8000),
+      prizeLens: awardLensPromptBlock(lens),
+      plotHoldBlock: holdBlock,
+      focusBeat,
+    });
+
+    const text = await callServerAi(
+      `${route.systemInstruction}\n\n${AWARD_BAR}\n\n${prompt}\n\nAppend only new material. Do not repeat prior pages.`
+    );
+
+    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+    res.json({
+      success: true,
+      jobId: job.id,
+      data: {
+        text,
+        focusBeat,
+        beatTitle: pending?.title || null,
+        wordCount: text.trim().split(/\s+/).filter(Boolean).length,
+        awardLens: lens,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Continue failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    res.status(500).json({ success: false, message });
+  }
+});
+
+router.get('/engine', (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      literaryRules: LITERARY_ENGINE_RULES,
+      awardBar: AWARD_BAR,
+      artefactFirst: ARTEFACT_FIRST,
+      steps: ['seed', 'spine', 'draft', 'cut', 'pack'],
+    },
+  });
+});
+
+export default router;
+

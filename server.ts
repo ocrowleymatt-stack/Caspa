@@ -18,12 +18,15 @@ import caspaDoctorRoutes from './src/routes/caspa-doctor-routes';
 import caspaGoldRoutes from './src/routes/caspa-gold-routes';
 import caspaQualityRoutes from './src/routes/caspa-quality-routes';
 import caspaStorageRoutes from './src/routes/caspa-storage-routes';
+import caspaRewireRoutes from './src/routes/caspa-rewire-routes';
+import caspaWriteRoutes from './src/routes/caspa-write-routes';
+import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
 
 app.use(express.json({ limit: "50mb" }));
@@ -885,6 +888,9 @@ app.use("/api/caspa/export", caspaExportRoutes);
 app.use("/api/caspa/gold", caspaGoldRoutes);
 app.use("/api/caspa/novel-write-pro", caspaQualityRoutes);
 app.use("/api/caspa/storage", caspaStorageRoutes);
+app.use("/api/caspa/rewire", caspaRewireRoutes);
+app.use("/api/caspa/write", caspaWriteRoutes);
+app.use("/api/caspa/design", caspaDesignRoutes);
 app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
 

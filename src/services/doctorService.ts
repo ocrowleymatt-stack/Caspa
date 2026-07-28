@@ -9,6 +9,7 @@ import { jobStorePresent } from './jobStoreService';
 import { backupsPresent, listBackups } from './localBackupService';
 
 const OLLAMA_API = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api';
+const VERSION = '1.0.0';
 
 function fileExists(relativeParts: string[]): boolean {
   try {
@@ -30,26 +31,97 @@ async function probeOllama(): Promise<{ available: boolean; status: 'online' | '
   }
 }
 
-export async function getDoctorSnapshot() {
-  const ollama = await probeOllama();
+function buildReadiness(snapshot: {
+  publicUiPresent: boolean;
+  geminiConfigured: boolean;
+  openaiConfigured: boolean;
+  anthropicConfigured: boolean;
+  grokConfigured: boolean;
+  ollamaAvailable: boolean;
+  usingDefaultDataDir: boolean;
+}) {
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  if (!snapshot.publicUiPresent) {
+    blockers.push('Run npm run build — dist/index.html is missing.');
+  }
+
+  const anyCloudAi =
+    snapshot.geminiConfigured ||
+    snapshot.openaiConfigured ||
+    snapshot.anthropicConfigured ||
+    snapshot.grokConfigured;
+
+  if (!anyCloudAi && !snapshot.ollamaAvailable) {
+    blockers.push('No AI provider configured. Set GEMINI_API_KEY (or another provider), or start Ollama.');
+  } else if (!anyCloudAi && snapshot.ollamaAvailable) {
+    warnings.push('Only Ollama is available. Cloud models offline until an API key is set.');
+  }
+
+  if (!snapshot.geminiConfigured) {
+    warnings.push('GEMINI_API_KEY not set — Gemini routes will fail.');
+  }
+
+  if (snapshot.usingDefaultDataDir) {
+    warnings.push('CASPA_DATA_DIR unset — using ./data. Set it for production persistence.');
+  }
+
+  if (!snapshot.ollamaAvailable) {
+    warnings.push('Ollama offline — local/self-hosted models unavailable.');
+  }
+
+  const ready = blockers.length === 0;
+  const score = Math.max(0, 100 - blockers.length * 40 - warnings.length * 10);
 
   return {
-    status: 'ok' as const,
+    ready,
+    score,
+    label: ready ? (warnings.length ? 'ready_with_warnings' : 'ready') : 'blocked',
+    blockers,
+    warnings,
+  };
+}
+
+export async function getDoctorSnapshot() {
+  const ollama = await probeOllama();
+  const publicUiPresent = fileExists(['dist', 'index.html']);
+  const geminiConfigured = Boolean(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+  const openaiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY);
+  const anthropicConfigured = Boolean(process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY);
+  const grokConfigured = Boolean(process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY);
+  const veniceConfigured = Boolean(process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY);
+  const usingDefaultDataDir = !process.env.CASPA_DATA_DIR;
+
+  const readiness = buildReadiness({
+    publicUiPresent,
+    geminiConfigured,
+    openaiConfigured,
+    anthropicConfigured,
+    grokConfigured,
+    ollamaAvailable: ollama.available,
+    usingDefaultDataDir,
+  });
+
+  return {
+    status: readiness.ready ? ('ok' as const) : ('degraded' as const),
     service: 'Caspa',
-    version: '0.0.0',
+    version: VERSION,
     timestamp: new Date().toISOString(),
+    readiness,
     deployment: {
       mode: process.env.NODE_ENV === 'development' ? 'development' : 'production',
       port: Number(process.env.PORT) || 3000,
-      publicUiPresent: fileExists(['dist', 'index.html']),
+      publicUiPresent,
       authEnabled: true,
+      localGuestAllowed: true,
     },
     aiProviders: {
-      geminiConfigured: Boolean(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY),
-      openaiConfigured: Boolean(process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY),
-      anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY),
-      grokConfigured: Boolean(process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY),
-      veniceConfigured: Boolean(process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY),
+      geminiConfigured,
+      openaiConfigured,
+      anthropicConfigured,
+      grokConfigured,
+      veniceConfigured,
       ollama,
     },
     modules: {
@@ -65,6 +137,9 @@ export async function getDoctorSnapshot() {
       novelWritePro: true,
       localStorageBackup: true,
       storyBible: true,
+      bookDesignStudio: true,
+      quickWrite: true,
+      plotHold: true,
     },
     jobs: {
       inMemoryQueue: false,
@@ -73,7 +148,7 @@ export async function getDoctorSnapshot() {
     },
     storage: {
       localJsonDb: true,
-      usingDefaultDataDir: !process.env.CASPA_DATA_DIR,
+      usingDefaultDataDir,
       backupsPresent: backupsPresent(),
       backupCount: listBackups().length,
     },

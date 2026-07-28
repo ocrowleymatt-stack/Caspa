@@ -32,11 +32,12 @@ router.get('/jobs/:jobId', (req, res) => {
 });
 
 router.post('/pipeline', async (req, res) => {
-  const { content, title = 'Untitled', tone = '', stream = false } = req.body as {
+  const { content, title = 'Untitled', tone = '', stream = false, plotHold = null } = req.body as {
     content?: string;
     title?: string;
     tone?: string;
     stream?: boolean;
+    plotHold?: Record<string, unknown> | null;
   };
 
   if (!content?.trim()) {
@@ -58,7 +59,7 @@ router.post('/pipeline', async (req, res) => {
 
       const { finalText, passes } = await runGoldPipeline(
         content,
-        { title, tone },
+        { title, tone, plotHold: plotHold as any },
         (passId, status, result) => {
           if (status === 'running') {
             updateJob(job.id, { stage: passId, progress: Math.round((completed / total) * 100) });
@@ -110,7 +111,7 @@ router.post('/pipeline', async (req, res) => {
   // Non-streaming: run async, return job id immediately
   res.status(202).json({ success: true, data: { jobId: job.id, status: 'running' } });
 
-  runGoldPipeline(content, { title, tone }, (passId, status) => {
+  runGoldPipeline(content, { title, tone, plotHold: plotHold as any }, (passId, status) => {
     if (status === 'done') {
       const idx = GOLD_PASSES.findIndex((p) => p.id === passId);
       updateJob(job.id, {

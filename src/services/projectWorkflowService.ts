@@ -11,6 +11,8 @@ export type WorkflowView =
   | 'launchpad'
   | 'project'
   | 'write'
+  | 'quickwrite'
+  | 'design'
   | 'workshop'
   | 'publish'
   | 'library'
@@ -63,6 +65,21 @@ function isGoldMode(brief: ProjectBriefLike): boolean {
   return brief.mode === 'gold';
 }
 
+function isPictureMode(brief: ProjectBriefLike): boolean {
+  return brief.mode === 'picture';
+}
+
+function hasDesignPlan(): boolean {
+  try {
+    const raw = localStorage.getItem('caspa.bookDesign');
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    return Boolean(saved?.plan?.pages?.length || saved?.plan?.spreads?.length || saved?.coverImage || saved?.plan);
+  } catch {
+    return false;
+  }
+}
+
 export function getWorkflowSteps(
   brief: ProjectBriefLike,
   draftPage: string,
@@ -89,6 +106,8 @@ export function getWorkflowSteps(
   const hasChapters = (commission?.chapters?.length || 0) > 0;
   const commissionComplete = commission?.phase === 'complete';
   const gold = isGoldMode(brief);
+  const picture = isPictureMode(brief);
+  const designReady = hasDesignPlan();
 
   const ctx = loadExportContext(brief);
   const gate = evaluateExportGate(ctx, false);
@@ -98,22 +117,51 @@ export function getWorkflowSteps(
   const briefStarted = Boolean(brief.idea?.trim() && brief.title && !brief.title.startsWith('Untitled'));
   steps.push({
     id: 'start_brief',
-    title: gold ? 'Confirm what you are polishing' : 'Lock your brief',
+    title: gold ? 'Confirm what you are polishing' : picture ? 'Confirm the picture-book brief' : 'Lock your brief',
     why: gold
       ? 'Gold mode needs the manuscript and tone locked so polish passes stay on-voice.'
-      : 'Caspa routes every room from title, mode, and premise — without this, tools guess.',
+      : picture
+        ? 'Age band, premise, and tone steer spreads, covers, and read-aloud voice.'
+        : 'Caspa routes every room from title, mode, and premise — without this, tools guess.',
     action: briefStarted ? 'Review brief' : 'Set up project',
     view: 'project',
     done: briefStarted,
   });
 
-  if (gold) {
+  if (picture) {
+    steps.push({
+      id: 'draft_or_paste',
+      title: 'Plan spreads & covers',
+      why: 'Design first: age band, trim, wraparound cover, character lock, facing spreads with text-safe zones.',
+      action: designReady ? 'Continue Design' : 'Open Design',
+      view: 'design',
+      done: designReady || words >= 20,
+    });
+    steps.push({
+      id: 'review_draft',
+      title: 'Lock the read-aloud text',
+      why: 'Keep page text short and concrete. Edit in White Page or finish captions in Design.',
+      action: words > 0 ? 'Edit text' : 'Open White Page',
+      view: 'write',
+      done: words >= 40,
+    });
+    steps.push({
+      id: 'export',
+      title: 'Export picture-book PDF',
+      why: gate.blockers.length
+        ? `Blocked: ${gate.blockers[0]}`
+        : 'Publish Pack exports kdp-picture-book / illustrated-spread ready files.',
+      action: gate.canExport ? 'Export PDF' : 'Open Publish Pack',
+      view: 'publish',
+      done: gate.canExport,
+    });
+  } else if (gold) {
     steps.push({
       id: 'draft_or_paste',
       title: 'Paste the manuscript',
       why: 'Polish needs source text. Paste your draft or open White Page and drop it in.',
       action: words > 0 ? 'Edit manuscript' : 'Open White Page',
-      view: words > 0 ? 'write' : 'write',
+      view: 'write',
       done: words >= 100,
     });
     steps.push({
@@ -125,13 +173,23 @@ export function getWorkflowSteps(
       optional: true,
       done: false,
     });
+    steps.push({
+      id: 'export',
+      title: 'Export when ready',
+      why: gate.blockers.length
+        ? `Blocked: ${gate.blockers[0]}`
+        : 'Publish Pack for manuscript export.',
+      action: gate.canExport ? 'Export manuscript' : 'Check export gate',
+      view: 'publish',
+      done: gate.canExport,
+    });
   } else {
     steps.push({
       id: 'draft_or_paste',
       title: 'Get words on the page',
-      why: 'Write fresh in White Page, or paste existing material into Workshop. Caspa needs text to diagnose.',
-      action: words > 0 ? 'Continue writing' : 'Start in White Page',
-      view: words > 0 && !hasDiagnosis ? 'workshop' : 'write',
+      why: 'Use Just write for a prize-target draft, or paste into Workshop. Caspa needs text to diagnose.',
+      action: words > 0 ? 'Continue writing' : 'Open Just write',
+      view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
       done: words >= 50,
     });
 
@@ -161,18 +219,28 @@ export function getWorkflowSteps(
       view: 'write',
       done: commissionComplete && words >= 100,
     });
-  }
 
-  steps.push({
-    id: 'export',
-    title: 'Export when ready',
-    why: gate.blockers.length
-      ? `Blocked: ${gate.blockers[0]}`
-      : 'Publish Pack checks promises and word count so nothing broken leaves the building.',
-    action: gate.canExport ? 'Export manuscript' : 'Check export gate',
-    view: 'publish',
-    done: gate.canExport,
-  });
+    steps.push({
+      id: 'polish_optional',
+      title: 'Design cover & pages',
+      why: 'Optional for prose novels. Use when you want a cover or illustrated companion pages.',
+      action: 'Open Design',
+      view: 'design',
+      optional: true,
+      done: false,
+    });
+
+    steps.push({
+      id: 'export',
+      title: 'Export when ready',
+      why: gate.blockers.length
+        ? `Blocked: ${gate.blockers[0]}`
+        : 'Publish Pack checks promises and word count so nothing broken leaves the building.',
+      action: gate.canExport ? 'Export manuscript' : 'Check export gate',
+      view: 'publish',
+      done: gate.canExport,
+    });
+  }
 
   steps.push({
     id: 'complete_to_library',
@@ -194,7 +262,12 @@ export function getNextStep(
 ): WorkflowStep {
   const steps = getWorkflowSteps(brief, draftPage, manuscriptSource, projectStatus);
   if (projectStatus === 'complete') return steps[0];
-  return steps.find((s) => !s.done) || steps[steps.length - 1];
+  // Prefer required work; optional rooms stay in the checklist without blocking.
+  return (
+    steps.find((s) => !s.done && !s.optional) ||
+    steps.find((s) => !s.done) ||
+    steps[steps.length - 1]
+  );
 }
 
 export function getProgressSummary(
