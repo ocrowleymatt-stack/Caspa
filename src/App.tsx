@@ -549,9 +549,8 @@ function CaspaUI() {
     localStorage.setItem('caspa.manuscriptSource', '');
     localStorage.removeItem('caspa.commission');
     clearPlotHold();
-    if (mode === 'gold') goTo('gold');
-    else if (mode === 'picture') goTo('design');
-    else goTo('quickwrite');
+    // Always land on guided Next step — the hub points to Just write / Design / Gold.
+    goTo('project');
   };
 
   const renderView = () => {

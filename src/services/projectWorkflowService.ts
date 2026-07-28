@@ -235,7 +235,7 @@ export function getWorkflowSteps(
       title: 'Export when ready',
       why: gate.blockers.length
         ? `Blocked: ${gate.blockers[0]}`
-        : 'Publish Pack for manuscript export.',
+        : 'Publish Pack checks promises and word count so nothing broken leaves the building.',
       action: gate.canExport ? 'Export manuscript' : 'Check export gate',
       view: 'publish',
       done: gate.canExport,
@@ -262,7 +262,12 @@ export function getNextStep(
 ): WorkflowStep {
   const steps = getWorkflowSteps(brief, draftPage, manuscriptSource, projectStatus);
   if (projectStatus === 'complete') return steps[0];
-  return steps.find((s) => !s.done) || steps[steps.length - 1];
+  // Prefer required work; optional rooms stay in the checklist without blocking.
+  return (
+    steps.find((s) => !s.done && !s.optional) ||
+    steps.find((s) => !s.done) ||
+    steps[steps.length - 1]
+  );
 }
 
 export function getProgressSummary(
