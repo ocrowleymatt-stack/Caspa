@@ -1,9 +1,9 @@
 /**
- * Settings — account, privacy, local backup/restore
+ * Settings — account, privacy, local backup/restore, deploy readiness
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Download, Loader, RefreshCw, UploadCloud } from 'lucide-react';
+import { Download, Loader, RefreshCw, UploadCloud, Activity } from 'lucide-react';
 import {
   applyLocalSnapshot,
   collectLocalSnapshot,
@@ -17,6 +17,14 @@ interface BackupMeta {
   keyCount: number;
 }
 
+interface DoctorReadiness {
+  ready?: boolean;
+  score?: number;
+  label?: string;
+  blockers?: string[];
+  warnings?: string[];
+}
+
 interface Props {
   userEmail?: string;
 }
@@ -26,6 +34,9 @@ export default function SettingsStudio({ userEmail }: Props) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [keyCount, setKeyCount] = useState(snapshotKeyCount());
+  const [readiness, setReadiness] = useState<DoctorReadiness | null>(null);
+  const [doctorVersion, setDoctorVersion] = useState('');
+  const [checkingDoctor, setCheckingDoctor] = useState(false);
 
   const refreshBackups = useCallback(async () => {
     try {
@@ -37,9 +48,31 @@ export default function SettingsStudio({ userEmail }: Props) {
     }
   }, []);
 
+  const refreshDoctor = useCallback(async () => {
+    setCheckingDoctor(true);
+    try {
+      const res = await fetch('/api/doctor');
+      const data = await res.json();
+      if (data.success) {
+        setReadiness(data.data.readiness || null);
+        setDoctorVersion(data.data.version || '');
+      }
+    } catch {
+      setReadiness({
+        ready: false,
+        score: 0,
+        label: 'unreachable',
+        blockers: ['Doctor endpoint unreachable. Is the server running?'],
+      });
+    } finally {
+      setCheckingDoctor(false);
+    }
+  }, []);
+
   useEffect(() => {
     refreshBackups();
-  }, [refreshBackups]);
+    refreshDoctor();
+  }, [refreshBackups, refreshDoctor]);
 
   const saveBackup = async () => {
     setLoading(true);
@@ -84,6 +117,8 @@ export default function SettingsStudio({ userEmail }: Props) {
     }
   };
 
+  const isLocal = !userEmail || userEmail.includes('local@caspa');
+
   return (
     <section style={{ minHeight: '100vh', padding: '48px clamp(20px, 5vw, 72px)', background: '#f5efe5' }}>
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
@@ -94,13 +129,50 @@ export default function SettingsStudio({ userEmail }: Props) {
           <h1 style={{ margin: '6px 0 8px', fontSize: 'clamp(36px, 5vw, 56px)', lineHeight: 1, letterSpacing: -2 }}>
             Account & privacy
           </h1>
-          <p style={{ margin: 0, color: '#73695d', fontSize: 17 }}>{userEmail || 'Private workspace'}</p>
+          <p style={{ margin: 0, color: '#73695d', fontSize: 17 }}>{isLocal ? 'Local workspace' : userEmail}</p>
         </div>
 
         <article style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>
+            <h2 style={{ ...sectionTitle, margin: 0 }}>Deploy readiness</h2>
+            <button type="button" onClick={refreshDoctor} disabled={checkingDoctor} style={ghostBtn}>
+              {checkingDoctor ? <Loader size={14} className="spin" /> : <Activity size={14} />}
+              Recheck
+            </button>
+          </div>
+          {readiness ? (
+            <>
+              <p style={{ margin: '0 0 10px', color: readiness.ready ? '#15803d' : '#a02b20', fontWeight: 800 }}>
+                {readiness.ready ? 'Ready to run' : 'Blocked'} · score {readiness.score ?? '—'}
+                {doctorVersion ? ` · v${doctorVersion}` : ''}
+              </p>
+              {(readiness.blockers || []).map((b) => (
+                <p key={b} style={{ margin: '0 0 6px', color: '#a02b20', fontSize: 14 }}>
+                  {b}
+                </p>
+              ))}
+              {(readiness.warnings || []).map((w) => (
+                <p key={w} style={{ margin: '0 0 6px', color: '#8a6a28', fontSize: 14 }}>
+                  {w}
+                </p>
+              ))}
+              {!readiness.blockers?.length && !readiness.warnings?.length && (
+                <p style={{ margin: 0, color: '#5c5146', lineHeight: 1.55 }}>
+                  All checks passed. UI, data dir, and at least one AI path look good.
+                </p>
+              )}
+            </>
+          ) : (
+            <p style={{ margin: 0, color: '#73695d' }}>Checking server…</p>
+          )}
+        </article>
+
+        <article style={{ ...card, marginTop: 18 }}>
           <h2 style={sectionTitle}>Authentication</h2>
           <p style={{ margin: 0, lineHeight: 1.6, color: '#5c5146' }}>
-            Firebase auth is preserved. Your creative work stays in browser local storage unless you back it up below.
+            {isLocal
+              ? 'You are in local mode — work stays in this browser. Sign in from the login screen if you want a cloud account; back up below either way.'
+              : 'Signed in with Firebase. Creative work still lives in browser local storage unless you back it up below.'}
           </p>
         </article>
 
