@@ -58,6 +58,7 @@ import {
   pruneStaleProjects,
   recordProjectSnapshot,
   saveCurrentProjectState,
+  switchToProject,
 } from './services/projectShelfService';
 import {
   getNextStep,
@@ -518,7 +519,10 @@ function CaspaUI() {
 
   useEffect(() => {
     pruneStaleProjects();
-    recordProjectSnapshot(brief);
+    // Only snapshot a real active brief — never the fallback default.
+    if (hasActiveProject()) {
+      recordProjectSnapshot(brief);
+    }
   }, []);
 
   useEffect(() => {
@@ -643,6 +647,13 @@ function CaspaUI() {
             brief={brief}
             onOpenWorkshop={() => goTo('workshop')}
             onOpenPublish={() => goTo('publish')}
+            onExportProject={(key) => {
+              const snap = switchToProject(key);
+              if (snap) {
+                reloadFromStorage();
+                goTo('publish');
+              }
+            }}
             onSwitchProject={handleSwitchProject}
             onProjectCompleted={handleProjectCompleted}
             onNewProject={() => goTo('launchpad')}
