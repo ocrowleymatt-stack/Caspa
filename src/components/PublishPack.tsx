@@ -3,7 +3,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Download, FileText, Loader, Shield, Sparkles } from 'lucide-react';
+import { AlertCircle, Archive, CheckCircle2, Download, FileText, Loader, Shield, Sparkles } from 'lucide-react';
 import type { ProjectBriefLike } from '../services/commissionService';
 import {
   analyzeForExport,
@@ -11,6 +11,7 @@ import {
   downloadPdf,
   evaluateExportGate,
   loadExportContext,
+  loadSavedPictureBookPlan,
 } from '../services/exportService';
 import { EXPORT_PROFILES, type ExportProfile, type ContentAnalysisSummary } from '../types/export';
 
@@ -18,10 +19,15 @@ interface Props {
   brief: ProjectBriefLike;
   authorEmail?: string;
   onGoWorkshop?: () => void;
+  onGoDesign?: () => void;
+  onMoveToLibrary?: () => void;
 }
 
-export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props) {
-  const [profile, setProfile] = useState<ExportProfile>('kdp-novel');
+export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesign, onMoveToLibrary }: Props) {
+  const picturePlan = useMemo(() => loadSavedPictureBookPlan(), [brief.title]);
+  const [profile, setProfile] = useState<ExportProfile>(() =>
+    loadSavedPictureBookPlan() ? 'kdp-picture-book' : 'kdp-novel'
+  );
   const [overrideGate, setOverrideGate] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -62,10 +68,10 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props)
     try {
       if (profile === 'markdown') {
         downloadMarkdown(ctx);
-        setStatus('Markdown downloaded.');
+        setStatus('Markdown downloaded. Move this manuscript to your library when you are done.');
       } else {
         await downloadPdf(ctx, profile);
-        setStatus('PDF downloaded.');
+        setStatus('PDF downloaded. Move this manuscript to your library when you are done.');
       }
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Export failed');
@@ -83,10 +89,24 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props)
             Export when it&apos;s ready
           </h1>
           <p style={{ margin: 0, maxWidth: 720, color: '#73695d', fontSize: 18, lineHeight: 1.5 }}>
-            Nothing leaves Caspa broken. Export profiles for KDP, course books, and reference bibles — gated on story
-            promises and manuscript quality.
+            Novel, picture book, or illustrated spreads — gated so nothing broken leaves the building.
           </p>
         </header>
+
+        {picturePlan && (
+          <div style={{ ...card, marginBottom: 16, borderLeft: '4px solid #d6a846' }}>
+            <strong>Picture-book plan ready</strong>
+            <p style={{ margin: '6px 0 0', color: '#6f6252' }}>
+              {picturePlan.pageCount} pages · {picturePlan.trim?.label || 'trim'} · {picturePlan.ageBand}
+              {onGoDesign ? ' — refine in Design, then export here.' : ''}
+            </p>
+            {onGoDesign && (
+              <button type="button" onClick={onGoDesign} style={{ ...ghostBtn, marginTop: 10 }}>
+                Open Design
+              </button>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(300px, 0.8fr)', gap: 20 }} className="publish-grid">
           <div style={{ display: 'grid', gap: 16 }}>
@@ -102,11 +122,14 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props)
               </p>
 
               {gate.blockers.length > 0 && !overrideGate && (
-                <ul style={{ margin: '0 0 12px', paddingLeft: 20, color: '#b91c1c', lineHeight: 1.6 }}>
-                  {gate.blockers.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 13, color: '#7f1d1d', fontWeight: 700 }}>What you need before export:</p>
+                  <ul style={{ margin: 0, paddingLeft: 20, color: '#b91c1c', lineHeight: 1.6 }}>
+                    {gate.blockers.map((b) => (
+                      <li key={b}>{b}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
 
               {gate.warnings.length > 0 && (
@@ -192,12 +215,35 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop }: Props)
             <button
               type="button"
               onClick={handleExport}
-              disabled={exporting || (!gate.canExport && !overrideGate) || !ctx.manuscript.trim()}
+              disabled={
+                exporting ||
+                (!gate.canExport && !overrideGate && profile !== 'kdp-picture-book' && profile !== 'illustrated-spread') ||
+                (!ctx.manuscript.trim() && profile !== 'kdp-picture-book' && profile !== 'illustrated-spread') ||
+                ((profile === 'kdp-picture-book' || profile === 'illustrated-spread') && !picturePlan)
+              }
               style={primaryBtn}
             >
               {exporting ? <Loader size={20} className="spin" /> : <Download size={20} />}
-              {exporting ? 'Exporting…' : profile === 'markdown' ? 'Download Markdown' : 'Download PDF'}
+              {exporting
+                ? 'Exporting…'
+                : profile === 'markdown'
+                  ? 'Download Markdown'
+                  : profile === 'kdp-picture-book' || profile === 'illustrated-spread'
+                    ? 'Download picture-book PDF'
+                    : 'Download PDF'}
             </button>
+
+            {gate.canExport && onMoveToLibrary && (
+              <article style={{ ...card, borderLeft: '4px solid #15803d' }}>
+                <h2 style={sectionTitle}>Finished?</h2>
+                <p style={{ margin: '0 0 12px', color: '#5b4724', lineHeight: 1.55, fontSize: 14 }}>
+                  A completed manuscript belongs in the library — not on the active workbench. This frees the studio for your next project.
+                </p>
+                <button type="button" onClick={onMoveToLibrary} style={primaryBtn}>
+                  <Archive size={18} /> Move to library
+                </button>
+              </article>
+            )}
 
             {status && (
               <p style={{ margin: 0, fontSize: 14, color: '#9b6d16', display: 'flex', alignItems: 'center', gap: 8 }}>

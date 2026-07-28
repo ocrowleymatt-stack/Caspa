@@ -5,7 +5,15 @@
 import type { Diagnosis } from './commission';
 import type { StoryPromise } from './promise';
 
-export type ExportProfile = 'kdp-novel' | 'course-book' | 'subject-bible' | 'screen-pdf' | 'professional-print' | 'markdown';
+export type ExportProfile =
+  | 'kdp-novel'
+  | 'course-book'
+  | 'subject-bible'
+  | 'screen-pdf'
+  | 'professional-print'
+  | 'markdown'
+  | 'kdp-picture-book'
+  | 'illustrated-spread';
 
 export interface ExportProfileMeta {
   id: ExportProfile;
@@ -16,6 +24,8 @@ export interface ExportProfileMeta {
 
 export const EXPORT_PROFILES: ExportProfileMeta[] = [
   { id: 'kdp-novel', label: 'KDP Novel', detail: '6×9 trim, serif, chapter breaks — Amazon print-ready layout', trim: '6×9 in' },
+  { id: 'kdp-picture-book', label: 'KDP Picture Book', detail: '8×8 spreads, age-band type, full-bleed art, wraparound cover', trim: '8×8 in' },
+  { id: 'illustrated-spread', label: 'Illustrated Spreads', detail: 'Facing-page art + text-safe zones for illustrated / kids books', trim: '10×8 or 8×10' },
   { id: 'course-book', label: 'Course Book', detail: 'A4 modules, callout boxes, exercise blocks', trim: 'A4' },
   { id: 'subject-bible', label: 'Subject Bible', detail: 'Reference layout, dense typography, index-friendly', trim: 'A4' },
   { id: 'screen-pdf', label: 'Screen PDF', detail: 'Fast digital PDF for review and sharing', trim: 'Letter' },

@@ -246,6 +246,11 @@ export function downloadMarkdown(ctx: ExportContext): void {
 }
 
 export async function downloadPdf(ctx: ExportContext, profile: ExportProfile): Promise<void> {
+  if (profile === 'kdp-picture-book' || profile === 'illustrated-spread') {
+    await downloadPictureBookPdf(profile);
+    return;
+  }
+
   const html = buildPrintHtml(ctx, profile === 'professional-print' ? 'kdp-novel' : profile);
   const slug = slugify(ctx.title);
   const filename = `${slug}_${profile}.pdf`;
@@ -279,12 +284,12 @@ export async function downloadPdf(ctx: ExportContext, profile: ExportProfile): P
   const { default: html2pdf } = await import('html2pdf.js');
 
   const format =
-    profile === 'kdp-novel' ? [6, 9] as [number, number] : profile === 'course-book' || profile === 'subject-bible' ? 'a4' : 'letter';
+    profile === 'kdp-novel' ? ([6, 9] as [number, number]) : profile === 'course-book' || profile === 'subject-bible' ? 'a4' : 'letter';
 
-  const margin = profile === 'kdp-novel' ? [0.75, 0.6, 0.75, 0.6] : [0.75, 0.75, 0.75, 0.75];
+  const margin = profile === 'kdp-novel' ? ([0.75, 0.6, 0.75, 0.6] as [number, number, number, number]) : ([0.75, 0.75, 0.75, 0.75] as [number, number, number, number]);
 
   try {
-    await html2pdf()
+    await (html2pdf() as any)
       .set({
         margin,
         filename: `${slugify(ctx.title)}_${profile}.pdf`,
@@ -299,6 +304,70 @@ export async function downloadPdf(ctx: ExportContext, profile: ExportProfile): P
     document.body.removeChild(container);
   }
 }
+
+const DESIGN_KEY = 'caspa.bookDesign';
+
+export function loadSavedPictureBookPlan(): any | null {
+  try {
+    const raw = localStorage.getItem(DESIGN_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    return saved?.plan || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function downloadPictureBookPdf(profile: ExportProfile = 'kdp-picture-book'): Promise<void> {
+  const plan = loadSavedPictureBookPlan();
+  if (!plan?.pages?.length) {
+    throw new Error('No picture-book plan yet. Open Design → Build page plan first.');
+  }
+
+  const res = await fetch('/api/caspa/design/picture-book/pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan, facing: profile !== 'illustrated-spread' ? true : true }),
+  });
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/pdf')) {
+    const blob = await res.blob();
+    triggerDownload(blob, `${slugify(plan.title || 'picture-book')}_${profile}.pdf`);
+    return;
+  }
+
+  const json = await res.json();
+  if (json?.data?.html) {
+    const container = document.createElement('div');
+    container.innerHTML = json.data.html;
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    document.body.appendChild(container);
+    const { default: html2pdf } = await import('html2pdf.js');
+    const w = plan.trim?.widthIn || 8;
+    const h = plan.trim?.heightIn || 8;
+    try {
+      await (html2pdf() as any)
+        .set({
+          margin: 0,
+          filename: `${slugify(plan.title || 'picture-book')}_${profile}.pdf`,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'in', format: [w * 2, h] as [number, number], orientation: 'landscape' },
+          pagebreak: { mode: ['css', 'legacy'] },
+        })
+        .from(container)
+        .save();
+    } finally {
+      document.body.removeChild(container);
+    }
+    return;
+  }
+
+  throw new Error(json?.message || 'Picture book PDF export failed');
+}
+
 
 function slugify(title: string): string {
   return (

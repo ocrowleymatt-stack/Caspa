@@ -7,8 +7,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  BookImage,
   BookOpen,
   Check,
+  ChevronDown,
+  ChevronUp,
   CircleAlert,
   Clapperboard,
   Copy,
@@ -32,6 +35,7 @@ import {
   Hammer,
   Brain,
   Pencil,
+  Zap,
   X,
 } from 'lucide-react';
 
@@ -45,7 +49,24 @@ import GoldRefinery from './components/GoldRefinery';
 import RedPenStudio from './components/RedPenStudio';
 import SettingsStudio from './components/SettingsStudio';
 import StoryBibleStudio from './components/StoryBibleStudio';
-import { recordProjectSnapshot } from './services/projectShelfService';
+import GuidedNextStep, { WorkflowChecklist } from './components/GuidedNextStep';
+import BookDesignStudio from './components/BookDesignStudio';
+import QuickWrite from './components/QuickWrite';
+import {
+  completeProject,
+  loadProjectSnapshot,
+  pruneStaleProjects,
+  recordProjectSnapshot,
+  saveCurrentProjectState,
+} from './services/projectShelfService';
+import {
+  getNextStep,
+  getProgressSummary,
+  getWorkflowSteps,
+  type WorkflowView,
+} from './services/projectWorkflowService';
+import { getProjectKey } from './services/researchLibraryService';
+import { clearPlotHold } from './services/plotHoldService';
 
 declare const process: any;
 
@@ -61,12 +82,14 @@ type AuthContextType = {
   signOut: () => Promise<void>;
 };
 
-type CreativeMode = 'novel' | 'script' | 'musical' | 'adaptation' | 'gold' | 'chaos';
+type CreativeMode = 'novel' | 'picture' | 'script' | 'musical' | 'adaptation' | 'gold' | 'chaos';
 
 type ViewType =
   | 'launchpad'
   | 'project'
   | 'write'
+  | 'quickwrite'
+  | 'design'
   | 'bible'
   | 'redpen'
   | 'workshop'
@@ -93,7 +116,7 @@ type NavItem = {
   id: ViewType;
   label: string;
   detail: string;
-  group: 'make' | 'work' | 'improve' | 'produce';
+  group: 'primary' | 'advanced';
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
 };
 
@@ -115,6 +138,7 @@ const defaultBrief: ProjectBrief = {
 
 const modeLabels: Record<CreativeMode, string> = {
   novel: 'Novel',
+  picture: 'Picture book',
   script: 'Script',
   musical: 'Musical / Show',
   adaptation: 'Adaptation',
@@ -122,21 +146,26 @@ const modeLabels: Record<CreativeMode, string> = {
   chaos: 'Surprise Me',
 };
 
-const navItems: NavItem[] = [
-  { id: 'canvas', label: 'Jam Canvas', detail: 'Draw storyboards, extract structure', group: 'make', icon: Pencil },
-  { id: 'launchpad', label: 'New Work', detail: 'Choose what to make', group: 'make', icon: Sparkles },
-  { id: 'project', label: 'Current Project', detail: 'Brief, plan, next moves', group: 'work', icon: Home },
-  { id: 'write', label: 'White Page', detail: 'Draft in a calm canvas', group: 'work', icon: PenLine },
-  { id: 'bible', label: 'Story Bible', detail: 'Characters, rules, canon', group: 'work', icon: BookOpen },
-  { id: 'workshop', label: 'Workshop', detail: 'Paste, diagnose, write it', group: 'improve', icon: Hammer },
-  { id: 'psychology', label: 'Psychology', detail: 'Design emotional journeys', group: 'improve', icon: Brain },
-  { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'improve', icon: CircleAlert },
-  { id: 'gold', label: 'Gold Refinery', detail: 'Polish existing text', group: 'improve', icon: Wand2 },
-  { id: 'openwebui', label: 'Open WebUI Driver', detail: 'Clean white control page', group: 'improve', icon: UploadCloud },
-  { id: 'library', label: 'Library', detail: 'Projects and shelves', group: 'produce', icon: Library },
-  { id: 'research', label: 'Research Desk', detail: 'Sources and notes', group: 'produce', icon: Search },
-  { id: 'publish', label: 'Publish Pack', detail: 'Export, pitch, rehearse', group: 'produce', icon: Download },
-  { id: 'settings', label: 'Settings', detail: 'Account and privacy', group: 'produce', icon: Settings },
+const primaryNav: NavItem[] = [
+  { id: 'project', label: 'Next step', detail: 'What to do now', group: 'primary', icon: Home },
+  { id: 'quickwrite', label: 'Just write', detail: 'Seed → draft → cut', group: 'primary', icon: Zap },
+  { id: 'write', label: 'White Page', detail: 'Draft and edit', group: 'primary', icon: PenLine },
+  { id: 'design', label: 'Design', detail: 'Cover & picture pages', group: 'primary', icon: BookImage },
+  { id: 'publish', label: 'Publish', detail: 'Export when ready', group: 'primary', icon: Download },
+  { id: 'library', label: 'Library', detail: 'Open work & finished', group: 'primary', icon: Library },
+];
+
+const advancedNav: NavItem[] = [
+  { id: 'launchpad', label: 'New Work', detail: 'Start another project', group: 'advanced', icon: Sparkles },
+  { id: 'workshop', label: 'Workshop', detail: 'Diagnose and write', group: 'advanced', icon: Hammer },
+  { id: 'bible', label: 'Story Bible', detail: 'Canon and characters', group: 'advanced', icon: BookOpen },
+  { id: 'psychology', label: 'Psychology', detail: 'Emotional journeys', group: 'advanced', icon: Brain },
+  { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'advanced', icon: CircleAlert },
+  { id: 'gold', label: 'Gold Refinery', detail: 'Polish existing text', group: 'advanced', icon: Wand2 },
+  { id: 'canvas', label: 'Jam Canvas', detail: 'Storyboards', group: 'advanced', icon: Pencil },
+  { id: 'openwebui', label: 'Open WebUI', detail: 'External model driver', group: 'advanced', icon: UploadCloud },
+  { id: 'research', label: 'Research Desk', detail: 'Sources and notes', group: 'advanced', icon: Search },
+  { id: 'settings', label: 'Settings', detail: 'Backup and account', group: 'advanced', icon: Settings },
 ];
 
 const modeCards: Array<{
@@ -145,13 +174,31 @@ const modeCards: Array<{
   subtitle: string;
   examples: string[];
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  hero?: boolean;
 }> = [
   {
     mode: 'novel',
-    title: 'Write a Novel',
-    subtitle: 'Chapters, plot, voice, character arcs, continuity.',
+    title: 'Just write',
+    subtitle: 'Seed → spine → prize draft. Plot held under the hood.',
     examples: ['Gothic literary thriller', 'Comic revenge novel', 'Queer horror with teeth'],
-    icon: BookOpen,
+    icon: Zap,
+    hero: true,
+  },
+  {
+    mode: 'picture',
+    title: 'Picture book',
+    subtitle: 'Age bands, spreads, wraparound covers, character lock.',
+    examples: ['Fox who lost the moon', 'Toddler and the night bus', 'Quiet dragon learns to share'],
+    icon: BookImage,
+    hero: true,
+  },
+  {
+    mode: 'gold',
+    title: 'Polish',
+    subtitle: 'Paste existing work. Gold pipeline. Same story, sharper.',
+    examples: ['Tighten chapter', 'Fix pacing', 'Make it prize-ready'],
+    icon: Wand2,
+    hero: true,
   },
   {
     mode: 'script',
@@ -175,13 +222,6 @@ const modeCards: Array<{
     icon: FileText,
   },
   {
-    mode: 'gold',
-    title: 'Polish Existing Work',
-    subtitle: 'Structure, subtext, line edit and ruthless final cut.',
-    examples: ['Tighten chapter', 'Fix pacing', 'Make it prize-ready'],
-    icon: Wand2,
-  },
-  {
     mode: 'chaos',
     title: 'Surprise Me',
     subtitle: 'For when the idea is unhinged but probably brilliant.',
@@ -190,14 +230,21 @@ const modeCards: Array<{
   },
 ];
 
-const groupLabels: Record<NavItem['group'], string> = {
-  make: 'Make',
-  work: 'Work',
-  improve: 'Improve',
-  produce: 'Produce',
-};
-
 const formatDate = (iso: string) => new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
+
+function hasActiveProject(): boolean {
+  try {
+    return Boolean(localStorage.getItem('caspa.currentBrief'));
+  } catch {
+    return false;
+  }
+}
+
+function loadProjectStatus(brief: ProjectBrief): 'active' | 'complete' {
+  const key = getProjectKey(brief);
+  const snap = loadProjectSnapshot(key);
+  return snap?.status === 'complete' ? 'complete' : 'active';
+}
 
 const surface: React.CSSProperties = {
   background: '#ffffff',
@@ -381,11 +428,51 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
 
 function CaspaUI() {
   const authContext = React.useContext(AuthContext);
-  const [currentView, setCurrentView] = useState<ViewType>('launchpad');
+  const [currentView, setCurrentView] = useState<ViewType>(() => (hasActiveProject() ? 'project' : 'launchpad'));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [brief, setBrief] = useState<ProjectBrief>(() => loadBrief());
   const [draftPage, setDraftPage] = useState(() => localStorage.getItem('caspa.whitePage') || '');
   const [manuscriptSource, setManuscriptSource] = useState(() => localStorage.getItem('caspa.manuscriptSource') || '');
+  const [projectStatus, setProjectStatus] = useState<'active' | 'complete'>(() => loadProjectStatus(loadBrief()));
+
+  const reloadFromStorage = () => {
+    const nextBrief = loadBrief();
+    setBrief(nextBrief);
+    setDraftPage(localStorage.getItem('caspa.whitePage') || '');
+    setManuscriptSource(localStorage.getItem('caspa.manuscriptSource') || '');
+    setProjectStatus(loadProjectStatus(nextBrief));
+  };
+
+  const goTo = (view: ViewType) => {
+    setCurrentView(view);
+    setMobileMenuOpen(false);
+  };
+
+  const handleCompleteProject = () => {
+    const key = getProjectKey(brief);
+    saveCurrentProjectState();
+    completeProject(key);
+    setProjectStatus('complete');
+    goTo('library');
+  };
+
+  const handleSwitchProject = () => {
+    reloadFromStorage();
+    goTo('project');
+  };
+
+  const handleProjectCompleted = () => {
+    reloadFromStorage();
+    if (!hasActiveProject()) {
+      goTo('launchpad');
+    }
+  };
+
+  useEffect(() => {
+    pruneStaleProjects();
+    recordProjectSnapshot(brief);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('caspa.whitePage', draftPage);
@@ -396,6 +483,7 @@ function CaspaUI() {
   }, [manuscriptSource]);
 
   const startProject = (mode: CreativeMode, idea: string, tone: string, output: string, audience: string) => {
+    saveCurrentProjectState();
     const nextBrief: ProjectBrief = {
       title: makeTitle(idea, mode),
       mode,
@@ -407,7 +495,16 @@ function CaspaUI() {
     };
     setBrief(nextBrief);
     saveBrief(nextBrief);
-    setCurrentView(mode === 'gold' ? 'gold' : 'project');
+    setProjectStatus('active');
+    setDraftPage('');
+    setManuscriptSource('');
+    localStorage.setItem('caspa.whitePage', '');
+    localStorage.setItem('caspa.manuscriptSource', '');
+    localStorage.removeItem('caspa.commission');
+    clearPlotHold();
+    if (mode === 'gold') goTo('gold');
+    else if (mode === 'picture') goTo('design');
+    else goTo('quickwrite');
   };
 
   const renderView = () => {
@@ -415,16 +512,46 @@ function CaspaUI() {
       case 'launchpad':
         return <LaunchpadView onStart={startProject} />;
       case 'project':
-        return <ProjectView brief={brief} setCurrentView={setCurrentView} />;
+        return (
+          <ProjectView
+            brief={brief}
+            draftPage={draftPage}
+            manuscriptSource={manuscriptSource}
+            projectStatus={projectStatus}
+            setCurrentView={goTo}
+            onCompleteProject={handleCompleteProject}
+          />
+        );
       case 'write':
-        return <WhitePageView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} setCurrentView={setCurrentView} />;
+        return <WhitePageView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} setCurrentView={goTo} />;
+      case 'quickwrite':
+        return (
+          <PageShell kicker="Auto write" title="Just write" subtitle="Simple steps. Prize-calibre engine underneath.">
+            <QuickWrite
+              brief={brief}
+              draftPage={draftPage}
+              onDraftChange={setDraftPage}
+              onGoPublish={() => goTo('publish')}
+              onGoWorkshop={() => goTo('workshop')}
+            />
+          </PageShell>
+        );
+      case 'design':
+        return (
+          <BookDesignStudio
+            brief={brief}
+            draftPage={draftPage}
+            authorName={authContext.user?.displayName || ''}
+            onDraftChange={setDraftPage}
+          />
+        );
       case 'bible':
         return (
           <StoryBibleStudio
             brief={brief}
-            onOpenWorkshop={() => setCurrentView('workshop')}
-            onOpenPsychology={() => setCurrentView('psychology')}
-            onOpenResearch={() => setCurrentView('research')}
+            onOpenWorkshop={() => goTo('workshop')}
+            onOpenPsychology={() => goTo('psychology')}
+            onOpenResearch={() => goTo('research')}
           />
         );
       case 'workshop':
@@ -435,7 +562,7 @@ function CaspaUI() {
             onArtefactReady={(text) => {
               setDraftPage(text);
               setManuscriptSource(text);
-              setCurrentView('write');
+              goTo('write');
             }}
             onManuscriptChange={setManuscriptSource}
           />
@@ -445,7 +572,7 @@ function CaspaUI() {
           <RedPenStudio
             brief={brief}
             draftPage={draftPage}
-            onOpenWorkshop={() => setCurrentView('workshop')}
+            onOpenWorkshop={() => goTo('workshop')}
           />
         );
       case 'gold':
@@ -458,7 +585,7 @@ function CaspaUI() {
             setDraftPage={setDraftPage}
             onSendToWorkshop={(text) => {
               setManuscriptSource(text);
-              setCurrentView('workshop');
+              goTo('workshop');
             }}
           />
         );
@@ -468,8 +595,11 @@ function CaspaUI() {
         return (
           <ProjectShelf
             brief={brief}
-            onOpenWorkshop={() => setCurrentView('workshop')}
-            onOpenPublish={() => setCurrentView('publish')}
+            onOpenWorkshop={() => goTo('workshop')}
+            onOpenPublish={() => goTo('publish')}
+            onSwitchProject={handleSwitchProject}
+            onProjectCompleted={handleProjectCompleted}
+            onNewProject={() => goTo('launchpad')}
           />
         );
       case 'psychology':
@@ -480,7 +610,7 @@ function CaspaUI() {
             brief={brief}
             onCommission={(text) => {
               setManuscriptSource(text);
-              setCurrentView('workshop');
+              goTo('workshop');
             }}
           />
         );
@@ -489,7 +619,9 @@ function CaspaUI() {
           <PublishPack
             brief={brief}
             authorEmail={authContext.user?.email}
-            onGoWorkshop={() => setCurrentView('workshop')}
+            onGoWorkshop={() => goTo('workshop')}
+            onGoDesign={() => goTo('design')}
+            onMoveToLibrary={handleCompleteProject}
           />
         );
       case 'settings':
@@ -514,24 +646,50 @@ function CaspaUI() {
           </div>
         </div>
 
-        {(['make', 'work', 'improve', 'produce'] as NavItem['group'][]).map((group) => (
-          <div key={group} style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4, color: '#8f8068', margin: '0 8px 8px' }}>{groupLabels[group]}</div>
-            {navItems.filter((item) => item.group === group).map((item) => {
-              const Icon = item.icon;
-              const active = item.id === currentView;
-              return (
-                <button key={item.id} onClick={() => { setCurrentView(item.id); setMobileMenuOpen(false); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, border: 'none', borderRadius: 16, padding: '12px 12px', marginBottom: 6, cursor: 'pointer', textAlign: 'left', background: active ? '#2f2415' : 'transparent', color: active ? '#ffe2a5' : '#f8efe0' }}>
-                  <Icon size={18} />
-                  <span>
-                    <strong style={{ display: 'block', fontSize: 14 }}>{item.label}</strong>
-                    <small style={{ color: active ? '#d6a846' : '#9b8c73' }}>{item.detail}</small>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
+        <div style={{ marginBottom: 20, padding: '0 8px', fontSize: 12, color: '#a89572', lineHeight: 1.5 }}>
+          One step at a time. Advanced rooms stay tucked away until you need them.
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4, color: '#8f8068', margin: '0 8px 8px' }}>Your work</div>
+          {primaryNav.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === currentView;
+            return (
+              <button key={item.id} onClick={() => goTo(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, border: 'none', borderRadius: 16, padding: '12px 12px', marginBottom: 6, cursor: 'pointer', textAlign: 'left', background: active ? '#2f2415' : 'transparent', color: active ? '#ffe2a5' : '#f8efe0' }}>
+                <Icon size={18} />
+                <span>
+                  <strong style={{ display: 'block', fontSize: 14 }}>{item.label}</strong>
+                  <small style={{ color: active ? '#d6a846' : '#9b8c73' }}>{item.detail}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen(!advancedOpen)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: 'none', background: 'transparent', color: '#9b8c73', padding: '8px 12px', cursor: 'pointer', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4 }}
+          >
+            More tools
+            {advancedOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          {advancedOpen && advancedNav.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === currentView;
+            return (
+              <button key={item.id} onClick={() => goTo(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, border: 'none', borderRadius: 16, padding: '10px 12px', marginBottom: 4, cursor: 'pointer', textAlign: 'left', background: active ? '#2f2415' : 'transparent', color: active ? '#ffe2a5' : '#c9b898' }}>
+                <Icon size={16} />
+                <span>
+                  <strong style={{ display: 'block', fontSize: 13 }}>{item.label}</strong>
+                  <small style={{ color: active ? '#d6a846' : '#7a6d58', fontSize: 11 }}>{item.detail}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
         <div style={{ borderTop: '1px solid #332719', paddingTop: 16, fontSize: 12, color: '#a89572' }}>
           <div style={{ marginBottom: 12 }}>{authContext.user?.email || 'Private workspace'}</div>
@@ -557,90 +715,156 @@ function CaspaUI() {
 }
 
 function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string, tone: string, output: string, audience: string) => void }) {
-  const [mode, setMode] = useState<CreativeMode>('script');
-  const [idea, setIdea] = useState('A Dick Turpin stage comedy set in Milton Keynes');
-  const [tone, setTone] = useState('Sharp, theatrical, funny, a bit camp, but structurally solid.');
-  const [output, setOutput] = useState('Concept, character list, scene-by-scene outline, then Act One draft.');
-  const [audience, setAudience] = useState('Theatre audience / producers / writers room.');
+  const [mode, setMode] = useState<CreativeMode>('novel');
+  const [idea, setIdea] = useState('');
+  const [showMore, setShowMore] = useState(false);
 
   const selected = modeCards.find((card) => card.mode === mode)!;
   const SelectedIcon = selected.icon;
+  const heroCards = modeCards.filter((c) => c.hero);
+  const moreCards = modeCards.filter((c) => !c.hero);
+
+  const defaultsFor = (m: CreativeMode) => {
+    if (m === 'picture') {
+      return {
+        tone: 'Warm, concrete, image-led, read-aloud friendly.',
+        output: '32-page picture book with wraparound cover.',
+        audience: 'Children 3–5 and the adults who read with them.',
+      };
+    }
+    if (m === 'gold') {
+      return {
+        tone: 'Preserve the author voice. Sharpen only.',
+        output: 'Polished manuscript ready for export.',
+        audience: 'Same readers as the source draft.',
+      };
+    }
+    return {
+      tone: 'Sharp, vivid, structurally solid.',
+      output: 'Opening chapter, then continue by beat.',
+      audience: 'Literary / general readers.',
+    };
+  };
+
+  const launch = () => {
+    const d = defaultsFor(mode);
+    onStart(mode, idea, d.tone, d.output, d.audience);
+  };
 
   return (
     <section style={{ minHeight: '100vh', padding: '54px clamp(24px, 5vw, 72px)', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
-      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, .9fr)', gap: 28, alignItems: 'stretch' }} className="responsive-grid">
-          <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)' }}>
-            <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa Launchpad</div>
-            <h1 style={{ fontSize: 'clamp(42px, 7vw, 82px)', lineHeight: .88, margin: 0, letterSpacing: -3 }}>What are we making today?</h1>
-            <p style={{ maxWidth: 720, color: '#d7c8aa', fontSize: 19, lineHeight: 1.55, marginTop: 24 }}>Start with the creative intention, not the plumbing. Novel, script, musical, adaptation, polish, or glorious nonsense — then Caspa routes the machinery.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 32 }}>
-              {modeCards.map((card) => {
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)', marginBottom: 24 }}>
+          <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
+          <h1 style={{ fontSize: 'clamp(40px, 7vw, 72px)', lineHeight: .9, margin: 0, letterSpacing: -2.5 }}>What are we making?</h1>
+          <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 18, lineHeight: 1.5, marginTop: 18 }}>
+            Three doors. Powerful engines underneath. No dashboard maze.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 28 }}>
+            {heroCards.map((card) => {
+              const Icon = card.icon;
+              const active = card.mode === mode;
+              return (
+                <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `2px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 20, textAlign: 'left', cursor: 'pointer' }}>
+                  <Icon size={26} style={{ color: '#d6a846', marginBottom: 12 }} />
+                  <strong style={{ display: 'block', marginBottom: 6, fontSize: 18 }}>{card.title}</strong>
+                  <small style={{ color: '#c4b18b', lineHeight: 1.4 }}>{card.subtitle}</small>
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" onClick={() => setShowMore(!showMore)} style={{ marginTop: 18, background: 'transparent', border: 'none', color: '#a89572', cursor: 'pointer', fontSize: 13 }}>
+            {showMore ? 'Hide other formats' : 'More formats (script, musical, adaptation…)'}
+          </button>
+          {showMore && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 12 }}>
+              {moreCards.map((card) => {
                 const Icon = card.icon;
                 const active = card.mode === mode;
                 return (
-                  <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 18, textAlign: 'left', cursor: 'pointer' }}>
-                    <Icon size={24} style={{ color: '#d6a846', marginBottom: 12 }} />
-                    <strong style={{ display: 'block', marginBottom: 6 }}>{card.title}</strong>
-                    <small style={{ color: '#c4b18b', lineHeight: 1.4 }}>{card.subtitle}</small>
+                  <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#1a140e', color: '#fffaf2', borderRadius: 16, padding: 14, textAlign: 'left', cursor: 'pointer' }}>
+                    <Icon size={18} style={{ color: '#d6a846', marginBottom: 8 }} />
+                    <strong style={{ display: 'block', fontSize: 14 }}>{card.title}</strong>
                   </button>
                 );
               })}
             </div>
+          )}
+        </div>
+
+        <div style={{ borderRadius: 28, padding: 28, ...surface }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fff3d5', color: '#7a5514', display: 'grid', placeItems: 'center' }}><SelectedIcon size={24} /></div>
+            <div>
+              <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>{selected.title}</div>
+              <h2 style={{ margin: 0, fontSize: 24 }}>One idea is enough</h2>
+            </div>
           </div>
 
-          <div style={{ borderRadius: 34, padding: 28, ...surface }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fff3d5', color: '#7a5514', display: 'grid', placeItems: 'center' }}><SelectedIcon size={24} /></div>
-              <div>
-                <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>{selected.title}</div>
-                <h2 style={{ margin: 0, fontSize: 26 }}>Project brief</h2>
-              </div>
-            </div>
+          <Field label="Idea / premise">
+            <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder={selected.examples[0] || 'Start with a wound, a place, a desire…'} />
+          </Field>
 
-            <Field label="Idea / premise">
-              <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder="Example: Dick Turpin in Milton Keynes, but make it stageable..." />
-            </Field>
-            <Field label="Tone">
-              <input value={tone} onChange={(e) => setTone(e.target.value)} style={inputStyle} />
-            </Field>
-            <Field label="Output wanted">
-              <input value={output} onChange={(e) => setOutput(e.target.value)} style={inputStyle} />
-            </Field>
-            <Field label="Audience">
-              <input value={audience} onChange={(e) => setAudience(e.target.value)} style={inputStyle} />
-            </Field>
-
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-              {selected.examples.map((example) => <button key={example} onClick={() => setIdea(example)} style={chipButton}>{example}</button>)}
-            </div>
-
-            <button onClick={() => onStart(mode, idea, tone, output, audience)} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
-              <Sparkles size={19} /> Build this project
-            </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+            {selected.examples.map((example) => <button key={example} onClick={() => setIdea(example)} style={chipButton}>{example}</button>)}
           </div>
+
+          <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
+            <Sparkles size={19} /> {mode === 'picture' ? 'Open Design' : mode === 'gold' ? 'Open Gold' : 'Start writing'}
+          </button>
         </div>
       </div>
-      <style>{`@media (max-width: 1050px) { .responsive-grid { grid-template-columns: 1fr !important; } }`}</style>
     </section>
   );
 }
 
-function ProjectView({ brief, setCurrentView }: { brief: ProjectBrief; setCurrentView: (view: ViewType) => void }) {
-  const nextMoves = useMemo(() => {
-    if (brief.mode === 'script') return ['Lock format and stage rules', 'Build character engine', 'Create scene-by-scene act structure', 'Draft opening scene'];
-    if (brief.mode === 'musical') return ['Define book spine', 'List song moments', 'Build character vocal palette', 'Create Act One running order'];
-    if (brief.mode === 'gold') return ['Paste manuscript', 'Run structure pass', 'Run line edit', 'Export ruthless final cut'];
-    if (brief.mode === 'adaptation') return ['Identify source material', 'Extract dramatic spine', 'Choose format', 'Draft treatment'];
-    if (brief.mode === 'chaos') return ['Interrogate the madness', 'Find the serious engine', 'Choose format', 'Draft the wildest opening'];
-    return ['Define central promise', 'Build chapter map', 'Create characters', 'Draft opening chapter'];
-  }, [brief.mode]);
+function ProjectView({
+  brief,
+  draftPage,
+  manuscriptSource,
+  projectStatus,
+  setCurrentView,
+  onCompleteProject,
+}: {
+  brief: ProjectBrief;
+  draftPage: string;
+  manuscriptSource: string;
+  projectStatus: 'active' | 'complete';
+  setCurrentView: (view: ViewType) => void;
+  onCompleteProject: () => void;
+}) {
+  const steps = useMemo(
+    () => getWorkflowSteps(brief, draftPage, manuscriptSource, projectStatus),
+    [brief, draftPage, manuscriptSource, projectStatus]
+  );
+  const nextStep = useMemo(
+    () => getNextStep(brief, draftPage, manuscriptSource, projectStatus),
+    [brief, draftPage, manuscriptSource, projectStatus]
+  );
+  const progress = useMemo(
+    () => getProgressSummary(brief, draftPage, manuscriptSource, projectStatus),
+    [brief, draftPage, manuscriptSource, projectStatus]
+  );
+
+  const goWorkflow = (view: WorkflowView) => setCurrentView(view as ViewType);
 
   return (
-    <PageShell kicker="Current Project" title={brief.title} subtitle={`${modeLabels[brief.mode]} • created ${formatDate(brief.createdAt)}`}>
+    <PageShell
+      kicker="Guided workflow"
+      title={brief.title}
+      subtitle={`${modeLabels[brief.mode]} · ${projectStatus === 'complete' ? 'In library' : 'Active project'} · ${formatDate(brief.createdAt)}`}
+    >
+      <GuidedNextStep
+        step={nextStep}
+        progress={progress}
+        onGo={goWorkflow}
+        onComplete={onCompleteProject}
+        briefTitle={brief.idea}
+      />
+
       <div style={cardGrid}>
         <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
-          <h2 style={sectionTitle}>Creative spine</h2>
+          <h2 style={sectionTitle}>Brief</h2>
           <p style={bigText}>{brief.idea}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginTop: 24 }}>
             <MiniPanel label="Tone" value={brief.tone} />
@@ -648,21 +872,7 @@ function ProjectView({ brief, setCurrentView }: { brief: ProjectBrief; setCurren
             <MiniPanel label="Audience" value={brief.audience} />
           </div>
         </article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Next best moves</h2>
-          <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9 }}>{nextMoves.map((move) => <li key={move}>{move}</li>)}</ol>
-        </article>
-        <article style={cardStyle}>
-          <h2 style={sectionTitle}>Drive it</h2>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <button onClick={() => setCurrentView('write')} style={actionButton}><PenLine size={18} /> Open white page</button>
-            <button onClick={() => setCurrentView('openwebui')} style={actionButton}><UploadCloud size={18} /> Open WebUI driver</button>
-            <button onClick={() => setCurrentView('canvas')} style={actionButton}><Pencil size={18} /> Jam on canvas</button>
-            <button onClick={() => setCurrentView('workshop')} style={actionButton}><Hammer size={18} /> Workshop — paste & write it</button>
-            <button onClick={() => setCurrentView('publish')} style={actionButton}><Download size={18} /> Publish Pack</button>
-            <button onClick={() => setCurrentView('gold')} style={actionButton}><Wand2 size={18} /> Gold polish route</button>
-          </div>
-        </article>
+        <WorkflowChecklist steps={steps} onGo={goWorkflow} />
       </div>
     </PageShell>
   );
@@ -675,10 +885,10 @@ function WhitePageView({ brief, draftPage, setDraftPage, setCurrentView }: { bri
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
           <div>
             <div style={kickerStyle}>White Page</div>
-            <h1 style={{ margin: 0, fontSize: 38 }}>Drive the project on a clean page</h1>
-            <p style={{ margin: '8px 0 0', color: '#73695d' }}>{brief.title}</p>
+            <h1 style={{ margin: 0, fontSize: 38 }}>Write here</h1>
+            <p style={{ margin: '8px 0 0', color: '#73695d' }}>{brief.title} — when you have enough text, Workshop diagnoses it.</p>
           </div>
-          <button onClick={() => setCurrentView('openwebui')} style={primaryButton('#1f2937', '#fff')}><UploadCloud size={18} /> Send mindset to Open WebUI</button>
+          <button onClick={() => setCurrentView('project')} style={primaryButton('#1f2937', '#fff')}><Home size={18} /> Back to next step</button>
         </div>
         <textarea value={draftPage} onChange={(e) => setDraftPage(e.target.value)} placeholder="Start writing here. Scene, chapter, song brief, treatment, argument, joke list, anything. This is deliberately white and boring so the work gets loud." style={{ width: '100%', minHeight: '72vh', border: '1px solid #dfd3c0', borderRadius: 10, padding: '42px clamp(22px, 5vw, 72px)', fontSize: 20, lineHeight: 1.75, color: '#111827', background: '#ffffff', boxShadow: '0 24px 90px rgba(40, 29, 12, .10)', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'Georgia, Cambria, serif' }} />
       </div>
