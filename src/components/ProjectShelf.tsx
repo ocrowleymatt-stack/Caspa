@@ -37,6 +37,7 @@ interface Props {
   brief: ProjectBriefLike;
   onOpenWorkshop: () => void;
   onOpenPublish: () => void;
+  onExportProject: (key: string) => void;
   onSwitchProject: (key: string) => void;
   onProjectCompleted: () => void;
   onNewProject: () => void;
@@ -46,6 +47,7 @@ export default function ProjectShelf({
   brief,
   onOpenWorkshop,
   onOpenPublish,
+  onExportProject,
   onSwitchProject,
   onProjectCompleted,
   onNewProject,
@@ -59,7 +61,10 @@ export default function ProjectShelf({
   const [statusMsg, setStatusMsg] = useState('');
 
   const refresh = useCallback(() => {
-    recordProjectSnapshot(brief);
+    // Only snapshot when a real project is live — never overwrite library with empty state.
+    if (localStorage.getItem('caspa.currentBrief')) {
+      recordProjectSnapshot(brief);
+    }
     setProjects(loadShelf());
   }, [brief]);
 
@@ -224,7 +229,7 @@ export default function ProjectShelf({
                 onOpen={() => handleSwitch(proj.key)}
                 onComplete={() => handleComplete(proj.key, proj.title)}
                 onReopen={() => handleReopen(proj.key)}
-                onPublish={onOpenPublish}
+                onPublish={() => (tab === 'library' ? onExportProject(proj.key) : onOpenPublish())}
                 onWorkshop={onOpenWorkshop}
                 onDelete={() => {
                   if (window.confirm(`Delete "${proj.title}" from this device?`)) {
@@ -245,7 +250,7 @@ export default function ProjectShelf({
                 onOpen={() => handleSwitch(proj.key)}
                 onComplete={() => handleComplete(proj.key, proj.title)}
                 onReopen={() => handleReopen(proj.key)}
-                onPublish={onOpenPublish}
+                onPublish={() => (tab === 'library' ? onExportProject(proj.key) : onOpenPublish())}
                 onWorkshop={onOpenWorkshop}
               />
             ))}

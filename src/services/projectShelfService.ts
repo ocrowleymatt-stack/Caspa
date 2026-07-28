@@ -47,7 +47,7 @@ const ACTIVE_KEY = 'caspa.activeProjectKey';
 const STALE_TITLE_PATTERNS = [
   /^untitled glorious nonsense$/i,
   /^untitled$/i,
-  /^new (novel|script|musical|adaptation|gold|chaos)$/i,
+  /^new (novel|script|musical|adaptation|gold|chaos|picture)$/i,
 ];
 
 function safeParse<T>(raw: string | null, fallback: T): T {
@@ -59,8 +59,66 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function countWords(text: string | null | undefined): number {
+  return (text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function commissionWordCount(commission: CommissionState | null | undefined): number {
+  if (!commission?.chapters?.length) return 0;
+  return commission.chapters.reduce((sum, c) => sum + countWords(c.content), 0);
+}
+
+/** Prefer chapters, then white page, then manuscript source. */
+function totalWordCount(
+  commission: CommissionState | null | undefined,
+  whitePage: string | null | undefined,
+  manuscriptSource: string | null | undefined
+): number {
+  const fromChapters = commissionWordCount(commission);
+  if (fromChapters > 0) return fromChapters;
+  const fromPage = countWords(whitePage);
+  if (fromPage > 0) return fromPage;
+  return countWords(manuscriptSource);
+}
+
+function normalizeSnapshot(raw: unknown): ProjectSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const entry = raw as Partial<ProjectSnapshot> & { brief?: ProjectBriefLike; savedAt?: string };
+  if (!entry.brief) return null;
+  return {
+    brief: entry.brief,
+    whitePage: typeof entry.whitePage === 'string' ? entry.whitePage : '',
+    manuscriptSource: typeof entry.manuscriptSource === 'string' ? entry.manuscriptSource : '',
+    commission: entry.commission ?? null,
+    savedAt: entry.savedAt || new Date().toISOString(),
+    status: entry.status === 'complete' ? 'complete' : 'active',
+  };
+}
+
 function loadShelfIndex(): Record<string, ProjectSnapshot> {
-  return safeParse<Record<string, ProjectSnapshot>>(localStorage.getItem(SHELF_KEY), {});
+  const raw = safeParse<Record<string, unknown>>(localStorage.getItem(SHELF_KEY), {});
+  const normalized: Record<string, ProjectSnapshot> = {};
+  let changed = false;
+
+  Object.keys(raw).forEach((key) => {
+    const snap = normalizeSnapshot(raw[key]);
+    if (!snap) {
+      changed = true;
+      return;
+    }
+    normalized[key] = snap;
+    const original = raw[key] as Record<string, unknown>;
+    if (
+      typeof original.whitePage !== 'string' ||
+      typeof original.manuscriptSource !== 'string' ||
+      (original.status !== 'active' && original.status !== 'complete')
+    ) {
+      changed = true;
+    }
+  });
+
+  if (changed) saveShelfIndex(normalized);
+  return normalized;
 }
 
 function saveShelfIndex(index: Record<string, ProjectSnapshot>): void {
@@ -96,15 +154,10 @@ function discoverProjectKeys(): Set<string> {
 function isStaleProject(snapshot: ProjectSnapshot | null, key: string): boolean {
   if (!snapshot) return true;
   const title = snapshot.brief?.title?.trim() || key;
-  if (STALE_TITLE_PATTERNS.some((p) => p.test(title))) {
-    const words =
-      snapshot.commission?.chapters?.reduce(
-        (sum, c) => sum + (c.content?.split(/\s+/).filter(Boolean).length || 0),
-        0
-      ) || snapshot.whitePage.trim().split(/\s+/).filter(Boolean).length;
-    if (words < 20) return true;
-  }
-  return false;
+  if (!STALE_TITLE_PATTERNS.some((p) => p.test(title))) return false;
+
+  const words = totalWordCount(snapshot.commission, snapshot.whitePage, snapshot.manuscriptSource);
+  return words < 20;
 }
 
 function buildShelfEntry(
@@ -119,18 +172,16 @@ function buildShelfEntry(
   const whitePage = isActive
     ? localStorage.getItem(WHITE_PAGE_KEY) || ''
     : snapshot?.whitePage || '';
+  const manuscriptSource = isActive
+    ? localStorage.getItem(MANUSCRIPT_KEY) || ''
+    : snapshot?.manuscriptSource || '';
 
   const title = brief?.title || key.replace(/-/g, ' ');
   const mode = brief?.mode || 'novel';
   const idea = brief?.idea || '';
-  const wordCount =
-    commission?.chapters?.reduce(
-      (sum, c) => sum + (c.content?.split(/\s+/).filter(Boolean).length || 0),
-      0
-    ) || whitePage.trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = totalWordCount(commission, whitePage, manuscriptSource);
 
-  const status: ProjectStatus =
-    snapshot?.status || (isActive ? 'active' : 'active');
+  const status: ProjectStatus = snapshot?.status || 'active';
 
   return {
     key,
@@ -161,7 +212,7 @@ export function loadShelf(): ShelfProject[] {
   const entries: ShelfProject[] = [];
 
   keys.forEach((key) => {
-    const isActive = key === activeKey;
+    const isActive = key === activeKey && Boolean(activeBrief);
     const snapshot = index[key] || null;
     entries.push(buildShelfEntry(key, snapshot, isActive ? activeBrief : null, isActive ? commission : null, isActive));
   });
@@ -186,14 +237,26 @@ export function loadLibraryManuscripts(): ShelfProject[] {
 }
 
 export function recordProjectSnapshot(brief: ProjectBriefLike): void {
+  if (!briefFromStorage()) return;
+
   const key = getProjectKey(brief);
   const index = loadShelfIndex();
   const existing = index[key];
+  const whitePage = localStorage.getItem(WHITE_PAGE_KEY) || '';
+  const manuscriptSource = localStorage.getItem(MANUSCRIPT_KEY) || '';
+  const commission = loadCommissionState();
+
+  // Never wipe a finished library manuscript with empty live storage.
+  if (existing?.status === 'complete') {
+    const liveEmpty = !whitePage.trim() && !manuscriptSource.trim() && !commission;
+    if (liveEmpty) return;
+  }
+
   index[key] = {
     brief,
-    whitePage: localStorage.getItem(WHITE_PAGE_KEY) || '',
-    manuscriptSource: localStorage.getItem(MANUSCRIPT_KEY) || '',
-    commission: loadCommissionState(),
+    whitePage,
+    manuscriptSource,
+    commission,
     savedAt: new Date().toISOString(),
     status: existing?.status || 'active',
   };
@@ -221,7 +284,9 @@ export function switchToProject(key: string): ProjectSnapshot | null {
   const snapshot = index[key];
   if (!snapshot) return null;
 
-  saveCurrentProjectState();
+  if (briefFromStorage()) {
+    saveCurrentProjectState();
+  }
 
   localStorage.setItem(BRIEF_KEY, JSON.stringify(snapshot.brief));
   localStorage.setItem(WHITE_PAGE_KEY, snapshot.whitePage || '');
@@ -239,18 +304,37 @@ export function switchToProject(key: string): ProjectSnapshot | null {
 
 export function completeProject(key: string): boolean {
   const index = loadShelfIndex();
-  const snapshot = index[key];
-  if (!snapshot) return false;
+  const existing = index[key];
+  const liveBrief = briefFromStorage();
+  const liveKey = liveBrief ? getProjectKey(liveBrief) : null;
 
-  index[key] = {
-    ...snapshot,
-    status: 'complete',
-    savedAt: new Date().toISOString(),
-  };
+  let snapshot: ProjectSnapshot;
+  if (liveBrief && liveKey === key) {
+    snapshot = {
+      brief: liveBrief,
+      whitePage: localStorage.getItem(WHITE_PAGE_KEY) || existing?.whitePage || '',
+      manuscriptSource: localStorage.getItem(MANUSCRIPT_KEY) || existing?.manuscriptSource || '',
+      commission: loadCommissionState() ?? existing?.commission ?? null,
+      savedAt: new Date().toISOString(),
+      status: 'complete',
+    };
+  } else if (existing) {
+    snapshot = {
+      ...existing,
+      whitePage: existing.whitePage || '',
+      manuscriptSource: existing.manuscriptSource || '',
+      status: 'complete',
+      savedAt: new Date().toISOString(),
+    };
+  } else {
+    return false;
+  }
+
+  index[key] = snapshot;
   saveShelfIndex(index);
 
   const activeKey = localStorage.getItem(ACTIVE_KEY);
-  if (activeKey === key) {
+  if (activeKey === key || liveKey === key) {
     localStorage.removeItem(BRIEF_KEY);
     localStorage.removeItem(WHITE_PAGE_KEY);
     localStorage.removeItem(MANUSCRIPT_KEY);

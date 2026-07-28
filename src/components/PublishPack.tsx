@@ -33,6 +33,7 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesi
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<ContentAnalysisSummary | null>(null);
   const [status, setStatus] = useState('');
+  const [didExport, setDidExport] = useState(false);
   const [ctx, setCtx] = useState(() => loadExportContext(brief, authorEmail));
 
   const refresh = useCallback(() => {
@@ -73,6 +74,7 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesi
         await downloadPdf(ctx, profile);
         setStatus('PDF downloaded. Move this manuscript to your library when you are done.');
       }
+      setDidExport(true);
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Export failed');
     } finally {
@@ -233,11 +235,11 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesi
                     : 'Download PDF'}
             </button>
 
-            {gate.canExport && onMoveToLibrary && (
+            {didExport && onMoveToLibrary && (
               <article style={{ ...card, borderLeft: '4px solid #15803d' }}>
                 <h2 style={sectionTitle}>Finished?</h2>
                 <p style={{ margin: '0 0 12px', color: '#5b4724', lineHeight: 1.55, fontSize: 14 }}>
-                  A completed manuscript belongs in the library — not on the active workbench. This frees the studio for your next project.
+                  Export is done. Move this manuscript to the library to free the workbench for your next project.
                 </p>
                 <button type="button" onClick={onMoveToLibrary} style={primaryBtn}>
                   <Archive size={18} /> Move to library

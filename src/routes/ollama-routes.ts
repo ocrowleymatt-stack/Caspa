@@ -6,7 +6,12 @@
 import express, { Router } from 'express';
 
 const router = Router();
-const OLLAMA_API = 'http://localhost:11434/api';
+
+/** Base must end with /api — e.g. http://127.0.0.1:11434/api */
+function ollamaApiBase(): string {
+  const raw = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api').trim().replace(/\/$/, '');
+  return raw.endsWith('/api') ? raw : `${raw}/api`;
+}
 
 interface OllamaGenerateRequest {
   model: string;
@@ -20,7 +25,7 @@ interface OllamaGenerateRequest {
 // Lightweight smoke test for deployment verification (no prompt, no secrets)
 router.get('/smoke', async (_req, res) => {
   try {
-    const response = await fetch(`${OLLAMA_API}/tags`, { signal: AbortSignal.timeout(5000) });
+    const response = await fetch(`${ollamaApiBase()}/tags`, { signal: AbortSignal.timeout(5000) });
     return res.json({
       success: true,
       data: {
@@ -39,7 +44,7 @@ router.get('/smoke', async (_req, res) => {
 // Health check - is Ollama available?
 router.get('/health', async (req, res) => {
   try {
-    const response = await fetch(`${OLLAMA_API}/tags`, { timeout: 5000 });
+    const response = await fetch(`${ollamaApiBase()}/tags`, { signal: AbortSignal.timeout(5000) });
     return res.json({ 
       available: response.ok,
       status: response.ok ? 'online' : 'offline'
@@ -52,7 +57,7 @@ router.get('/health', async (req, res) => {
 // Get available models
 router.get('/models', async (req, res) => {
   try {
-    const response = await fetch(`${OLLAMA_API}/tags`);
+    const response = await fetch(`${ollamaApiBase()}/tags`, { signal: AbortSignal.timeout(5000) });
     const data = await response.json() as { models?: Array<{ name: string }> };
     return res.json({ models: data.models?.map(m => m.name) || [] });
   } catch (err) {
@@ -65,7 +70,7 @@ router.post('/generate', async (req, res) => {
   try {
     const body = req.body as OllamaGenerateRequest;
     
-    const response = await fetch(`${OLLAMA_API}/generate`, {
+    const response = await fetch(`${ollamaApiBase()}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -95,7 +100,7 @@ router.post('/generate-stream', async (req, res) => {
   try {
     const body = req.body as OllamaGenerateRequest;
     
-    const response = await fetch(`${OLLAMA_API}/generate`, {
+    const response = await fetch(`${ollamaApiBase()}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
