@@ -37,27 +37,24 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
   render() {
     if (this.state.hasError) {
       return (
-        <div className="h-screen bg-[#090614] flex flex-col items-center justify-center p-2 text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.1),transparent_70%)] pointer-events-none" />
-          <div className="w-20 h-20 bg-brand-primary rounded-md flex items-center justify-center shadow-[0_0_50px_rgba(168,85,247,0.5)] mb-3 rotate-3 border border-white/20">
-            <span className="text-white text-xs font-semibold font-semibold italic">!</span>
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#17120c', color: '#fffaf2', textAlign: 'center' }}>
+          <div style={{ maxWidth: 480 }}>
+            <div style={{ width: 64, height: 64, borderRadius: 18, margin: '0 auto 18px', display: 'grid', placeItems: 'center', background: '#d6a846', color: '#1d1408', fontSize: 28, fontWeight: 800 }}>!</div>
+            <h1 style={{ margin: '0 0 10px', fontSize: 28, letterSpacing: -1 }}>Caspa hit a snag</h1>
+            <p style={{ margin: '0 0 18px', color: '#c9b898', lineHeight: 1.5 }}>
+              Something broke in the studio. Your local drafts are usually still in this browser — reload and continue.
+            </p>
+            <pre style={{ textAlign: 'left', background: '#21180f', border: '1px solid #3a2d1d', borderRadius: 14, padding: 14, overflow: 'auto', maxHeight: 140, color: '#e8dcc4', fontSize: 12 }}>
+              {this.state.error?.message || 'Unknown error'}
+            </pre>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{ marginTop: 18, border: 'none', borderRadius: 14, padding: '12px 18px', background: '#d6a846', color: '#1d1408', fontWeight: 800, cursor: 'pointer' }}
+            >
+              Reload Caspa
+            </button>
           </div>
-          <h1 className="text-white text-xs font-semibold font-semibold mb-1.5 italic font-serif tracking-tight">Neural Protocol Violation</h1>
-          <p className="text-slate-400 max-w-md text-[11px] mb-10 font-medium uppercase tracking-widest leading-relaxed opacity-80">
-            The narrative engine encountered an architectural anomaly. Intelligence synchronization has been suspended to prevent structural corruption.
-          </p>
-          <div className="bg-[#140d24] p-3 rounded-md border border-white/10 text-left max-w-2xl overflow-auto mb-10 max-h-40 shadow-2xl relative">
-            <div className="text-[10px] font-semibold text-brand-primary uppercase tracking-widest mb-2 opacity-50 underline">Telemetry Data</div>
-            <code className="text-brand-accent text-xs break-all font-mono">
-              {this.state.error?.message || "UNDEFINED_CORE_EXCEPTION"}
-            </code>
-          </div>
-          <button 
-            onClick={() => window.location.reload()}
-            className="px-2.5 py-1 bg-brand-primary hover:bg-brand-accent text-white rounded font-semibold uppercase tracking-wider text-xs transition-all shadow-[0_20px_40px_rgba(168,85,247,0.3)] active:scale-95"
-          >
-            Reboot Core Systems
-          </button>
         </div>
       );
     }

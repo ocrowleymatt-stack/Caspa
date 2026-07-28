@@ -14,8 +14,10 @@ curl -sf "$BASE/health" | grep -q '"status"' || fail "/health"
 ok "/health"
 
 # Doctor
-curl -sf "$BASE/api/doctor" | grep -q '"success":true' || fail "/api/doctor"
-curl -sf "$BASE/api/doctor" | grep -q '"status":"ok"' || fail "/api/doctor status"
+DOCTOR=$(curl -sf "$BASE/api/doctor") || fail "/api/doctor"
+echo "$DOCTOR" | grep -q '"success":true' || fail "/api/doctor success"
+echo "$DOCTOR" | grep -q '"readiness"' || fail "/api/doctor readiness"
+echo "$DOCTOR" | grep -q '"version"' || fail "/api/doctor version"
 ok "/api/doctor"
 
 # Ollama smoke (offline is fine)

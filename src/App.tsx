@@ -67,8 +67,23 @@ import {
 } from './services/projectWorkflowService';
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
+import firebaseAppletConfig from '../firebase-applet-config.json';
 
 declare const process: any;
+
+const LOCAL_GUEST_KEY = 'caspa.localGuest';
+
+function createLocalGuest(): User {
+  return {
+    uid: 'local-guest',
+    email: 'local@caspa.workspace',
+    displayName: 'Local workspace',
+  };
+}
+
+function isLocalGuest(user: User | null): boolean {
+  return Boolean(user?.uid === 'local-guest');
+}
 
 type User = {
   uid: string;
@@ -315,12 +330,12 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
   }, []);
 
   const firebaseConfig = {
-    apiKey: process.env.REACT_APP_FIREBASE_API_KEY || 'AIzaSyBdMzl_c0rFT9C_3LKq1hbDDKfRvPAhP0I',
-    authDomain: 'novelwrite-27763.firebaseapp.com',
-    projectId: 'novelwrite-27763',
-    storageBucket: 'novelwrite-27763.appspot.com',
-    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || '506738699621',
-    appId: process.env.REACT_APP_FIREBASE_APP_ID || '1:506738699621:web:9e8f9f8b8c8d8e8f8g8h',
+    apiKey: firebaseAppletConfig.apiKey,
+    authDomain: firebaseAppletConfig.authDomain,
+    projectId: firebaseAppletConfig.projectId,
+    storageBucket: firebaseAppletConfig.storageBucket,
+    messagingSenderId: firebaseAppletConfig.messagingSenderId,
+    appId: firebaseAppletConfig.appId,
   };
 
   const initializeFirebase = async () => {
@@ -337,6 +352,11 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
       const auth = getAuth();
       onAuthStateChanged(auth, (user) => {
         if (user) {
+          try {
+            localStorage.removeItem(LOCAL_GUEST_KEY);
+          } catch {
+            /* ignore */
+          }
           onLoginSuccess?.({ uid: user.uid, email: user.email || '', displayName: user.displayName || '' });
         }
       });
@@ -345,6 +365,15 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
       console.error('Firebase init error:', err);
       setFirebaseReady(false);
     }
+  };
+
+  const handleLocalContinue = () => {
+    try {
+      localStorage.setItem(LOCAL_GUEST_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+    onLoginSuccess?.(createLocalGuest());
   };
 
   const handleGoogleSignIn = async () => {
@@ -356,10 +385,15 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
       provider.addScope('profile');
       provider.addScope('email');
       const result = await signInWithPopup(getAuth(), provider);
+      try {
+        localStorage.removeItem(LOCAL_GUEST_KEY);
+      } catch {
+        /* ignore */
+      }
       onLoginSuccess?.({ uid: result.user.uid, email: result.user.email || '', displayName: result.user.displayName || '' });
     } catch (err: any) {
       console.error('Google sign-in error:', err);
-      setError(err.code === 'auth/popup-blocked' ? 'Pop-up blocked. Allow pop-ups for this site.' : 'Google sign-in failed. Try email/password instead.');
+      setError(err.code === 'auth/popup-blocked' ? 'Pop-up blocked. Allow pop-ups for this site.' : 'Google sign-in failed. Try email/password or Continue locally.');
     } finally {
       setLoading(false);
     }
@@ -379,10 +413,15 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
       const result = isSignUp
         ? await createUserWithEmailAndPassword(auth, email, password)
         : await signInWithEmailAndPassword(auth, email, password);
+      try {
+        localStorage.removeItem(LOCAL_GUEST_KEY);
+      } catch {
+        /* ignore */
+      }
       onLoginSuccess?.({ uid: result.user.uid, email: result.user.email || '', displayName: result.user.displayName || '' });
     } catch (err: any) {
       console.error('Email auth error:', err);
-      setError(isSignUp ? 'Could not create account.' : 'Could not sign in. Check the details.');
+      setError(isSignUp ? 'Could not create account.' : 'Could not sign in. Check the details, or Continue locally.');
     } finally {
       setLoading(false);
     }
@@ -396,7 +435,19 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
             <Sparkles size={34} />
           </div>
           <h1 style={{ margin: 0, fontSize: 34, letterSpacing: -1 }}>Caspa</h1>
-          <p style={{ margin: '8px 0 0', color: '#6d6255' }}>Private creative engine. No dashboard mausoleum.</p>
+          <p style={{ margin: '8px 0 0', color: '#6d6255' }}>Private creative engine. Start in one click — account optional.</p>
+        </div>
+
+        <button onClick={handleLocalContinue} disabled={loading} style={primaryButton('#d6a846', '#1d1408')}>
+          <Zap size={18} />
+          Continue locally
+        </button>
+        <p style={{ margin: '10px 0 0', color: '#8a7d6b', fontSize: 13, lineHeight: 1.45, textAlign: 'center' }}>
+          Works offline in this browser. Back up from Settings when you want a server copy.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0', color: '#9b9184', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
+          <span style={{ height: 1, flex: 1, background: '#eadfce' }} /> or sign in <span style={{ height: 1, flex: 1, background: '#eadfce' }} />
         </div>
 
         <button onClick={handleGoogleSignIn} disabled={loading || !firebaseReady} style={primaryButton('#1f2937', '#fff')}>
@@ -404,15 +455,11 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
           Sign in with Google
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0', color: '#9b9184', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
-          <span style={{ height: 1, flex: 1, background: '#eadfce' }} /> or <span style={{ height: 1, flex: 1, background: '#eadfce' }} />
-        </div>
-
-        <form onSubmit={handleEmailSignIn}>
+        <form onSubmit={handleEmailSignIn} style={{ marginTop: 14 }}>
           <LabelledInput icon={Mail} label="Email" value={email} onChange={setEmail} type="email" placeholder="you@example.com" />
           <LabelledInput icon={Lock} label="Password" value={password} onChange={setPassword} type="password" placeholder="••••••••" />
           {error && <div style={{ display: 'flex', gap: 10, padding: 12, borderRadius: 14, background: '#fff0ef', color: '#a02b20', marginBottom: 14 }}><AlertCircle size={18} />{error}</div>}
-          <button type="submit" disabled={loading} style={primaryButton('#d6a846', '#1d1408')}>
+          <button type="submit" disabled={loading} style={primaryButton('#17120c', '#fffaf2')}>
             {loading ? <Loader size={18} className="spin" /> : <Check size={18} />}
             {isSignUp ? 'Create account' : 'Login'}
           </button>
@@ -692,7 +739,7 @@ function CaspaUI() {
         </div>
 
         <div style={{ borderTop: '1px solid #332719', paddingTop: 16, fontSize: 12, color: '#a89572' }}>
-          <div style={{ marginBottom: 12 }}>{authContext.user?.email || 'Private workspace'}</div>
+          <div style={{ marginBottom: 12 }}>{isLocalGuest(authContext.user) ? 'Local workspace' : authContext.user?.email || 'Private workspace'}</div>
           <button onClick={authContext.signOut} style={{ ...ghostButton, width: '100%', justifyContent: 'center', color: '#ffccc6', borderColor: '#5b2a22' }}><LogOut size={16} /> Sign out</button>
         </div>
       </aside>
@@ -1088,18 +1135,28 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
+    try {
+      if (localStorage.getItem(LOCAL_GUEST_KEY) === '1') {
+        setUser(createLocalGuest());
+        setAuthLoading(false);
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+
     const checkAuth = async () => {
       try {
         const { initializeApp } = await import('firebase/app');
         const { getAuth, onAuthStateChanged } = await import('firebase/auth');
 
         const firebaseConfig = {
-          apiKey: process.env.REACT_APP_FIREBASE_API_KEY || 'AIzaSyBdMzl_c0rFT9C_3LKq1hbDDKfRvPAhP0I',
-          authDomain: 'novelwrite-27763.firebaseapp.com',
-          projectId: 'novelwrite-27763',
-          storageBucket: 'novelwrite-27763.appspot.com',
-          messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || '506738699621',
-          appId: process.env.REACT_APP_FIREBASE_APP_ID || '1:506738699621:web:9e8f9f8b8c8d8e8f8g8h',
+          apiKey: firebaseAppletConfig.apiKey,
+          authDomain: firebaseAppletConfig.authDomain,
+          projectId: firebaseAppletConfig.projectId,
+          storageBucket: firebaseAppletConfig.storageBucket,
+          messagingSenderId: firebaseAppletConfig.messagingSenderId,
+          appId: firebaseAppletConfig.appId,
         };
 
         try {
@@ -1130,11 +1187,21 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
+      localStorage.removeItem(LOCAL_GUEST_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (isLocalGuest(user)) {
+      setUser(null);
+      return;
+    }
+    try {
       const { getAuth, signOut } = await import('firebase/auth');
       await signOut(getAuth());
       setUser(null);
     } catch (err) {
       console.error('Sign out error:', err);
+      setUser(null);
     }
   };
 
