@@ -8,7 +8,10 @@ import { getJobAudit } from './jobQueueService';
 import { jobStorePresent } from './jobStoreService';
 import { backupsPresent, listBackups } from './localBackupService';
 
-const OLLAMA_API = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api';
+const OLLAMA_API = (() => {
+  const raw = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api').trim().replace(/\/$/, '');
+  return raw.endsWith('/api') ? raw : `${raw}/api`;
+})();
 const VERSION = '1.0.0';
 
 function fileExists(relativeParts: string[]): boolean {
