@@ -8,7 +8,9 @@ import { randomUUID } from 'crypto';
 const router = express.Router();
 
 async function grokWebSearch(prompt: string): Promise<string | null> {
-  const grokKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+  // Server-side routes must accept both legacy and Vite-prefixed env var names.
+  // (Production Atlas typically sets VITE_GROK_API_KEY.)
+  const grokKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY;
   if (!grokKey) return null;
 
   try {
@@ -149,7 +151,8 @@ router.post('/suggest-topics', async (req, res) => {
   try {
     const { text = '', projectType = 'novel', title = '', premise = '' } = req.body;
 
-    const grokKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+    const grokKey =
+      process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
     const prompt = `For "${title}" (${projectType}): ${premise}
