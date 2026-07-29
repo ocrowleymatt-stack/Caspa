@@ -78,6 +78,26 @@ AICALL=$(curl -sf --max-time 90 -X POST "$BASE/api/ai/call" \
 echo "$AICALL" | grep -qi 'READY\|result' || fail "/api/ai/call result"
 ok "/api/ai/call"
 
+# Unmatched /api must return JSON — never SPA HTML or Express HTML error pages
+API_MISS_HEADERS=$(curl -sI "$BASE/api/this-does-not-exist") || fail "HEAD /api miss"
+echo "$API_MISS_HEADERS" | grep -qi 'content-type:.*application/json' || fail "/api miss must be application/json (got HTML fallthrough?)"
+echo "$API_MISS_HEADERS" | grep -qE 'HTTP/.* 404' || fail "/api miss must be HTTP 404"
+API_MISS_BODY=$(curl -s "$BASE/api/this-does-not-exist") || fail "GET /api miss body"
+echo "$API_MISS_BODY" | grep -q 'API_NOT_FOUND' || fail "/api miss body missing API_NOT_FOUND"
+echo "$API_MISS_BODY" | grep -qi '<html' && fail "/api miss returned HTML"
+ok "/api miss returns JSON 404"
+
+API_POST_MISS=$(curl -s -X POST "$BASE/api/this-does-not-exist" -H 'Content-Type: application/json' -d '{}') || fail "POST /api miss"
+echo "$API_POST_MISS" | grep -q 'API_METHOD_NOT_ALLOWED\|API_NOT_FOUND' || fail "POST /api miss must be JSON error"
+echo "$API_POST_MISS" | grep -qi '<html\|Cannot POST' && fail "POST /api miss returned HTML"
+ok "POST /api miss returns JSON"
+
+# Wrong method on a real endpoint must not serve the SPA shell
+AI_GET=$(curl -s -o /tmp/caspa-ai-get.body -w '%{content_type}' "$BASE/api/ai/call") || fail "GET /api/ai/call"
+echo "$AI_GET" | grep -qi 'application/json' || fail "GET /api/ai/call must be JSON not HTML ($AI_GET)"
+grep -qi '<!doctype html\|<html' /tmp/caspa-ai-get.body && fail "GET /api/ai/call returned HTML SPA"
+ok "GET /api/ai/call returns JSON not HTML"
+
 # Static UI
 curl -sf "$BASE/" | grep -q '<html' || fail "index.html"
 curl -sf "$BASE/" | grep -qi 'CASPA Studio' && fail "Stale CASPA Studio title in index.html"

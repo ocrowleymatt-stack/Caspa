@@ -6,6 +6,7 @@
 import { Type } from "@google/genai";
 import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 import { callCheapTask } from "./llmRouter";
+import { readApiJson } from "./apiJson";
 
 const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined;
 const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
@@ -83,12 +84,10 @@ async function callAI(options: {
       })
     });
 
+    const data = await readApiJson<{ result?: string; message?: string }>(response);
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.message || `API error: ${response.status}`);
+      throw new Error(data.message || `API error: ${response.status}`);
     }
-
-    const data = await response.json();
     return data.result;
   } catch (error: any) {
     console.error("AI Proxy Call failed:", error);

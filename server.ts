@@ -914,48 +914,7 @@ app.use("/api/caspa/design", caspaDesignRoutes);
 app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
 
-async function run() {
-  // DEFAULT TO PRODUCTION: Only use Vite dev middleware if NODE_ENV is explicitly set to "development"
-  if (IS_DEVELOPMENT) {
-    console.log("[Server] Starting in DEVELOPMENT mode with Vite middleware");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    console.log("[Server] Starting in PRODUCTION mode with static file serving");
-    const distPath = path.join(process.cwd(), "dist");
-    // Hashed Vite assets may be cached forever; the HTML shell must never be.
-    app.use(
-      express.static(distPath, {
-        index: false,
-        setHeaders(res, filePath) {
-          const base = path.basename(filePath);
-          if (base === "index.html") {
-            res.setHeader("Cache-Control", "no-store");
-            return;
-          }
-          if (filePath.includes(`${path.sep}assets${path.sep}`)) {
-            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-          }
-        },
-      }),
-    );
-    app.get("*", (req, res) => {
-      if (req.path.startsWith("/api/")) {
-        return res.status(404).json({
-          success: false,
-          message: `API endpoint not found: ${req.method} ${req.path}`,
-          code: "API_NOT_FOUND",
-        });
-      }
-      res.setHeader("Cache-Control", "no-store");
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
 
-  
 // ── Pilot Seat: structural directive ──────────────────────────────────────────
 
 // ─── Pilot Chat ───────────────────────────────────────────────────────────────
@@ -1308,17 +1267,62 @@ Rules:
 });
 
 
-  // Never let unmatched API requests fall through to HTML.
-  app.use("/api", (req, res) => {
-    const knownReadOnly = req.method === "GET" || req.method === "HEAD";
-    return res.status(knownReadOnly ? 404 : 405).json({
-      success: false,
-      message: knownReadOnly
-        ? `API endpoint not found: ${req.method} ${req.originalUrl}`
-        : `API method not allowed or endpoint missing: ${req.method} ${req.originalUrl}`,
-      code: knownReadOnly ? "API_NOT_FOUND" : "API_METHOD_NOT_ALLOWED",
-    });
+
+// Never let unmatched API requests fall through to HTML (SPA / Vite / Express default).
+// Must be registered AFTER all real /api routes and BEFORE static/Vite middleware.
+app.use("/api", (req, res) => {
+  const knownReadOnly = req.method === "GET" || req.method === "HEAD";
+  return res.status(knownReadOnly ? 404 : 405).json({
+    success: false,
+    message: knownReadOnly
+      ? `API endpoint not found: ${req.method} ${req.originalUrl}`
+      : `API method not allowed or endpoint missing: ${req.method} ${req.originalUrl}`,
+    code: knownReadOnly ? "API_NOT_FOUND" : "API_METHOD_NOT_ALLOWED",
   });
+});
+
+
+async function run() {
+  // DEFAULT TO PRODUCTION: Only use Vite dev middleware if NODE_ENV is explicitly set to "development"
+  if (IS_DEVELOPMENT) {
+    console.log("[Server] Starting in DEVELOPMENT mode with Vite middleware");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    console.log("[Server] Starting in PRODUCTION mode with static file serving");
+    const distPath = path.join(process.cwd(), "dist");
+    // Hashed Vite assets may be cached forever; the HTML shell must never be.
+    app.use(
+      express.static(distPath, {
+        index: false,
+        setHeaders(res, filePath) {
+          const base = path.basename(filePath);
+          if (base === "index.html") {
+            res.setHeader("Cache-Control", "no-store");
+            return;
+          }
+          if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          }
+        },
+      }),
+    );
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({
+          success: false,
+          message: `API endpoint not found: ${req.method} ${req.path}`,
+          code: "API_NOT_FOUND",
+        });
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
 
   // Listen — long AI/research calls need node HTTP timeouts > nginx default.
   const httpServer = app.listen(PORT, "0.0.0.0", () => {

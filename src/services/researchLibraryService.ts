@@ -6,6 +6,7 @@ import type { ResearchNote } from '../types';
 import type { ProjectBriefLike } from './commissionService';
 import { AIService } from './ai';
 import { briefToProject } from './commissionService';
+import { readApiJson } from './apiJson';
 
 export interface StoredResearchNote extends ResearchNote {
   verificationStatus?: 'unverified' | 'verified' | 'contradicted';
@@ -74,7 +75,11 @@ export async function deepResearchTopic(
       }),
     });
 
-    const payload = await response.json();
+    const payload = await readApiJson<{
+      success?: boolean;
+      data?: StoredResearchNote;
+      message?: string;
+    }>(response);
 
     if (response.ok && payload.success) {
       return payload.data as StoredResearchNote;

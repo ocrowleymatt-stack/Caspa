@@ -8,6 +8,7 @@
  */
 
 import type { Character, ResearchEntry, Project } from './types';
+import { readApiJson } from './apiJson';
 
 // ============================================================================
 // API CLIENT
@@ -28,12 +29,10 @@ async function callAI(options: AiCallOptions): Promise<string> {
     body: JSON.stringify(options),
   });
 
+  const data = await readApiJson<{ result?: string; message?: string }>(response);
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`API Error: ${response.status} - ${error}`);
+    throw new Error(`API Error: ${response.status} - ${data.message || 'request failed'}`);
   }
-
-  const data = await response.json();
   return data.result || '';
 }
 
