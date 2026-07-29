@@ -277,9 +277,14 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
       setStatus(`Whole book drafted: ${done}/${total} chapters. Cut sludge, then pack.`);
       setBookProgress(null);
     } catch (err: any) {
-      setError(err.message || 'Whole-book draft failed');
+      // Keep whatever chapters were already written; do not wipe the manuscript.
+      setStep('draft');
+      setError(
+        `${err.message || 'Whole-book draft failed'} — partial manuscript kept. Click Write whole book again to continue remaining chapters.`
+      );
     } finally {
       setBusy(false);
+      setBookProgress(null);
     }
   };
 

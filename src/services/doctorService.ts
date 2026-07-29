@@ -66,6 +66,10 @@ function buildReadiness(snapshot: {
     warnings.push('GEMINI_API_KEY not set — Gemini routes will fail.');
   }
 
+  if (!snapshot.grokConfigured) {
+    warnings.push('GROK/XAI key not set — live web research will fall back to model knowledge.');
+  }
+
   if (snapshot.usingDefaultDataDir) {
     warnings.push('CASPA_DATA_DIR unset — using ./data. Set it for production persistence.');
   }
@@ -136,6 +140,7 @@ export async function getDoctorSnapshot() {
       grokConfigured,
       veniceConfigured,
       ollama,
+      liveWebSearchConfigured: grokConfigured,
     },
     modules: {
       workshop: true,

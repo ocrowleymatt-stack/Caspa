@@ -61,6 +61,23 @@ echo "$QP" | grep -q '"success":true' || fail "/api/caspa/novel-write-pro/qualit
 echo "$QP" | grep -q '"overallScore"' || fail "quality-pass score"
 ok "/api/caspa/novel-write-pro/quality-pass"
 
+# Research deep — must return (live or knowledge fallback), never hang
+RESEARCH=$(curl -sf --max-time 70 -X POST "$BASE/api/caspa/research/deep" \
+  -H 'Content-Type: application/json' \
+  -d '{"topic":"Edinburgh Castle","context":"smoke","projectType":"novel","genre":"Educational","title":"Smoke"}') \
+  || fail "/api/caspa/research/deep timed out or failed"
+echo "$RESEARCH" | grep -q '"success":true' || fail "/api/caspa/research/deep success"
+echo "$RESEARCH" | grep -q '"title"' || fail "/api/caspa/research/deep title"
+ok "/api/caspa/research/deep"
+
+# AI call smoke (short prompt; must succeed with some provider)
+AICALL=$(curl -sf --max-time 90 -X POST "$BASE/api/ai/call" \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Return exactly the word READY","maxTokens":32}') \
+  || fail "/api/ai/call timed out or failed"
+echo "$AICALL" | grep -qi 'READY\|result' || fail "/api/ai/call result"
+ok "/api/ai/call"
+
 # Static UI
 curl -sf "$BASE/" | grep -q '<html' || fail "index.html"
 curl -sf "$BASE/" | grep -qi 'CASPA Studio' && fail "Stale CASPA Studio title in index.html"
