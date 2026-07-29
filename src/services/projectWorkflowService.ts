@@ -69,6 +69,14 @@ function isPictureMode(brief: ProjectBriefLike): boolean {
   return brief.mode === 'picture';
 }
 
+function isNonfictionMode(brief: ProjectBriefLike): boolean {
+  return brief.mode === 'nonfiction' || brief.mode === 'essay';
+}
+
+function isPoetryMode(brief: ProjectBriefLike): boolean {
+  return brief.mode === 'poetry';
+}
+
 function hasDesignPlan(): boolean {
   try {
     const raw = localStorage.getItem('caspa.bookDesign');
@@ -107,6 +115,8 @@ export function getWorkflowSteps(
   const commissionComplete = commission?.phase === 'complete';
   const gold = isGoldMode(brief);
   const picture = isPictureMode(brief);
+  const nonfiction = isNonfictionMode(brief);
+  const poetry = isPoetryMode(brief);
   const designReady = hasDesignPlan();
 
   const ctx = loadExportContext(brief);
@@ -117,12 +127,24 @@ export function getWorkflowSteps(
   const briefStarted = Boolean(brief.idea?.trim() && brief.title && !brief.title.startsWith('Untitled'));
   steps.push({
     id: 'start_brief',
-    title: gold ? 'Confirm what you are polishing' : picture ? 'Confirm the picture-book brief' : 'Lock your brief',
+    title: gold
+      ? 'Confirm what you are polishing'
+      : picture
+        ? 'Confirm the picture-book brief'
+        : nonfiction
+          ? 'Lock the non-fiction brief'
+          : poetry
+            ? 'Lock the poetry brief'
+            : 'Lock your brief',
     why: gold
       ? 'Gold mode needs the manuscript and tone locked so polish passes stay on-voice.'
       : picture
         ? 'Age band, premise, and tone steer spreads, covers, and read-aloud voice.'
-        : 'Caspa routes every room from title, mode, and premise — without this, tools guess.',
+        : nonfiction
+          ? 'Subject, angle, audience, and promised deliverable keep research and draft honest.'
+          : poetry
+            ? 'Form, tone, and occasion keep the sequence coherent.'
+            : 'Caspa routes every room from title, mode, and premise — without this, tools guess.',
     action: briefStarted ? 'Review brief' : 'Set up project',
     view: 'project',
     done: briefStarted,
@@ -183,20 +205,68 @@ export function getWorkflowSteps(
       view: 'publish',
       done: gate.canExport,
     });
+  } else if (nonfiction) {
+    steps.push({
+      id: 'draft_or_paste',
+      title: 'Get the argument on the page',
+      why: 'Outline, chapters, or a messy brain-dump — Caspa needs text before it can diagnose structure and claims.',
+      action: words > 0 ? 'Continue drafting' : 'Open Just write',
+      view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
+      done: words >= 50,
+    });
+    steps.push({
+      id: 'workshop_diagnose',
+      title: 'Gather sources (optional)',
+      why: 'Research Desk holds notes, quotes, and links so the draft stays evidenced instead of invented.',
+      action: 'Open Research Desk',
+      view: 'research',
+      optional: true,
+      done: false,
+    });
+    steps.push({
+      id: 'workshop_write',
+      title: 'Diagnose & commission',
+      why: 'Workshop scores clarity, structure, and missing proof, then can rewrite sections to order.',
+      action: hasDiagnosis ? 'Continue Workshop' : 'Open Workshop',
+      view: 'workshop',
+      done: commissionComplete,
+    });
+    steps.push({
+      id: 'review_draft',
+      title: 'Read the draft',
+      why: 'Check claims, voice, and ending. Edit in White Page before export.',
+      action: 'Open White Page',
+      view: 'write',
+      done: commissionComplete && words >= 100,
+    });
+    steps.push({
+      id: 'export',
+      title: 'Export when ready',
+      why: gate.blockers.length
+        ? `Blocked: ${gate.blockers[0]}`
+        : 'Publish Pack for manuscript export.',
+      action: gate.canExport ? 'Export manuscript' : 'Check export gate',
+      view: 'publish',
+      done: gate.canExport,
+    });
   } else {
     steps.push({
       id: 'draft_or_paste',
-      title: 'Get words on the page',
-      why: 'Use Just write for a prize-target draft, or paste into Workshop. Caspa needs text to diagnose.',
+      title: poetry ? 'Get lines on the page' : 'Get words on the page',
+      why: poetry
+        ? 'Draft the poem or sequence. Paste fragments if you already have them.'
+        : 'Use Just write for a prize-target draft, or paste into Workshop. Caspa needs text to diagnose.',
       action: words > 0 ? 'Continue writing' : 'Open Just write',
       view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
-      done: words >= 50,
+      done: words >= (poetry ? 20 : 50),
     });
 
     steps.push({
       id: 'workshop_diagnose',
       title: 'Diagnose in Workshop',
-      why: 'Workshop reads your draft, scores viability, and lists fixes. This is how Caspa knows what to write next.',
+      why: poetry
+        ? 'Workshop can pressure-test image, music, and dead weight — then you cut.'
+        : 'Workshop reads your draft, scores viability, and lists fixes. This is how Caspa knows what to write next.',
       action: hasDiagnosis ? 'Review diagnosis' : 'Open Workshop',
       view: 'workshop',
       done: hasDiagnosis,
@@ -204,7 +274,7 @@ export function getWorkflowSteps(
 
     steps.push({
       id: 'workshop_write',
-      title: 'Commission the rewrite',
+      title: poetry ? 'Commission the cut / rewrite' : 'Commission the rewrite',
       why: 'Select recommendations, then Write it. Caspa produces a manuscript-ready artefact for White Page.',
       action: commissionComplete ? 'View artefact' : hasChapters ? 'Finish commission' : 'Open Workshop',
       view: 'workshop',
@@ -217,13 +287,15 @@ export function getWorkflowSteps(
       why: 'Read what Caspa produced. Edit in White Page before you export — machines do not know your ending yet.',
       action: 'Open White Page',
       view: 'write',
-      done: commissionComplete && words >= 100,
+      done: commissionComplete && words >= (poetry ? 40 : 100),
     });
 
     steps.push({
       id: 'polish_optional',
       title: 'Design cover & pages',
-      why: 'Optional for prose novels. Use when you want a cover or illustrated companion pages.',
+      why: poetry
+        ? 'Optional pamphlet / cover design when you want a physical object.'
+        : 'Optional for prose. Use when you want a cover or illustrated companion pages.',
       action: 'Open Design',
       view: 'design',
       optional: true,

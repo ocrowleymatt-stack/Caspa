@@ -11,6 +11,9 @@ export type GoldPassId =
 
 export type NovelWriteProMode =
   | 'novel'
+  | 'nonfiction'
+  | 'essay'
+  | 'poetry'
   | 'script'
   | 'musical'
   | 'adaptation'

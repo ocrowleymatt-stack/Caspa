@@ -3,7 +3,16 @@
  * Single source of prize-calibre writing prompts for Caspa.
  */
 
-export type NovelWriteProMode = 'novel' | 'script' | 'musical' | 'adaptation' | 'polish' | 'chaos';
+export type NovelWriteProMode =
+  | 'novel'
+  | 'nonfiction'
+  | 'essay'
+  | 'poetry'
+  | 'script'
+  | 'musical'
+  | 'adaptation'
+  | 'polish'
+  | 'chaos';
 
 export interface NovelWriteProPromptInput {
   mode: NovelWriteProMode;
@@ -126,7 +135,10 @@ ${AWARD_BAR}
 ${ARTEFACT_FIRST}
 
 FORMAT RULES
-- Novel: title, short logline, then Chapter One prose.
+- Novel / fiction: title, short logline, then Chapter One prose.
+- Non-fiction: title, angle/promise, then opening chapter or section with evidence-led clarity.
+- Essay / article: title, hook, then a complete short draft with a clear turn and landing.
+- Poetry: title (optional), then the poem or short sequence — compressed, musical, no padding.
 - Script: title, premise note, then a properly formatted opening scene.
 - Musical/show: title, premise, opening scene, first song title + lyric draft, staging.
 - Polish/adaptation: preserve source intent, then produce a stronger award-pass draft.
@@ -140,15 +152,27 @@ Return only the creative material. Do not explain the process.`;
 }
 
 export function buildSeedToStoryPrompt(seed: string, mode: NovelWriteProMode): string {
+  const nonfiction = mode === 'nonfiction' || mode === 'essay';
+  const poetry = mode === 'poetry';
+  const invent = poetry
+    ? 'Invent a compressed image-led poem premise from a mundane object.'
+    : nonfiction
+      ? 'Invent a sharp non-fiction angle from a concrete real-world pressure.'
+      : 'Invent something strange and literary from a mundane object.';
+  const philosophy = poetry
+    ? 'Philosophy: every seed contains a poem. Compression beats explanation. Ambition is prize-list clarity.'
+    : nonfiction
+      ? 'Philosophy: every seed contains an argument or lived investigation. Evidence over invention. Ambition is review-proof clarity.'
+      : 'Philosophy: every seed contains a story. A receipt on the floor contains a life. Ambition is always literary prize quality.';
   return `You are Caspa. Turn this thin seed into a prize-ambition project proposal.
 
 SEED
-${seed.trim() || 'Invent something strange and literary from a mundane object.'}
+${seed.trim() || invent}
 
 MODE
 ${mode}
 
-Philosophy: every seed contains a story. A receipt on the floor contains a life. Ambition is always literary prize quality.
+${philosophy}
 
 ${LITERARY_ENGINE_RULES}
 
@@ -184,6 +208,12 @@ export function buildCutPrompt(excerpt: string, targetReduction = 0.3): string {
 
 export function modeTitle(mode: NovelWriteProMode): string {
   switch (mode) {
+    case 'nonfiction':
+      return 'Non-fiction';
+    case 'essay':
+      return 'Essay / article';
+    case 'poetry':
+      return 'Poetry';
     case 'script':
       return 'Script';
     case 'musical':
@@ -195,6 +225,6 @@ export function modeTitle(mode: NovelWriteProMode): string {
     case 'chaos':
       return 'Surprise Me';
     default:
-      return 'Novel';
+      return 'Fiction';
   }
 }

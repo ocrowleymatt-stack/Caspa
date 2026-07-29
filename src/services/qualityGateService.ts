@@ -129,6 +129,9 @@ export function aggregateQuality(findings: QualityGateFinding[]): {
 
 const MODE_HINTS: Record<NovelWriteProMode, string> = {
   novel: 'Award-target literary fiction: vivid specificity, earned emotion, no AI sludge.',
+  nonfiction: 'Evidence-led non-fiction: clear angle, concrete detail, earned authority, no fake profundity.',
+  essay: 'Essay/article: hook, turn, landing; argument or lived experience without waffle.',
+  poetry: 'Poetry: compression, music, image before explanation; cut decorative fog.',
   script: 'Stage/screen dialogue: playable lines, clear beats, minimal unfilmable exposition.',
   musical: 'Musical theatre: singable lyric clarity, stageable action, song placement logic.',
   adaptation: 'Faithful adaptation: preserve source intent while sharpening dramatic shape.',

@@ -27,7 +27,17 @@ import { buildServerPlotHoldBlock, type ServerPlotHold } from '../services/liter
 
 const router = express.Router();
 
-const VALID_MODES: NovelWriteProMode[] = ['novel', 'script', 'musical', 'adaptation', 'polish', 'chaos'];
+const VALID_MODES: NovelWriteProMode[] = [
+  'novel',
+  'nonfiction',
+  'essay',
+  'poetry',
+  'script',
+  'musical',
+  'adaptation',
+  'polish',
+  'chaos',
+];
 
 router.get('/awards', (_req, res) => {
   res.json({ success: true, data: { lenses: BUILTIN_AWARD_LENSES } });

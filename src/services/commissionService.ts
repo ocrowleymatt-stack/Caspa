@@ -42,6 +42,9 @@ export interface ProjectBriefLike {
 function briefToProjectType(mode: string): ProjectType {
   if (mode === 'script') return 'stageplay';
   if (mode === 'musical') return 'stageplay';
+  if (mode === 'picture') return 'illustrated';
+  if (mode === 'nonfiction' || mode === 'essay') return 'academic';
+  if (mode === 'poetry') return 'experimental';
   if (mode === 'adaptation') return 'novel';
   return 'novel';
 }
@@ -59,7 +62,8 @@ export function briefToProject(brief: ProjectBriefLike): Project {
     collaborators: [],
     lastModified: Date.now(),
     createdAt: Date.now(),
-    targetWordCount: 80000,
+    targetWordCount:
+      brief.mode === 'essay' ? 3000 : brief.mode === 'poetry' ? 800 : brief.mode === 'nonfiction' ? 50000 : 80000,
   };
 }
 

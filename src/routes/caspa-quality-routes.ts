@@ -12,6 +12,9 @@ const router = express.Router();
 
 const VALID_MODES: NovelWriteProMode[] = [
   'novel',
+  'nonfiction',
+  'essay',
+  'poetry',
   'script',
   'musical',
   'adaptation',

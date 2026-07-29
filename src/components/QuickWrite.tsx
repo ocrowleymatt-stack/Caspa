@@ -17,6 +17,24 @@ import {
 
 type StepId = 'seed' | 'spine' | 'draft' | 'cut' | 'pack';
 
+function writeModeForBrief(mode: string): string {
+  if (mode === 'gold') return 'polish';
+  if (mode === 'picture') return 'novel';
+  if (
+    mode === 'nonfiction' ||
+    mode === 'essay' ||
+    mode === 'poetry' ||
+    mode === 'script' ||
+    mode === 'musical' ||
+    mode === 'adaptation' ||
+    mode === 'chaos' ||
+    mode === 'novel'
+  ) {
+    return mode;
+  }
+  return 'novel';
+}
+
 type Props = {
   brief: {
     title: string;
@@ -69,7 +87,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
       const res = await fetch('/api/caspa/write/seed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, mode: brief.mode === 'gold' || brief.mode === 'picture' ? 'novel' : brief.mode }),
+        body: JSON.stringify({ seed, mode: writeModeForBrief(brief.mode) }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Seed failed');
@@ -97,7 +115,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: brief.mode === 'gold' || brief.mode === 'picture' ? 'novel' : brief.mode,
+          mode: writeModeForBrief(brief.mode),
           genre: proposal?.genre || hold?.genre || 'Literary fiction',
           premise: proposal?.premise || hold?.premise || seed || brief.idea,
           tone: proposal?.tone || hold?.tone || brief.tone,
@@ -142,7 +160,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: brief.mode === 'gold' || brief.mode === 'picture' ? 'novel' : brief.mode,
+          mode: writeModeForBrief(brief.mode),
           genre: proposal?.genre || hold?.genre || 'Literary fiction',
           premise: proposal?.premise || hold?.premise || seed || brief.idea,
           tone: proposal?.tone || hold?.tone || brief.tone,
