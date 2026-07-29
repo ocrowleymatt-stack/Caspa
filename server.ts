@@ -89,7 +89,8 @@ async function callGeminiOnServer(options: {
   const activeModel = prohibited.includes(model) ? 'gemini-2.0-flash' : model;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for Gemini
+  const geminiTimeoutMs = aiCallTimeoutMs(maxTokens);
+  const timeoutId = setTimeout(() => controller.abort(), geminiTimeoutMs);
 
   try {
     const response = await ai.models.generateContent({
@@ -108,17 +109,25 @@ async function callGeminiOnServer(options: {
     return response.text || null;
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`Gemini timeout after 25s`);
+    if (err.name === 'AbortError') throw new Error(`Gemini timeout after ${Math.round(geminiTimeoutMs / 1000)}s`);
     throw err;
   }
 }
 
-async function callOpenAI(prompt: string, json = false) {
+function aiCallTimeoutMs(maxTokens?: number) {
+  // Workshop / chapter drafts need far more than the old 15–25s caps.
+  if (maxTokens && maxTokens >= 4000) return 180000;
+  if (maxTokens && maxTokens >= 1500) return 120000;
+  return 90000;
+}
+
+async function callOpenAI(prompt: string, json = false, maxTokens?: number) {
   const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
   if (!apiKey) throw new Error("OpenAI API key not configured on the server.");
 
+  const timeoutMs = aiCallTimeoutMs(maxTokens);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -134,6 +143,7 @@ async function callOpenAI(prompt: string, json = false) {
           { role: "system", content: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand." },
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
         ],
+        max_tokens: maxTokens || 4096,
         ...(json ? { response_format: { type: "json_object" } } : {})
       })
     });
@@ -148,17 +158,18 @@ async function callOpenAI(prompt: string, json = false) {
     return data.choices?.[0]?.message?.content || null;
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`OpenAI timeout after 20s`);
+    if (err.name === 'AbortError') throw new Error(`OpenAI timeout after ${Math.round(timeoutMs / 1000)}s`);
     throw err;
   }
 }
 
-async function callClaude(prompt: string, json = false) {
+async function callClaude(prompt: string, json = false, maxTokens?: number) {
   const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Anthropic API key not configured on the server.");
 
+  const timeoutMs = aiCallTimeoutMs(maxTokens);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -171,7 +182,7 @@ async function callClaude(prompt: string, json = false) {
       signal: controller.signal,
       body: JSON.stringify({
         model: "claude-3-5-sonnet-20241022",
-        max_tokens: 4096,
+        max_tokens: maxTokens || 4096,
         messages: [
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
         ],
@@ -189,17 +200,18 @@ async function callClaude(prompt: string, json = false) {
     return data.content?.[0]?.text || null;
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`Claude timeout after 20s`);
+    if (err.name === 'AbortError') throw new Error(`Claude timeout after ${Math.round(timeoutMs / 1000)}s`);
     throw err;
   }
 }
 
-async function callXAI(prompt: string, json = false) {
-  const apiKey = process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
+async function callXAI(prompt: string, json = false, maxTokens?: number) {
+  const apiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY;
   if (!apiKey) throw new Error("xAI Grok API key not configured on the server.");
 
+  const timeoutMs = aiCallTimeoutMs(maxTokens);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s for Grok (often fast or dead)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -215,6 +227,7 @@ async function callXAI(prompt: string, json = false) {
           { role: "system", content: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand." },
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
         ],
+        max_tokens: maxTokens || 4096,
         ...(json ? { response_format: { type: "json_object" } } : {})
       })
     });
@@ -229,17 +242,18 @@ async function callXAI(prompt: string, json = false) {
     return data.choices?.[0]?.message?.content || null;
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`xAI Grok timeout after 15s`);
+    if (err.name === 'AbortError') throw new Error(`xAI Grok timeout after ${Math.round(timeoutMs / 1000)}s`);
     throw err;
   }
 }
 
-async function callVeniceOnServer(prompt: string, json = false) {
+async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {
   const apiKey = process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY;
   if (!apiKey) throw new Error("Venice API key not configured on the server.");
 
+  const timeoutMs = aiCallTimeoutMs(maxTokens);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 18000); // 18s for Venice
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch("https://api.venice.ai/api/v1/chat/completions", {
@@ -254,7 +268,8 @@ async function callVeniceOnServer(prompt: string, json = false) {
         messages: [
           { role: "system", content: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand." },
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
-        ]
+        ],
+        max_tokens: maxTokens || 4096
       })
     });
 
@@ -268,7 +283,7 @@ async function callVeniceOnServer(prompt: string, json = false) {
     return data.choices?.[0]?.message?.content || null;
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`Venice timeout after 18s`);
+    if (err.name === 'AbortError') throw new Error(`Venice timeout after ${Math.round(timeoutMs / 1000)}s`);
     throw err;
   }
 }
@@ -322,16 +337,16 @@ app.post("/api/ai/call", async (req, res) => {
           result = await callGeminiOnServer({ prompt, model, json, maxTokens, useSearch });
           break;
         case 'claude':
-          result = await callClaude(prompt, json);
+          result = await callClaude(prompt, json, maxTokens);
           break;
         case 'openai':
-          result = await callOpenAI(prompt, json);
+          result = await callOpenAI(prompt, json, maxTokens);
           break;
         case 'grok':
-          result = await callXAI(prompt, json);
+          result = await callXAI(prompt, json, maxTokens);
           break;
         case 'venice':
-          result = await callVeniceOnServer(prompt, json);
+          result = await callVeniceOnServer(prompt, json, maxTokens);
           break;
       }
 
@@ -1285,12 +1300,16 @@ Rules:
   }
 });
 
-  // Listen
-  app.listen(PORT, "0.0.0.0", () => {
+  // Listen — long AI/research calls need node HTTP timeouts > nginx default.
+  const httpServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`\n📚 Caspa Studio running at http://0.0.0.0:${PORT}`);
     console.log(`Environment: ${IS_DEVELOPMENT ? 'DEVELOPMENT' : 'PRODUCTION'}`);
     console.log(`Dist path: ${path.join(process.cwd(), 'dist')}\n`);
   });
+  httpServer.setTimeout(300000);
+  httpServer.headersTimeout = 310000;
+  httpServer.requestTimeout = 300000;
+  httpServer.keepAliveTimeout = 120000;
 }
 
 run().catch(err => {

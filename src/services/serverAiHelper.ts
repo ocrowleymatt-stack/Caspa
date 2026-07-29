@@ -24,7 +24,7 @@ export async function callServerAi(prompt: string, json = false): Promise<string
 }
 
 async function callGrok(prompt: string, json: boolean): Promise<string | null> {
-  const apiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+  const apiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY;
   if (!apiKey) return null;
 
   const response = await fetch('https://api.x.ai/v1/chat/completions', {
