@@ -689,12 +689,12 @@ function CaspaUI() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f5efe5', color: '#172033' }}>
+    <div style={{ display: 'flex', minHeight: '100dvh', background: '#f5efe5', color: '#172033' }}>
       <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mobile-menu" style={{ position: 'fixed', top: 16, left: 16, zIndex: 60, border: '1px solid #e0d3bf', background: '#fffaf2', borderRadius: 12, padding: 10 }}>
         {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
 
-      <aside style={{ width: 300, minWidth: 300, height: '100vh', position: 'sticky', top: 0, background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar">
+      <aside style={{ width: 300, minWidth: 300, height: '100dvh', position: 'sticky', top: 0, background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar">
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 28 }}>
           <div style={{ width: 46, height: 46, borderRadius: 16, background: '#d6a846', color: '#1a1208', display: 'grid', placeItems: 'center' }}><Sparkles size={24} /></div>
           <div>
@@ -754,7 +754,7 @@ function CaspaUI() {
         </div>
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0 }}>{renderView()}</main>
+      <main style={{ flex: 1, minWidth: 0, minHeight: '100dvh' }}>{renderView()}</main>
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
