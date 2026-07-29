@@ -188,7 +188,7 @@ const primaryNav: NavItem[] = [
 
 const advancedNav: NavItem[] = [
   { id: 'launchpad', label: 'New Work', detail: 'Start another project', group: 'advanced', icon: Sparkles },
-  { id: 'workshop', label: 'Workshop', detail: 'Diagnose and write', group: 'advanced', icon: Hammer },
+  { id: 'workshop', label: 'Workshop', detail: 'Direct idea, then write', group: 'advanced', icon: Hammer },
   { id: 'bible', label: 'Story Bible', detail: 'Canon and characters', group: 'advanced', icon: BookOpen },
   { id: 'psychology', label: 'Psychology', detail: 'Emotional journeys', group: 'advanced', icon: Brain },
   { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'advanced', icon: CircleAlert },
@@ -653,6 +653,11 @@ function CaspaUI() {
               goTo('write');
             }}
             onManuscriptChange={setManuscriptSource}
+            onBriefChange={(patch) => {
+              const next = { ...brief, ...patch };
+              setBrief(next);
+              saveBrief(next);
+            }}
           />
         );
       case 'redpen':
