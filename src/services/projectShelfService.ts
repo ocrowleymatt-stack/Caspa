@@ -8,6 +8,15 @@ import { getProjectKey } from './researchLibraryService';
 import { loadLibrary } from './researchLibraryService';
 import { loadPromises } from './promiseRegistryService';
 import { loadBlueprint } from './psychologyEngineService';
+import {
+  SHOW_BOX_KEY,
+  clearShowBox,
+  hasShowBoxContent,
+  loadShowBox,
+  saveShowBox,
+  showBoxPieceCount,
+  type ShowBoxState,
+} from './showBoxService';
 
 export type ProjectStatus = 'active' | 'complete';
 
@@ -23,6 +32,8 @@ export interface ShelfProject {
   researchCount: number;
   promiseCount: number;
   hasPsychology: boolean;
+  hasShowPack: boolean;
+  showPackPieces: number;
   phase: string;
   isActive: boolean;
   status: ProjectStatus;
@@ -33,6 +44,7 @@ export interface ProjectSnapshot {
   whitePage: string;
   manuscriptSource: string;
   commission: CommissionState | null;
+  showBox: ShowBoxState | null;
   savedAt: string;
   status: ProjectStatus;
 }
@@ -90,6 +102,7 @@ function normalizeSnapshot(raw: unknown): ProjectSnapshot | null {
     whitePage: typeof entry.whitePage === 'string' ? entry.whitePage : '',
     manuscriptSource: typeof entry.manuscriptSource === 'string' ? entry.manuscriptSource : '',
     commission: entry.commission ?? null,
+    showBox: entry.showBox ?? null,
     savedAt: entry.savedAt || new Date().toISOString(),
     status: entry.status === 'complete' ? 'complete' : 'active',
   };
@@ -180,6 +193,8 @@ function buildShelfEntry(
   const mode = brief?.mode || 'novel';
   const idea = brief?.idea || '';
   const wordCount = totalWordCount(commission, whitePage, manuscriptSource);
+  const showBox = isActive ? loadShowBox() : snapshot?.showBox || null;
+  const packCount = showBox ? showBoxPieceCount(showBox).done : 0;
 
   const status: ProjectStatus = snapshot?.status || 'active';
 
@@ -195,6 +210,8 @@ function buildShelfEntry(
     researchCount: loadLibrary(key).length,
     promiseCount: loadPromises(key).length,
     hasPsychology: Boolean(loadBlueprint(key)),
+    hasShowPack: packCount > 0,
+    showPackPieces: packCount,
     phase: commission?.phase || 'idle',
     isActive,
     status: isActive && snapshot?.status !== 'complete' ? 'active' : status,
@@ -252,11 +269,14 @@ export function recordProjectSnapshot(brief: ProjectBriefLike): void {
     if (liveEmpty) return;
   }
 
+  const showBox = hasShowBoxContent() ? loadShowBox() : existing?.showBox || null;
+
   index[key] = {
     brief,
     whitePage,
     manuscriptSource,
     commission,
+    showBox,
     savedAt: new Date().toISOString(),
     status: existing?.status || 'active',
   };
@@ -299,6 +319,12 @@ export function switchToProject(key: string): ProjectSnapshot | null {
     localStorage.removeItem(COMMISSION_KEY);
   }
 
+  if (snapshot.showBox && hasShowBoxContent(snapshot.showBox)) {
+    saveShowBox(snapshot.showBox);
+  } else {
+    clearShowBox();
+  }
+
   return snapshot;
 }
 
@@ -315,6 +341,7 @@ export function completeProject(key: string): boolean {
       whitePage: localStorage.getItem(WHITE_PAGE_KEY) || existing?.whitePage || '',
       manuscriptSource: localStorage.getItem(MANUSCRIPT_KEY) || existing?.manuscriptSource || '',
       commission: loadCommissionState() ?? existing?.commission ?? null,
+      showBox: hasShowBoxContent() ? loadShowBox() : existing?.showBox ?? null,
       savedAt: new Date().toISOString(),
       status: 'complete',
     };
@@ -323,6 +350,7 @@ export function completeProject(key: string): boolean {
       ...existing,
       whitePage: existing.whitePage || '',
       manuscriptSource: existing.manuscriptSource || '',
+      showBox: existing.showBox ?? null,
       status: 'complete',
       savedAt: new Date().toISOString(),
     };
@@ -339,6 +367,7 @@ export function completeProject(key: string): boolean {
     localStorage.removeItem(WHITE_PAGE_KEY);
     localStorage.removeItem(MANUSCRIPT_KEY);
     localStorage.removeItem(COMMISSION_KEY);
+    localStorage.removeItem(SHOW_BOX_KEY);
     localStorage.removeItem(ACTIVE_KEY);
   }
 
@@ -385,6 +414,7 @@ export function deleteProject(key: string): boolean {
     localStorage.removeItem(WHITE_PAGE_KEY);
     localStorage.removeItem(MANUSCRIPT_KEY);
     localStorage.removeItem(COMMISSION_KEY);
+    localStorage.removeItem(SHOW_BOX_KEY);
     localStorage.removeItem(ACTIVE_KEY);
   }
   return true;

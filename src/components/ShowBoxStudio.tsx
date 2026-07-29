@@ -15,15 +15,20 @@ import {
   Sparkles,
   Volume2,
 } from 'lucide-react';
+import { getProjectKey } from '../services/researchLibraryService';
+import {
+  assembleShowPack,
+  createMusicSketch,
+  loadShowBox,
+  saveShowBox,
+  showBoxPieceCount,
+  syncShowPackToResearch,
+  type ShowBoxBriefLike,
+  type ShowBoxState,
+} from '../services/showBoxService';
+import { recordProjectSnapshot } from '../services/projectShelfService';
 
-export interface ShowBriefLike {
-  title: string;
-  mode: string;
-  idea: string;
-  tone: string;
-  output: string;
-  audience: string;
-}
+export type ShowBriefLike = ShowBoxBriefLike;
 
 type PackPiece = {
   id: string;
@@ -41,74 +46,6 @@ interface Props {
   onOpenWrite: () => void;
   onOpenPublish: () => void;
   onOpenCanvas: () => void;
-}
-
-const STORAGE_KEY = 'caspa.showBox';
-
-type ShowState = {
-  songList: string;
-  runningOrder: string;
-  castNotes: string;
-  productionPack: string;
-  musicSketch: string;
-};
-
-function loadShowState(): ShowState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return { songList: '', runningOrder: '', castNotes: '', productionPack: '', musicSketch: '' };
-    }
-    return { songList: '', runningOrder: '', castNotes: '', productionPack: '', musicSketch: '', ...JSON.parse(raw) };
-  } catch {
-    return { songList: '', runningOrder: '', castNotes: '', productionPack: '', musicSketch: '' };
-  }
-}
-
-function createMusicSketch(idea: string, tone: string, title: string) {
-  return `# Music Sketch — ${title || 'Untitled show number'}
-
-Working title: ${idea || title || 'Untitled show number'}
-Style: theatrical pop / panto-rock / comic patter song
-Tempo: 126 BPM
-Key: D minor moving to F major for the release
-Tone: ${tone || 'Comic, theatrical, sharp, with a big chorus'}
-
-## Structure
-Intro: 4 bars — cheeky pizzicato strings and muted brass stab
-Verse 1: 16 bars — patter delivery, comic exposition
-Pre-chorus: 8 bars — rising panic / civic outrage
-Chorus: 16 bars — big hook, ensemble response
-Middle 8: 8 bars — villain/hero reversal
-Final chorus: 24 bars — key lift, full company, button ending
-
-## Chords
-Intro: Dm | Bb | C | A7
-Verse: Dm | Dm/C | Bb | A7
-Pre: Gm | Bb | F | A7
-Chorus: F | C/E | Dm | Bb | Gm | C | F | A7
-Middle 8: Bb | C | Am | Dm | Gm | C | F | F
-
-## Melody contour
-Verse: fast repeated notes around A–C, with comic leaps on punchlines.
-Pre-chorus: climb C–D–E–F–G to build theatrical panic.
-Chorus hook: land strongly on F, then leap to A on the title phrase.
-
-## First lyric hook
-Round and round the roundabout, nobody knows why,
-Dick Turpin lost his horse outside the retail park by five.
-Stand and deliver? Darling, not in lane three —
-Milton Keynes has swallowed him and charged him parking fee.
-
-## Arrangement
-Drums: brushed snare into full kit by chorus.
-Bass: bouncy quavers, comic swagger.
-Keys: tack piano doubled with theatre organ.
-Brass: short stabs after jokes.
-Strings: pizzicato for sneaking, full tremolo for mock peril.
-
-## Export prompt for Suno/Udio/DAW assistant
-Theatrical British comedy patter song, 126 BPM, D minor to F major, panto-rock energy, witty camp lyrics, brass stabs, tack piano, ensemble chorus, comic highwayman lost in modern Milton Keynes, catchy chorus, West End demo style.`;
 }
 
 async function aiText(prompt: string, maxTokens = 1800): Promise<string> {
@@ -132,17 +69,25 @@ export default function ShowBoxStudio({
   onOpenPublish,
   onOpenCanvas,
 }: Props) {
-  const [state, setState] = useState<ShowState>(loadShowState);
+  const [state, setState] = useState<ShowBoxState>(loadShowBox);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [copied, setCopied] = useState(false);
+  const projectKey = getProjectKey(brief);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    saveShowBox(state);
+    syncShowPackToResearch(projectKey, brief);
+    try {
+      recordProjectSnapshot(brief);
+    } catch {
+      /* shelf optional while launching */
+    }
+  }, [state, projectKey, brief]);
 
   const bookWords = draftPage.trim().split(/\s+/).filter(Boolean).length;
+  const packMeta = showBoxPieceCount(state);
 
   const pieces: PackPiece[] = useMemo(
     () => [
@@ -152,67 +97,20 @@ export default function ShowBoxStudio({
         detail: bookWords > 0 ? `${bookWords.toLocaleString()} words on the page` : 'Draft scenes in Just write or White Page',
         done: bookWords >= 80,
       },
-      {
-        id: 'songs',
-        label: 'Song list',
-        detail: state.songList.trim() ? 'Song list locked' : 'Titles, who sings, what each number turns',
-        done: Boolean(state.songList.trim()),
-      },
-      {
-        id: 'order',
-        label: 'Running order',
-        detail: state.runningOrder.trim() ? 'Acts & numbers sequenced' : 'Act-by-act sequence with book beats',
-        done: Boolean(state.runningOrder.trim()),
-      },
-      {
-        id: 'music',
-        label: 'Music sketch',
-        detail: state.musicSketch.trim() ? 'Structure, chords, lyric hook ready' : 'Playable sketch + export prompt',
-        done: Boolean(state.musicSketch.trim()),
-      },
-      {
-        id: 'cast',
-        label: 'Cast & doubles',
-        detail: state.castNotes.trim() ? 'Cast notes saved' : 'Roles, doubles, company size',
-        done: Boolean(state.castNotes.trim()),
-      },
-      {
-        id: 'pack',
-        label: 'Production pack',
-        detail: state.productionPack.trim() ? 'Producer-facing pack ready' : 'Tech, staging, rehearsal notes',
-        done: Boolean(state.productionPack.trim()),
-      },
+      ...packMeta.pieces.map((p) => ({
+        id: p.id,
+        label: p.label,
+        detail: p.done ? `${p.label} locked` : `Build ${p.label.toLowerCase()}`,
+        done: p.done,
+      })),
     ],
-    [bookWords, state]
+    [bookWords, packMeta.pieces]
   );
 
   const doneCount = pieces.filter((p) => p.done).length;
+  const fullPack = useMemo(() => assembleShowPack(brief, draftPage, state), [brief, draftPage, state]);
 
-  const fullPack = useMemo(() => {
-    return [
-      `# ${brief.title}`,
-      '',
-      `## Premise`,
-      brief.idea,
-      '',
-      `## Tone`,
-      brief.tone,
-      '',
-      `## Audience`,
-      brief.audience,
-      '',
-      state.runningOrder.trim() && `## Running order\n\n${state.runningOrder.trim()}`,
-      state.songList.trim() && `## Song list\n\n${state.songList.trim()}`,
-      state.castNotes.trim() && `## Cast & doubles\n\n${state.castNotes.trim()}`,
-      state.musicSketch.trim() && `## Music sketch\n\n${state.musicSketch.trim()}`,
-      state.productionPack.trim() && `## Production pack\n\n${state.productionPack.trim()}`,
-      draftPage.trim() && `## Book / working draft\n\n${draftPage.trim()}`,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-  }, [brief, state, draftPage]);
-
-  const patch = (partial: Partial<ShowState>) => setState((prev) => ({ ...prev, ...partial }));
+  const patch = (partial: Partial<ShowBoxState>) => setState((prev) => ({ ...prev, ...partial }));
 
   const generateSongList = async () => {
     setBusy('songs');

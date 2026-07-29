@@ -12,6 +12,7 @@ interface Props {
   onOpenWorkshop: () => void;
   onOpenPsychology: () => void;
   onOpenResearch: () => void;
+  onOpenShowBox?: () => void;
 }
 
 export default function StoryBibleStudio({
@@ -19,6 +20,7 @@ export default function StoryBibleStudio({
   onOpenWorkshop,
   onOpenPsychology,
   onOpenResearch,
+  onOpenShowBox,
 }: Props) {
   const [canon, setCanon] = useState<StoryCanon>(() => loadStoryCanon(brief));
 
@@ -53,11 +55,18 @@ export default function StoryBibleStudio({
             <BookOpen size={36} style={{ color: '#d6a846', marginBottom: 12 }} />
             <h2 style={sectionTitle}>No canon yet</h2>
             <p style={{ color: '#73695d', lineHeight: 1.6 }}>
-              Paste a manuscript in Workshop to extract chapters, promises, and editorial verdict. Add psychology and research to fill this room.
+              Paste a manuscript in Workshop to extract chapters, promises, and editorial verdict. Add psychology, research, or a Show in a Box pack to fill this room.
             </p>
-            <button type="button" onClick={onOpenWorkshop} style={{ ...primaryBtn, marginTop: 16 }}>
-              <Hammer size={18} /> Open Workshop
-            </button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
+              <button type="button" onClick={onOpenWorkshop} style={primaryBtn}>
+                <Hammer size={18} /> Open Workshop
+              </button>
+              {onOpenShowBox && (
+                <button type="button" onClick={onOpenShowBox} style={ghostBtn}>
+                  Show in a Box
+                </button>
+              )}
+            </div>
           </article>
         ) : (
           <>
@@ -66,6 +75,7 @@ export default function StoryBibleStudio({
               <Stat label="Words" value={canon.wordCount.toLocaleString()} />
               <Stat label="Promises" value={String(canon.promiseHealth.total)} />
               <Stat label="Research notes" value={String(canon.researchCount)} />
+              {canon.hasShowPack && <Stat label="Show pack" value={`${canon.showPackPieces}/5`} />}
               {canon.diagnosis?.viabilityScore != null && (
                 <Stat label="Viability" value={`${canon.diagnosis.viabilityScore}%`} />
               )}
@@ -104,6 +114,32 @@ export default function StoryBibleStudio({
                     <p style={{ marginTop: 10, fontSize: 14, color: '#5c5146' }}>
                       <strong>Hidden meaning:</strong> {canon.psychology.hiddenMeaning}
                     </p>
+                  )}
+                </article>
+              )}
+
+              {canon.showBox && (
+                <article style={card}>
+                  <h2 style={sectionTitle}>Show in a Box</h2>
+                  <p style={{ margin: '0 0 10px', color: '#73695d', fontSize: 14 }}>
+                    {canon.showPackPieces}/5 pack pieces locked into canon.
+                  </p>
+                  {canon.showBox.runningOrder.trim() && (
+                    <p style={{ margin: '0 0 8px', fontSize: 14, lineHeight: 1.5 }}>
+                      <strong>Running order:</strong> {canon.showBox.runningOrder.trim().slice(0, 280)}
+                      {canon.showBox.runningOrder.trim().length > 280 ? '…' : ''}
+                    </p>
+                  )}
+                  {canon.showBox.songList.trim() && (
+                    <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>
+                      <strong>Songs:</strong> {canon.showBox.songList.trim().slice(0, 280)}
+                      {canon.showBox.songList.trim().length > 280 ? '…' : ''}
+                    </p>
+                  )}
+                  {onOpenShowBox && (
+                    <button type="button" onClick={onOpenShowBox} style={{ ...ghostBtn, marginTop: 12 }}>
+                      Open Show Box
+                    </button>
                   )}
                 </article>
               )}
@@ -160,6 +196,11 @@ export default function StoryBibleStudio({
               <button type="button" onClick={onOpenWorkshop} style={primaryBtn}>
                 <Hammer size={16} /> Workshop
               </button>
+              {onOpenShowBox && (
+                <button type="button" onClick={onOpenShowBox} style={ghostBtn}>
+                  Show in a Box
+                </button>
+              )}
               <button type="button" onClick={onOpenPsychology} style={ghostBtn}>
                 <Brain size={16} /> Psychology
               </button>

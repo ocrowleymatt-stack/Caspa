@@ -361,6 +361,7 @@ function ProjectCard({
       </p>
       <div style={{ fontSize: 12, color: '#8a7a66' }}>
         {project.wordCount.toLocaleString()} words · Phase: <strong>{project.phase}</strong>
+        {project.hasShowPack ? ` · Show Box ${project.showPackPieces}/5` : ''}
       </div>
       <ProjectActions tab={tab} isActive={project.isActive} onOpen={onOpen} onComplete={onComplete} onReopen={onReopen} onPublish={onPublish} onWorkshop={onWorkshop} onDelete={onDelete} />
     </article>
@@ -405,6 +406,7 @@ function ProjectRow({
         <p style={{ margin: 0, fontSize: 13, color: '#73695d' }}>
           {project.wordCount.toLocaleString()} words · {project.phase}
           {project.viabilityScore != null ? ` · ${project.viabilityScore}% viability` : ''}
+          {project.hasShowPack ? ` · Show Box ${project.showPackPieces}/5` : ''}
         </p>
       </div>
       <ProjectActions tab={tab} isActive={project.isActive} compact onOpen={onOpen} onComplete={onComplete} onReopen={onReopen} onPublish={onPublish} onWorkshop={onWorkshop} />

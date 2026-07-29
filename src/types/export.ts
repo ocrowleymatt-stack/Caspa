@@ -13,7 +13,8 @@ export type ExportProfile =
   | 'professional-print'
   | 'markdown'
   | 'kdp-picture-book'
-  | 'illustrated-spread';
+  | 'illustrated-spread'
+  | 'show-pack';
 
 export interface ExportProfileMeta {
   id: ExportProfile;
@@ -26,6 +27,7 @@ export const EXPORT_PROFILES: ExportProfileMeta[] = [
   { id: 'kdp-novel', label: 'KDP Novel', detail: '6×9 trim, serif, chapter breaks — Amazon print-ready layout', trim: '6×9 in' },
   { id: 'kdp-picture-book', label: 'KDP Picture Book', detail: '8×8 spreads, age-band type, full-bleed art, wraparound cover', trim: '8×8 in' },
   { id: 'illustrated-spread', label: 'Illustrated Spreads', detail: 'Facing-page art + text-safe zones for illustrated / kids books', trim: '10×8 or 8×10' },
+  { id: 'show-pack', label: 'Show in a Box', detail: 'Book + song list + running order + music sketch + cast + production pack', trim: 'A4 rehearsal' },
   { id: 'course-book', label: 'Course Book', detail: 'A4 modules, callout boxes, exercise blocks', trim: 'A4' },
   { id: 'subject-bible', label: 'Subject Bible', detail: 'Reference layout, dense typography, index-friendly', trim: 'A4' },
   { id: 'screen-pdf', label: 'Screen PDF', detail: 'Fast digital PDF for review and sharing', trim: 'Letter' },
@@ -49,6 +51,9 @@ export interface ExportContext {
   diagnosis: Diagnosis | null;
   audience: string;
   tone: string;
+  mode?: string;
+  showPackPieces?: number;
+  hasShowPack?: boolean;
 }
 
 export interface ContentAnalysisSummary {

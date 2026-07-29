@@ -79,6 +79,7 @@ import {
 import { countWords, defaultTargetWordCount } from './services/wordCountService';
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
+import { clearShowBox, formatShowPackForWriting } from './services/showBoxService';
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
 declare const process: any;
@@ -407,6 +408,7 @@ function makeTitle(idea: string, mode: CreativeMode) {
 }
 
 function buildOpenWebUIPrompt(brief: ProjectBrief, canvas: string) {
+  const showPack = formatShowPackForWriting();
   return `You are Caspa, a private creative production room for Matthew O'Crowley.
 
 PROJECT
@@ -417,7 +419,7 @@ Tone: ${brief.tone}
 Audience: ${brief.audience}
 Required output: ${brief.output}
 Aspire-to length: ~${(brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString()} words
-
+${showPack ? `\n${showPack}\n` : ''}
 OPERATING METHOD
 - Treat the project as a living creative file for ${modeLabels[brief.mode]}.
 - Keep answers practical, direct and production-minded.
@@ -426,6 +428,7 @@ OPERATING METHOD
 - When planning, produce clear beats, scenes, chapters, sections, songs, arguments, or production tasks as the form requires.
 - Preserve voice, weirdness and ambition. Do not sand the magic off.
 - For non-fiction and essays: prefer evidence, structure, and earned claims over invented drama. Do not force novel wound/desire framing.
+- For Show in a Box / musical: honour the locked song list, running order, cast, and production pack. Do not invent conflicting numbers.
 - Cut by need for the best product — never a fixed percentage quota.
 - Challenge weak structure, but do not flatten the premise.
 
@@ -697,7 +700,7 @@ function CaspaUI() {
     localStorage.setItem('caspa.manuscriptSource', '');
     localStorage.removeItem('caspa.commission');
     localStorage.removeItem('caspa.commission.tab');
-    localStorage.removeItem('caspa.showBox');
+    clearShowBox();
     clearPlotHold();
     // Match CTA: picture → Design, show → Show Box, polish → Gold, else → Next step.
     if (mode === 'picture') goTo('design');
@@ -744,6 +747,7 @@ function CaspaUI() {
               }}
               onGoPublish={() => goTo('publish')}
               onGoWorkshop={() => goTo('workshop')}
+              onGoShowBox={() => goTo('showbox')}
             />
           </PageShell>
         );
@@ -776,6 +780,7 @@ function CaspaUI() {
             onOpenWorkshop={() => goTo('workshop')}
             onOpenPsychology={() => goTo('psychology')}
             onOpenResearch={() => goTo('research')}
+            onOpenShowBox={() => goTo('showbox')}
           />
         );
       case 'workshop':
@@ -859,6 +864,7 @@ function CaspaUI() {
             authorEmail={authContext.user?.email}
             onGoWorkshop={() => goTo('workshop')}
             onGoDesign={() => goTo('design')}
+            onGoShowBox={() => goTo('showbox')}
             onMoveToLibrary={handleCompleteProject}
           />
         );

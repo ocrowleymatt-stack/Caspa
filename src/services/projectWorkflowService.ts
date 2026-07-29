@@ -108,6 +108,7 @@ function isScriptMode(brief: ProjectBriefLike): boolean {
 
 function hasShowPack(): boolean {
   try {
+    // Lazy require avoided — duplicate thin check keeps workflow free of circular imports.
     const raw = localStorage.getItem('caspa.showBox');
     if (!raw) return false;
     const saved = JSON.parse(raw);
@@ -115,6 +116,7 @@ function hasShowPack(): boolean {
       saved?.songList?.trim() ||
         saved?.runningOrder?.trim() ||
         saved?.musicSketch?.trim() ||
+        saved?.castNotes?.trim() ||
         saved?.productionPack?.trim()
     );
   } catch {

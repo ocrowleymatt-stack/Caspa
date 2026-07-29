@@ -158,6 +158,7 @@ export async function getDoctorSnapshot() {
       bookDesignStudio: true,
       quickWrite: true,
       plotHold: true,
+      showInABox: true,
     },
     jobs: {
       inMemoryQueue: false,
