@@ -1,6 +1,6 @@
+import './src/loadEnv';
 import express from "express";
 import path from "path";
-import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { analyzeContent, generateGrokPrompts, validateProductionReadiness, generateOutputSpec } from './src/services/ContentIntelligenceService';
@@ -23,8 +23,6 @@ import caspaWriteRoutes from './src/routes/caspa-write-routes';
 import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 import { getBuildInfo } from './src/services/buildInfoService';
-
-dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;

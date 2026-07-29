@@ -6,9 +6,12 @@ import { GoogleGenAI } from '@google/genai';
 
 const router = Router();
 
-// Create Gemini API instance for PDF routes
-const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-const gemini = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
+// Create Gemini API instance for PDF routes (lazy — after dotenv / PM2 env)
+function getGemini(): GoogleGenAI {
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!geminiApiKey) throw new Error('Gemini API not configured');
+  return new GoogleGenAI({ apiKey: geminiApiKey });
+}
 
 // Lazy-initialize Grok service
 let grokService: any = null;
@@ -21,11 +24,8 @@ function getGrokService() {
 
 // Helper: Call Gemini from PDF routes
 async function callGemini(prompt: string, json: boolean = false): Promise<string> {
-  if (!gemini) {
-    throw new Error('Gemini API not configured');
-  }
   try {
-    const response = await gemini.models.generateContent({
+    const response = await getGemini().models.generateContent({
       model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
