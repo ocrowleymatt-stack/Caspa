@@ -69,7 +69,7 @@ Doctor endpoint (safe, no secrets): `GET /api/doctor` — readiness score plus `
 ## How to use
 
 1. **Continue locally** — no account needed; drafts live in the browser.
-2. **Launchpad** — three doors (more formats under “More”).
+2. **Launchpad** — Fiction, Non-fiction, Picture book, Polish (more under “More”).
 3. **Next step** — one highlighted action; advanced tools stay collapsed.
 4. **Settings** — backup/restore + deploy readiness check (shows commit fingerprint).
 5. Optional Google/email sign-in when you want a cloud account.

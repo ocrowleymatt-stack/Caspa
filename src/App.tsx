@@ -26,7 +26,9 @@ import {
   Mail,
   Menu,
   Music2,
+  Newspaper,
   PenLine,
+  Quote,
   Search,
   Settings,
   Sparkles,
@@ -98,7 +100,17 @@ type AuthContextType = {
   signOut: () => Promise<void>;
 };
 
-type CreativeMode = 'novel' | 'picture' | 'script' | 'musical' | 'adaptation' | 'gold' | 'chaos';
+type CreativeMode =
+  | 'novel'
+  | 'nonfiction'
+  | 'essay'
+  | 'poetry'
+  | 'picture'
+  | 'script'
+  | 'musical'
+  | 'adaptation'
+  | 'gold'
+  | 'chaos';
 
 type ViewType =
   | 'launchpad'
@@ -153,7 +165,10 @@ const defaultBrief: ProjectBrief = {
 };
 
 const modeLabels: Record<CreativeMode, string> = {
-  novel: 'Novel',
+  novel: 'Fiction',
+  nonfiction: 'Non-fiction',
+  essay: 'Essay / article',
+  poetry: 'Poetry',
   picture: 'Picture book',
   script: 'Script',
   musical: 'Musical / Show',
@@ -194,10 +209,18 @@ const modeCards: Array<{
 }> = [
   {
     mode: 'novel',
-    title: 'Just write',
-    subtitle: 'Seed → spine → prize draft. Plot held under the hood.',
+    title: 'Fiction',
+    subtitle: 'Novel, short story, series bible. Plot held under the hood.',
     examples: ['Gothic literary thriller', 'Comic revenge novel', 'Queer horror with teeth'],
     icon: Zap,
+    hero: true,
+  },
+  {
+    mode: 'nonfiction',
+    title: 'Non-fiction',
+    subtitle: 'Memoir, reportage, how-to, history, true crime, biography.',
+    examples: ['Family history with teeth', 'How-to for burned-out carers', 'Town that vanished overnight'],
+    icon: Newspaper,
     hero: true,
   },
   {
@@ -211,10 +234,24 @@ const modeCards: Array<{
   {
     mode: 'gold',
     title: 'Polish',
-    subtitle: 'Paste existing work. Gold pipeline. Same story, sharper.',
+    subtitle: 'Paste existing work. Gold pipeline. Same piece, sharper.',
     examples: ['Tighten chapter', 'Fix pacing', 'Make it prize-ready'],
     icon: Wand2,
     hero: true,
+  },
+  {
+    mode: 'essay',
+    title: 'Essay / article',
+    subtitle: 'Column, thinkpiece, feature, review, speech draft.',
+    examples: ['Personal essay on shame', 'Longread investigation', 'Op-ed with receipts'],
+    icon: FileText,
+  },
+  {
+    mode: 'poetry',
+    title: 'Poetry',
+    subtitle: 'Poem, sequence, pamphlet, performance piece.',
+    examples: ['Sonnet crown about work', 'Spoken-word set', 'Elegy that refuses comfort'],
+    icon: Quote,
   },
   {
     mode: 'script',
@@ -233,9 +270,9 @@ const modeCards: Array<{
   {
     mode: 'adaptation',
     title: 'Adapt Something',
-    subtitle: 'Turn notes, evidence, transcripts or chaos into story.',
+    subtitle: 'Turn notes, evidence, transcripts or chaos into a finished form.',
     examples: ['Transcript to drama', 'Memoir to play', 'Evidence to thriller'],
-    icon: FileText,
+    icon: PenLine,
   },
   {
     mode: 'chaos',
@@ -301,12 +338,13 @@ Audience: ${brief.audience}
 Required output: ${brief.output}
 
 OPERATING METHOD
-- Treat the project as a living creative file.
+- Treat the project as a living creative file for ${modeLabels[brief.mode]}.
 - Keep answers practical, direct and production-minded.
 - Start from the user's latest page/canvas rather than generic advice.
 - When drafting, provide usable material immediately.
-- When planning, produce clear beats, scenes, chapters, songs, or production tasks.
+- When planning, produce clear beats, scenes, chapters, sections, songs, arguments, or production tasks as the form requires.
 - Preserve voice, weirdness and ambition. Do not sand the magic off.
+- For non-fiction and essays: prefer evidence, structure, and earned claims over invented drama.
 - Challenge weak structure, but do not flatten the premise.
 
 CURRENT WHITE PAGE / CANVAS
@@ -796,6 +834,34 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
         audience: 'Same readers as the source draft.',
       };
     }
+    if (m === 'nonfiction') {
+      return {
+        tone: 'Clear, concrete, earned authority. No fake profundity.',
+        output: 'Chaptered manuscript or longform with working outline.',
+        audience: 'General informed readers (or name the niche).',
+      };
+    }
+    if (m === 'essay') {
+      return {
+        tone: 'Sharp, personal where useful, argument-led.',
+        output: 'Finished essay / article / column draft.',
+        audience: 'Magazine, Substack, or newspaper readers.',
+      };
+    }
+    if (m === 'poetry') {
+      return {
+        tone: 'Compressed, musical, image before explanation.',
+        output: 'Poem, sequence, or short pamphlet.',
+        audience: 'Readers of contemporary poetry / live audience.',
+      };
+    }
+    if (m === 'script' || m === 'musical') {
+      return {
+        tone: 'Spoken, actable, scene-turn hungry.',
+        output: m === 'musical' ? 'Book + song list + running order.' : 'Script draft with scene turns.',
+        audience: 'Actors, directors, producers.',
+      };
+    }
     return {
       tone: 'Sharp, vivid, structurally solid.',
       output: 'Opening chapter, then continue by beat.',
@@ -815,7 +881,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
           <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
           <h1 style={{ fontSize: 'clamp(40px, 7vw, 72px)', lineHeight: .9, margin: 0, letterSpacing: -2.5 }}>What are we making?</h1>
           <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 18, lineHeight: 1.5, marginTop: 18 }}>
-            Three doors. Powerful engines underneath. No dashboard maze.
+            Fiction is one door. Non-fiction, picture books, essays, scripts — pick the form first.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 28 }}>
             {heroCards.map((card) => {
@@ -867,7 +933,16 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
           </div>
 
           <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
-            <Sparkles size={19} /> {mode === 'picture' ? 'Open Design' : mode === 'gold' ? 'Open Gold' : 'Start writing'}
+            <Sparkles size={19} />{' '}
+            {mode === 'picture'
+              ? 'Open Design'
+              : mode === 'gold'
+                ? 'Open Gold'
+                : mode === 'nonfiction' || mode === 'essay'
+                  ? 'Start non-fiction'
+                  : mode === 'poetry'
+                    ? 'Start poem'
+                    : 'Start writing'}
           </button>
         </div>
       </div>
@@ -909,7 +984,7 @@ function ProjectView({
     <PageShell
       kicker="Guided workflow"
       title={brief.title}
-      subtitle={`${modeLabels[brief.mode]} · ${projectStatus === 'complete' ? 'In library' : 'Active project'} · ${formatDate(brief.createdAt)}`}
+      subtitle={`${modeLabels[brief.mode] || brief.mode} · ${projectStatus === 'complete' ? 'In library' : 'Active project'} · ${formatDate(brief.createdAt)}`}
     >
       <GuidedNextStep
         step={nextStep}
