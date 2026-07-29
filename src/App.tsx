@@ -159,7 +159,7 @@ const defaultBrief: ProjectBrief = {
   mode: 'novel',
   idea: 'A strange, ambitious story that needs a proper engine behind it.',
   tone: 'Literate, vivid, funny when it should be, ruthless when it must be.',
-  output: 'Project bible, outline, first draft, polish plan.',
+  output: 'Full manuscript: draft every held chapter in order.',
   audience: 'General readers / theatre audience / producers, depending on format.',
   createdAt: new Date().toISOString(),
 };
@@ -179,7 +179,7 @@ const modeLabels: Record<CreativeMode, string> = {
 
 const primaryNav: NavItem[] = [
   { id: 'project', label: 'Next step', detail: 'What to do now', group: 'primary', icon: Home },
-  { id: 'quickwrite', label: 'Just write', detail: 'Seed → draft → cut', group: 'primary', icon: Zap },
+  { id: 'quickwrite', label: 'Just write', detail: 'Whole book by chapter', group: 'primary', icon: Zap },
   { id: 'write', label: 'White Page', detail: 'Draft and edit', group: 'primary', icon: PenLine },
   { id: 'design', label: 'Design', detail: 'Cover & picture pages', group: 'primary', icon: BookImage },
   { id: 'publish', label: 'Publish', detail: 'Export when ready', group: 'primary', icon: Download },
@@ -614,7 +614,7 @@ function CaspaUI() {
         return <WhitePageView brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} setCurrentView={goTo} />;
       case 'quickwrite':
         return (
-          <PageShell kicker="Auto write" title="Just write" subtitle="Simple steps. Prize-calibre engine underneath.">
+          <PageShell kicker="Auto write" title="Just write" subtitle="Seed a spine, then draft the whole book by chapter.">
             <QuickWrite
               brief={brief}
               draftPage={draftPage}
@@ -837,7 +837,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
     if (m === 'nonfiction') {
       return {
         tone: 'Clear, concrete, earned authority. No fake profundity.',
-        output: 'Chaptered manuscript or longform with working outline.',
+        output: 'Full manuscript: draft every held chapter/section in order (~1500–2500 words each).',
         audience: 'General informed readers (or name the niche).',
       };
     }
@@ -858,13 +858,16 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
     if (m === 'script' || m === 'musical') {
       return {
         tone: 'Spoken, actable, scene-turn hungry.',
-        output: m === 'musical' ? 'Book + song list + running order.' : 'Script draft with scene turns.',
+        output:
+          m === 'musical'
+            ? 'Full show draft: book scenes + song list drafted in running order.'
+            : 'Full script draft: every held scene in order.',
         audience: 'Actors, directors, producers.',
       };
     }
     return {
       tone: 'Sharp, vivid, structurally solid.',
-      output: 'Opening chapter, then continue by beat.',
+      output: 'Full manuscript: draft every held chapter in order (~1500–2500 words each).',
       audience: 'Literary / general readers.',
     };
   };

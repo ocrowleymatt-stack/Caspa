@@ -52,10 +52,15 @@ type Props = {
 const STEPS: Array<{ id: StepId; label: string; detail: string }> = [
   { id: 'seed', label: 'Seed', detail: 'Capture the wound and desire' },
   { id: 'spine', label: 'Spine', detail: 'Chapter turns, no prose' },
-  { id: 'draft', label: 'Draft', detail: 'Prize-target opening chapter' },
+  { id: 'draft', label: 'Draft', detail: 'Write the whole held manuscript' },
   { id: 'cut', label: 'Cut', detail: 'Kill the sludge' },
   { id: 'pack', label: 'Pack', detail: 'Export when ready' },
 ];
+
+function chapterHeading(title: string, index: number) {
+  const clean = title.trim() || `Chapter ${index + 1}`;
+  return `\n\n# ${clean}\n\n`;
+}
 
 export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublish, onGoWorkshop }: Props) {
   const [step, setStep] = useState<StepId>('seed');
@@ -68,6 +73,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [bookProgress, setBookProgress] = useState<{ done: number; total: number; title: string } | null>(null);
   const [plotHold, setPlotHold] = useState<PlotHold | null>(() => loadPlotHold());
 
   useEffect(() => {
@@ -78,6 +84,16 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
       })
       .catch(() => {});
   }, []);
+
+  const sharedWriteBody = (hold: PlotHold | null, focus?: { title: string; turn: string } | null) => ({
+    mode: writeModeForBrief(brief.mode),
+    genre: proposal?.genre || hold?.genre || 'Literary fiction',
+    premise: proposal?.premise || hold?.premise || seed || brief.idea,
+    tone: proposal?.tone || hold?.tone || brief.tone,
+    prizeLensId,
+    plotHold: hold || undefined,
+    focusBeat: focus ? `${focus.title}: ${focus.turn}` : undefined,
+  });
 
   const runSeed = async () => {
     setBusy(true);
@@ -115,15 +131,9 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: writeModeForBrief(brief.mode),
-          genre: proposal?.genre || hold?.genre || 'Literary fiction',
-          premise: proposal?.premise || hold?.premise || seed || brief.idea,
-          tone: proposal?.tone || hold?.tone || brief.tone,
+          ...sharedWriteBody(hold, focus),
           output: brief.output || 'Opening chapter (1800–2800 words)',
           sourceText: draftPage,
-          prizeLensId,
-          plotHold: hold || undefined,
-          focusBeat: focus ? `${focus.title}: ${focus.turn}` : undefined,
         }),
       });
       const json = await res.json();
@@ -141,7 +151,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
         if (updated) setPlotHold(updated);
       }
       setStep('cut');
-      setStatus('Draft written against held plot. Cut sludge, then pack.');
+      setStatus('Opening chapter written. Use Write whole book to finish the rest, or cut this chapter.');
     } catch (err: any) {
       setError(err.message || 'Prize draft failed');
     } finally {
@@ -160,19 +170,16 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: writeModeForBrief(brief.mode),
-          genre: proposal?.genre || hold?.genre || 'Literary fiction',
-          premise: proposal?.premise || hold?.premise || seed || brief.idea,
-          tone: proposal?.tone || hold?.tone || brief.tone,
+          ...sharedWriteBody(hold, focus),
           sourceText: draftPage,
-          prizeLensId,
-          plotHold: hold || undefined,
+          wholeBook: true,
         }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Continue failed');
       const addition = String(json.data.text || '').trim();
-      onDraftChange(draftPage.trim() ? `${draftPage.trim()}\n\n${addition}` : addition);
+      const heading = focus ? chapterHeading(focus.title, (hold?.beats.findIndex((b) => b.id === focus.id) ?? 0)) : '\n\n';
+      onDraftChange(draftPage.trim() ? `${draftPage.trim()}${heading}${addition}` : addition);
       if (focus) {
         const updated = markBeatDrafted(focus.id);
         if (updated) setPlotHold(updated);
@@ -181,6 +188,96 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
       setStatus(focus ? `Wrote: ${focus.title}` : 'Next section appended.');
     } catch (err: any) {
       setError(err.message || 'Continue failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runWholeBook = async () => {
+    setBusy(true);
+    setError('');
+    setBookProgress(null);
+
+    try {
+      let hold = plotHold || loadPlotHold();
+      if (!hold?.beats?.length) {
+        throw new Error('Accept a spine first (Seed → Expand) so Caspa knows every chapter to write.');
+      }
+
+      const total = hold.beats.length;
+      let done = hold.beats.filter((b) => b.status === 'drafted').length;
+      let manuscript = draftPage.trim();
+      let lastCritic = '';
+      let lastScore: number | null = null;
+
+      while (true) {
+        const focus = nextPendingBeat(hold);
+        if (!focus) break;
+
+        const index = hold.beats.findIndex((b) => b.id === focus.id);
+        setBookProgress({ done, total, title: focus.title });
+        setStatus(`Writing ${focus.title} (${done + 1}/${total})…`);
+
+        if (!manuscript) {
+          // Opening chapter: full prize pipeline once.
+          const res = await fetch('/api/caspa/write/prize-draft', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...sharedWriteBody(hold, focus),
+              output: `Full opening chapter: ${focus.title} (1800–2800 words). Then stop — later chapters will follow.`,
+              sourceText: '',
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok || !json.success) throw new Error(json.message || `Failed on ${focus.title}`);
+          manuscript = String(json.data.text || '').trim();
+          lastCritic = json.data.criticReport || '';
+          lastScore = json.data.quality?.overallScore ?? null;
+          if (!proposal && json.data.plan) {
+            setProposal({ ...json.data.plan, title: brief.title });
+          }
+        } else {
+          const res = await fetch('/api/caspa/write/continue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...sharedWriteBody(hold, focus),
+              sourceText: manuscript,
+              wholeBook: true,
+              output: `Full chapter: ${focus.title} (1500–2500 words). Do not restart the book or repeat prior chapters.`,
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok || !json.success) throw new Error(json.message || `Failed on ${focus.title}`);
+          const addition = String(json.data.text || '').trim();
+          manuscript = `${manuscript.trim()}${chapterHeading(focus.title, index)}${addition}`;
+        }
+
+        onDraftChange(manuscript);
+        const updated = markBeatDrafted(focus.id);
+        if (updated) {
+          hold = updated;
+          setPlotHold(updated);
+        } else {
+          // Defensive: avoid infinite loop if storage write fails.
+          hold = {
+            ...hold,
+            beats: hold.beats.map((b) => (b.id === focus.id ? { ...b, status: 'drafted' as const } : b)),
+          };
+          setPlotHold(hold);
+        }
+        done += 1;
+        setBookProgress({ done, total, title: focus.title });
+      }
+
+      if (lastCritic) setCritic(lastCritic);
+      if (lastScore != null) setQualityScore(lastScore);
+      setStep('cut');
+      setStatus(`Whole book drafted: ${done}/${total} chapters. Cut sludge, then pack.`);
+      setBookProgress(null);
+    } catch (err: any) {
+      setError(err.message || 'Whole-book draft failed');
     } finally {
       setBusy(false);
     }
@@ -247,7 +344,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
       <div>
         <h2 style={{ margin: 0, fontSize: 28, letterSpacing: -0.6 }}>Just write</h2>
         <p style={{ margin: '8px 0 0', color: '#6d6255', maxWidth: 640 }}>
-          Five steps. Seed → spine → prize draft → cut → pack. No tool maze.
+          Five steps. Seed → spine → whole-book draft → cut → pack. Caspa writes every held chapter in order.
         </p>
       </div>
 
@@ -338,7 +435,7 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
                 ))}
               </ul>
               <button type="button" onClick={() => setStep('draft')} style={btn('#1f2937', '#fff')}>
-                <PenLine size={16} /> Accept spine → draft
+                <PenLine size={16} /> Accept spine → write whole book
               </button>
             </div>
           ) : (
@@ -354,21 +451,48 @@ export default function QuickWrite({ brief, draftPage, onDraftChange, onGoPublis
 
       {step === 'draft' && (
         <section style={card}>
-          <h3 style={h3}>3. Prize draft</h3>
-          <p style={muted}>Plan → opening draft → critic room → award rewrite. One button.</p>
-          <button type="button" disabled={busy} onClick={runPrizeDraft} style={btn('#d6a846', '#1d1408')}>
-            {busy ? <Loader size={16} className="spin" /> : <Wand2 size={16} />}
-            Write prize-target chapter
-          </button>
-          <button
-            type="button"
-            disabled={busy || !draftPage.trim()}
-            onClick={runContinue}
-            style={{ ...btn('#1f2937', '#fff'), marginLeft: 10 }}
-          >
-            {busy ? <Loader size={16} className="spin" /> : <PenLine size={16} />}
-            Continue next beat
-          </button>
+          <h3 style={h3}>3. Whole-book draft</h3>
+          <p style={muted}>
+            Writes every pending chapter on the held spine, in order. Opening chapter gets the prize pipeline;
+            later chapters continue from the manuscript so far.
+          </p>
+          {bookProgress && (
+            <div style={{ marginBottom: 12, fontSize: 14, color: '#5a4a38' }}>
+              Progress: {bookProgress.done}/{bookProgress.total} — writing <strong>{bookProgress.title}</strong>
+              <div
+                style={{
+                  marginTop: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: '#eadfce',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.round((bookProgress.done / Math.max(1, bookProgress.total)) * 100)}%`,
+                    height: '100%',
+                    background: '#d6a846',
+                    transition: 'width 0.3s ease',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" disabled={busy} onClick={runWholeBook} style={btn('#d6a846', '#1d1408')}>
+              {busy ? <Loader size={16} className="spin" /> : <Wand2 size={16} />}
+              Write whole book
+            </button>
+            <button type="button" disabled={busy} onClick={runPrizeDraft} style={btn('#1f2937', '#fff')}>
+              {busy ? <Loader size={16} className="spin" /> : <PenLine size={16} />}
+              Opening chapter only
+            </button>
+            <button type="button" disabled={busy || !draftPage.trim()} onClick={runContinue} style={btn('#fffaf2', '#4a3b28')}>
+              {busy ? <Loader size={16} className="spin" /> : <PenLine size={16} />}
+              Continue next beat
+            </button>
+          </div>
           {draftPage.trim() && (
             <textarea value={draftPage} onChange={(e) => onDraftChange(e.target.value)} rows={16} style={{ ...textarea, marginTop: 14 }} />
           )}
