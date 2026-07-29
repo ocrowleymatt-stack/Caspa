@@ -22,15 +22,18 @@ export interface LLMResponse {
 }
 
 class SelfHostedLLMService {
-  private ollamaBase = 'http://localhost:11434/api';
+  private get ollamaBase(): string {
+    const raw = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api').trim().replace(/\/$/, '');
+    return raw.endsWith('/api') ? raw : `${raw}/api`;
+  }
   private defaultModel = 'mistral'; // Fast, multi-lingual
   private creativeModel = 'neural-chat'; // Better for creative writing
   private timeout = 60000;
 
   async isOllamaAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.ollamaBase}/tags`, { 
-        timeout: 5000 
+      const response = await fetch(`${this.ollamaBase}/tags`, {
+        signal: AbortSignal.timeout(5000),
       });
       return response.ok;
     } catch {

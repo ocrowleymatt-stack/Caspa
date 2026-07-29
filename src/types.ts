@@ -118,7 +118,7 @@ export interface PrizeAssessment {
 export type IntelligenceProvider = 'gemini' | 'claude' | 'openai' | 'grok' | 'venice';
 
 export interface PublishingConfig {
-  trimSize: '5x8' | '5.5x8.5' | '6x9' | '8.27x11.69'; // Common KDP sizes
+  trimSize: '5x8' | '5.5x8.5' | '6x9' | '8.27x11.69' | '8x8' | '8.5x8.5' | '10x8' | '8x10' | '9x7'; // Trade + picture-book sizes
   paperType: 'white' | 'cream' | 'color';
   coverTheme: {
     backgroundColor: string;
@@ -130,13 +130,18 @@ export interface PublishingConfig {
     aiPrompt?: string;
     showWraparound?: boolean;
     textShadow?: boolean;
+    format?: 'front-only' | 'wraparound' | 'board-book' | 'dust-jacket';
   };
   layoutTheme?: {
-    style: 'standard' | 'coursebook' | 'manual' | 'magazine' | 'technical';
+    style: 'standard' | 'coursebook' | 'manual' | 'magazine' | 'technical' | 'picture-book' | 'illustrated';
     colorMode: 'bw' | 'color';
     showIllustrations: boolean;
     showTextBoxes: boolean;
     includeIndex: boolean;
+    ageBand?: '0-3' | '3-5' | '5-8' | '8-12' | 'all-ages' | 'adult-illustrated';
+    artStyle?: string;
+    pageCount?: number;
+    facingSpreads?: boolean;
   };
   authorName?: string;
   subtitle?: string;
