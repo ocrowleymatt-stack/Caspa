@@ -20,8 +20,17 @@ export interface BackupSnapshot {
   entries: Record<string, string>;
 }
 
-function backupPath(id: string): string {
-  return path.join(getBackupsDir(), `${id}.json`);
+const BACKUP_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeBackupId(id: string): string | null {
+  const trimmed = id.trim();
+  return BACKUP_ID_PATTERN.test(trimmed) ? trimmed : null;
+}
+
+function backupPath(id: string): string | null {
+  const safeId = normalizeBackupId(id);
+  if (!safeId) return null;
+  return path.join(getBackupsDir(), `${safeId}.json`);
 }
 
 function safeLabel(label: string): string {
@@ -41,7 +50,7 @@ export function createBackup(entries: Record<string, string>, label = 'manual'):
     },
     entries,
   };
-  fs.writeFileSync(backupPath(id), JSON.stringify(payload, null, 2), 'utf8');
+  fs.writeFileSync(backupPath(id)!, JSON.stringify(payload, null, 2), 'utf8');
   return payload.meta;
 }
 
@@ -65,6 +74,7 @@ export function listBackups(): BackupMeta[] {
 
 export function loadBackup(id: string): BackupSnapshot | null {
   const file = backupPath(id);
+  if (!file) return null;
   if (!fs.existsSync(file)) return null;
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8')) as BackupSnapshot;
@@ -75,6 +85,7 @@ export function loadBackup(id: string): BackupSnapshot | null {
 
 export function deleteBackup(id: string): boolean {
   const file = backupPath(id);
+  if (!file) return false;
   if (!fs.existsSync(file)) return false;
   fs.unlinkSync(file);
   return true;
