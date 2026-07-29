@@ -26,6 +26,26 @@ PORT=3000 CASPA_DATA_DIR=/root/Caspa/data NODE_ENV=production node dist/server.c
 npm run start:pm2      # uses ecosystem.config.cjs
 ```
 
+### Atlas (caspa.ocrowley.com) recovery
+
+If production still shows the old seven-step “CASPA Studio” wizard or `/api/doctor` lacks `gitSha` / `service: Caspa`:
+
+```bash
+cd /root/Caspa
+git fetch origin
+git reset --hard origin/main
+npm ci
+npm run build
+pm2 restart caspa-server --update-env
+pm2 save
+curl -fsS http://127.0.0.1:3000/health
+curl -fsS http://127.0.0.1:3000/api/doctor
+```
+
+Then clear Safari website data for `caspa.ocrowley.com` and reload.
+
+Manual GitHub Action (after adding SSH secret `HETZNER_SSH_KEY`): **Actions → Deploy Atlas → Run workflow** with `confirm=deploy`.
+
 Verify:
 
 ```bash
@@ -34,7 +54,7 @@ npm run deploy:smoke   # server must already be listening on :3000
 npm run verify         # build + smoke (start server between them if needed)
 ```
 
-Doctor endpoint (safe, no secrets): `GET /api/doctor` — includes a readiness score, blockers, and warnings.
+Doctor endpoint (safe, no secrets): `GET /api/doctor` — readiness score plus `gitSha` / `builtAt` fingerprint.
 
 ## Env
 
@@ -51,9 +71,9 @@ Doctor endpoint (safe, no secrets): `GET /api/doctor` — includes a readiness s
 1. **Continue locally** — no account needed; drafts live in the browser.
 2. **Launchpad** — three doors (more formats under “More”).
 3. **Next step** — one highlighted action; advanced tools stay collapsed.
-4. **Settings** — backup/restore + deploy readiness check.
+4. **Settings** — backup/restore + deploy readiness check (shows commit fingerprint).
 5. Optional Google/email sign-in when you want a cloud account.
 
 ## Smoke checks
 
-`/health`, `/api/doctor`, Ollama smoke, Gold passes, backups list, Novel Write Pro quality pass, static UI.
+`/health`, `/api/doctor` (incl. `gitSha`), Cache-Control on `/`, Ollama smoke, Gold passes, backups list, Novel Write Pro quality pass, static UI, local-project persistence (no Firebase session).

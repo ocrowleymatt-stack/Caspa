@@ -123,11 +123,17 @@ export default function ProjectShelf({
       const res = await fetch('/api/doctor');
       const data = (await res.json()) as {
         success?: boolean;
-        data?: { status?: string; aiProviders?: { ollama?: { available?: boolean } } };
+        data?: {
+          status?: string;
+          gitShaShort?: string;
+          builtAt?: string;
+          aiProviders?: { ollama?: { available?: boolean } };
+        };
       };
       if (data.success && data.data?.status === 'ok') {
         const ollama = data.data.aiProviders?.ollama?.available ? 'Ollama online' : 'Ollama offline';
-        setDoctorStatus(`Engine healthy · ${ollama}`);
+        const sha = data.data.gitShaShort ? ` · ${data.data.gitShaShort}` : '';
+        setDoctorStatus(`Engine healthy · ${ollama}${sha}`);
       } else {
         setDoctorStatus('Doctor returned an unexpected response.');
       }

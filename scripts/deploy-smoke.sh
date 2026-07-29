@@ -3,6 +3,7 @@
 set -euo pipefail
 
 BASE="${CASPA_SMOKE_URL:-http://127.0.0.1:3000}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 fail() { echo "FAIL: $1"; exit 1; }
 ok() { echo "OK: $1"; }
@@ -10,7 +11,9 @@ ok() { echo "OK: $1"; }
 echo "Caspa smoke tests against $BASE"
 
 # Health
-curl -sf "$BASE/health" | grep -q '"status"' || fail "/health"
+HEALTH=$(curl -sf "$BASE/health") || fail "/health"
+echo "$HEALTH" | grep -q '"status"' || fail "/health status"
+echo "$HEALTH" | grep -q '"gitSha"' || fail "/health gitSha fingerprint"
 ok "/health"
 
 # Doctor
@@ -18,7 +21,21 @@ DOCTOR=$(curl -sf "$BASE/api/doctor") || fail "/api/doctor"
 echo "$DOCTOR" | grep -q '"success":true' || fail "/api/doctor success"
 echo "$DOCTOR" | grep -q '"readiness"' || fail "/api/doctor readiness"
 echo "$DOCTOR" | grep -q '"version"' || fail "/api/doctor version"
+echo "$DOCTOR" | grep -q '"service":"Caspa"' || fail "/api/doctor service Caspa"
+echo "$DOCTOR" | grep -q '"gitSha"' || fail "/api/doctor gitSha"
+echo "$DOCTOR" | grep -q '"builtAt"' || fail "/api/doctor builtAt"
+echo "$DOCTOR" | grep -q '"localGuestAllowed":true' || fail "/api/doctor localGuestAllowed"
 ok "/api/doctor"
+
+# Stale-generation guard: old Atlas doctor advertised CASPA Studio / sqlite modules.
+echo "$DOCTOR" | grep -qi 'CASPA Studio' && fail "Stale CASPA Studio doctor payload"
+echo "$DOCTOR" | grep -q '"sqliteConfigured"' && fail "Stale sqlite doctor shape still present"
+ok "doctor generation guard"
+
+# index.html must not be cached as a long-lived asset
+HEADERS=$(curl -sI "$BASE/") || fail "HEAD /"
+echo "$HEADERS" | grep -qi 'cache-control:.*no-store' || fail "index.html Cache-Control missing no-store"
+ok "index.html Cache-Control: no-store"
 
 # Ollama smoke (offline is fine)
 curl -sf "$BASE/api/ollama/smoke" | grep -q '"success":true' || fail "/api/ollama/smoke"
@@ -46,7 +63,12 @@ ok "/api/caspa/novel-write-pro/quality-pass"
 
 # Static UI
 curl -sf "$BASE/" | grep -q '<html' || fail "index.html"
+curl -sf "$BASE/" | grep -qi 'CASPA Studio' && fail "Stale CASPA Studio title in index.html"
 ok "index.html"
+
+# Local-first create path (no Firebase / no server session)
+bash "$ROOT/scripts/local-project-smoke.sh"
+ok "local-project-smoke"
 
 echo ""
 echo "All smoke tests passed."

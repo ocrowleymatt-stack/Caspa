@@ -1,0 +1,98 @@
+name: Deploy Atlas
+
+# Manual production deploy to Hetzner Atlas (caspa.ocrowley.com).
+# Requires a repository secret with the Atlas SSH private key.
+# Preferred secret name: HETZNER_SSH_KEY
+# Also accepted: ATLAS_SSH_PRIVATE_KEY, SSH_PRIVATE_KEY, DEPLOY_SSH_KEY, SERVER_SSH_KEY
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type deploy to confirm Atlas production restart'
+        required: true
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      ATLAS_DIR: /root/Caspa
+    steps:
+      - name: Require confirmation
+        shell: bash
+        run: |
+          if [ "${{ inputs.confirm }}" != "deploy" ]; then
+            echo "Refusing: set confirm=deploy to run the Atlas deploy."
+            exit 1
+          fi
+
+      - name: Select SSH key
+        id: key
+        shell: bash
+        run: |
+          key=""
+          chosen=""
+          for name in HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then
+              key="${!name}"
+              chosen="$name"
+              break
+            fi
+          done
+          if [ -z "$key" ]; then
+            echo "::error::No Atlas SSH secret found. Add HETZNER_SSH_KEY (preferred) in repo Settings → Secrets, then re-run."
+            exit 2
+          fi
+          echo "Using secret: $chosen"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          echo "key_ready=1" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy origin/main on Atlas
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 \
+            "${ATLAS_USER}@${ATLAS_HOST}" \
+            "set -euo pipefail
+             cd '${ATLAS_DIR}'
+             git fetch origin
+             git reset --hard origin/main
+             export CASPA_GIT_SHA=\$(git rev-parse HEAD)
+             export CASPA_GIT_BRANCH=\$(git rev-parse --abbrev-ref HEAD)
+             export CASPA_BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+             npm ci
+             npm run build
+             pm2 restart caspa-server --update-env
+             pm2 save
+             curl -fsS http://127.0.0.1:3000/health
+             echo
+             curl -fsS http://127.0.0.1:3000/api/doctor
+             echo"
+
+      - name: Verify public fingerprint
+        shell: bash
+        run: |
+          sleep 2
+          DOCTOR=$(curl -fsS "https://caspa.ocrowley.com/api/doctor")
+          echo "$DOCTOR" | grep -q '"service":"Caspa"' || {
+            echo "::error::Public /api/doctor is not serving current Caspa (expected service Caspa)."
+            echo "$DOCTOR" | head -c 800
+            exit 1
+          }
+          echo "$DOCTOR" | grep -q '"gitSha"' || {
+            echo "::error::Public /api/doctor missing gitSha fingerprint."
+            exit 1
+          }
+          echo "Public doctor OK:"
+          echo "$DOCTOR" | head -c 1200
