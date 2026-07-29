@@ -25,9 +25,12 @@ export type WorkflowView =
   | 'openwebui'
   | 'settings';
 
+export type WorkshopTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
+
 export type WorkflowStepId =
   | 'start_brief'
   | 'draft_or_paste'
+  | 'research_sources'
   | 'workshop_diagnose'
   | 'workshop_write'
   | 'review_draft'
@@ -36,14 +39,30 @@ export type WorkflowStepId =
   | 'complete_to_library'
   | 'rest_in_library';
 
+/** Where Full path / Next step should land — view plus optional Workshop deep-link. */
+export interface WorkflowNavTarget {
+  view: WorkflowView;
+  workshopTab?: WorkshopTab;
+  focusChapter?: number;
+}
+
 export interface WorkflowStep {
   id: WorkflowStepId;
   title: string;
   why: string;
   action: string;
   view: WorkflowView;
+  /** Workshop tab to open when view is workshop — makes diagnose vs commission visitable. */
+  workshopTab?: WorkshopTab;
   optional?: boolean;
   done: boolean;
+}
+
+export function stepToNavTarget(step: WorkflowStep): WorkflowNavTarget {
+  return {
+    view: step.view,
+    workshopTab: step.workshopTab,
+  };
 }
 
 const COMMISSION_KEY = 'caspa.commission';
@@ -212,10 +231,11 @@ export function getWorkflowSteps(
       why: 'Outline, chapters, or a messy brain-dump — Caspa needs text before it can diagnose structure and claims.',
       action: words > 0 ? 'Continue drafting' : 'Open Just write',
       view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
+      workshopTab: words > 0 && !hasDiagnosis ? 'inbox' : undefined,
       done: words >= 50,
     });
     steps.push({
-      id: 'workshop_diagnose',
+      id: 'research_sources',
       title: 'Gather sources (optional)',
       why: 'Research Desk holds notes, quotes, and links so the draft stays evidenced instead of invented.',
       action: 'Open Research Desk',
@@ -224,11 +244,21 @@ export function getWorkflowSteps(
       done: false,
     });
     steps.push({
-      id: 'workshop_write',
-      title: 'Diagnose & commission',
-      why: 'Workshop scores clarity, structure, and missing proof, then can rewrite sections to order.',
-      action: hasDiagnosis ? 'Continue Workshop' : 'Open Workshop',
+      id: 'workshop_diagnose',
+      title: 'Diagnose in Workshop',
+      why: 'Workshop scores clarity, structure, and missing proof so you know what to commission next.',
+      action: hasDiagnosis ? 'Review diagnosis' : 'Open Workshop',
       view: 'workshop',
+      workshopTab: hasDiagnosis ? 'recommendations' : 'inbox',
+      done: hasDiagnosis,
+    });
+    steps.push({
+      id: 'workshop_write',
+      title: 'Commission the rewrite',
+      why: 'Select recommendations and scope, then Write it. Caspa produces a manuscript-ready artefact.',
+      action: commissionComplete ? 'View artefact' : hasDiagnosis ? 'Finish commission' : 'Open Workshop',
+      view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
       done: commissionComplete,
     });
     steps.push({
@@ -258,6 +288,7 @@ export function getWorkflowSteps(
         : 'Use Just write for a prize-target draft, or paste into Workshop. Caspa needs text to diagnose.',
       action: words > 0 ? 'Continue writing' : 'Open Just write',
       view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
+      workshopTab: words > 0 && !hasDiagnosis ? 'inbox' : undefined,
       done: words >= (poetry ? 20 : 50),
     });
 
@@ -269,6 +300,7 @@ export function getWorkflowSteps(
         : 'Workshop reads your draft, scores viability, and lists fixes. This is how Caspa knows what to write next.',
       action: hasDiagnosis ? 'Review diagnosis' : 'Open Workshop',
       view: 'workshop',
+      workshopTab: hasDiagnosis ? 'recommendations' : 'inbox',
       done: hasDiagnosis,
     });
 
@@ -278,6 +310,7 @@ export function getWorkflowSteps(
       why: 'Direct the idea if needed, select recommendations, then Write it. Caspa produces a manuscript-ready artefact for White Page.',
       action: commissionComplete ? 'View artefact' : hasChapters ? 'Finish commission' : 'Open Workshop',
       view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
       done: commissionComplete,
     });
 
