@@ -12,14 +12,16 @@ import fs from 'fs/promises';
 
 const router = Router();
 
-// Initialize services
-const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-const gemini = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
+function getGemini(): GoogleGenAI | null {
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  return geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
+}
 
 let metadataService: BookMetadataService | null = null;
 let apiManager: ServiceAPIManager | null = null;
 
 function getMetadataService() {
+  const gemini = getGemini();
   if (!metadataService && gemini) {
     metadataService = new BookMetadataService(gemini);
   }
@@ -28,6 +30,7 @@ function getMetadataService() {
 
 function getAPIManager() {
   if (!apiManager) {
+    const gemini = getGemini();
     const meta = getMetadataService();
     // Metadata is optional - proceed if Gemini key is available
     if (meta && gemini) {

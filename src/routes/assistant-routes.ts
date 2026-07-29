@@ -24,12 +24,14 @@ interface AssistantResponse {
   timestamp: string;
 }
 
-// Initialize Gemini
-const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-const ai = geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null;
+function getGeminiClient(): GoogleGenAI {
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!geminiKey) throw new Error('GEMINI_API_KEY not configured');
+  return new GoogleGenAI({ apiKey: geminiKey });
+}
 
 async function callGeminiAssistant(prompt: string, context: string = ''): Promise<string> {
-  if (!ai) throw new Error('GEMINI_API_KEY not configured');
+  const ai = getGeminiClient();
 
   const fullPrompt = context 
     ? `You are a prize-calibre literary assistant. Literary context:\n${context}\n\nTask:\n${prompt}`
@@ -37,7 +39,7 @@ async function callGeminiAssistant(prompt: string, context: string = ''): Promis
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-advanced',
+      model: 'gemini-2.0-flash',
       contents: fullPrompt,
       config: {
         systemInstruction: 'You are a snobbish, excellence-obsessed literary editor. Provide raw, high-fidelity suggestions that elevate prose.',
