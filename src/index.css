@@ -21,28 +21,35 @@
 
 @layer base {
   html {
-    height: 100dvh;
-    height: -webkit-fill-available;
-    margin: 0; padding: 0; overflow: hidden;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
   body {
-    height: 100dvh;
-    height: -webkit-fill-available;
-    margin: 0; padding: 0; overflow: hidden;
-    overscroll-behavior: none;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     @apply bg-surface-bg text-text-primary antialiased;
     background-color: var(--color-surface-bg);
   }
   #root {
-    height: 100dvh;
-    height: -webkit-fill-available;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
     /* Maintain safe area horizontally to prevent content running into screen corners */
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
