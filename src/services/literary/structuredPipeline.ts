@@ -5,7 +5,7 @@
 
 import {
   CRITIC_PERSONAS,
-  LITERARY_ENGINE_RULES,
+  engineRulesForMode,
   AWARD_BAR,
   ARTEFACT_FIRST,
   type NovelWriteProPromptInput,
@@ -37,7 +37,7 @@ TONE: ${input.tone}
 SOURCE: ${input.sourceText?.slice(0, 4000) || '[Blank page — invent]'}
 ${input.prizeLens ? `PRIZE LENS: ${input.prizeLens}` : ''}
 
-${LITERARY_ENGINE_RULES}
+${engineRulesForMode(input.mode)}
 
 Return JSON only (no markdown) with:
 premise, genre, tone, intendedAudience, formatDecision, characterWoundMap,
@@ -64,7 +64,7 @@ ${plan.characterWoundMap}
 STYLE RULES:
 ${plan.styleRules.map((r) => `- ${r}`).join('\n') || '- Clarity, turn, concrete detail'}
 ${plot}${focus}
-${LITERARY_ENGINE_RULES}
+${engineRulesForMode(input.mode)}
 ${AWARD_BAR}
 ${ARTEFACT_FIRST}
 
@@ -114,7 +114,7 @@ PLAN
 ${plan.premise} · ${plan.formatDecision}
 ${input.prizeLens ? `PRIZE LENS: ${input.prizeLens}` : ''}
 
-${LITERARY_ENGINE_RULES}
+${engineRulesForMode(input.mode)}
 ${AWARD_BAR}
 ${ARTEFACT_FIRST}
 

@@ -52,7 +52,12 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: draftPage,
-          mode: brief.mode === 'script' || brief.mode === 'musical' ? brief.mode : brief.mode === 'gold' ? 'polish' : 'novel',
+          mode:
+            brief.mode === 'gold' ? 'polish' :
+            brief.mode === 'picture' ? 'novel' :
+            brief.mode === 'script' || brief.mode === 'musical' || brief.mode === 'adaptation' || brief.mode === 'nonfiction' || brief.mode === 'essay' || brief.mode === 'poetry' || brief.mode === 'chaos'
+              ? brief.mode
+              : 'novel',
           title: brief.title,
         }),
       });
