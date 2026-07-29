@@ -12,6 +12,7 @@ import {
   saveBlueprint,
 } from '../services/psychologyEngineService';
 import type { PsychologyBlueprint } from '../types/psychology';
+import { formatShowPackForWriting } from '../services/showBoxService';
 
 interface Props {
   brief: ProjectBriefLike;
@@ -26,8 +27,18 @@ const PRESETS = [
   'Twist ending that rewrites everything before it',
 ];
 
+const SHOW_PRESETS = [
+  'Opening number dazzle into Act One dread — audience still laughing when it hurts',
+  'Eleven-o\'clock number catharsis: grief with a belt note and earned hope',
+  'Comic company energy that flips into quiet two-hander truth',
+  'Interval cliffhanger that rewrites the love song\'s meaning',
+  'Finale that pays every planted promise without soft-soaping the wound',
+];
+
 export default function PsychologyStudio({ brief, manuscriptText = '' }: Props) {
   const projectKey = getProjectKey(brief);
+  const isShow = brief.mode === 'musical';
+  const presets = isShow ? SHOW_PRESETS : PRESETS;
   const [intent, setIntent] = useState(() => loadBlueprint(projectKey)?.userIntent || '');
   const [blueprint, setBlueprint] = useState<PsychologyBlueprint | null>(() => loadBlueprint(projectKey));
   const [loading, setLoading] = useState(false);
@@ -38,7 +49,9 @@ export default function PsychologyStudio({ brief, manuscriptText = '' }: Props) 
     setLoading(true);
     setStatus('Designing emotional architecture…');
     try {
-      const result = await designPsychologyBlueprint(intent, brief, manuscriptText);
+      const showPack = formatShowPackForWriting();
+      const contextText = showPack ? `${manuscriptText}\n\n${showPack}` : manuscriptText;
+      const result = await designPsychologyBlueprint(intent, brief, contextText);
       saveBlueprint(projectKey, result);
       setBlueprint(result);
       setStatus('Blueprint saved — injected into all Workshop drafts.');
@@ -58,8 +71,9 @@ export default function PsychologyStudio({ brief, manuscriptText = '' }: Props) 
             Design the feeling
           </h1>
           <p style={{ margin: 0, color: '#73695d', fontSize: 18, lineHeight: 1.5 }}>
-            Tell Caspa how you want readers to feel — uplifting but grieving, dread into catharsis, hidden meaning,
-            twist reveals. Every Workshop draft will follow this emotional machine.
+            {isShow
+              ? 'Design how the house should feel from overture to finale — number turns, interval cliffhangers, eleven-o\'clock catharsis. Workshop drafts follow this emotional machine.'
+              : 'Tell Caspa how you want readers to feel — uplifting but grieving, dread into catharsis, hidden meaning, twist reveals. Every Workshop draft will follow this emotional machine.'}
           </p>
         </header>
 
@@ -69,11 +83,15 @@ export default function PsychologyStudio({ brief, manuscriptText = '' }: Props) 
             value={intent}
             onChange={(e) => setIntent(e.target.value)}
             rows={4}
-            placeholder="e.g. I want an ending that is both highly uplifting and deeply sad…"
+            placeholder={
+              isShow
+                ? 'e.g. Opening dazzle into Act One dread — still laughing when it hurts…'
+                : 'e.g. I want an ending that is both highly uplifting and deeply sad…'
+            }
             style={textareaStyle}
           />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '12px 0 16px' }}>
-            {PRESETS.map((p) => (
+            {presets.map((p) => (
               <button key={p} type="button" onClick={() => setIntent(p)} style={chipBtn}>
                 {p.slice(0, 42)}…
               </button>

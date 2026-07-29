@@ -8,6 +8,7 @@ import type { ProjectBriefLike } from '../services/commissionService';
 import type { GoldPassDefinition, GoldPassResult, GoldPipelineProgressEvent } from '../types/gold';
 import { GOLD_PASS_DEFINITIONS } from '../types/gold';
 import { loadPlotHold, plotHoldSummary } from '../services/plotHoldService';
+import { formatShowPackForWriting } from '../services/showBoxService';
 
 interface Props {
   brief: ProjectBriefLike;
@@ -84,15 +85,17 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
     setRewritePrompt('');
 
     try {
+      const showPack = formatShowPackForWriting();
       const res = await fetch('/api/caspa/gold/pipeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: draftPage,
+          content: showPack ? `${draftPage}\n\n---\n\n${showPack}` : draftPage,
           title: brief.title,
           tone: brief.tone,
           stream: true,
           plotHold: plotHold || undefined,
+          mode: brief.mode,
         }),
       });
 

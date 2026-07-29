@@ -6,6 +6,7 @@ import type { CommissionState } from '../types/commission';
 import type { ProjectBriefLike } from './commissionService';
 import { evaluateExportGate, loadExportContext } from './exportService';
 import { getProjectKey } from './researchLibraryService';
+import { hasShowBoxContent } from './showBoxService';
 
 export type WorkflowView =
   | 'launchpad'
@@ -107,21 +108,7 @@ function isScriptMode(brief: ProjectBriefLike): boolean {
 }
 
 function hasShowPack(): boolean {
-  try {
-    // Lazy require avoided — duplicate thin check keeps workflow free of circular imports.
-    const raw = localStorage.getItem('caspa.showBox');
-    if (!raw) return false;
-    const saved = JSON.parse(raw);
-    return Boolean(
-      saved?.songList?.trim() ||
-        saved?.runningOrder?.trim() ||
-        saved?.musicSketch?.trim() ||
-        saved?.castNotes?.trim() ||
-        saved?.productionPack?.trim()
-    );
-  } catch {
-    return false;
-  }
+  return hasShowBoxContent();
 }
 
 function hasDesignPlan(): boolean {
@@ -245,11 +232,20 @@ export function getWorkflowSteps(
       done: commissionComplete,
     });
     steps.push({
+      id: 'polish_optional',
+      title: 'Storyboard the running order (optional)',
+      why: 'Jam Canvas for act pictures when the page alone will not hold the company.',
+      action: 'Open Jam Canvas',
+      view: 'canvas',
+      optional: true,
+      done: false,
+    });
+    steps.push({
       id: 'review_draft',
       title: 'Read / rehearse the pack',
-      why: 'Assemble the box into White Page. Check running order against the book before export.',
-      action: 'Open Show Box',
-      view: 'showbox',
+      why: 'Assemble the box, then read book against running order in White Page before export.',
+      action: words >= 80 ? 'Open White Page' : 'Open Show Box',
+      view: words >= 80 ? 'write' : 'showbox',
       done: showPacked && words >= 80,
     });
     steps.push({

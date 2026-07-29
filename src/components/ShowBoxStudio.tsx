@@ -44,6 +44,7 @@ interface Props {
   onBriefChange?: (patch: Partial<ShowBriefLike>) => void;
   onOpenWorkshop: () => void;
   onOpenWrite: () => void;
+  onOpenQuickWrite?: () => void;
   onOpenPublish: () => void;
   onOpenCanvas: () => void;
 }
@@ -66,6 +67,7 @@ export default function ShowBoxStudio({
   onBriefChange,
   onOpenWorkshop,
   onOpenWrite,
+  onOpenQuickWrite,
   onOpenPublish,
   onOpenCanvas,
 }: Props) {
@@ -410,11 +412,16 @@ Concrete. No fluff. No preamble.`);
               <h2 style={sectionTitle}>Book / scenes</h2>
               <p style={{ margin: '0 0 12px', color: '#73695d', fontSize: 14, lineHeight: 1.5 }}>
                 {bookWords > 0
-                  ? `${bookWords.toLocaleString()} words in White Page. Draft scenes, then commission polish in Workshop.`
-                  : 'No book yet. Open Just write or White Page and get Act One on its feet.'}
+                  ? `${bookWords.toLocaleString()} words on the page. Draft scenes that turn into locked numbers, then commission polish.`
+                  : 'No book yet. Just write drafts every held scene in order against this pack.'}
               </p>
               <div style={{ display: 'grid', gap: 8 }}>
-                <button type="button" onClick={onOpenWrite} style={primaryBtn}>
+                {onOpenQuickWrite && (
+                  <button type="button" onClick={onOpenQuickWrite} style={primaryBtn}>
+                    <Sparkles size={16} /> Just write scenes
+                  </button>
+                )}
+                <button type="button" onClick={onOpenWrite} style={onOpenQuickWrite ? ghostBtn : primaryBtn}>
                   <PenLine size={16} /> Open White Page
                 </button>
                 <button type="button" onClick={onOpenCanvas} style={ghostBtn}>

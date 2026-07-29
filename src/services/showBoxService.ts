@@ -128,9 +128,11 @@ export function formatShowPackForWriting(state: ShowBoxState = loadShowBox()): s
 }
 
 export function createMusicSketch(idea: string, tone: string, title: string): string {
+  const working = (idea || title || 'Untitled show number').trim();
+  const shortHook = working.length > 72 ? `${working.slice(0, 69)}…` : working;
   return `# Music Sketch — ${title || 'Untitled show number'}
 
-Working title: ${idea || title || 'Untitled show number'}
+Working title / premise: ${working}
 Style: theatrical pop / panto-rock / comic patter song
 Tempo: 126 BPM
 Key: D minor moving to F major for the release
@@ -139,7 +141,7 @@ Tone: ${tone || 'Comic, theatrical, sharp, with a big chorus'}
 ## Structure
 Intro: 4 bars — cheeky pizzicato strings and muted brass stab
 Verse 1: 16 bars — patter delivery, comic exposition
-Pre-chorus: 8 bars — rising panic / civic outrage
+Pre-chorus: 8 bars — rising panic / pressure
 Chorus: 16 bars — big hook, ensemble response
 Middle 8: 8 bars — villain/hero reversal
 Final chorus: 24 bars — key lift, full company, button ending
@@ -156,11 +158,9 @@ Verse: fast repeated notes around A–C, with comic leaps on punchlines.
 Pre-chorus: climb C–D–E–F–G to build theatrical panic.
 Chorus hook: land strongly on F, then leap to A on the title phrase.
 
-## First lyric hook
-Round and round the roundabout, nobody knows why,
-Dick Turpin lost his horse outside the retail park by five.
-Stand and deliver? Darling, not in lane three —
-Milton Keynes has swallowed him and charged him parking fee.
+## First lyric hook (seed from premise — rewrite in voice)
+${shortHook}
+(Turn that into a singable couplet; keep the concrete place and pressure.)
 
 ## Arrangement
 Drums: brushed snare into full kit by chorus.
@@ -170,7 +170,7 @@ Brass: short stabs after jokes.
 Strings: pizzicato for sneaking, full tremolo for mock peril.
 
 ## Export prompt for Suno/Udio/DAW assistant
-Theatrical British comedy patter song, 126 BPM, D minor to F major, panto-rock energy, witty camp lyrics, brass stabs, tack piano, ensemble chorus, comic highwayman lost in modern Milton Keynes, catchy chorus, West End demo style.`;
+Theatrical British comedy patter song about: ${shortHook}. 126 BPM, D minor to F major, panto-rock energy, witty camp lyrics, brass stabs, tack piano, ensemble chorus, catchy chorus, West End demo style.`;
 }
 
 /** Sync pack into research library so Intelligence Lab / Workshop research can see it. */

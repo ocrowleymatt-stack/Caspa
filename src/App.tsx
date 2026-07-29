@@ -62,6 +62,7 @@ import BookDesignStudio from './components/BookDesignStudio';
 import QuickWrite from './components/QuickWrite';
 import StudioToolBridge, { type StudioToolId } from './components/StudioToolBridge';
 import ShowBoxStudio from './components/ShowBoxStudio';
+import ShowCommandCenter from './components/ShowCommandCenter';
 import {
   completeProject,
   loadProjectSnapshot,
@@ -79,7 +80,7 @@ import {
 import { countWords, defaultTargetWordCount } from './services/wordCountService';
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
-import { clearShowBox, formatShowPackForWriting } from './services/showBoxService';
+import { clearShowBox, formatShowPackForWriting, hasShowBoxContent } from './services/showBoxService';
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
 declare const process: any;
@@ -202,8 +203,32 @@ function mapLegacyView(legacy: string): ViewType | null {
     workshop: 'workshop',
     gold: 'gold',
     pilot: 'pilot',
+    showbox: 'showbox',
+    show: 'showbox',
+    musical: 'showbox',
   };
   return map[legacy] || null;
+}
+
+function primaryNavFor(brief: ProjectBrief): NavItem[] {
+  const showMode = brief.mode === 'musical' || hasShowBoxContent();
+  const pictureMode = brief.mode === 'picture';
+  return primaryNav.filter((item) => {
+    if (item.id === 'showbox') return showMode;
+    if (item.id === 'design') return pictureMode || (!showMode && brief.mode !== 'script');
+    if (item.id === 'quickwrite') {
+      return true;
+    }
+    return true;
+  }).map((item) => {
+    if (item.id === 'quickwrite' && (brief.mode === 'musical' || brief.mode === 'script')) {
+      return { ...item, detail: 'Whole show / script by scene' };
+    }
+    if (item.id === 'write' && brief.mode === 'musical') {
+      return { ...item, detail: 'Book scenes & lyrics' };
+    }
+    return item;
+  });
 }
 
 const AuthContext = React.createContext<AuthContextType>({
@@ -760,6 +785,7 @@ function CaspaUI() {
             onBriefChange={patchBrief}
             onOpenWorkshop={() => goTo('workshop')}
             onOpenWrite={() => goTo('write')}
+            onOpenQuickWrite={() => goTo('quickwrite')}
             onOpenPublish={() => goTo('publish')}
             onOpenCanvas={() => goTo('canvas')}
           />
@@ -914,7 +940,7 @@ function CaspaUI() {
 
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4, color: '#8f8068', margin: '0 8px 8px' }}>Your work</div>
-          {primaryNav.map((item) => {
+          {primaryNavFor(brief).map((item) => {
             const Icon = item.icon;
             const active = item.id === currentView;
             return (
@@ -1285,6 +1311,10 @@ function ProjectView({
         briefTitle={brief.idea}
       />
 
+      {(brief.mode === 'musical' || hasShowBoxContent()) && (
+        <ShowCommandCenter bookWords={countWords(draftPage || manuscriptSource)} onGo={onGo} />
+      )}
+
       <div style={cardGrid}>
         <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1368,6 +1398,7 @@ function ProjectView({
 function WhitePageView({ brief, draftPage, setDraftPage, setCurrentView }: { brief: ProjectBrief; draftPage: string; setDraftPage: (value: string) => void; setCurrentView: (view: ViewType) => void }) {
   const current = countWords(draftPage);
   const target = brief.targetWordCount || defaultTargetWordCount(brief.mode);
+  const showLive = brief.mode === 'musical' || hasShowBoxContent();
   return (
     <div style={{ minHeight: '100vh', background: '#ede4d6', padding: '42px clamp(18px, 4vw, 64px)' }}>
       <div style={{ maxWidth: 1180, margin: '0 auto' }}>
@@ -1381,6 +1412,24 @@ function WhitePageView({ brief, draftPage, setDraftPage, setCurrentView }: { bri
           </div>
           <button onClick={() => setCurrentView('project')} style={primaryButton('#1f2937', '#fff')}><Home size={18} /> Back to next step</button>
         </div>
+        {showLive && (
+          <div style={{ marginBottom: 14, borderRadius: 16, padding: '12px 14px', border: '1px solid #eadfce', background: '#fff8ea', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 14, color: '#5b4724' }}>
+              Show in a Box is live — keep book scenes turning into the locked song list and running order.
+            </span>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setCurrentView('showbox')} style={{ ...ghostButton, background: '#fffaf2' }}>
+                <Music2 size={16} /> Show Box
+              </button>
+              <button type="button" onClick={() => setCurrentView('quickwrite')} style={{ ...ghostButton, background: '#fffaf2' }}>
+                <Zap size={16} /> Just write
+              </button>
+              <button type="button" onClick={() => setCurrentView('workshop')} style={{ ...ghostButton, background: '#fffaf2' }}>
+                <Hammer size={16} /> Workshop
+              </button>
+            </div>
+          </div>
+        )}
         <textarea value={draftPage} onChange={(e) => setDraftPage(e.target.value)} placeholder="Start writing here. Scene, chapter, song brief, treatment, argument, joke list, anything. This is deliberately white and boring so the work gets loud." style={{ width: '100%', minHeight: '72vh', border: '1px solid #dfd3c0', borderRadius: 10, padding: '42px clamp(22px, 5vw, 72px)', fontSize: 20, lineHeight: 1.75, color: '#111827', background: '#ffffff', boxShadow: '0 24px 90px rgba(40, 29, 12, .10)', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'Georgia, Cambria, serif' }} />
       </div>
     </div>
