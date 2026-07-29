@@ -59,6 +59,7 @@ interface Props {
   draftPage: string;
   onArtefactReady: (text: string) => void;
   onManuscriptChange?: (text: string) => void;
+  onBriefChange?: (patch: Partial<ProjectBriefLike>) => void;
 }
 
 type StudioTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
@@ -91,7 +92,13 @@ function saveState(state: CommissionState) {
   );
 }
 
-export default function CommissionStudio({ brief, draftPage, onArtefactReady, onManuscriptChange }: Props) {
+export default function CommissionStudio({
+  brief,
+  draftPage,
+  onArtefactReady,
+  onManuscriptChange,
+  onBriefChange,
+}: Props) {
   const projectKey = getProjectKey(brief);
   const [tab, setTab] = useState<StudioTab>('inbox');
   const [state, setState] = useState<CommissionState>(loadState);
@@ -104,10 +111,19 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
   const [researchLoading, setResearchLoading] = useState(false);
   const [autoResearch, setAutoResearch] = useState(true);
   const [libraryCount, setLibraryCount] = useState(() => loadLibrary(projectKey).length);
+  const [directedIdea, setDirectedIdea] = useState(brief.idea || '');
+  const [ideaDirty, setIdeaDirty] = useState(false);
+  const [ideaBusy, setIdeaBusy] = useState(false);
+  const [ideaStatus, setIdeaStatus] = useState('');
 
   useEffect(() => {
     saveState(state);
   }, [state]);
+
+  useEffect(() => {
+    // Keep local direction in sync when parent brief changes and user hasn't edited yet.
+    if (!ideaDirty) setDirectedIdea(brief.idea || '');
+  }, [brief.idea, ideaDirty]);
 
   useEffect(() => {
     if (draftPage && !state.rawInput && tab === 'inbox') {
@@ -123,6 +139,30 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
   const update = useCallback((patch: Partial<CommissionState>) => {
     setState((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  const applyDirectedIdea = useCallback(
+    (nextIdea: string) => {
+      const idea = nextIdea.trim();
+      if (!idea) return false;
+      setDirectedIdea(idea);
+      setIdeaDirty(false);
+      onBriefChange?.({ idea });
+      setIdeaStatus('Idea applied to the project brief.');
+      try {
+        const raw = localStorage.getItem('caspa.plotHold');
+        if (raw) {
+          const hold = JSON.parse(raw);
+          hold.premise = idea;
+          hold.updatedAt = new Date().toISOString();
+          localStorage.setItem('caspa.plotHold', JSON.stringify(hold));
+        }
+      } catch {
+        /* plot hold optional */
+      }
+      return true;
+    },
+    [onBriefChange]
+  );
 
   const handleIngest = async () => {
     if (!inboxText.trim()) return;
@@ -207,8 +247,66 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
     }
   };
 
+  const handleSuggestIdea = async () => {
+    const seed = directedIdea.trim() || brief.idea || inboxText.slice(0, 2000);
+    if (!seed.trim()) {
+      setIdeaStatus('Add a rough idea first, then ask Caspa to sharpen it.');
+      return;
+    }
+    setIdeaBusy(true);
+    setIdeaStatus('Sharpening the book idea…');
+    try {
+      const res = await fetch('/api/caspa/write/seed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seed, mode: brief.mode || 'novel' }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success && json.data?.premise) {
+        setDirectedIdea(String(json.data.premise));
+        setIdeaDirty(true);
+        setIdeaStatus(
+          json.data.title
+            ? `Suggested direction (from seed expansion). Review, then Apply. Working title hint: ${json.data.title}`
+            : 'Suggested direction ready. Review, then Apply.'
+        );
+        return;
+      }
+
+      const aiRes = await fetch('/api/ai/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `You are Caspa directing a book idea before drafting.
+
+MODE: ${brief.mode}
+CURRENT IDEA / PREMISE:
+${seed}
+
+Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesis for nonfiction), concrete place/pressure, and the dramatic or intellectual engine. No title. No bullet list. No preamble.`,
+          maxTokens: 600,
+        }),
+      });
+      const aiJson = await aiRes.json();
+      if (!aiRes.ok || !aiJson.result) throw new Error(aiJson.message || json.message || 'Idea direction failed');
+      setDirectedIdea(String(aiJson.result).trim());
+      setIdeaDirty(true);
+      setIdeaStatus('Suggested direction ready. Review, then Apply.');
+    } catch (err) {
+      setIdeaStatus(err instanceof Error ? err.message : 'Could not suggest a direction');
+    } finally {
+      setIdeaBusy(false);
+    }
+  };
+
   const handleWriteIt = async () => {
     if (!state.diagnosis || state.chapters.length === 0) return;
+
+    const nextIdea = directedIdea.trim() || brief.idea;
+    const writeBrief = { ...brief, idea: nextIdea };
+    if (nextIdea && nextIdea !== brief.idea) {
+      applyDirectedIdea(nextIdea);
+    }
 
     let scope = { ...state.scope };
     if (state.selectedRecommendationIds.includes('rec-rebuild')) {
@@ -220,7 +318,7 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
 
     try {
       const result = await executeCommission(
-        brief,
+        writeBrief,
         state.chapters,
         state.diagnosis,
         state.selectedRecommendationIds,
@@ -256,10 +354,10 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
         <header style={{ marginBottom: 28 }}>
           <div style={kicker}>Caspa Workshop</div>
           <h1 style={{ margin: '6px 0 8px', fontSize: 'clamp(36px, 5vw, 56px)', lineHeight: 1, letterSpacing: -2 }}>
-            Paste. Diagnose. Write it.
+            Paste. Direct the idea. Write it.
           </h1>
           <p style={{ margin: 0, maxWidth: 720, color: '#73695d', fontSize: 18, lineHeight: 1.5 }}>
-            Drop a crap manuscript. Caspa tells you what&apos;s wrong. You tick what you agree with and click Write it.
+            Drop a manuscript. Steer the premise before you commit. Tick what you agree with, then Write it.
           </p>
         </header>
 
@@ -323,6 +421,17 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
         {tab === 'inbox' && (
           <InboxPanel
             brief={brief}
+            directedIdea={directedIdea}
+            onDirectedIdeaChange={(value) => {
+              setDirectedIdea(value);
+              setIdeaDirty(true);
+              setIdeaStatus('');
+            }}
+            onApplyIdea={() => applyDirectedIdea(directedIdea)}
+            onSuggestIdea={handleSuggestIdea}
+            ideaBusy={ideaBusy}
+            ideaDirty={ideaDirty}
+            ideaStatus={ideaStatus}
             inboxText={inboxText}
             setInboxText={setInboxText}
             onIngest={handleIngest}
@@ -349,6 +458,17 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
             libraryCount={libraryCount}
             autoResearch={autoResearch}
             onAutoResearchChange={setAutoResearch}
+            directedIdea={directedIdea}
+            onDirectedIdeaChange={(value) => {
+              setDirectedIdea(value);
+              setIdeaDirty(true);
+              setIdeaStatus('');
+            }}
+            onApplyIdea={() => applyDirectedIdea(directedIdea)}
+            onSuggestIdea={handleSuggestIdea}
+            ideaBusy={ideaBusy}
+            ideaDirty={ideaDirty}
+            ideaStatus={ideaStatus}
           />
         )}
 
@@ -375,6 +495,13 @@ export default function CommissionStudio({ brief, draftPage, onArtefactReady, on
 
 function InboxPanel({
   brief,
+  directedIdea,
+  onDirectedIdeaChange,
+  onApplyIdea,
+  onSuggestIdea,
+  ideaBusy,
+  ideaDirty,
+  ideaStatus,
   inboxText,
   setInboxText,
   onIngest,
@@ -384,6 +511,13 @@ function InboxPanel({
   error,
 }: {
   brief: ProjectBriefLike;
+  directedIdea: string;
+  onDirectedIdeaChange: (v: string) => void;
+  onApplyIdea: () => void;
+  onSuggestIdea: () => void;
+  ideaBusy: boolean;
+  ideaDirty: boolean;
+  ideaStatus: string;
   inboxText: string;
   setInboxText: (v: string) => void;
   onIngest: () => void;
@@ -446,15 +580,24 @@ function InboxPanel({
       <aside style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
         <article style={card}>
           <h2 style={sectionTitle}>Project</h2>
-          <p style={{ fontWeight: 700, fontSize: 18, margin: '0 0 8px' }}>{brief.title}</p>
-          <p style={{ color: '#73695d', margin: 0, lineHeight: 1.5 }}>{brief.idea}</p>
+          <p style={{ fontWeight: 700, fontSize: 18, margin: '0 0 12px' }}>{brief.title}</p>
+          <IdeaDirectionCard
+            directedIdea={directedIdea}
+            onDirectedIdeaChange={onDirectedIdeaChange}
+            onApplyIdea={onApplyIdea}
+            onSuggestIdea={onSuggestIdea}
+            ideaBusy={ideaBusy}
+            ideaDirty={ideaDirty}
+            ideaStatus={ideaStatus}
+            compact
+          />
         </article>
         <article style={card}>
           <h2 style={sectionTitle}>What happens next</h2>
           <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9, color: '#4a3b28' }}>
+            <li>Direct or sharpen the book idea</li>
             <li>Caspa recognises plan vs manuscript</li>
-            <li>Structured recommendations — not a wall of text</li>
-            <li>You pick scope and click Write it</li>
+            <li>You pick fixes and scope, then Write it</li>
             <li>Finished prose lands in Workshop</li>
           </ol>
         </article>
@@ -479,6 +622,13 @@ function RecommendationsPanel({
   libraryCount,
   autoResearch,
   onAutoResearchChange,
+  directedIdea,
+  onDirectedIdeaChange,
+  onApplyIdea,
+  onSuggestIdea,
+  ideaBusy,
+  ideaDirty,
+  ideaStatus,
 }: {
   diagnosis: Diagnosis;
   selectedIds: string[];
@@ -494,6 +644,13 @@ function RecommendationsPanel({
   libraryCount: number;
   autoResearch: boolean;
   onAutoResearchChange: (v: boolean) => void;
+  directedIdea: string;
+  onDirectedIdeaChange: (v: string) => void;
+  onApplyIdea: () => void;
+  onSuggestIdea: () => void;
+  ideaBusy: boolean;
+  ideaDirty: boolean;
+  ideaStatus: string;
 }) {
   const viabilityColor =
     diagnosis.viabilityScore >= 70 ? '#15803d' : diagnosis.viabilityScore >= 40 ? '#b45309' : '#b91c1c';
@@ -567,6 +724,22 @@ function RecommendationsPanel({
 
         <aside style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
           <article style={card}>
+            <h2 style={sectionTitle}>Direct the idea</h2>
+            <p style={{ color: '#73695d', marginTop: 0, fontSize: 14, lineHeight: 1.5 }}>
+              Steer the premise before you commit. Write it will follow this direction.
+            </p>
+            <IdeaDirectionCard
+              directedIdea={directedIdea}
+              onDirectedIdeaChange={onDirectedIdeaChange}
+              onApplyIdea={onApplyIdea}
+              onSuggestIdea={onSuggestIdea}
+              ideaBusy={ideaBusy}
+              ideaDirty={ideaDirty}
+              ideaStatus={ideaStatus}
+            />
+          </article>
+
+          <article style={card}>
             <h2 style={sectionTitle}>Scope</h2>
             <ScopePicker scope={scope} chapterMax={chapterMax} onChange={onScopeChange} />
           </article>
@@ -583,7 +756,7 @@ function RecommendationsPanel({
 
           <button type="button" onClick={onWriteIt} disabled={executing || selectedIds.length === 0} style={primaryBtn}>
             {executing ? <Loader size={20} className="spin" /> : <Wand2 size={20} />}
-            {executing ? 'Writing…' : 'Write it'}
+            {executing ? 'Writing…' : ideaDirty ? 'Apply idea & Write it' : 'Write it'}
           </button>
 
           {diagnosis.suggestRebuild && (
@@ -601,6 +774,98 @@ function RecommendationsPanel({
             {diagnosis.editorNotes}
           </pre>
         </article>
+      )}
+    </div>
+  );
+}
+
+function IdeaDirectionCard({
+  directedIdea,
+  onDirectedIdeaChange,
+  onApplyIdea,
+  onSuggestIdea,
+  ideaBusy,
+  ideaDirty,
+  ideaStatus,
+  compact = false,
+}: {
+  directedIdea: string;
+  onDirectedIdeaChange: (v: string) => void;
+  onApplyIdea: () => void;
+  onSuggestIdea: () => void;
+  ideaBusy: boolean;
+  ideaDirty: boolean;
+  ideaStatus: string;
+  compact?: boolean;
+}) {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {!compact && null}
+      <textarea
+        value={directedIdea}
+        onChange={(e) => onDirectedIdeaChange(e.target.value)}
+        rows={compact ? 5 : 7}
+        placeholder="What is this book really about? Wound, desire, place, pressure — or the nonfiction thesis."
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          border: `1px solid ${ideaDirty ? '#d6a846' : '#eadfce'}`,
+          borderRadius: 12,
+          padding: 12,
+          fontSize: 14,
+          lineHeight: 1.55,
+          background: '#fffdf8',
+          resize: 'vertical',
+          fontFamily: 'inherit',
+        }}
+      />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          disabled={ideaBusy || !directedIdea.trim()}
+          onClick={onSuggestIdea}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            border: '1px solid #eadfce',
+            background: '#fffaf2',
+            color: '#4a3b28',
+            borderRadius: 12,
+            padding: '10px 12px',
+            cursor: ideaBusy ? 'wait' : 'pointer',
+            fontWeight: 600,
+            fontSize: 13,
+          }}
+        >
+          {ideaBusy ? <Loader size={14} className="spin" /> : <Sparkles size={14} />}
+          Suggest direction
+        </button>
+        <button
+          type="button"
+          disabled={ideaBusy || !directedIdea.trim() || !ideaDirty}
+          onClick={onApplyIdea}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            border: '1px solid #eadfce',
+            background: ideaDirty ? '#d6a846' : '#f3ecdf',
+            color: '#1d1408',
+            borderRadius: 12,
+            padding: '10px 12px',
+            cursor: !ideaDirty ? 'not-allowed' : 'pointer',
+            fontWeight: 700,
+            fontSize: 13,
+            opacity: !ideaDirty ? 0.65 : 1,
+          }}
+        >
+          <PenLine size={14} />
+          Apply idea
+        </button>
+      </div>
+      {ideaStatus && (
+        <p style={{ margin: 0, fontSize: 13, color: '#6f6252', lineHeight: 1.45 }}>{ideaStatus}</p>
       )}
     </div>
   );

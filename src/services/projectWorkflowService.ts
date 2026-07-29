@@ -275,7 +275,7 @@ export function getWorkflowSteps(
     steps.push({
       id: 'workshop_write',
       title: poetry ? 'Commission the cut / rewrite' : 'Commission the rewrite',
-      why: 'Select recommendations, then Write it. Caspa produces a manuscript-ready artefact for White Page.',
+      why: 'Direct the idea if needed, select recommendations, then Write it. Caspa produces a manuscript-ready artefact for White Page.',
       action: commissionComplete ? 'View artefact' : hasChapters ? 'Finish commission' : 'Open Workshop',
       view: 'workshop',
       done: commissionComplete,
