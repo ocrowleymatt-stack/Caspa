@@ -860,14 +860,14 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
     if (m === 'nonfiction') {
       return {
         tone: 'Clear, concrete, earned authority. No fake profundity.',
-        output: 'Full manuscript: draft every held chapter/section in order (~1500–2500 words each).',
+        output: 'Full manuscript: draft every held chapter/section in order to the aspire-to word count.',
         audience: 'General informed readers (or name the niche).',
       };
     }
     if (m === 'essay') {
       return {
         tone: 'Sharp, personal where useful, argument-led.',
-        output: 'Finished essay / article / column draft.',
+        output: 'Finished essay / article / column draft to the aspire-to word count.',
         audience: 'Magazine, Substack, or newspaper readers.',
       };
     }
@@ -890,7 +890,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
     }
     return {
       tone: 'Sharp, vivid, structurally solid.',
-      output: 'Full manuscript: draft every held chapter in order (~1500–2500 words each).',
+      output: 'Full manuscript: draft every held chapter in order to the aspire-to word count.',
       audience: 'Literary / general readers.',
     };
   };

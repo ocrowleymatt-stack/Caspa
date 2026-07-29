@@ -24,9 +24,87 @@ import { routeCaspaIntent } from '../services/intent-router';
 import { LITERARY_ENGINE_RULES, AWARD_BAR, ARTEFACT_FIRST, engineRulesForMode } from '../services/literary/novelWritePro';
 import { runQualityGates, aggregateQuality } from '../services/qualityGateService';
 import { buildServerPlotHoldBlock, type ServerPlotHold } from '../services/literary/plotHoldServer';
-import { countWords, planQualityCut } from '../services/wordCountService';
+import {
+  buildExpandSectionPrompt,
+  countWords,
+  planQualityCut,
+  sectionOutputInstruction,
+  sectionWordBudget,
+  tokensForWordTarget,
+  type SectionWordBudget,
+} from '../services/wordCountService';
 
 const router = express.Router();
+
+function beatKindForMode(mode: NovelWriteProMode): 'chapter' | 'section' | 'scene' {
+  if (mode === 'nonfiction' || mode === 'essay') return 'section';
+  if (mode === 'script' || mode === 'musical') return 'scene';
+  return 'chapter';
+}
+
+function budgetFromRequest(opts: {
+  mode: NovelWriteProMode;
+  targetWordCount?: number | null;
+  sourceText?: string;
+  plotHold?: ServerPlotHold | null;
+}): SectionWordBudget | null {
+  if (typeof opts.targetWordCount !== 'number' || opts.targetWordCount <= 0) return null;
+  const beats = opts.plotHold?.beats || [];
+  const totalBeats = Math.max(1, beats.length || 1);
+  const remainingBeats = Math.max(
+    1,
+    beats.filter((b) => (b.status || 'pending') !== 'drafted').length || totalBeats
+  );
+  return sectionWordBudget({
+    targetWordCount: opts.targetWordCount,
+    totalBeats,
+    remainingBeats,
+    currentWords: countWords(opts.sourceText || ''),
+    mode: opts.mode,
+  });
+}
+
+function withBudgetFields<T extends Record<string, unknown>>(input: T, budget: SectionWordBudget | null) {
+  if (!budget) return input;
+  return {
+    ...input,
+    targetWordCount: budget.bookTarget,
+    sectionWordTarget: budget.sectionTarget,
+    sectionWordMin: budget.minWords,
+    sectionWordMax: budget.maxWords,
+    currentManuscriptWords: budget.currentWords,
+    remainingBeats: budget.remainingBeats,
+  };
+}
+
+async function ensureSectionLength(opts: {
+  text: string;
+  budget: SectionWordBudget | null;
+  mode: NovelWriteProMode;
+  focusBeat?: string;
+}): Promise<string> {
+  if (!opts.budget) return opts.text;
+  let text = opts.text;
+  let words = countWords(text);
+  // Up to two expand passes if the model stops short of the contract.
+  for (let i = 0; i < 2 && words < opts.budget.minWords; i++) {
+    const expand = await callServerAi(
+      buildExpandSectionPrompt({
+        excerpt: text,
+        sectionTarget: opts.budget.sectionTarget,
+        currentSectionWords: words,
+        focusBeat: opts.focusBeat,
+        mode: opts.mode,
+      }),
+      false,
+      { maxTokens: tokensForWordTarget(opts.budget.sectionTarget - words + 400) }
+    );
+    if (!expand.trim()) break;
+    text = `${text.trim()}\n\n${expand.trim()}`;
+    words = countWords(text);
+  }
+  return text;
+}
 
 const VALID_MODES: NovelWriteProMode[] = [
   'novel',
@@ -121,27 +199,36 @@ router.post('/auto-write', async (req, res) => {
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
   const resolvedGenre = genre?.trim() ? genre : defaultGenreForMode(safeMode);
   const lens = getAwardLens(prizeLensId);
+  const budget = budgetFromRequest({ mode: safeMode, targetWordCount, sourceText, plotHold });
+  const kind = beatKindForMode(safeMode);
+  const resolvedOutput = budget ? sectionOutputInstruction(budget, kind) : output;
   const job = createJob('auto-write', 'drafting');
   updateJob(job.id, { status: 'running' });
 
   try {
-    const route = routeCaspaIntent(sourceText, `write ${output}`);
-    const prompt = buildAutoWritePrompt({
-      mode: safeMode,
-      modeTitle: modeTitle(safeMode),
-      genre: resolvedGenre,
-      premise,
-      tone,
-      output,
-      sourceText,
-      prizeLens: awardLensPromptBlock(lens),
-      plotHoldBlock: buildServerPlotHoldBlock(plotHold),
-      focusBeat,
-      targetWordCount:
-        typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
-    });
+    const route = routeCaspaIntent(sourceText, `write ${resolvedOutput}`);
+    const prompt = buildAutoWritePrompt(
+      withBudgetFields(
+        {
+          mode: safeMode,
+          modeTitle: modeTitle(safeMode),
+          genre: resolvedGenre,
+          premise,
+          tone,
+          output: resolvedOutput,
+          sourceText,
+          prizeLens: awardLensPromptBlock(lens),
+          plotHoldBlock: buildServerPlotHoldBlock(plotHold),
+          focusBeat,
+        },
+        budget
+      )
+    );
 
-    const text = await callServerAi(`${route.systemInstruction}\n\n${prompt}`);
+    let text = await callServerAi(`${route.systemInstruction}\n\n${prompt}`, false, {
+      maxTokens: tokensForWordTarget(budget?.sectionTarget || 2500),
+    });
+    text = await ensureSectionLength({ text, budget, mode: safeMode, focusBeat });
     updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
     res.json({
       success: true,
@@ -150,6 +237,8 @@ router.post('/auto-write', async (req, res) => {
         awardLens: lens,
         routing: route,
         wordCount: countWords(text),
+        sectionTarget: budget?.sectionTarget ?? null,
+        bookTarget: budget?.bookTarget ?? null,
       },
       jobId: job.id,
     });
@@ -188,23 +277,28 @@ router.post('/prize-draft', async (req, res) => {
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
   const resolvedGenre = genre?.trim() ? genre : defaultGenreForMode(safeMode);
   const lens = getAwardLens(prizeLensId);
-  const input = {
-    mode: safeMode,
-    modeTitle: modeTitle(safeMode),
-    genre: resolvedGenre,
-    premise,
-    tone,
-    output,
-    sourceText,
-    prizeLens: awardLensPromptBlock(lens),
-    plotHoldBlock: buildServerPlotHoldBlock(plotHold),
-    focusBeat,
-    targetWordCount:
-      typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
-  };
+  const budget = budgetFromRequest({ mode: safeMode, targetWordCount, sourceText, plotHold });
+  const kind = beatKindForMode(safeMode);
+  const resolvedOutput = budget ? sectionOutputInstruction(budget, kind) : output;
+  const input = withBudgetFields(
+    {
+      mode: safeMode,
+      modeTitle: modeTitle(safeMode),
+      genre: resolvedGenre,
+      premise,
+      tone,
+      output: resolvedOutput,
+      sourceText,
+      prizeLens: awardLensPromptBlock(lens),
+      plotHoldBlock: buildServerPlotHoldBlock(plotHold),
+      focusBeat,
+    },
+    budget
+  );
 
   const job = createJob('prize-draft', 'planning');
   updateJob(job.id, { status: 'running', progress: 5, stage: 'planning' });
+  const proseTokens = tokensForWordTarget(budget?.sectionTarget || 2500);
 
   try {
     const planRaw = await callServerAi(buildPlanningPrompt(input), true);
@@ -212,26 +306,36 @@ router.post('/prize-draft', async (req, res) => {
       premise,
       genre: resolvedGenre,
       tone,
-      formatDecision: output,
+      formatDecision: resolvedOutput,
     });
 
     updateJob(job.id, { progress: 25, stage: 'drafting' });
-    const draft = await callServerAi(buildFirstDraftPrompt(input, plan));
+    let draft = await callServerAi(buildFirstDraftPrompt(input, plan), false, { maxTokens: proseTokens });
+    draft = await ensureSectionLength({ text: draft, budget, mode: safeMode, focusBeat });
 
     updateJob(job.id, { progress: 55, stage: 'critic' });
     const criticReport = await callServerAi(buildCriticPrompt(plan, draft));
 
     updateJob(job.id, { progress: 75, stage: 'rewrite' });
-    const rewritten = await callServerAi(buildRewritePrompt(input, plan, draft, criticReport));
+    let rewritten = await callServerAi(buildRewritePrompt(input, plan, draft, criticReport), false, {
+      maxTokens: proseTokens,
+    });
+    rewritten = await ensureSectionLength({
+      text: rewritten,
+      budget,
+      mode: safeMode,
+      focusBeat,
+    });
 
     const findings = runQualityGates(rewritten, safeMode === 'polish' ? 'novel' : safeMode);
     const quality = aggregateQuality(findings);
+    const words = countWords(rewritten);
 
     updateJob(job.id, {
       status: 'complete',
       progress: 100,
       stage: 'complete',
-      result: { words: rewritten.trim().split(/\s+/).filter(Boolean).length, score: quality.overallScore },
+      result: { words, score: quality.overallScore },
     });
 
     res.json({
@@ -244,7 +348,9 @@ router.post('/prize-draft', async (req, res) => {
         text: rewritten,
         awardLens: lens,
         quality,
-        wordCount: rewritten.trim().split(/\s+/).filter(Boolean).length,
+        wordCount: words,
+        sectionTarget: budget?.sectionTarget ?? null,
+        bookTarget: budget?.bookTarget ?? null,
       },
     });
   } catch (err) {
@@ -441,36 +547,48 @@ router.post('/continue', async (req, res) => {
     plotHold?.beats?.find((b) => (b.status || 'pending') === 'pending') ||
     plotHold?.beats?.find((b) => b.status !== 'drafted') ||
     null;
-  const focusBeat = pending ? `${pending.title}: ${pending.turn}` : 'Continue from the last page with the next inevitable turn.';
+  const focusBeat = pending
+    ? `${pending.title}: ${pending.turn}`
+    : 'Continue from the last page with the next inevitable turn.';
+  const budget = budgetFromRequest({ mode: safeMode, targetWordCount, sourceText, plotHold });
+  const kind = beatKindForMode(safeMode);
   const continueOutput =
-    output?.trim() ||
-    (wholeBook
-      ? 'Full chapter for this beat only (1500–2500 words). Do not restart the book or repeat prior chapters.'
-      : 'Next scene / chapter section only (1200–2000 words). Do not restart the book.');
+    budget
+      ? sectionOutputInstruction(budget, kind)
+      : output?.trim() ||
+        (wholeBook
+          ? `Full ${kind} for this beat only. Do not restart the book or repeat prior ${kind}s.`
+          : `Next ${kind} only. Do not restart the book.`);
 
   const job = createJob('auto-write', 'continue');
   updateJob(job.id, { status: 'running' });
 
   try {
     const route = routeCaspaIntent(sourceText, 'continue writing the next scene');
-    const prompt = buildAutoWritePrompt({
-      mode: safeMode,
-      modeTitle: modeTitle(safeMode),
-      genre: resolvedGenre || plotHold?.genre,
-      premise: premise || plotHold?.premise || '',
-      tone: tone || plotHold?.tone || '',
-      output: continueOutput,
-      sourceText: sourceText.slice(-8000),
-      prizeLens: awardLensPromptBlock(lens),
-      plotHoldBlock: holdBlock,
-      focusBeat,
-      targetWordCount:
-        typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
-    });
-
-    const text = await callServerAi(
-      `${route.systemInstruction}\n\n${AWARD_BAR}\n\n${prompt}\n\nAppend only new material. Do not repeat prior pages.`
+    const prompt = buildAutoWritePrompt(
+      withBudgetFields(
+        {
+          mode: safeMode,
+          modeTitle: modeTitle(safeMode),
+          genre: resolvedGenre || plotHold?.genre,
+          premise: premise || plotHold?.premise || '',
+          tone: tone || plotHold?.tone || '',
+          output: continueOutput,
+          sourceText: sourceText.slice(-8000),
+          prizeLens: awardLensPromptBlock(lens),
+          plotHoldBlock: holdBlock,
+          focusBeat,
+        },
+        budget
+      )
     );
+
+    let text = await callServerAi(
+      `${route.systemInstruction}\n\n${AWARD_BAR}\n\n${prompt}\n\nAppend only new material. Do not repeat prior pages.`,
+      false,
+      { maxTokens: tokensForWordTarget(budget?.sectionTarget || 2500) }
+    );
+    text = await ensureSectionLength({ text, budget, mode: safeMode, focusBeat });
 
     updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
     res.json({
@@ -480,7 +598,9 @@ router.post('/continue', async (req, res) => {
         text,
         focusBeat,
         beatTitle: pending?.title || null,
-        wordCount: text.trim().split(/\s+/).filter(Boolean).length,
+        wordCount: countWords(text),
+        sectionTarget: budget?.sectionTarget ?? null,
+        bookTarget: budget?.bookTarget ?? null,
         awardLens: lens,
       },
     });

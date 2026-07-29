@@ -196,8 +196,8 @@ export default function QuickWrite({
         body: JSON.stringify({
           ...sharedWriteBody(hold, focus),
           output: nonfiction
-            ? 'Full opening section for the current focus beat (1500–2500 words), evidence-led'
-            : 'Full opening chapter for the current focus beat (1800–2800 words)',
+            ? 'Full opening section for the current focus beat — hit the aspire-to section word target'
+            : 'Full opening chapter for the current focus beat — hit the aspire-to section word target',
           sourceText: draftPage,
         }),
       });
@@ -209,7 +209,9 @@ export default function QuickWrite({
       setCritic(json.data.criticReport || '');
       setQualityScore(json.data.quality?.overallScore ?? null);
       setStep('draft');
-      setStatus(`Drafted ${json.data.wordCount?.toLocaleString?.() || countWords(text)} words.`);
+      const got = json.data.wordCount?.toLocaleString?.() || countWords(text).toLocaleString();
+      const aim = json.data.sectionTarget ? ` (target ${Number(json.data.sectionTarget).toLocaleString()})` : '';
+      setStatus(`Drafted ${got} words${aim}.`);
     } catch (err: any) {
       setError(err.message || 'Draft failed');
     } finally {
@@ -243,7 +245,9 @@ export default function QuickWrite({
       );
       onDraftChange(`${draftPage.trim()}${heading}${next}`.trim());
       if (hold && focus) setPlotHold(markBeatDrafted(hold, focus.title));
-      setStatus(`Added ${json.data.wordCount?.toLocaleString?.() || countWords(next)} words.`);
+      const got = json.data.wordCount?.toLocaleString?.() || countWords(next).toLocaleString();
+      const aim = json.data.sectionTarget ? ` (target ${Number(json.data.sectionTarget).toLocaleString()})` : '';
+      setStatus(`Added ${got} words${aim}.`);
     } catch (err: any) {
       setError(err.message || 'Continue failed');
     } finally {
@@ -280,8 +284,8 @@ export default function QuickWrite({
             sourceText: manuscript,
             wholeBook: true,
             output: nonfiction
-              ? 'Full section for this beat only (1500–2500 words). Do not restart the book or repeat prior sections.'
-              : 'Full chapter for this beat only (1500–2500 words). Do not restart the book or repeat prior chapters.',
+              ? 'Full section for this beat only — hit the aspire-to section word target. Do not restart or repeat prior sections.'
+              : 'Full chapter for this beat only — hit the aspire-to section word target. Do not restart or repeat prior chapters.',
           }),
         });
         const json = await res.json();
@@ -298,11 +302,19 @@ export default function QuickWrite({
         if (json.data.quality?.overallScore != null) lastScore = json.data.quality.overallScore;
         done += 1;
         setBookProgress({ done, total, title: beat.title });
+        const sectionAim = json.data.sectionTarget
+          ? ` · section ${countWords(chunk).toLocaleString()}/${Number(json.data.sectionTarget).toLocaleString()}`
+          : '';
+        setStatus(
+          `Writing ${beat.title} (${done}/${total}) · book ${countWords(manuscript).toLocaleString()}/${targetWords.toLocaleString()}${sectionAim}`
+        );
       }
 
       if (lastScore != null) setQualityScore(lastScore);
       setStep('cut');
-      setStatus(`Whole book drafted: ${done}/${total} ${nonfiction ? 'sections' : 'chapters'}. Cut by need, then pack.`);
+      setStatus(
+        `Whole book drafted: ${done}/${total} ${nonfiction ? 'sections' : 'chapters'} · ${countWords(manuscript).toLocaleString()}/${targetWords.toLocaleString()} words. Cut by need, then pack.`
+      );
       setBookProgress(null);
     } catch (err: any) {
       setStep('draft');

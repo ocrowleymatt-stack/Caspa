@@ -10,6 +10,127 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+export type SectionWordBudget = {
+  bookTarget: number;
+  currentWords: number;
+  remainingWords: number;
+  totalBeats: number;
+  remainingBeats: number;
+  /** Hard target for this section/chapter. */
+  sectionTarget: number;
+  minWords: number;
+  maxWords: number;
+};
+
+/**
+ * Split remaining aspire-to length across remaining beats so the manuscript
+ * can actually land near the book target (instead of a fixed 1500–2500).
+ */
+export function sectionWordBudget(opts: {
+  targetWordCount: number;
+  totalBeats?: number;
+  remainingBeats?: number;
+  currentWords?: number;
+  mode?: string;
+}): SectionWordBudget {
+  const bookTarget = Math.max(100, Math.round(opts.targetWordCount || 0));
+  const currentWords = Math.max(0, Math.round(opts.currentWords || 0));
+  const totalBeats = Math.max(1, Math.round(opts.totalBeats || 1));
+  const remainingBeats = Math.max(1, Math.round(opts.remainingBeats || totalBeats));
+  const remainingWords = Math.max(0, bookTarget - currentWords);
+
+  let sectionTarget = Math.round(remainingWords / remainingBeats);
+
+  // Mode floors / ceilings so short forms and long novels both work.
+  const mode = opts.mode || 'novel';
+  let floor = 1200;
+  let ceiling = 10000;
+  if (mode === 'essay') {
+    floor = 800;
+    ceiling = Math.max(bookTarget, 1200);
+  } else if (mode === 'poetry') {
+    floor = 40;
+    ceiling = 400;
+  } else if (mode === 'picture') {
+    floor = 80;
+    ceiling = 600;
+  } else if (mode === 'script' || mode === 'musical') {
+    floor = 800;
+    ceiling = 5000;
+  } else if (mode === 'nonfiction') {
+    floor = 1500;
+    ceiling = 9000;
+  }
+
+  // If we still have a lot of book left, don't under-ask the model.
+  if (remainingWords > 0) {
+    sectionTarget = Math.max(floor, Math.min(ceiling, sectionTarget || floor));
+  } else {
+    sectionTarget = Math.min(ceiling, Math.max(Math.round(floor * 0.6), 200));
+  }
+
+  // Single-beat short forms: aim at the whole book target.
+  if (totalBeats === 1 && (mode === 'essay' || mode === 'poetry' || mode === 'picture')) {
+    sectionTarget = Math.max(floor, Math.min(ceiling, bookTarget));
+  }
+
+  const minWords = Math.max(Math.round(sectionTarget * 0.9), Math.min(floor, sectionTarget));
+  const maxWords = Math.round(sectionTarget * 1.12);
+
+  return {
+    bookTarget,
+    currentWords,
+    remainingWords,
+    totalBeats,
+    remainingBeats,
+    sectionTarget,
+    minWords,
+    maxWords,
+  };
+}
+
+export function sectionOutputInstruction(budget: SectionWordBudget, kind: 'chapter' | 'section' | 'scene' = 'chapter'): string {
+  return (
+    `Full ${kind} for this beat only — HARD TARGET ${budget.sectionTarget.toLocaleString()} words ` +
+    `(acceptable ${budget.minWords.toLocaleString()}–${budget.maxWords.toLocaleString()}). ` +
+    `Book aspire-to ${budget.bookTarget.toLocaleString()} words; manuscript so far ${budget.currentWords.toLocaleString()}; ` +
+    `${budget.remainingBeats} beat(s) remaining including this one. ` +
+    `Do not stop early. Do not restart the book or repeat prior ${kind}s.`
+  );
+}
+
+export function buildExpandSectionPrompt(opts: {
+  excerpt: string;
+  sectionTarget: number;
+  currentSectionWords: number;
+  focusBeat?: string;
+  mode?: string;
+}): string {
+  const need = Math.max(0, opts.sectionTarget - opts.currentSectionWords);
+  const nonfiction = opts.mode === 'nonfiction' || opts.mode === 'essay';
+  return [
+    'Continue this draft from where it left off. Do not restart. Do not summarise.',
+    opts.focusBeat ? `FOCUS BEAT: ${opts.focusBeat}` : '',
+    `You have written ~${opts.currentSectionWords.toLocaleString()} words. Write ~${need.toLocaleString()} more words to reach ~${opts.sectionTarget.toLocaleString()}.`,
+    nonfiction
+      ? 'Add concrete evidence, turns of argument, and scene/setting specificity — not filler.'
+      : 'Deepen scene turns, concrete behaviour, dialogue conflict, and place — not filler or summary.',
+    'Return ONLY the continuation prose to append.',
+    '',
+    'EXISTING SECTION (tail):',
+    opts.excerpt.slice(-6000),
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** Token budget for a section target (words → tokens with headroom). */
+export function tokensForWordTarget(sectionTarget: number, json = false): number {
+  if (json) return 4096;
+  const estimated = Math.round(sectionTarget * 1.6) + 800;
+  return Math.max(4096, Math.min(24000, estimated));
+}
+
 export function defaultTargetWordCount(mode: string): number {
   switch (mode) {
     case 'essay':

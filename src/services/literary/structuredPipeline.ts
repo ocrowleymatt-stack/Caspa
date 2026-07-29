@@ -48,6 +48,13 @@ setting, themes (array), structure, sourceNotes, styleRules (array of 3-6 active
 export function buildFirstDraftPrompt(input: NovelWriteProPromptInput, plan: StructuredPlan): string {
   const plot = input.plotHoldBlock?.trim() ? `\n${input.plotHoldBlock.trim()}\n` : '';
   const focus = input.focusBeat?.trim() ? `\nFOCUS BEAT\n${input.focusBeat.trim()}\n` : '';
+  const sectionTarget =
+    typeof input.sectionWordTarget === 'number' && input.sectionWordTarget > 0
+      ? Math.round(input.sectionWordTarget)
+      : null;
+  const lengthLock = sectionTarget
+    ? `\nWORD COUNT CONTRACT (HARD): write ~${sectionTarget.toLocaleString()} words for this section (min ${Math.round((input.sectionWordMin || sectionTarget * 0.9)).toLocaleString()}). Do not stop early.\n`
+    : '';
 
   return `You are Caspa Novel Write Pro — first draft phase.
 Obey the locked spine. Do not invent a rival plot. Output artefact only.
@@ -63,7 +70,7 @@ ${plan.characterWoundMap}
 
 STYLE RULES:
 ${plan.styleRules.map((r) => `- ${r}`).join('\n') || '- Clarity, turn, concrete detail'}
-${plot}${focus}
+${plot}${focus}${lengthLock}
 ${engineRulesForMode(input.mode)}
 ${AWARD_BAR}
 ${ARTEFACT_FIRST}
@@ -100,6 +107,14 @@ export function buildRewritePrompt(
   draft: string,
   criticReport: string
 ): string {
+  const sectionTarget =
+    typeof input.sectionWordTarget === 'number' && input.sectionWordTarget > 0
+      ? Math.round(input.sectionWordTarget)
+      : null;
+  const lengthLock = sectionTarget
+    ? `\nWORD COUNT CONTRACT: finished rewrite must stay near ${sectionTarget.toLocaleString()} words (do not shrink below ${Math.round((input.sectionWordMin || sectionTarget * 0.9)).toLocaleString()}). Expand thin spots rather than cutting for brevity.\n`
+    : '';
+
   return `You are Caspa Novel Write Pro — award-pass rewrite.
 
 Apply the critic report and improve the draft while preserving voice and intent.
@@ -113,7 +128,7 @@ ${draft.slice(0, 12000)}
 PLAN
 ${plan.premise} · ${plan.formatDecision}
 ${input.prizeLens ? `PRIZE LENS: ${input.prizeLens}` : ''}
-
+${lengthLock}
 ${engineRulesForMode(input.mode)}
 ${AWARD_BAR}
 ${ARTEFACT_FIRST}

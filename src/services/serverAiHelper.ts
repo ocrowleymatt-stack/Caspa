@@ -2,11 +2,18 @@
  * Server-side AI helper for Caspa routes (provider fallback chain)
  */
 
-export async function callServerAi(prompt: string, json = false): Promise<string> {
+export async function callServerAi(
+  prompt: string,
+  json = false,
+  opts?: { maxTokens?: number; timeoutMs?: number }
+): Promise<string> {
+  const maxTokens = opts?.maxTokens ?? (json ? 4096 : 8192);
+  const timeoutMs = opts?.timeoutMs ?? (maxTokens > 12000 ? 240000 : 120000);
+
   const providers: Array<{ name: string; fn: () => Promise<string | null> }> = [
-    { name: 'grok', fn: () => callGrok(prompt, json) },
-    { name: 'gemini', fn: () => callGemini(prompt, json) },
-    { name: 'openai', fn: () => callOpenai(prompt, json) },
+    { name: 'grok', fn: () => callGrok(prompt, json, maxTokens, timeoutMs) },
+    { name: 'gemini', fn: () => callGemini(prompt, json, maxTokens, timeoutMs) },
+    { name: 'openai', fn: () => callOpenai(prompt, json, maxTokens, timeoutMs) },
   ];
 
   let lastError: Error | null = null;
@@ -23,7 +30,12 @@ export async function callServerAi(prompt: string, json = false): Promise<string
   throw lastError || new Error('No AI provider available');
 }
 
-async function callGrok(prompt: string, json: boolean): Promise<string | null> {
+async function callGrok(
+  prompt: string,
+  json: boolean,
+  maxTokens: number,
+  timeoutMs: number
+): Promise<string | null> {
   const apiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY;
   if (!apiKey) return null;
 
@@ -36,15 +48,15 @@ async function callGrok(prompt: string, json: boolean): Promise<string | null> {
         {
           role: 'system',
           content:
-            'You are a prize-calibre literary editor. Be direct, specific, and ruthless about craft.',
+            'You are a prize-calibre literary editor. Be direct, specific, and ruthless about craft. When a word count contract is given, meet it.',
         },
         { role: 'user', content: json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
       ],
       temperature: 0.65,
-      max_tokens: json ? 4096 : 8192,
+      max_tokens: maxTokens,
       ...(json ? { response_format: { type: 'json_object' } } : {}),
     }),
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) return null;
@@ -52,7 +64,12 @@ async function callGrok(prompt: string, json: boolean): Promise<string | null> {
   return data.choices?.[0]?.message?.content || null;
 }
 
-async function callGemini(prompt: string, json: boolean): Promise<string | null> {
+async function callGemini(
+  prompt: string,
+  json: boolean,
+  maxTokens: number,
+  timeoutMs: number
+): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) return null;
 
@@ -63,9 +80,9 @@ async function callGemini(prompt: string, json: boolean): Promise<string | null>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt }] }],
-        generationConfig: { temperature: 0.65, maxOutputTokens: json ? 4096 : 8192 },
+        generationConfig: { temperature: 0.65, maxOutputTokens: maxTokens },
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(timeoutMs),
     }
   );
 
@@ -74,7 +91,12 @@ async function callGemini(prompt: string, json: boolean): Promise<string | null>
   return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
 }
 
-async function callOpenai(prompt: string, json: boolean): Promise<string | null> {
+async function callOpenai(
+  prompt: string,
+  json: boolean,
+  maxTokens: number,
+  timeoutMs: number
+): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
   if (!apiKey) return null;
 
@@ -84,13 +106,17 @@ async function callOpenai(prompt: string, json: boolean): Promise<string | null>
     body: JSON.stringify({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: 'You are a prize-calibre literary editor.' },
+        {
+          role: 'system',
+          content:
+            'You are a prize-calibre literary editor. When a word count contract is given, meet it.',
+        },
         { role: 'user', content: json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
       ],
       temperature: 0.65,
-      max_tokens: json ? 4096 : 8192,
+      max_tokens: maxTokens,
     }),
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) return null;

@@ -32,6 +32,12 @@ export interface NovelWriteProPromptInput {
   focusBeat?: string;
   /** Finished-work aspire-to length. */
   targetWordCount?: number | null;
+  /** Hard word target for this section/chapter only. */
+  sectionWordTarget?: number | null;
+  sectionWordMin?: number | null;
+  sectionWordMax?: number | null;
+  currentManuscriptWords?: number | null;
+  remainingBeats?: number | null;
 }
 
 export const LITERARY_ENGINE_RULES = `
@@ -139,9 +145,46 @@ export function buildAutoWritePrompt(input: NovelWriteProPromptInput): string {
   const focus = input.focusBeat?.trim()
     ? `\nFOCUS BEAT (write this now)\n${input.focusBeat.trim()}\n`
     : '';
-  const targetWords =
+  const sectionTarget =
+    typeof input.sectionWordTarget === 'number' && input.sectionWordTarget > 0
+      ? Math.round(input.sectionWordTarget)
+      : null;
+  const sectionMin =
+    typeof input.sectionWordMin === 'number' && input.sectionWordMin > 0
+      ? Math.round(input.sectionWordMin)
+      : sectionTarget
+        ? Math.round(sectionTarget * 0.9)
+        : null;
+  const sectionMax =
+    typeof input.sectionWordMax === 'number' && input.sectionWordMax > 0
+      ? Math.round(input.sectionWordMax)
+      : sectionTarget
+        ? Math.round(sectionTarget * 1.12)
+        : null;
+  const bookTarget =
     typeof input.targetWordCount === 'number' && input.targetWordCount > 0
-      ? `\nASPIRE-TO LENGTH\nFinished work target: ~${Math.round(input.targetWordCount).toLocaleString()} words. Pace this section so the whole manuscript can land near that length without padding.\n`
+      ? Math.round(input.targetWordCount)
+      : null;
+  const currentWords =
+    typeof input.currentManuscriptWords === 'number' && input.currentManuscriptWords >= 0
+      ? Math.round(input.currentManuscriptWords)
+      : null;
+  const remainingBeats =
+    typeof input.remainingBeats === 'number' && input.remainingBeats > 0
+      ? Math.round(input.remainingBeats)
+      : null;
+
+  const lengthBlock = sectionTarget
+    ? `\nWORD COUNT CONTRACT (HARD)
+- THIS SECTION TARGET: ${sectionTarget.toLocaleString()} words (acceptable ${sectionMin!.toLocaleString()}–${sectionMax!.toLocaleString()}).
+${bookTarget ? `- BOOK ASPIRE-TO: ${bookTarget.toLocaleString()} words.` : ''}
+${currentWords != null ? `- MANUSCRIPT SO FAR: ${currentWords.toLocaleString()} words.` : ''}
+${remainingBeats != null ? `- BEATS REMAINING (including this): ${remainingBeats}.` : ''}
+- Hitting the section target is mandatory. Do not stop at a stub, synopsis, or short scene.
+- Prefer dramatised length (turns, concrete action, dialogue, evidence) over padding.
+- Count as you write. Continue until you are inside the acceptable band.\n`
+    : bookTarget
+      ? `\nASPIRE-TO LENGTH\nFinished work target: ~${bookTarget.toLocaleString()} words. Write a full section, not a stub.\n`
       : '';
 
   return `You are Caspa running Novel Write Pro: an elite creative-writing engine.
@@ -160,7 +203,7 @@ ${input.output}
 
 TONE / TASTE
 ${input.tone || 'Clear, vivid, witty, emotionally precise, production-minded.'}
-${styleProfile}${researchContext}${prize}${plot}${focus}${targetWords}
+${styleProfile}${researchContext}${prize}${plot}${focus}${lengthBlock}
 SOURCE PAGE OR MANUSCRIPT
 ${sourceExcerpt || '[No source text supplied. Create original material.]'}
 
@@ -173,18 +216,18 @@ ${AWARD_BAR}
 ${ARTEFACT_FIRST}
 
 FORMAT RULES
-- Obey TARGET OUTPUT and FOCUS BEAT when present. Do not invent a shorter substitute.
-- Novel / fiction: if a focus beat is set, write that chapter only (full prose). If the target is the whole book opening, write title, short logline, then that chapter's prose — never stop after a stub.
-- Non-fiction: title/angle only when starting; then the requested section with evidence-led clarity. Prefer sections/claims over invented novel drama.
-- Essay / article: title, hook, then a complete short draft with a clear turn and landing.
-- Poetry: title (optional), then the poem or short sequence — compressed, musical, no padding.
-- Script: title/premise only when starting; then the requested scene in proper format.
+- Obey TARGET OUTPUT, WORD COUNT CONTRACT, and FOCUS BEAT when present. Do not invent a shorter substitute.
+- Novel / fiction: if a focus beat is set, write that chapter only (full prose to the word target). Never stop after a stub.
+- Non-fiction: title/angle only when starting; then the requested section with evidence-led clarity to the word target.
+- Essay / article: title, hook, then a complete draft that meets the word target.
+- Poetry: title (optional), then the poem or short sequence — compressed, musical; honour the (smaller) word target.
+- Script: title/premise only when starting; then the requested scene in proper format at target length.
 - Musical/show: requested scene / song / lyric draft as specified in TARGET OUTPUT.
-- Polish/adaptation: preserve source intent, then produce the requested stronger draft.
-- Chaos: bold, strange, coherent, and readable.
+- Polish/adaptation: preserve source intent, then produce the requested stronger draft at target length.
+- Chaos: bold, strange, coherent, and readable — still hit the word target.
 
 SELF-CHECK
-Silently improve against: hook, scene/section turn, hidden wound or thesis pressure, specificity, pace, subtext or counterpoint, originality, sentence cleanliness.
+Silently improve against: hook, scene/section turn, hidden wound or thesis pressure, specificity, pace, subtext or counterpoint, originality, sentence cleanliness, and WORD COUNT CONTRACT.
 
 OUTPUT NOW
 Return only the creative material. Do not explain the process.`;
