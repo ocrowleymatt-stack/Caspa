@@ -167,13 +167,14 @@ ${AWARD_BAR}
 ${ARTEFACT_FIRST}
 
 FORMAT RULES
-- Novel: title, short logline, then Chapter One prose.
-- Non-fiction: title, angle/promise, then opening chapter or section with evidence-led clarity.
+- Obey TARGET OUTPUT and FOCUS BEAT when present. Do not invent a shorter substitute.
+- Novel / fiction: if a focus beat is set, write that chapter only (full prose). If the target is the whole book opening, write title, short logline, then that chapter's prose — never stop after a stub.
+- Non-fiction: title/angle only when starting; then the requested section with evidence-led clarity.
 - Essay / article: title, hook, then a complete short draft with a clear turn and landing.
 - Poetry: title (optional), then the poem or short sequence — compressed, musical, no padding.
-- Script: title, premise note, then a properly formatted opening scene.
-- Musical/show: title, premise, opening scene, first song title + lyric draft, staging.
-- Polish/adaptation: preserve source intent, then produce a stronger award-pass draft.
+- Script: title/premise only when starting; then the requested scene in proper format.
+- Musical/show: requested scene / song / lyric draft as specified in TARGET OUTPUT.
+- Polish/adaptation: preserve source intent, then produce the requested stronger draft.
 - Chaos: bold, strange, coherent, and readable.
 
 SELF-CHECK

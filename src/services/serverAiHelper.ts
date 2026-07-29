@@ -41,10 +41,10 @@ async function callGrok(prompt: string, json: boolean): Promise<string | null> {
         { role: 'user', content: json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
       ],
       temperature: 0.65,
-      max_tokens: 4096,
+      max_tokens: json ? 4096 : 8192,
       ...(json ? { response_format: { type: 'json_object' } } : {}),
     }),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(120000),
   });
 
   if (!response.ok) return null;
@@ -63,9 +63,9 @@ async function callGemini(prompt: string, json: boolean): Promise<string | null>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt }] }],
-        generationConfig: { temperature: 0.65, maxOutputTokens: 4096 },
+        generationConfig: { temperature: 0.65, maxOutputTokens: json ? 4096 : 8192 },
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(120000),
     }
   );
 
@@ -88,9 +88,9 @@ async function callOpenai(prompt: string, json: boolean): Promise<string | null>
         { role: 'user', content: json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
       ],
       temperature: 0.65,
-      max_tokens: 4096,
+      max_tokens: json ? 4096 : 8192,
     }),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(120000),
   });
 
   if (!response.ok) return null;

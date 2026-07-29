@@ -98,7 +98,7 @@ router.post('/auto-write', async (req, res) => {
     genre = '',
     premise = '',
     tone = '',
-    output = 'Chapter One (1500–2500 words)',
+    output = 'Full chapter for the current focus beat (1500–2500 words)',
     sourceText = '',
     prizeLensId,
     plotHold,
@@ -161,7 +161,7 @@ router.post('/prize-draft', async (req, res) => {
     genre = '',
     premise = '',
     tone = '',
-    output = 'Opening chapter (1800–2800 words)',
+    output = 'Full opening chapter for the current focus beat (1800–2800 words)',
     sourceText = '',
     prizeLensId,
     plotHold,
@@ -328,6 +328,8 @@ router.post('/continue', async (req, res) => {
     sourceText = '',
     prizeLensId,
     plotHold,
+    output,
+    wholeBook = false,
   } = req.body as {
     mode?: NovelWriteProMode;
     genre?: string;
@@ -336,6 +338,8 @@ router.post('/continue', async (req, res) => {
     sourceText?: string;
     prizeLensId?: string;
     plotHold?: ServerPlotHold;
+    output?: string;
+    wholeBook?: boolean;
   };
 
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
@@ -347,6 +351,11 @@ router.post('/continue', async (req, res) => {
     plotHold?.beats?.find((b) => b.status !== 'drafted') ||
     null;
   const focusBeat = pending ? `${pending.title}: ${pending.turn}` : 'Continue from the last page with the next inevitable turn.';
+  const continueOutput =
+    output?.trim() ||
+    (wholeBook
+      ? 'Full chapter for this beat only (1500–2500 words). Do not restart the book or repeat prior chapters.'
+      : 'Next scene / chapter section only (1200–2000 words). Do not restart the book.');
 
   const job = createJob('auto-write', 'continue');
   updateJob(job.id, { status: 'running' });
@@ -359,7 +368,7 @@ router.post('/continue', async (req, res) => {
       genre: resolvedGenre || plotHold?.genre,
       premise: premise || plotHold?.premise || '',
       tone: tone || plotHold?.tone || '',
-      output: 'Next scene / chapter section only (900–1600 words). Do not restart the book.',
+      output: continueOutput,
       sourceText: sourceText.slice(-8000),
       prizeLens: awardLensPromptBlock(lens),
       plotHoldBlock: holdBlock,
