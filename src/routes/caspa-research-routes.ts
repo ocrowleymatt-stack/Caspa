@@ -14,31 +14,35 @@ async function grokWebSearch(prompt: string): Promise<string | null> {
   if (!grokKey) return null;
 
   try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    // xAI has deprecated `search_parameters` live search on chat completions.
+    // The supported replacement is the Agent Tools API via `/v1/responses` + `tools: [{type:'web_search'}]`.
+    const response = await fetch('https://api.x.ai/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${grokKey}`,
       },
       body: JSON.stringify({
-        model: 'grok-3',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a research assistant for prize-calibre fiction. Search the web and return accurate, source-grounded facts. Never invent street names, dates, or places.',
-          },
-          { role: 'user', content: prompt },
-        ],
+        model: 'grok-4.5',
+        input: [{ role: 'user', content: prompt }],
+        tools: [{ type: 'web_search' }],
         temperature: 0.3,
-        max_tokens: 4000,
-        search_parameters: { mode: 'on', return_citations: true },
       }),
     });
 
     if (!response.ok) return null;
+
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || null;
+    const messageItem = data?.output?.find((o: any) => o?.type === 'message');
+    if (!messageItem) return null;
+    if (typeof messageItem.text === 'string') return messageItem.text;
+    // Some xAI responses place the final text under message.content[].text.
+    const parts = Array.isArray(messageItem.content) ? messageItem.content : [];
+    const joined = parts
+      .filter((p: any) => typeof p?.text === 'string')
+      .map((p: any) => p.text)
+      .join('');
+    return joined || null;
   } catch (err) {
     console.error('[Caspa Research] Grok search failed:', err);
     return null;
