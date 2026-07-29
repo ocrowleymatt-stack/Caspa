@@ -203,6 +203,13 @@ ${nonfiction
   ? '- centralWound = the central problem/contradiction the text wrestles with\n- immediateDesire = the immediate question/payoff the reader gets by going on\n- characters = key voices/actors in the case study (author, witnesses, experts), not fictional people\n- chapters = ordered sections (claim blocks) — each must turn.'
   : '- centralWound/immediateDesire keep their fiction meanings; chapters are story beats.'}
 
+GENRE CONSTRAINT:
+${nonfiction
+  ? '- For nonfiction/essay: set genre to a serious nonfiction label. Prefer one of: Creative Non-Fiction, True Crime, Educational, Manual/Guide, Reference, Memoir, Philosophical, Case Study, Field Guide, Religious Text. Avoid fantasy/sci-fi genre names.'
+  : poetry
+    ? '- For poetry: set genre to describe the form (e.g., Epic Poetry, Lyric, Sequence, Performance piece). Do not call it a novel.'
+    : '- For fiction: set genre to a fiction label (e.g., Literary Fiction, Psychological Thriller, Noir, Speculative Fiction).'}
+
 ${engineRulesForMode(mode)}
 
 Return JSON only:
