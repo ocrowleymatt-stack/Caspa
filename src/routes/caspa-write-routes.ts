@@ -21,9 +21,10 @@ import {
 } from '../services/literary/structuredPipeline';
 import { BUILTIN_AWARD_LENSES, awardLensPromptBlock, getAwardLens } from '../services/literary/awardsShelf';
 import { routeCaspaIntent } from '../services/intent-router';
-import { LITERARY_ENGINE_RULES, AWARD_BAR, ARTEFACT_FIRST } from '../services/literary/novelWritePro';
+import { LITERARY_ENGINE_RULES, AWARD_BAR, ARTEFACT_FIRST, engineRulesForMode } from '../services/literary/novelWritePro';
 import { runQualityGates, aggregateQuality } from '../services/qualityGateService';
 import { buildServerPlotHoldBlock, type ServerPlotHold } from '../services/literary/plotHoldServer';
+import { countWords, planQualityCut } from '../services/wordCountService';
 
 const router = express.Router();
 
@@ -103,6 +104,7 @@ router.post('/auto-write', async (req, res) => {
     prizeLensId,
     plotHold,
     focusBeat,
+    targetWordCount = null,
   } = req.body as {
     mode?: NovelWriteProMode;
     genre?: string;
@@ -113,6 +115,7 @@ router.post('/auto-write', async (req, res) => {
     prizeLensId?: string;
     plotHold?: ServerPlotHold;
     focusBeat?: string;
+    targetWordCount?: number | null;
   };
 
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
@@ -134,6 +137,8 @@ router.post('/auto-write', async (req, res) => {
       prizeLens: awardLensPromptBlock(lens),
       plotHoldBlock: buildServerPlotHoldBlock(plotHold),
       focusBeat,
+      targetWordCount:
+        typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
     });
 
     const text = await callServerAi(`${route.systemInstruction}\n\n${prompt}`);
@@ -144,7 +149,7 @@ router.post('/auto-write', async (req, res) => {
         text,
         awardLens: lens,
         routing: route,
-        wordCount: text.trim().split(/\s+/).filter(Boolean).length,
+        wordCount: countWords(text),
       },
       jobId: job.id,
     });
@@ -166,6 +171,7 @@ router.post('/prize-draft', async (req, res) => {
     prizeLensId,
     plotHold,
     focusBeat,
+    targetWordCount = null,
   } = req.body as {
     mode?: NovelWriteProMode;
     genre?: string;
@@ -176,6 +182,7 @@ router.post('/prize-draft', async (req, res) => {
     prizeLensId?: string;
     plotHold?: ServerPlotHold;
     focusBeat?: string;
+    targetWordCount?: number | null;
   };
 
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
@@ -192,6 +199,8 @@ router.post('/prize-draft', async (req, res) => {
     prizeLens: awardLensPromptBlock(lens),
     plotHoldBlock: buildServerPlotHoldBlock(plotHold),
     focusBeat,
+    targetWordCount:
+      typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
   };
 
   const job = createJob('prize-draft', 'planning');
@@ -246,17 +255,58 @@ router.post('/prize-draft', async (req, res) => {
 });
 
 router.post('/cut', async (req, res) => {
-  const { content = '', reduction = 0.3 } = req.body as { content?: string; reduction?: number };
+  const {
+    content = '',
+    mode = 'novel',
+    targetWordCount = null,
+    reduction = null,
+  } = req.body as {
+    content?: string;
+    mode?: NovelWriteProMode;
+    targetWordCount?: number | null;
+    /** Optional override — ignored unless explicitly provided; quality/target plan wins by default. */
+    reduction?: number | null;
+  };
   if (!content.trim()) return res.status(400).json({ success: false, message: 'content is required' });
 
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const plan = planQualityCut(content, {
+    mode: safeMode,
+    targetWordCount:
+      typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
+  });
+
+  // Explicit reduction is a soft override only when the client insists; still no hard quota in the prompt.
+  if (typeof reduction === 'number' && reduction > 0) {
+    plan.suggestedReduction = Math.min(0.45, Math.max(0.04, reduction));
+    plan.suggestedAfterWords = Math.max(40, Math.round(plan.beforeWords * (1 - plan.suggestedReduction)));
+    plan.needsCut = true;
+    plan.reasons = [`Author requested a soft lean (~${Math.round(plan.suggestedReduction * 100)}%).`, ...plan.reasons];
+  }
+
   try {
-    const text = await callServerAi(buildCutPrompt(content, Math.min(0.5, Math.max(0.15, reduction))));
+    const text = await callServerAi(
+      buildCutPrompt(content, {
+        mode: safeMode,
+        targetWordCount: plan.targetWords,
+        suggestedReduction: plan.needsCut ? plan.suggestedReduction : 0,
+        cutBrief: plan.cutBrief,
+      })
+    );
+    const afterWords = countWords(text);
     res.json({
       success: true,
       data: {
         text,
-        beforeWords: content.trim().split(/\s+/).filter(Boolean).length,
-        afterWords: text.trim().split(/\s+/).filter(Boolean).length,
+        beforeWords: plan.beforeWords,
+        afterWords,
+        targetWords: plan.targetWords,
+        suggestedAfterWords: plan.suggestedAfterWords,
+        suggestedReduction: plan.suggestedReduction,
+        needsCut: plan.needsCut,
+        reasons: plan.reasons,
+        qualityScoreBefore: plan.qualityScore,
+        cutDelta: plan.beforeWords - afterWords,
       },
     });
   } catch (err) {
@@ -264,30 +314,66 @@ router.post('/cut', async (req, res) => {
   }
 });
 
+router.post('/cut-plan', async (req, res) => {
+  const { content = '', mode = 'novel', targetWordCount = null } = req.body as {
+    content?: string;
+    mode?: NovelWriteProMode;
+    targetWordCount?: number | null;
+  };
+  if (!content.trim()) return res.status(400).json({ success: false, message: 'content is required' });
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const plan = planQualityCut(content, {
+    mode: safeMode,
+    targetWordCount:
+      typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
+  });
+  res.json({ success: true, data: plan });
+});
+
 router.post('/prize-pass', async (req, res) => {
-  const { content = '', prizeLensId, title = 'Untitled' } = req.body as {
+  const {
+    content = '',
+    prizeLensId,
+    title = 'Untitled',
+    mode = 'novel',
+    targetWordCount = null,
+  } = req.body as {
     content?: string;
     prizeLensId?: string;
     title?: string;
+    mode?: NovelWriteProMode;
+    targetWordCount?: number | null;
   };
   if (!content.trim()) return res.status(400).json({ success: false, message: 'content is required' });
 
+  const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
   const lens = getAwardLens(prizeLensId);
   const job = createJob('prize-pass', 'assessing');
   updateJob(job.id, { status: 'running' });
 
   try {
-    const findings = runQualityGates(content, 'novel');
+    const findings = runQualityGates(content, safeMode);
     const quality = aggregateQuality(findings);
+    const words = countWords(content);
+    const nonfiction = safeMode === 'nonfiction' || safeMode === 'essay';
+    const rules = engineRulesForMode(safeMode);
 
     const assessPrompt = [
-      'You are a prize-committee literary assessor using an inspired-by lens (not official criteria).',
+      nonfiction
+        ? 'You are a serious non-fiction assessor using an inspired-by quality lens (not official criteria).'
+        : 'You are a prize-committee literary assessor using an inspired-by lens (not official criteria).',
       `Title: ${title}`,
+      `Mode: ${modeTitle(safeMode)}`,
+      typeof targetWordCount === 'number' && targetWordCount > 0
+        ? `Aspire-to length: ~${Math.round(targetWordCount).toLocaleString()} words (current: ${words.toLocaleString()}).`
+        : `Current length: ${words.toLocaleString()} words.`,
       awardLensPromptBlock(lens),
-      LITERARY_ENGINE_RULES,
+      rules,
       AWARD_BAR,
       '',
-      'Score the excerpt 0–100 on: voice, control, originality, structure, emotionalForce, language, pace, depth.',
+      nonfiction
+        ? 'Score the excerpt 0–100 on: clarity, claimPrecision, evidence, structure, originality, language, pace, depth.'
+        : 'Score the excerpt 0–100 on: voice, control, originality, structure, emotionalForce, language, pace, depth.',
       'Return JSON: {"overallReadiness":0-100,"prose":{...scores},"strengths":[],"risks":[],"fixes":["top 5 concrete fixes"],"judgeComment":"2 sentences"}',
       '',
       content.slice(0, 10000),
@@ -309,6 +395,9 @@ router.post('/prize-pass', async (req, res) => {
         awardLens: lens,
         quality,
         assessment,
+        wordCount: words,
+        targetWordCount:
+          typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
         readyEnough: Number(assessment.overallReadiness || quality.overallScore) >= 78,
       },
     });
@@ -330,6 +419,7 @@ router.post('/continue', async (req, res) => {
     plotHold,
     output,
     wholeBook = false,
+    targetWordCount = null,
   } = req.body as {
     mode?: NovelWriteProMode;
     genre?: string;
@@ -340,6 +430,7 @@ router.post('/continue', async (req, res) => {
     plotHold?: ServerPlotHold;
     output?: string;
     wholeBook?: boolean;
+    targetWordCount?: number | null;
   };
 
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
@@ -373,6 +464,8 @@ router.post('/continue', async (req, res) => {
       prizeLens: awardLensPromptBlock(lens),
       plotHoldBlock: holdBlock,
       focusBeat,
+      targetWordCount:
+        typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
     });
 
     const text = await callServerAi(
@@ -403,9 +496,11 @@ router.get('/engine', (_req, res) => {
     success: true,
     data: {
       literaryRules: LITERARY_ENGINE_RULES,
+      nonfictionRules: engineRulesForMode('nonfiction'),
       awardBar: AWARD_BAR,
       artefactFirst: ARTEFACT_FIRST,
       steps: ['seed', 'spine', 'draft', 'cut', 'pack'],
+      cutPolicy: 'Cut by product need (aspire-to length + quality gates). Never a fixed percentage quota.',
     },
   });
 });

@@ -64,16 +64,21 @@ export function runQualityGates(content: string, mode: NovelWriteProMode = 'nove
         : [],
   });
 
-  // Specificity gate (concrete nouns vs abstract)
+  // Specificity gate (concrete nouns vs abstract) — mode-aware messaging
   const abstractHits = (content.match(/\b(feel|feeling|emotion| sadness|anger| fear| love| grief| pain)\b/gi) || []).length;
   const specificityScore = clamp(100 - abstractHits * 4, 20, 100);
+  const nonfiction = mode === 'nonfiction' || mode === 'essay';
   findings.push({
     gate: 'Concrete specificity',
     status: scoreToStatus(specificityScore),
     score: Math.round(specificityScore),
     issues:
       abstractHits > 5
-        ? ['Too many emotion labels — show behaviour and objects instead.']
+        ? [
+            nonfiction
+              ? 'Too many emotion labels / abstractions — replace with evidence, names, dates, and precise cause/effect.'
+              : 'Too many emotion labels — show behaviour and objects instead.',
+          ]
         : [],
   });
 

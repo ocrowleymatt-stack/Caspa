@@ -37,6 +37,7 @@ export interface ProjectBriefLike {
   tone: string;
   output: string;
   audience: string;
+  targetWordCount?: number;
 }
 
 function briefToProjectType(mode: string): ProjectType {
@@ -63,7 +64,21 @@ export function briefToProject(brief: ProjectBriefLike): Project {
     lastModified: Date.now(),
     createdAt: Date.now(),
     targetWordCount:
-      brief.mode === 'essay' ? 3000 : brief.mode === 'poetry' ? 800 : brief.mode === 'nonfiction' ? 50000 : 80000,
+      typeof brief.targetWordCount === 'number' && brief.targetWordCount > 0
+        ? brief.targetWordCount
+        : brief.mode === 'essay'
+          ? 3000
+          : brief.mode === 'poetry'
+            ? 800
+            : brief.mode === 'nonfiction'
+              ? 50000
+              : brief.mode === 'script'
+                ? 20000
+                : brief.mode === 'musical'
+                  ? 25000
+                  : brief.mode === 'picture'
+                    ? 500
+                    : 80000,
   };
 }
 

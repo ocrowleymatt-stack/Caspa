@@ -93,6 +93,13 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
           tone: brief.tone,
           stream: true,
           plotHold: plotHold || undefined,
+          mode:
+            brief.mode === 'gold' ? 'polish' :
+            brief.mode === 'picture' ? 'novel' :
+            brief.mode === 'script' || brief.mode === 'musical' || brief.mode === 'adaptation' || brief.mode === 'nonfiction' || brief.mode === 'essay' || brief.mode === 'poetry' || brief.mode === 'chaos'
+              ? brief.mode
+              : 'novel',
+          targetWordCount: (brief as any).targetWordCount || undefined,
         }),
       });
 
@@ -177,7 +184,12 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
           <article style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h2 style={sectionTitle}>Manuscript</h2>
-              <span style={{ fontSize: 13, color: '#8a7a66' }}>{wordCount.toLocaleString()} words</span>
+              <span style={{ fontSize: 13, color: '#8a7a66' }}>
+                {wordCount.toLocaleString()} words
+                {(brief as any).targetWordCount
+                  ? ` / ${(brief as any).targetWordCount.toLocaleString()} aspire-to`
+                  : ''}
+              </span>
             </div>
             <textarea
               value={draftPage}

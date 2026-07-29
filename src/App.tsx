@@ -67,7 +67,8 @@ import {
   getProgressSummary,
   getWorkflowSteps,
   type WorkflowView,
-} from './services/projectWorkflowService';
+} from './services/projectWorkflowService'
+import { countWords, defaultTargetWordCount } from './services/wordCountService';
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
 import firebaseAppletConfig from '../firebase-applet-config.json';
@@ -137,6 +138,7 @@ type ProjectBrief = {
   tone: string;
   output: string;
   audience: string;
+  targetWordCount: number;
   createdAt: string;
 };
 
@@ -161,6 +163,7 @@ const defaultBrief: ProjectBrief = {
   tone: 'Literate, vivid, funny when it should be, ruthless when it must be.',
   output: 'Full manuscript: draft every held chapter in order.',
   audience: 'General readers / theatre audience / producers, depending on format.',
+  targetWordCount: 80000,
   createdAt: new Date().toISOString(),
 };
 
@@ -314,7 +317,13 @@ function saveBrief(brief: ProjectBrief) {
 function loadBrief(): ProjectBrief {
   try {
     const raw = localStorage.getItem('caspa.currentBrief');
-    return raw ? { ...defaultBrief, ...JSON.parse(raw) } : defaultBrief;
+    if (!raw) return defaultBrief;
+    const parsed = JSON.parse(raw);
+    const merged = { ...defaultBrief, ...parsed } as ProjectBrief;
+    if (!merged.targetWordCount || merged.targetWordCount < 100) {
+      merged.targetWordCount = defaultTargetWordCount(merged.mode);
+    }
+    return merged;
   } catch {
     return defaultBrief;
   }
@@ -336,6 +345,7 @@ Idea: ${brief.idea}
 Tone: ${brief.tone}
 Audience: ${brief.audience}
 Required output: ${brief.output}
+Aspire-to length: ~${(brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString()} words
 
 OPERATING METHOD
 - Treat the project as a living creative file for ${modeLabels[brief.mode]}.
@@ -344,7 +354,8 @@ OPERATING METHOD
 - When drafting, provide usable material immediately.
 - When planning, produce clear beats, scenes, chapters, sections, songs, arguments, or production tasks as the form requires.
 - Preserve voice, weirdness and ambition. Do not sand the magic off.
-- For non-fiction and essays: prefer evidence, structure, and earned claims over invented drama.
+- For non-fiction and essays: prefer evidence, structure, and earned claims over invented drama. Do not force novel wound/desire framing.
+- Cut by need for the best product — never a fixed percentage quota.
 - Challenge weak structure, but do not flatten the premise.
 
 CURRENT WHITE PAGE / CANVAS
@@ -571,7 +582,7 @@ function CaspaUI() {
     localStorage.setItem('caspa.manuscriptSource', manuscriptSource);
   }, [manuscriptSource]);
 
-  const startProject = (mode: CreativeMode, idea: string, tone: string, output: string, audience: string) => {
+  const startProject = (mode: CreativeMode, idea: string, tone: string, output: string, audience: string, targetWordCount?: number) => {
     saveCurrentProjectState();
     const nextBrief: ProjectBrief = {
       title: makeTitle(idea, mode),
@@ -580,6 +591,7 @@ function CaspaUI() {
       tone,
       output,
       audience,
+      targetWordCount: targetWordCount && targetWordCount > 0 ? targetWordCount : defaultTargetWordCount(mode),
       createdAt: new Date().toISOString(),
     };
     setBrief(nextBrief);
@@ -619,6 +631,11 @@ function CaspaUI() {
               brief={brief}
               draftPage={draftPage}
               onDraftChange={setDraftPage}
+              onTargetWordCountChange={(n) => {
+                const next = { ...brief, targetWordCount: n };
+                setBrief(next);
+                saveBrief(next);
+              }}
               onGoPublish={() => goTo('publish')}
               onGoWorkshop={() => goTo('workshop')}
             />
@@ -814,10 +831,11 @@ function CaspaUI() {
   );
 }
 
-function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string, tone: string, output: string, audience: string) => void }) {
+function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string, tone: string, output: string, audience: string, targetWordCount?: number) => void }) {
   const [mode, setMode] = useState<CreativeMode>('novel');
   const [idea, setIdea] = useState('');
   const [showMore, setShowMore] = useState(false);
+  const [targetWordCount, setTargetWordCount] = useState(defaultTargetWordCount('novel'));
 
   const selected = modeCards.find((card) => card.mode === mode)!;
   const SelectedIcon = selected.icon;
@@ -879,7 +897,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
 
   const launch = () => {
     const d = defaultsFor(mode);
-    onStart(mode, idea, d.tone, d.output, d.audience);
+    onStart(mode, idea, d.tone, d.output, d.audience, targetWordCount);
   };
 
   return (
@@ -896,7 +914,14 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
               const Icon = card.icon;
               const active = card.mode === mode;
               return (
-                <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `2px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 20, textAlign: 'left', cursor: 'pointer' }}>
+                <button
+                  key={card.mode}
+                  onClick={() => {
+                    setMode(card.mode);
+                    setTargetWordCount(defaultTargetWordCount(card.mode));
+                  }}
+                  style={{ border: `2px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 20, textAlign: 'left', cursor: 'pointer' }}
+                >
                   <Icon size={26} style={{ color: '#d6a846', marginBottom: 12 }} />
                   <strong style={{ display: 'block', marginBottom: 6, fontSize: 18 }}>{card.title}</strong>
                   <small style={{ color: '#c4b18b', lineHeight: 1.4 }}>{card.subtitle}</small>
@@ -913,7 +938,14 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                 const Icon = card.icon;
                 const active = card.mode === mode;
                 return (
-                  <button key={card.mode} onClick={() => setMode(card.mode)} style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#1a140e', color: '#fffaf2', borderRadius: 16, padding: 14, textAlign: 'left', cursor: 'pointer' }}>
+                  <button
+                    key={card.mode}
+                    onClick={() => {
+                      setMode(card.mode);
+                      setTargetWordCount(defaultTargetWordCount(card.mode));
+                    }}
+                    style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#1a140e', color: '#fffaf2', borderRadius: 16, padding: 14, textAlign: 'left', cursor: 'pointer' }}
+                  >
                     <Icon size={18} style={{ color: '#d6a846', marginBottom: 8 }} />
                     <strong style={{ display: 'block', fontSize: 14 }}>{card.title}</strong>
                   </button>
@@ -934,6 +966,20 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
 
           <Field label="Idea / premise">
             <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder={selected.examples[0] || 'Start with a wound, a place, a desire…'} />
+          </Field>
+
+          <Field label="Aspire-to word count">
+            <input
+              type="number"
+              min={100}
+              step={500}
+              value={targetWordCount}
+              onChange={(e) => setTargetWordCount(Math.max(100, Number(e.target.value) || 100))}
+              style={{ ...textareaStyle, minHeight: 0, padding: '12px 14px' }}
+            />
+            <div style={{ marginTop: 6, fontSize: 12, color: '#8a7d6c' }}>
+              Draft toward this length. Cut later by quality need, not a fixed percentage.
+            </div>
           </Field>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
@@ -1010,6 +1056,10 @@ function ProjectView({
             <MiniPanel label="Tone" value={brief.tone} />
             <MiniPanel label="Output" value={brief.output} />
             <MiniPanel label="Audience" value={brief.audience} />
+            <MiniPanel
+              label="Aspire-to words"
+              value={`${(brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString()} · now ${countWords(draftPage).toLocaleString()}`}
+            />
           </div>
         </article>
         <WorkflowChecklist steps={steps} onGo={goWorkflow} />
@@ -1019,6 +1069,9 @@ function ProjectView({
 }
 
 function WhitePageView({ brief, draftPage, setDraftPage, setCurrentView }: { brief: ProjectBrief; draftPage: string; setDraftPage: (value: string) => void; setCurrentView: (view: ViewType) => void }) {
+  const current = countWords(draftPage);
+  const target = brief.targetWordCount || defaultTargetWordCount(brief.mode);
+  const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
   return (
     <div style={{ minHeight: '100vh', background: '#ede4d6', padding: '42px clamp(18px, 4vw, 64px)' }}>
       <div style={{ maxWidth: 1180, margin: '0 auto' }}>
@@ -1026,7 +1079,9 @@ function WhitePageView({ brief, draftPage, setDraftPage, setCurrentView }: { bri
           <div>
             <div style={kickerStyle}>White Page</div>
             <h1 style={{ margin: 0, fontSize: 38 }}>Write here</h1>
-            <p style={{ margin: '8px 0 0', color: '#73695d' }}>{brief.title} — when you have enough text, Workshop diagnoses it.</p>
+            <p style={{ margin: '8px 0 0', color: '#73695d' }}>
+              {brief.title} — {current.toLocaleString()} / {target.toLocaleString()} words ({pct}%)
+            </p>
           </div>
           <button onClick={() => setCurrentView('project')} style={primaryButton('#1f2937', '#fff')}><Home size={18} /> Back to next step</button>
         </div>

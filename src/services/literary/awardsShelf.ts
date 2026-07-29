@@ -9,7 +9,7 @@ export const AWARDS_SHELF_DISCLAIMER =
 export interface AwardLens {
   id: string;
   name: string;
-  category: 'literary' | 'commercial' | 'theatre' | 'screen';
+  category: 'literary' | 'commercial' | 'theatre' | 'screen' | 'nonfiction';
   description: string;
   inspiredBy: string;
   rubricFocus: string[];
@@ -51,6 +51,33 @@ export const BUILTIN_AWARD_LENSES: AwardLens[] = [
     inspiredBy: 'Goldsmiths Prize-style lens',
     description: 'Formal innovation, risk-taking structure, distinctive architecture.',
     rubricFocus: ['originality', 'structure', 'formal risk'],
+  },
+  {
+    id: 'pulitzer-nonfiction',
+    name: 'Pulitzer-style non-fiction',
+    category: 'nonfiction',
+    inspiredBy: 'Pulitzer non-fiction-style lens',
+    description: 'Evidence-led clarity, moral seriousness, and reporting that earns its claims.',
+    rubricFocus: ['claim precision', 'evidence', 'structure', 'clarity', 'consequence'],
+    wordTargetHint: '60000–100000',
+  },
+  {
+    id: 'baillie-gifford-nonfiction',
+    name: 'Baillie Gifford-style non-fiction',
+    category: 'nonfiction',
+    inspiredBy: 'Baillie Gifford Prize-style lens',
+    description: 'Ambitious non-fiction with narrative drive and intellectual bite.',
+    rubricFocus: ['ambition', 'narrative drive', 'research integrity', 'readability'],
+    wordTargetHint: '70000–120000',
+  },
+  {
+    id: 'essay-orwell',
+    name: 'Orwell-style essay clarity',
+    category: 'nonfiction',
+    inspiredBy: 'Orwell Prize / essay craft lens',
+    description: 'Plain speech, moral pressure, and argument that turns.',
+    rubricFocus: ['clarity', 'argument turn', 'honesty', 'language'],
+    wordTargetHint: '1500–8000',
   },
   {
     id: 'stage-play-sharp',

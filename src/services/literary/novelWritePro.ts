@@ -30,6 +30,8 @@ export interface NovelWriteProPromptInput {
   plotHoldBlock?: string;
   /** Which beat to write next (title + turn). */
   focusBeat?: string;
+  /** Finished-work aspire-to length. */
+  targetWordCount?: number | null;
 }
 
 export const LITERARY_ENGINE_RULES = `
@@ -39,7 +41,7 @@ LITERARY ENGINE — STANDING RULES
 3. Every scene must turn: power, knowledge, danger, intimacy, belief, status or direction must change.
 4. Concrete before abstract: objects, gestures, rooms, weather, silence, behaviour — not emotion labels.
 5. Subtext over declaration. Truth leaks through behaviour.
-6. Cut pretty sludge. Aim for 25–40% reduction on polish passes.
+6. Cut pretty sludge by need, not quota. Remove only what weakens the product.
 7. Characters want something immediately. Even silence needs a mask and a pressure point.
 8. Dialogue carries conflict: conceal, threaten, seduce, evade, expose, manipulate, wound, bargain.
 9. Endings inevitable but surprising. Land on an image that bites.
@@ -137,6 +139,10 @@ export function buildAutoWritePrompt(input: NovelWriteProPromptInput): string {
   const focus = input.focusBeat?.trim()
     ? `\nFOCUS BEAT (write this now)\n${input.focusBeat.trim()}\n`
     : '';
+  const targetWords =
+    typeof input.targetWordCount === 'number' && input.targetWordCount > 0
+      ? `\nASPIRE-TO LENGTH\nFinished work target: ~${Math.round(input.targetWordCount).toLocaleString()} words. Pace this section so the whole manuscript can land near that length without padding.\n`
+      : '';
 
   return `You are Caspa running Novel Write Pro: an elite creative-writing engine.
 
@@ -154,7 +160,7 @@ ${input.output}
 
 TONE / TASTE
 ${input.tone || 'Clear, vivid, witty, emotionally precise, production-minded.'}
-${styleProfile}${researchContext}${prize}${plot}${focus}
+${styleProfile}${researchContext}${prize}${plot}${focus}${targetWords}
 SOURCE PAGE OR MANUSCRIPT
 ${sourceExcerpt || '[No source text supplied. Create original material.]'}
 
@@ -169,7 +175,7 @@ ${ARTEFACT_FIRST}
 FORMAT RULES
 - Obey TARGET OUTPUT and FOCUS BEAT when present. Do not invent a shorter substitute.
 - Novel / fiction: if a focus beat is set, write that chapter only (full prose). If the target is the whole book opening, write title, short logline, then that chapter's prose — never stop after a stub.
-- Non-fiction: title/angle only when starting; then the requested section with evidence-led clarity.
+- Non-fiction: title/angle only when starting; then the requested section with evidence-led clarity. Prefer sections/claims over invented novel drama.
 - Essay / article: title, hook, then a complete short draft with a clear turn and landing.
 - Poetry: title (optional), then the poem or short sequence — compressed, musical, no padding.
 - Script: title/premise only when starting; then the requested scene in proper format.
@@ -178,7 +184,7 @@ FORMAT RULES
 - Chaos: bold, strange, coherent, and readable.
 
 SELF-CHECK
-Silently improve against: hook, scene turn, hidden wound, specificity, pace, subtext, originality, sentence cleanliness.
+Silently improve against: hook, scene/section turn, hidden wound or thesis pressure, specificity, pace, subtext or counterpoint, originality, sentence cleanliness.
 
 OUTPUT NOW
 Return only the creative material. Do not explain the process.`;
@@ -239,16 +245,54 @@ Return JSON only:
 Provide 8–12 chapters. Do not write full prose.`;
 }
 
-export function buildCutPrompt(excerpt: string, targetReduction = 0.3): string {
+export type CutPromptOptions = {
+  mode?: NovelWriteProMode;
+  targetWordCount?: number | null;
+  /** Soft guide from quality/target planning — never a hard quota. */
+  suggestedReduction?: number;
+  cutBrief?: string;
+};
+
+export function buildCutPrompt(excerpt: string, opts: CutPromptOptions | number = {}): string {
+  // Backward compat: older callers passed a bare reduction fraction.
+  const options: CutPromptOptions =
+    typeof opts === 'number' ? { suggestedReduction: opts } : opts || {};
+  const mode = options.mode || 'novel';
+  const rules = engineRulesForMode(mode);
+  const softPct =
+    typeof options.suggestedReduction === 'number' && options.suggestedReduction > 0
+      ? Math.round(options.suggestedReduction * 100)
+      : null;
+
+  const nonfiction = mode === 'nonfiction' || mode === 'essay';
+  const keepLine = nonfiction
+    ? 'Keep thesis turns, evidence, counterpoints, precise claims, and honest limits.'
+    : mode === 'poetry'
+      ? 'Keep image pressure, music, and the line that turns the poem.'
+      : 'Keep meaning, voice, and scene turns.';
+
+  const cutLine = nonfiction
+    ? 'Remove bloat, repetition, fake profundity, novel-style melodrama, and ornamental explanation.'
+    : 'Remove bloat, repetition, ornament, and explanation that does not turn the scene.';
+
   return [
-    LITERARY_ENGINE_RULES,
+    rules,
     ARTEFACT_FIRST,
-    `Cut ~${Math.round(targetReduction * 100)}% without losing meaning, voice, or scene turns.`,
-    'Remove bloat, repetition, ornament, and explanation.',
+    options.cutBrief ||
+      (softPct
+        ? `Strengthen the text. Soft length guide only (~${softPct}% leaner if that improves the work) — never hit a percentage quota.`
+        : 'Strengthen the text. Cut only what weakens the product — never hit a percentage quota.'),
+    keepLine,
+    cutLine,
+    options.targetWordCount
+      ? `Aspire-to word count for the finished work: ~${Math.round(options.targetWordCount).toLocaleString()} words.`
+      : '',
     'Return revised text only.',
     '',
     excerpt,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function modeTitle(mode: NovelWriteProMode): string {
