@@ -11,6 +11,12 @@ import { getProjectKey, loadLibrary } from './researchLibraryService';
 import { loadPromises } from './promiseRegistryService';
 import { computePromiseHealth } from '../types/promise';
 import { loadBlueprint } from './psychologyEngineService';
+import {
+  hasShowBoxContent,
+  loadShowBox,
+  showBoxPieceCount,
+  type ShowBoxState,
+} from './showBoxService';
 
 const COMMISSION_KEY = 'caspa.commission';
 
@@ -25,6 +31,9 @@ export interface StoryCanon {
   researchCount: number;
   wordCount: number;
   hasWorkshopData: boolean;
+  showBox: ShowBoxState | null;
+  showPackPieces: number;
+  hasShowPack: boolean;
 }
 
 function loadCommissionSlice(): {
@@ -50,6 +59,8 @@ export function loadStoryCanon(brief: ProjectBriefLike): StoryCanon {
   const promises = loadPromises(projectKey);
   const psychology = loadBlueprint(projectKey);
   const researchCount = loadLibrary(projectKey).length;
+  const showBox = loadShowBox();
+  const packMeta = showBoxPieceCount(showBox);
 
   const wordCount = chapters.reduce(
     (sum, c) => sum + (c.content?.split(/\s+/).filter(Boolean).length || 0),
@@ -66,6 +77,9 @@ export function loadStoryCanon(brief: ProjectBriefLike): StoryCanon {
     psychology,
     researchCount,
     wordCount,
-    hasWorkshopData: Boolean(diagnosis || chapters.length || promises.length),
+    hasWorkshopData: Boolean(diagnosis || chapters.length || promises.length || hasShowBoxContent(showBox)),
+    showBox: hasShowBoxContent(showBox) ? showBox : null,
+    showPackPieces: packMeta.done,
+    hasShowPack: packMeta.done > 0,
   };
 }

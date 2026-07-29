@@ -20,6 +20,7 @@ import {
   planQualityCut,
   type CutPlan,
 } from '../services/wordCountService';
+import { formatShowPackForWriting, hasShowBoxContent } from '../services/showBoxService';
 
 type StepId = 'seed' | 'spine' | 'draft' | 'cut' | 'pack';
 
@@ -59,6 +60,7 @@ type Props = {
   onTargetWordCountChange?: (n: number) => void;
   onGoPublish: () => void;
   onGoWorkshop: () => void;
+  onGoShowBox?: () => void;
 };
 
 function stepsForMode(mode: string): Array<{ id: StepId; label: string; detail: string }> {
@@ -93,9 +95,11 @@ export default function QuickWrite({
   onTargetWordCountChange,
   onGoPublish,
   onGoWorkshop,
+  onGoShowBox,
 }: Props) {
   const mode = writeModeForBrief(brief.mode);
   const nonfiction = isNonfictionMode(mode);
+  const showPackLive = hasShowBoxContent();
   const STEPS = useMemo(() => stepsForMode(mode), [mode]);
   const [step, setStep] = useState<StepId>('seed');
   const [seed, setSeed] = useState(brief.idea || '');
@@ -144,19 +148,31 @@ export default function QuickWrite({
     setCutPlan(planQualityCut(draftPage, { mode, targetWordCount: targetWords }));
   }, [draftPage, mode, targetWords]);
 
-  const sharedWriteBody = (hold: PlotHold | null, focus?: { title: string; turn: string } | null) => ({
-    mode,
-    genre:
-      proposal?.genre ||
-      hold?.genre ||
-      (nonfiction ? 'Creative Non-Fiction' : 'Literary fiction'),
-    premise: proposal?.premise || hold?.premise || seed || brief.idea,
-    tone: proposal?.tone || hold?.tone || brief.tone,
-    prizeLensId,
-    plotHold: hold || undefined,
-    focusBeat: focus ? `${focus.title}: ${focus.turn}` : undefined,
-    targetWordCount: targetWords,
-  });
+  const sharedWriteBody = (hold: PlotHold | null, focus?: { title: string; turn: string } | null) => {
+    const basePremise = proposal?.premise || hold?.premise || seed || brief.idea;
+    const showPack =
+      mode === 'musical' || mode === 'script' ? formatShowPackForWriting() : '';
+    return {
+      mode,
+      genre:
+        proposal?.genre ||
+        hold?.genre ||
+        (nonfiction
+          ? 'Creative Non-Fiction'
+          : mode === 'musical'
+            ? 'Musical / Show'
+            : mode === 'script'
+              ? 'Stage Play'
+              : 'Literary fiction'),
+      premise: showPack ? `${basePremise}\n\n${showPack}` : basePremise,
+      tone: proposal?.tone || hold?.tone || brief.tone,
+      prizeLensId,
+      plotHold: hold || undefined,
+      focusBeat: focus ? `${focus.title}: ${focus.turn}` : undefined,
+      targetWordCount: targetWords,
+      output: brief.output,
+    };
+  };
 
   const runSeed = async () => {
     setBusy(true);
@@ -405,11 +421,50 @@ export default function QuickWrite({
         <h2 style={{ margin: 0, fontSize: 28, letterSpacing: -0.6 }}>Just write</h2>
         <p style={{ margin: '8px 0 0', color: '#6d6255', maxWidth: 640 }}>
           Five steps. Seed → spine → whole-book draft → cut → pack. Caspa writes every held{' '}
-          {nonfiction ? 'section' : 'chapter'} in order.
+          {nonfiction ? 'section' : mode === 'script' || mode === 'musical' ? 'scene' : 'chapter'} in order.
           {' '}
           · {currentWords.toLocaleString()} / {targetWords.toLocaleString()} words
         </p>
       </div>
+
+      {(mode === 'musical' || showPackLive) && (
+        <div
+          style={{
+            borderRadius: 16,
+            padding: '14px 16px',
+            border: '1px solid #eadfce',
+            background: '#fff8ea',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 10,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ fontSize: 14, color: '#5b4724', lineHeight: 1.45 }}>
+            {showPackLive
+              ? 'Show in a Box pack is live — drafts honour song list, running order, and cast.'
+              : 'Pack the show first (songs + running order), then draft scenes that turn into numbers.'}
+          </span>
+          {onGoShowBox && (
+            <button
+              type="button"
+              onClick={onGoShowBox}
+              style={{
+                border: '1px solid #d6a846',
+                background: '#d6a846',
+                color: '#1d1408',
+                borderRadius: 12,
+                padding: '8px 12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Open Show in a Box
+            </button>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {STEPS.map((s) => {

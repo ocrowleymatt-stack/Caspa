@@ -20,13 +20,18 @@ interface Props {
   authorEmail?: string;
   onGoWorkshop?: () => void;
   onGoDesign?: () => void;
+  onGoShowBox?: () => void;
   onMoveToLibrary?: () => void;
 }
 
-export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesign, onMoveToLibrary }: Props) {
+export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesign, onGoShowBox, onMoveToLibrary }: Props) {
   const picturePlan = useMemo(() => loadSavedPictureBookPlan(), [brief.title]);
   const [profile, setProfile] = useState<ExportProfile>(() =>
-    loadSavedPictureBookPlan() ? 'kdp-picture-book' : 'kdp-novel'
+    brief.mode === 'musical'
+      ? 'show-pack'
+      : loadSavedPictureBookPlan()
+        ? 'kdp-picture-book'
+        : 'kdp-novel'
   );
   const [overrideGate, setOverrideGate] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -91,7 +96,7 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesi
             Export when it&apos;s ready
           </h1>
           <p style={{ margin: 0, maxWidth: 720, color: '#73695d', fontSize: 18, lineHeight: 1.5 }}>
-            Novel, picture book, or illustrated spreads — gated so nothing broken leaves the building.
+            Novel, picture book, show pack, or illustrated spreads — gated so nothing broken leaves the building.
           </p>
         </header>
 
@@ -105,6 +110,21 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesi
             {onGoDesign && (
               <button type="button" onClick={onGoDesign} style={{ ...ghostBtn, marginTop: 10 }}>
                 Open Design
+              </button>
+            )}
+          </div>
+        )}
+
+        {(brief.mode === 'musical' || ctx.hasShowPack) && (
+          <div style={{ ...card, marginBottom: 16, borderLeft: '4px solid #d6a846' }}>
+            <strong>Show in a Box</strong>
+            <p style={{ margin: '6px 0 0', color: '#6f6252' }}>
+              {ctx.showPackPieces || 0}/5 pack pieces · export profile defaults to Show in a Box
+              {onGoShowBox ? ' — finish songs, order, cast, and production notes in the Show Box.' : ''}
+            </p>
+            {onGoShowBox && (
+              <button type="button" onClick={onGoShowBox} style={{ ...ghostBtn, marginTop: 10 }}>
+                Open Show in a Box
               </button>
             )}
           </div>
@@ -187,11 +207,16 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesi
               <h2 style={sectionTitle}>{ctx.title}</h2>
               <p style={{ color: '#73695d', margin: '0 0 16px', lineHeight: 1.5 }}>{brief.idea}</p>
               <button type="button" onClick={refresh} style={ghostBtn}>
-                Refresh from Workshop
+                Refresh from Workshop / Show Box
               </button>
               {onGoWorkshop && (
                 <button type="button" onClick={onGoWorkshop} style={{ ...ghostBtn, marginTop: 8, width: '100%' }}>
                   Open Workshop
+                </button>
+              )}
+              {onGoShowBox && (
+                <button type="button" onClick={onGoShowBox} style={{ ...ghostBtn, marginTop: 8, width: '100%' }}>
+                  Open Show in a Box
                 </button>
               )}
             </article>

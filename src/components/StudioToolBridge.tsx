@@ -15,6 +15,12 @@ import type {
 } from '../types';
 import { briefToProject, type ProjectBriefLike } from '../services/commissionService';
 import { getProjectKey, loadLibrary, addNote, removeNote } from '../services/researchLibraryService';
+import {
+  formatShowPackForWriting,
+  hasShowBoxContent,
+  loadShowBox,
+  showBoxPieceCount,
+} from '../services/showBoxService';
 
 import Brainstorm from './Brainstorm';
 import CharacterForge from './CharacterForge';
@@ -108,6 +114,21 @@ interface Props {
   onNavigate: (legacyView: LegacyViewType | string) => void;
 }
 
+function assembleShowSource(brief: ProjectBriefLike): string {
+  const pack = loadShowBox();
+  return [
+    `Show: ${brief.title}`,
+    brief.idea,
+    pack.runningOrder && `Running order:\n${pack.runningOrder}`,
+    pack.songList && `Song list:\n${pack.songList}`,
+    pack.castNotes && `Cast:\n${pack.castNotes}`,
+    pack.musicSketch && `Music sketch:\n${pack.musicSketch}`,
+    pack.productionPack && `Production pack:\n${pack.productionPack}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 const titles: Record<StudioToolId, { kicker: string; title: string; subtitle: string }> = {
   brainstorm: {
     kicker: 'Make',
@@ -195,21 +216,38 @@ export default function StudioToolBridge({
 
   const project: Project = useMemo(() => {
     const base = briefToProject(brief);
+    const showCtx = formatShowPackForWriting();
+    const showSources: SourceMaterial[] = hasShowBoxContent()
+      ? [
+          {
+            id: 'show-box-pack',
+            name: 'Show in a Box pack',
+            content: assembleShowSource(brief),
+            type: 'production',
+            updatedAt: Date.now(),
+          },
+        ]
+      : [];
+    const sourceMaterials = [
+      ...canon.sourceMaterials.filter((s) => s.id !== 'show-box-pack'),
+      ...showSources,
+    ];
     return {
       ...base,
       characters: canon.characters,
       plotNodes: canon.plotNodes,
       chapters,
       research: loadLibrary(projectKey),
-      sourceMaterials: canon.sourceMaterials,
+      sourceMaterials,
       critiques: canon.critiques,
-      premise: brief.idea,
+      premise: showCtx ? `${brief.idea}\n\n${showCtx}` : brief.idea,
       tone: brief.tone,
       title: brief.title,
     };
   }, [brief, canon, chapters, projectKey]);
 
   const research = useMemo(() => loadLibrary(projectKey) as ResearchNote[], [projectKey, canon, notice]);
+  const showPackMeta = showBoxPieceCount(loadShowBox());
 
   const updateProject = useCallback(
     async (updates: Partial<Project>) => {
@@ -533,6 +571,7 @@ export default function StudioToolBridge({
           <p style={{ margin: '10px 0 0', fontSize: 13, color: '#8a7a66' }}>
             Project: <strong style={{ color: '#4a3b28' }}>{brief.title}</strong>
             {chapters.length > 0 ? ` · ${chapters.length} chapters in Workshop` : ' · paste/diagnose in Workshop for chapter tools'}
+            {showPackMeta.done > 0 ? ` · Show Box ${showPackMeta.done}/${showPackMeta.total}` : ''}
           </p>
         </div>
         {notice && (

@@ -61,6 +61,7 @@ import GuidedNextStep, { WorkflowChecklist } from './components/GuidedNextStep';
 import BookDesignStudio from './components/BookDesignStudio';
 import QuickWrite from './components/QuickWrite';
 import StudioToolBridge, { type StudioToolId } from './components/StudioToolBridge';
+import ShowBoxStudio from './components/ShowBoxStudio';
 import {
   completeProject,
   loadProjectSnapshot,
@@ -78,6 +79,7 @@ import {
 import { countWords, defaultTargetWordCount } from './services/wordCountService';
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
+import { clearShowBox, formatShowPackForWriting } from './services/showBoxService';
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
 declare const process: any;
@@ -137,6 +139,7 @@ type ViewType =
   | 'psychology'
   | 'canvas'
   | 'settings'
+  | 'showbox'
   | StudioToolId;
 
 type ProjectBrief = {
@@ -227,7 +230,7 @@ const modeLabels: Record<CreativeMode, string> = {
   poetry: 'Poetry',
   picture: 'Picture book',
   script: 'Script',
-  musical: 'Musical / Show',
+  musical: 'Show in a Box',
   adaptation: 'Adaptation',
   gold: 'Gold Refinery',
   chaos: 'Surprise Me',
@@ -237,6 +240,7 @@ const primaryNav: NavItem[] = [
   { id: 'project', label: 'Next step', detail: 'What to do now', group: 'primary', icon: Home },
   { id: 'quickwrite', label: 'Just write', detail: 'Whole book by chapter', group: 'primary', icon: Zap },
   { id: 'write', label: 'White Page', detail: 'Draft and edit', group: 'primary', icon: PenLine },
+  { id: 'showbox', label: 'Show in a Box', detail: 'Book, songs, pack', group: 'primary', icon: Music2 },
   { id: 'design', label: 'Design', detail: 'Cover & picture pages', group: 'primary', icon: BookImage },
   { id: 'publish', label: 'Publish', detail: 'Export when ready', group: 'primary', icon: Download },
   { id: 'library', label: 'Library', detail: 'Open work & finished', group: 'primary', icon: Library },
@@ -302,12 +306,27 @@ const modeCards: Array<{
     hero: true,
   },
   {
+    mode: 'musical',
+    title: 'Show in a Box',
+    subtitle: 'Book, songs, running order, music sketch, cast & production pack.',
+    examples: ['Panto with bite', 'Cult musical', 'Dick Turpin in Milton Keynes'],
+    icon: Music2,
+    hero: true,
+  },
+  {
     mode: 'gold',
     title: 'Polish',
     subtitle: 'Paste existing work. Gold pipeline. Same piece, sharper.',
     examples: ['Tighten chapter', 'Fix pacing', 'Make it prize-ready'],
     icon: Wand2,
     hero: true,
+  },
+  {
+    mode: 'script',
+    title: 'Script',
+    subtitle: 'Stage, screen, radio, sitcom, monologue or sketch.',
+    examples: ['Courtroom farce', 'BBC pilot treatment', 'Radio two-hander'],
+    icon: Clapperboard,
   },
   {
     mode: 'essay',
@@ -322,20 +341,6 @@ const modeCards: Array<{
     subtitle: 'Poem, sequence, pamphlet, performance piece.',
     examples: ['Sonnet crown about work', 'Spoken-word set', 'Elegy that refuses comfort'],
     icon: Quote,
-  },
-  {
-    mode: 'script',
-    title: 'Make a Script',
-    subtitle: 'Stage, screen, radio, sitcom, monologue or sketch.',
-    examples: ['Dick Turpin in Milton Keynes', 'Courtroom farce', 'BBC pilot treatment'],
-    icon: Clapperboard,
-  },
-  {
-    mode: 'musical',
-    title: 'Build a Musical / Show',
-    subtitle: 'Book, songs, running order, score brief and production pack.',
-    examples: ['Panto with bite', 'Cult musical', 'Community theatre banger'],
-    icon: Music2,
   },
   {
     mode: 'adaptation',
@@ -403,6 +408,7 @@ function makeTitle(idea: string, mode: CreativeMode) {
 }
 
 function buildOpenWebUIPrompt(brief: ProjectBrief, canvas: string) {
+  const showPack = formatShowPackForWriting();
   return `You are Caspa, a private creative production room for Matthew O'Crowley.
 
 PROJECT
@@ -413,7 +419,7 @@ Tone: ${brief.tone}
 Audience: ${brief.audience}
 Required output: ${brief.output}
 Aspire-to length: ~${(brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString()} words
-
+${showPack ? `\n${showPack}\n` : ''}
 OPERATING METHOD
 - Treat the project as a living creative file for ${modeLabels[brief.mode]}.
 - Keep answers practical, direct and production-minded.
@@ -422,6 +428,7 @@ OPERATING METHOD
 - When planning, produce clear beats, scenes, chapters, sections, songs, arguments, or production tasks as the form requires.
 - Preserve voice, weirdness and ambition. Do not sand the magic off.
 - For non-fiction and essays: prefer evidence, structure, and earned claims over invented drama. Do not force novel wound/desire framing.
+- For Show in a Box / musical: honour the locked song list, running order, cast, and production pack. Do not invent conflicting numbers.
 - Cut by need for the best product — never a fixed percentage quota.
 - Challenge weak structure, but do not flatten the premise.
 
@@ -693,9 +700,11 @@ function CaspaUI() {
     localStorage.setItem('caspa.manuscriptSource', '');
     localStorage.removeItem('caspa.commission');
     localStorage.removeItem('caspa.commission.tab');
+    clearShowBox();
     clearPlotHold();
-    // Match CTA: picture → Design, polish → Gold, everything else → guided Next step.
+    // Match CTA: picture → Design, show → Show Box, polish → Gold, else → Next step.
     if (mode === 'picture') goTo('design');
+    else if (mode === 'musical') goTo('showbox');
     else if (mode === 'gold') goTo('gold');
     else goTo('project');
   };
@@ -738,8 +747,22 @@ function CaspaUI() {
               }}
               onGoPublish={() => goTo('publish')}
               onGoWorkshop={() => goTo('workshop')}
+              onGoShowBox={() => goTo('showbox')}
             />
           </PageShell>
+        );
+      case 'showbox':
+        return (
+          <ShowBoxStudio
+            brief={brief}
+            draftPage={draftPage}
+            onDraftChange={setDraftPage}
+            onBriefChange={patchBrief}
+            onOpenWorkshop={() => goTo('workshop')}
+            onOpenWrite={() => goTo('write')}
+            onOpenPublish={() => goTo('publish')}
+            onOpenCanvas={() => goTo('canvas')}
+          />
         );
       case 'design':
         return (
@@ -757,6 +780,7 @@ function CaspaUI() {
             onOpenWorkshop={() => goTo('workshop')}
             onOpenPsychology={() => goTo('psychology')}
             onOpenResearch={() => goTo('research')}
+            onOpenShowBox={() => goTo('showbox')}
           />
         );
       case 'workshop':
@@ -840,6 +864,7 @@ function CaspaUI() {
             authorEmail={authContext.user?.email}
             onGoWorkshop={() => goTo('workshop')}
             onGoDesign={() => goTo('design')}
+            onGoShowBox={() => goTo('showbox')}
             onMoveToLibrary={handleCompleteProject}
           />
         );
@@ -1026,13 +1051,17 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
         audience: 'Readers of contemporary poetry / live audience.',
       };
     }
-    if (m === 'script' || m === 'musical') {
+    if (m === 'musical') {
+      return {
+        tone: 'Theatrical, melodic, witty, with a proper hook.',
+        output: 'Show in a box: book, song list, running order, music sketch, cast doubles, production pack.',
+        audience: 'Actors, MD, director, producer — a company that can open the box and rehearse.',
+      };
+    }
+    if (m === 'script') {
       return {
         tone: 'Spoken, actable, scene-turn hungry.',
-        output:
-          m === 'musical'
-            ? 'Full show draft: book scenes + song list drafted in running order.'
-            : 'Full script draft: every held scene in order.',
+        output: 'Full script draft: every held scene in order.',
         audience: 'Actors, directors, producers.',
       };
     }
@@ -1062,7 +1091,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
           <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
           <h1 style={{ fontSize: 'clamp(40px, 7vw, 72px)', lineHeight: .9, margin: 0, letterSpacing: -2.5 }}>What are we making?</h1>
           <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 18, lineHeight: 1.5, marginTop: 18 }}>
-            Fiction is one door. Non-fiction, picture books, essays, scripts — pick the form first.
+            Fiction is one door. Non-fiction, picture books, a show in a box — pick the form first.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 28 }}>
             {heroCards.map((card) => {
@@ -1085,7 +1114,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
             })}
           </div>
           <button type="button" onClick={() => setShowMore(!showMore)} style={{ marginTop: 18, background: 'transparent', border: 'none', color: '#a89572', cursor: 'pointer', fontSize: 13 }}>
-            {showMore ? 'Hide other formats' : 'More formats (script, musical, adaptation…)'}
+            {showMore ? 'Hide other formats' : 'More formats (script, essay, poetry, adaptation…)'}
           </button>
           {showMore && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 12 }}>
@@ -1162,22 +1191,30 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
           <p style={{ margin: '0 0 12px', fontSize: 13, color: '#73695d', lineHeight: 1.45 }}>
             {mode === 'picture'
               ? 'Creates the project and opens Design for spreads & covers.'
-              : mode === 'gold'
-                ? 'Creates the project and opens Gold Refinery to polish pasted text.'
-                : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
+              : mode === 'musical'
+                ? 'Creates the project and opens Show in a Box — songs, running order, music sketch, production pack.'
+                : mode === 'gold'
+                  ? 'Creates the project and opens Gold Refinery to polish pasted text.'
+                  : mode === 'script'
+                    ? 'Creates the project and opens guided next steps for an actable script.'
+                    : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
           </p>
 
           <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
             <Sparkles size={19} />{' '}
             {mode === 'picture'
               ? 'Open Design'
-              : mode === 'gold'
-                ? 'Open Gold'
-                : mode === 'nonfiction' || mode === 'essay'
-                  ? 'Start non-fiction'
-                  : mode === 'poetry'
-                    ? 'Start poem'
-                    : 'Start writing'}
+              : mode === 'musical'
+                ? 'Open Show in a Box'
+                : mode === 'gold'
+                  ? 'Open Gold'
+                  : mode === 'script'
+                    ? 'Start script'
+                    : mode === 'nonfiction' || mode === 'essay'
+                      ? 'Start non-fiction'
+                      : mode === 'poetry'
+                        ? 'Start poem'
+                        : 'Start writing'}
           </button>
         </div>
       </div>

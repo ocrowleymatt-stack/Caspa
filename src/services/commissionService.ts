@@ -29,6 +29,7 @@ import type {
   ChapterSummary,
 } from '../types/commission';
 import type { StoryPromise } from '../types/promise';
+import { formatShowPackForWriting } from './showBoxService';
 
 export interface ProjectBriefLike {
   title: string;
@@ -189,6 +190,8 @@ export async function diagnoseManuscript(
     };
   });
 
+  const showPackContext = formatShowPackForWriting();
+
   const prompt = `You are Caspa's Master Editor. Analyse this ${inputType} for "${brief.title}" (${project.type}).
 
 ${LITERARY_BRIEF}
@@ -196,7 +199,7 @@ ${LITERARY_BRIEF}
 INPUT TYPE: ${inputType}
 TONE TARGET: ${brief.tone}
 PREMISE: ${brief.idea}
-
+${showPackContext ? `\n${showPackContext}\n` : ''}
 MANUSCRIPT / PLAN:
 ${fullText.slice(0, 90000)}
 
@@ -428,11 +431,13 @@ export async function executeCommission(
       .join('\n\n')
       .slice(-5000);
 
+    const showPackDirective = formatShowPackForWriting();
     const mergedDirectives = [
       ...(chap.directives || []),
       ...selectedRecs.map((r) => r.detail),
       ...formatPromisesForDraft(activePromises, chap.order),
       ...(psychologyBlueprint ? formatPsychologyForChapter(psychologyBlueprint, chap.order) : []),
+      ...(showPackDirective ? [showPackDirective] : []),
     ];
 
     const chapterResearch = findRelevantForChapter(researchLibrary, chap, brief);

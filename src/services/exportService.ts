@@ -14,6 +14,12 @@ import type { Diagnosis } from '../types/commission';
 import { loadPromises } from './promiseRegistryService';
 import { getProjectKey } from './researchLibraryService';
 import type { ProjectBriefLike } from './commissionService';
+import {
+  assembleShowPack,
+  hasShowBoxContent,
+  loadShowBox,
+  showBoxPieceCount,
+} from './showBoxService';
 
 const COMMISSION_KEY = 'caspa.commission';
 
@@ -35,6 +41,14 @@ export function loadExportContext(brief: ProjectBriefLike, authorEmail = ''): Ex
     /* use defaults */
   }
 
+  const showBox = loadShowBox();
+  const packMeta = showBoxPieceCount(showBox);
+  const isShow = brief.mode === 'musical';
+  if (isShow && hasShowBoxContent(showBox)) {
+    // Prefer the assembled pack so export includes songs / order / production notes.
+    manuscript = assembleShowPack(brief, manuscript, showBox);
+  }
+
   return {
     title: brief.title,
     author: authorEmail,
@@ -43,6 +57,9 @@ export function loadExportContext(brief: ProjectBriefLike, authorEmail = ''): Ex
     diagnosis,
     audience: brief.audience,
     tone: brief.tone,
+    mode: brief.mode,
+    showPackPieces: packMeta.done,
+    hasShowPack: packMeta.done > 0,
   };
 }
 
@@ -53,8 +70,16 @@ export function evaluateExportGate(
   const blockers: string[] = [];
   const warnings: string[] = [];
   const wordCount = ctx.manuscript.trim().split(/\s+/).filter(Boolean).length;
+  const isShow = ctx.mode === 'musical';
 
-  if (wordCount < 100) {
+  if (isShow) {
+    if ((ctx.showPackPieces || 0) < 2) {
+      blockers.push('Show in a Box needs at least two pack pieces (e.g. song list + running order).');
+    }
+    if (wordCount < 60) {
+      blockers.push('Show pack is too thin. Add book scenes or assemble the box in Show in a Box.');
+    }
+  } else if (wordCount < 100) {
     blockers.push('Manuscript is too short or empty. Complete a Workshop commission first.');
   }
 
@@ -78,6 +103,10 @@ export function evaluateExportGate(
 
   if (ctx.diagnosis?.suggestRebuild) {
     warnings.push('Caspa previously recommended a full restructure.');
+  }
+
+  if (isShow && (ctx.showPackPieces || 0) < 5) {
+    warnings.push(`Show pack is ${ctx.showPackPieces || 0}/5 pieces — fill cast, music sketch, and production pack before pitching.`);
   }
 
   return {
@@ -251,11 +280,18 @@ export async function downloadPdf(ctx: ExportContext, profile: ExportProfile): P
     return;
   }
 
-  const html = buildPrintHtml(ctx, profile === 'professional-print' ? 'kdp-novel' : profile);
+  const layoutProfile: ExportProfile =
+    profile === 'professional-print' ? 'kdp-novel' : profile === 'show-pack' ? 'course-book' : profile;
+  const html = buildPrintHtml(ctx, layoutProfile);
   const slug = slugify(ctx.title);
   const filename = `${slug}_${profile}.pdf`;
 
-  const useServer = profile === 'professional-print' || profile === 'kdp-novel' || profile === 'course-book' || profile === 'subject-bible';
+  const useServer =
+    profile === 'professional-print' ||
+    profile === 'kdp-novel' ||
+    profile === 'course-book' ||
+    profile === 'subject-bible' ||
+    profile === 'show-pack';
 
   if (useServer) {
     try {
@@ -284,9 +320,16 @@ export async function downloadPdf(ctx: ExportContext, profile: ExportProfile): P
   const { default: html2pdf } = await import('html2pdf.js');
 
   const format =
-    profile === 'kdp-novel' ? ([6, 9] as [number, number]) : profile === 'course-book' || profile === 'subject-bible' ? 'a4' : 'letter';
+    profile === 'kdp-novel'
+      ? ([6, 9] as [number, number])
+      : profile === 'course-book' || profile === 'subject-bible' || profile === 'show-pack'
+        ? 'a4'
+        : 'letter';
 
-  const margin = profile === 'kdp-novel' ? ([0.75, 0.6, 0.75, 0.6] as [number, number, number, number]) : ([0.75, 0.75, 0.75, 0.75] as [number, number, number, number]);
+  const margin =
+    profile === 'kdp-novel'
+      ? ([0.75, 0.6, 0.75, 0.6] as [number, number, number, number])
+      : ([0.75, 0.75, 0.75, 0.75] as [number, number, number, number]);
 
   try {
     await (html2pdf() as any)

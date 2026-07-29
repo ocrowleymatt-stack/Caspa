@@ -23,7 +23,8 @@ export type WorkflowView =
   | 'research'
   | 'canvas'
   | 'openwebui'
-  | 'settings';
+  | 'settings'
+  | 'showbox';
 
 export type WorkshopTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
 
@@ -31,6 +32,7 @@ export type WorkflowStepId =
   | 'start_brief'
   | 'draft_or_paste'
   | 'research_sources'
+  | 'show_pack'
   | 'workshop_diagnose'
   | 'workshop_write'
   | 'review_draft'
@@ -96,6 +98,32 @@ function isPoetryMode(brief: ProjectBriefLike): boolean {
   return brief.mode === 'poetry';
 }
 
+function isShowMode(brief: ProjectBriefLike): boolean {
+  return brief.mode === 'musical';
+}
+
+function isScriptMode(brief: ProjectBriefLike): boolean {
+  return brief.mode === 'script';
+}
+
+function hasShowPack(): boolean {
+  try {
+    // Lazy require avoided — duplicate thin check keeps workflow free of circular imports.
+    const raw = localStorage.getItem('caspa.showBox');
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    return Boolean(
+      saved?.songList?.trim() ||
+        saved?.runningOrder?.trim() ||
+        saved?.musicSketch?.trim() ||
+        saved?.castNotes?.trim() ||
+        saved?.productionPack?.trim()
+    );
+  } catch {
+    return false;
+  }
+}
+
 function hasDesignPlan(): boolean {
   try {
     const raw = localStorage.getItem('caspa.bookDesign');
@@ -136,7 +164,10 @@ export function getWorkflowSteps(
   const picture = isPictureMode(brief);
   const nonfiction = isNonfictionMode(brief);
   const poetry = isPoetryMode(brief);
+  const show = isShowMode(brief);
+  const script = isScriptMode(brief);
   const designReady = hasDesignPlan();
+  const showPacked = hasShowPack();
 
   const ctx = loadExportContext(brief);
   const gate = evaluateExportGate(ctx, false);
@@ -150,26 +181,143 @@ export function getWorkflowSteps(
       ? 'Confirm what you are polishing'
       : picture
         ? 'Confirm the picture-book brief'
-        : nonfiction
-          ? 'Lock the non-fiction brief'
-          : poetry
-            ? 'Lock the poetry brief'
-            : 'Lock your brief',
+        : show
+          ? 'Confirm the show brief'
+          : script
+            ? 'Confirm the script brief'
+            : nonfiction
+              ? 'Lock the non-fiction brief'
+              : poetry
+                ? 'Lock the poetry brief'
+                : 'Lock your brief',
     why: gold
       ? 'Gold mode needs the manuscript and tone locked so polish passes stay on-voice.'
       : picture
         ? 'Age band, premise, and tone steer spreads, covers, and read-aloud voice.'
-        : nonfiction
-          ? 'Subject, angle, audience, and promised deliverable keep research and draft honest.'
-          : poetry
-            ? 'Form, tone, and occasion keep the sequence coherent.'
-            : 'Caspa routes every room from title, mode, and premise — without this, tools guess.',
+        : show
+          ? 'Premise, tone, and company size steer book, songs, and the production pack.'
+          : script
+            ? 'Form (stage/screen/radio), tone, and runtime keep scenes actable.'
+            : nonfiction
+              ? 'Subject, angle, audience, and promised deliverable keep research and draft honest.'
+              : poetry
+                ? 'Form, tone, and occasion keep the sequence coherent.'
+                : 'Caspa routes every room from title, mode, and premise — without this, tools guess.',
     action: briefStarted ? 'Review brief' : 'Set up project',
     view: 'project',
     done: briefStarted,
   });
 
-  if (picture) {
+  if (show) {
+    steps.push({
+      id: 'show_pack',
+      title: 'Pack the show in a box',
+      why: 'Song list, running order, music sketch, cast doubles, and production pack — before the book wanders off alone.',
+      action: showPacked ? 'Continue Show Box' : 'Open Show in a Box',
+      view: 'showbox',
+      done: showPacked,
+    });
+    steps.push({
+      id: 'draft_or_paste',
+      title: 'Draft the book / scenes',
+      why: 'Get Act One (or a brutal outline) on the page. Songs without book scenes are a concert, not a show.',
+      action: words > 0 ? 'Continue book' : 'Open Just write',
+      view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
+      workshopTab: words > 0 && !hasDiagnosis ? 'inbox' : undefined,
+      done: words >= 80,
+    });
+    steps.push({
+      id: 'workshop_diagnose',
+      title: 'Diagnose the show draft',
+      why: 'Workshop pressure-tests turns, dead numbers, and missing payoffs across book and songs.',
+      action: hasDiagnosis ? 'Review diagnosis' : 'Open Workshop',
+      view: 'workshop',
+      workshopTab: hasDiagnosis ? 'recommendations' : 'inbox',
+      done: hasDiagnosis,
+    });
+    steps.push({
+      id: 'workshop_write',
+      title: 'Commission the rewrite',
+      why: 'Select fixes and scope, then Write it — scenes and lyric passes land as artefact.',
+      action: commissionComplete ? 'View artefact' : hasDiagnosis ? 'Finish commission' : 'Open Workshop',
+      view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
+      done: commissionComplete,
+    });
+    steps.push({
+      id: 'review_draft',
+      title: 'Read / rehearse the pack',
+      why: 'Assemble the box into White Page. Check running order against the book before export.',
+      action: 'Open Show Box',
+      view: 'showbox',
+      done: showPacked && words >= 80,
+    });
+    steps.push({
+      id: 'export',
+      title: 'Export the show pack',
+      why: gate.blockers.length
+        ? `Blocked: ${gate.blockers[0]}`
+        : 'Publish Pack for rehearsal / pitch / production export.',
+      action: gate.canExport ? 'Export pack' : 'Open Publish Pack',
+      view: 'publish',
+      done: gate.canExport,
+    });
+  } else if (script) {
+    steps.push({
+      id: 'draft_or_paste',
+      title: 'Get scenes on the page',
+      why: 'Stage, screen, or radio — Caspa needs spoken turns before it can diagnose.',
+      action: words > 0 ? 'Continue script' : 'Open Just write',
+      view: words > 0 && !hasDiagnosis ? 'workshop' : 'quickwrite',
+      workshopTab: words > 0 && !hasDiagnosis ? 'inbox' : undefined,
+      done: words >= 50,
+    });
+    steps.push({
+      id: 'polish_optional',
+      title: 'Storyboard on Jam Canvas (optional)',
+      why: 'Visual running order for acts and set pieces when the page alone is not enough.',
+      action: 'Open Jam Canvas',
+      view: 'canvas',
+      optional: true,
+      done: false,
+    });
+    steps.push({
+      id: 'workshop_diagnose',
+      title: 'Diagnose in Workshop',
+      why: 'Score actability, scene turns, and dead air — then commission cuts or rewrites.',
+      action: hasDiagnosis ? 'Review diagnosis' : 'Open Workshop',
+      view: 'workshop',
+      workshopTab: hasDiagnosis ? 'recommendations' : 'inbox',
+      done: hasDiagnosis,
+    });
+    steps.push({
+      id: 'workshop_write',
+      title: 'Commission the rewrite',
+      why: 'Direct the idea, tick fixes, Write it. Artefact lands ready for a table read.',
+      action: commissionComplete ? 'View artefact' : hasDiagnosis ? 'Finish commission' : 'Open Workshop',
+      view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
+      done: commissionComplete,
+    });
+    steps.push({
+      id: 'review_draft',
+      title: 'Table-read the draft',
+      why: 'Read aloud in White Page. Cut what does not play.',
+      action: 'Open White Page',
+      view: 'write',
+      done: commissionComplete && words >= 80,
+    });
+    steps.push({
+      id: 'export',
+      title: 'Export when ready',
+      why: gate.blockers.length
+        ? `Blocked: ${gate.blockers[0]}`
+        : 'Publish Pack for pitch / rehearsal export.',
+      action: gate.canExport ? 'Export script' : 'Check export gate',
+      view: 'publish',
+      done: gate.canExport,
+    });
+  } else if (picture) {
     steps.push({
       id: 'draft_or_paste',
       title: 'Plan spreads & covers',
