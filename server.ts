@@ -942,7 +942,14 @@ async function run() {
         },
       }),
     );
-    app.get("*", (_req, res) => {
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({
+          success: false,
+          message: `API endpoint not found: ${req.method} ${req.path}`,
+          code: "API_NOT_FOUND",
+        });
+      }
       res.setHeader("Cache-Control", "no-store");
       res.sendFile(path.join(distPath, "index.html"));
     });
@@ -1299,6 +1306,19 @@ Rules:
     return res.status(500).json({ error: e.message || 'Internal error' });
   }
 });
+
+
+  // Never let unmatched API requests fall through to HTML.
+  app.use("/api", (req, res) => {
+    const knownReadOnly = req.method === "GET" || req.method === "HEAD";
+    return res.status(knownReadOnly ? 404 : 405).json({
+      success: false,
+      message: knownReadOnly
+        ? `API endpoint not found: ${req.method} ${req.originalUrl}`
+        : `API method not allowed or endpoint missing: ${req.method} ${req.originalUrl}`,
+      code: knownReadOnly ? "API_NOT_FOUND" : "API_METHOD_NOT_ALLOWED",
+    });
+  });
 
   // Listen — long AI/research calls need node HTTP timeouts > nginx default.
   const httpServer = app.listen(PORT, "0.0.0.0", () => {
