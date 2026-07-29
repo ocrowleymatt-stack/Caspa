@@ -4,6 +4,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { getBuildInfo } from './buildInfoService';
 import { getJobAudit } from './jobQueueService';
 import { jobStorePresent } from './jobStoreService';
 import { backupsPresent, listBackups } from './localBackupService';
@@ -12,7 +13,6 @@ const OLLAMA_API = (() => {
   const raw = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api').trim().replace(/\/$/, '');
   return raw.endsWith('/api') ? raw : `${raw}/api`;
 })();
-const VERSION = '1.0.0';
 
 function fileExists(relativeParts: string[]): boolean {
   try {
@@ -87,6 +87,7 @@ function buildReadiness(snapshot: {
 }
 
 export async function getDoctorSnapshot() {
+  const build = getBuildInfo();
   const ollama = await probeOllama();
   const publicUiPresent = fileExists(['dist', 'index.html']);
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
@@ -109,7 +110,11 @@ export async function getDoctorSnapshot() {
   return {
     status: readiness.ready ? ('ok' as const) : ('degraded' as const),
     service: 'Caspa',
-    version: VERSION,
+    version: build.version,
+    gitSha: build.gitSha,
+    gitShaShort: build.gitShaShort,
+    gitBranch: build.gitBranch,
+    builtAt: build.builtAt,
     timestamp: new Date().toISOString(),
     readiness,
     deployment: {
@@ -118,6 +123,11 @@ export async function getDoctorSnapshot() {
       publicUiPresent,
       authEnabled: true,
       localGuestAllowed: true,
+      gitSha: build.gitSha,
+      gitShaShort: build.gitShaShort,
+      gitBranch: build.gitBranch,
+      builtAt: build.builtAt,
+      buildInfoSource: build.source,
     },
     aiProviders: {
       geminiConfigured,

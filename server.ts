@@ -22,6 +22,7 @@ import caspaRewireRoutes from './src/routes/caspa-rewire-routes';
 import caspaWriteRoutes from './src/routes/caspa-write-routes';
 import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
+import { getBuildInfo } from './src/services/buildInfoService';
 
 dotenv.config();
 
@@ -34,11 +35,17 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Health Check
 app.get("/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
+  const build = getBuildInfo();
+  res.json({
+    status: "ok",
+    service: "Caspa",
+    version: build.version,
+    gitSha: build.gitSha,
+    gitShaShort: build.gitShaShort,
+    builtAt: build.builtAt,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    env: process.env.NODE_ENV || "production (default)"
+    env: process.env.NODE_ENV || "production (default)",
   });
 });
 
@@ -906,8 +913,24 @@ async function run() {
   } else {
     console.log("[Server] Starting in PRODUCTION mode with static file serving");
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    // Hashed Vite assets may be cached forever; the HTML shell must never be.
+    app.use(
+      express.static(distPath, {
+        index: false,
+        setHeaders(res, filePath) {
+          const base = path.basename(filePath);
+          if (base === "index.html") {
+            res.setHeader("Cache-Control", "no-store");
+            return;
+          }
+          if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          }
+        },
+      }),
+    );
+    app.get("*", (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

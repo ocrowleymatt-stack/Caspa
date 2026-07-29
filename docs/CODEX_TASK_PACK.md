@@ -47,6 +47,7 @@ npm run verify
 
 ## Follow-up
 
-- Merge PR #7 to main
-- Hetzner: `git pull && npm run verify && pm2 restart caspa-server`
+- Atlas: `git fetch && git reset --hard origin/main && npm ci && npm run build && pm2 restart caspa-server --update-env`
+- Or GitHub Actions → **Deploy Atlas** (`confirm=deploy`) once `HETZNER_SSH_KEY` is set
+- Confirm `/api/doctor` returns `service: Caspa` plus `gitSha` / `builtAt`
 - Full Caspa1 Show Factory stack (Issue #1) — separate migration branch

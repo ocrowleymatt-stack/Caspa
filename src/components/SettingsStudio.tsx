@@ -36,6 +36,7 @@ export default function SettingsStudio({ userEmail }: Props) {
   const [keyCount, setKeyCount] = useState(snapshotKeyCount());
   const [readiness, setReadiness] = useState<DoctorReadiness | null>(null);
   const [doctorVersion, setDoctorVersion] = useState('');
+  const [buildFingerprint, setBuildFingerprint] = useState('');
   const [checkingDoctor, setCheckingDoctor] = useState(false);
 
   const refreshBackups = useCallback(async () => {
@@ -56,6 +57,10 @@ export default function SettingsStudio({ userEmail }: Props) {
       if (data.success) {
         setReadiness(data.data.readiness || null);
         setDoctorVersion(data.data.version || '');
+        const sha = data.data.gitShaShort || data.data.deployment?.gitShaShort || '';
+        const builtAt = data.data.builtAt || data.data.deployment?.builtAt || '';
+        const parts = [sha ? `commit ${sha}` : '', builtAt ? `built ${builtAt}` : ''].filter(Boolean);
+        setBuildFingerprint(parts.join(' · '));
       }
     } catch {
       setReadiness({
@@ -146,6 +151,11 @@ export default function SettingsStudio({ userEmail }: Props) {
                 {readiness.ready ? 'Ready to run' : 'Blocked'} · score {readiness.score ?? '—'}
                 {doctorVersion ? ` · v${doctorVersion}` : ''}
               </p>
+              {buildFingerprint && (
+                <p style={{ margin: '0 0 10px', color: '#5c5146', fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                  {buildFingerprint}
+                </p>
+              )}
               {(readiness.blockers || []).map((b) => (
                 <p key={b} style={{ margin: '0 0 6px', color: '#a02b20', fontSize: 14 }}>
                   {b}
