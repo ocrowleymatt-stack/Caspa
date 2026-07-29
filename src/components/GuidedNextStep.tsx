@@ -4,12 +4,16 @@
 
 import React from 'react';
 import { ArrowRight, CheckCircle2, Circle, Sparkles } from 'lucide-react';
-import type { WorkflowStep } from '../services/projectWorkflowService';
+import {
+  stepToNavTarget,
+  type WorkflowNavTarget,
+  type WorkflowStep,
+} from '../services/projectWorkflowService';
 
 interface Props {
   step: WorkflowStep;
   progress: { done: number; total: number; percent: number };
-  onGo: (view: WorkflowStep['view']) => void;
+  onGo: (target: WorkflowNavTarget) => void;
   onComplete?: () => void;
   briefTitle: string;
 }
@@ -70,7 +74,7 @@ export default function GuidedNextStep({ step, progress, onGo, onComplete, brief
               <CheckCircle2 size={18} /> {step.action}
             </button>
           ) : (
-            <button type="button" onClick={() => onGo(step.view)} style={primaryBtn}>
+            <button type="button" onClick={() => onGo(stepToNavTarget(step))} style={primaryBtn}>
               {step.action} <ArrowRight size={18} />
             </button>
           )}
@@ -88,20 +92,20 @@ export function WorkflowChecklist({
   onGo,
 }: {
   steps: WorkflowStep[];
-  onGo: (view: WorkflowStep['view']) => void;
+  onGo: (target: WorkflowNavTarget) => void;
 }) {
   return (
     <article style={card}>
       <h2 style={sectionTitle}>Full path</h2>
       <p style={{ margin: '0 0 16px', color: '#73695d', fontSize: 14, lineHeight: 1.5 }}>
-        Tap a step only if you need to jump ahead. Caspa keeps the highlighted step as your default.
+        Every step is selectable and opens that room — Diagnose lands on Recommendations; Commission lands on Write it / artefact.
       </p>
       <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
         {steps.map((s) => (
           <li key={s.id}>
             <button
               type="button"
-              onClick={() => onGo(s.view)}
+              onClick={() => onGo(stepToNavTarget(s))}
               style={{
                 width: '100%',
                 display: 'flex',
@@ -126,6 +130,11 @@ export function WorkflowChecklist({
                   {s.optional ? ' (optional)' : ''}
                 </strong>
                 <small style={{ color: '#73695d', lineHeight: 1.4 }}>{s.why}</small>
+                {s.workshopTab && (
+                  <small style={{ display: 'block', marginTop: 4, color: '#9b6d16', fontWeight: 600 }}>
+                    Opens Workshop → {s.workshopTab === 'recommendations' ? 'Recommendations' : s.workshopTab === 'workshop' ? 'Artefact' : s.workshopTab === 'inbox' ? 'Inbox' : 'Promises'}
+                  </small>
+                )}
               </span>
             </button>
           </li>

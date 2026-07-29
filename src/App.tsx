@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  Award,
   BookImage,
   BookOpen,
   Check,
@@ -17,6 +18,7 @@ import {
   Copy,
   Download,
   FileText,
+  GitBranch,
   Globe,
   Home,
   Library,
@@ -26,22 +28,26 @@ import {
   Mail,
   Menu,
   Music2,
+  Navigation2,
   Newspaper,
   PenLine,
   Quote,
+  Scissors,
   Search,
   Settings,
   Sparkles,
   UploadCloud,
+  Users,
   Wand2,
   Hammer,
   Brain,
+  Bug,
   Pencil,
   Zap,
   X,
 } from 'lucide-react';
 
-import CommissionStudio from './components/CommissionStudio';
+import CommissionStudio, { type StudioTab } from './components/CommissionStudio';
 import ResearchLibrary from './components/ResearchLibrary';
 import PublishPack from './components/PublishPack';
 import PsychologyStudio from './components/PsychologyStudio';
@@ -54,6 +60,7 @@ import StoryBibleStudio from './components/StoryBibleStudio';
 import GuidedNextStep, { WorkflowChecklist } from './components/GuidedNextStep';
 import BookDesignStudio from './components/BookDesignStudio';
 import QuickWrite from './components/QuickWrite';
+import StudioToolBridge, { type StudioToolId } from './components/StudioToolBridge';
 import {
   completeProject,
   loadProjectSnapshot,
@@ -66,7 +73,7 @@ import {
   getNextStep,
   getProgressSummary,
   getWorkflowSteps,
-  type WorkflowView,
+  type WorkflowNavTarget,
 } from './services/projectWorkflowService';
 import { countWords, defaultTargetWordCount } from './services/wordCountService';
 import { getProjectKey } from './services/researchLibraryService';
@@ -129,7 +136,8 @@ type ViewType =
   | 'publish'
   | 'psychology'
   | 'canvas'
-  | 'settings';
+  | 'settings'
+  | StudioToolId;
 
 type ProjectBrief = {
   title: string;
@@ -146,9 +154,54 @@ type NavItem = {
   id: ViewType;
   label: string;
   detail: string;
-  group: 'primary' | 'advanced';
+  group: 'primary' | 'advanced' | 'studio';
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
 };
+
+const STUDIO_TOOL_IDS: StudioToolId[] = [
+  'brainstorm',
+  'characters',
+  'plot',
+  'writing',
+  'intelligence',
+  'architect',
+  'swarm',
+  'scalpel',
+  'autodraft',
+  'pilot',
+  'prizes',
+];
+
+function isStudioTool(view: ViewType): view is StudioToolId {
+  return (STUDIO_TOOL_IDS as string[]).includes(view);
+}
+
+function mapLegacyView(legacy: string): ViewType | null {
+  const map: Record<string, ViewType> = {
+    brainstorm: 'brainstorm',
+    characters: 'characters',
+    plot: 'plot',
+    writing: 'writing',
+    write: 'write',
+    intelligence: 'intelligence',
+    swarm: 'swarm',
+    architect: 'architect',
+    scalpel: 'scalpel',
+    autodraft: 'autodraft',
+    prizes: 'prizes',
+    design: 'design',
+    publish: 'publish',
+    export: 'publish',
+    library: 'library',
+    research: 'research',
+    settings: 'settings',
+    dashboard: 'project',
+    workshop: 'workshop',
+    gold: 'gold',
+    pilot: 'pilot',
+  };
+  return map[legacy] || null;
+}
 
 const AuthContext = React.createContext<AuthContextType>({
   user: null,
@@ -191,7 +244,7 @@ const primaryNav: NavItem[] = [
 
 const advancedNav: NavItem[] = [
   { id: 'launchpad', label: 'New Work', detail: 'Start another project', group: 'advanced', icon: Sparkles },
-  { id: 'workshop', label: 'Workshop', detail: 'Direct idea, then write', group: 'advanced', icon: Hammer },
+  { id: 'workshop', label: 'Workshop', detail: 'Diagnose & commission', group: 'advanced', icon: Hammer },
   { id: 'bible', label: 'Story Bible', detail: 'Canon and characters', group: 'advanced', icon: BookOpen },
   { id: 'psychology', label: 'Psychology', detail: 'Emotional journeys', group: 'advanced', icon: Brain },
   { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'advanced', icon: CircleAlert },
@@ -200,6 +253,20 @@ const advancedNav: NavItem[] = [
   { id: 'openwebui', label: 'Open WebUI', detail: 'External model driver', group: 'advanced', icon: UploadCloud },
   { id: 'research', label: 'Research Desk', detail: 'Sources and notes', group: 'advanced', icon: Search },
   { id: 'settings', label: 'Settings', detail: 'Backup and account', group: 'advanced', icon: Settings },
+];
+
+const studioNav: NavItem[] = [
+  { id: 'brainstorm', label: 'Brainstorm', detail: 'Premise under pressure', group: 'studio', icon: Sparkles },
+  { id: 'characters', label: 'Character Forge', detail: 'Wants, masks, wounds', group: 'studio', icon: Users },
+  { id: 'plot', label: 'Plot Architect', detail: 'Spine and turns', group: 'studio', icon: GitBranch },
+  { id: 'writing', label: 'Writing Studio', detail: 'Chapter craft room', group: 'studio', icon: PenLine },
+  { id: 'intelligence', label: 'Intelligence Lab', detail: 'Deep research engine', group: 'studio', icon: Search },
+  { id: 'architect', label: 'Rip & Fix', detail: 'Restructure / rebuild', group: 'studio', icon: Hammer },
+  { id: 'swarm', label: 'Critic Swarm', detail: 'Multi-lens critique', group: 'studio', icon: Bug },
+  { id: 'scalpel', label: 'Scalpel', detail: 'Cut sludge hard', group: 'studio', icon: Scissors },
+  { id: 'autodraft', label: 'Auto Drafter', detail: 'Deep-draft chapters', group: 'studio', icon: Zap },
+  { id: 'pilot', label: 'Pilot Seat', detail: 'Directive steering', group: 'studio', icon: Navigation2 },
+  { id: 'prizes', label: 'Prize Calibration', detail: 'Lens pressure test', group: 'studio', icon: Award },
 ];
 
 const modeCards: Array<{
@@ -528,6 +595,9 @@ function CaspaUI() {
   const [currentView, setCurrentView] = useState<ViewType>(() => (hasActiveProject() ? 'project' : 'launchpad'));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [workshopTab, setWorkshopTab] = useState<StudioTab | undefined>(undefined);
+  const [workshopFocusChapter, setWorkshopFocusChapter] = useState<number | null>(null);
   const [brief, setBrief] = useState<ProjectBrief>(() => loadBrief());
   const [draftPage, setDraftPage] = useState(() => localStorage.getItem('caspa.whitePage') || '');
   const [manuscriptSource, setManuscriptSource] = useState(() => localStorage.getItem('caspa.manuscriptSource') || '');
@@ -542,7 +612,27 @@ function CaspaUI() {
   };
 
   const goTo = (view: ViewType) => {
+    if (view === 'workshop') {
+      // Sidebar click — no forced tab; Studio remembers last tab.
+      setWorkshopTab(undefined);
+      setWorkshopFocusChapter(null);
+    }
+    if (isStudioTool(view)) setStudioOpen(true);
+    if (advancedNav.some((n) => n.id === view)) setAdvancedOpen(true);
     setCurrentView(view);
+    setMobileMenuOpen(false);
+  };
+
+  const goWorkflow = (target: WorkflowNavTarget) => {
+    if (target.view === 'workshop') {
+      setWorkshopTab(target.workshopTab);
+      setWorkshopFocusChapter(target.focusChapter ?? null);
+      setAdvancedOpen(true);
+    } else {
+      setWorkshopTab(undefined);
+      setWorkshopFocusChapter(null);
+    }
+    setCurrentView(target.view as ViewType);
     setMobileMenuOpen(false);
   };
 
@@ -602,9 +692,18 @@ function CaspaUI() {
     localStorage.setItem('caspa.whitePage', '');
     localStorage.setItem('caspa.manuscriptSource', '');
     localStorage.removeItem('caspa.commission');
+    localStorage.removeItem('caspa.commission.tab');
     clearPlotHold();
-    // Always land on guided Next step — the hub points to Just write / Design / Gold.
-    goTo('project');
+    // Match CTA: picture → Design, polish → Gold, everything else → guided Next step.
+    if (mode === 'picture') goTo('design');
+    else if (mode === 'gold') goTo('gold');
+    else goTo('project');
+  };
+
+  const patchBrief = (patch: Partial<ProjectBrief>) => {
+    const next = { ...brief, ...patch };
+    setBrief(next);
+    saveBrief(next);
   };
 
   const renderView = () => {
@@ -618,7 +717,8 @@ function CaspaUI() {
             draftPage={draftPage}
             manuscriptSource={manuscriptSource}
             projectStatus={projectStatus}
-            setCurrentView={goTo}
+            onGo={goWorkflow}
+            onBriefChange={patchBrief}
             onCompleteProject={handleCompleteProject}
           />
         );
@@ -664,17 +764,19 @@ function CaspaUI() {
           <CommissionStudio
             brief={brief}
             draftPage={draftPage}
+            initialTab={workshopTab}
+            focusChapter={workshopFocusChapter}
+            onDeepLinkConsumed={() => {
+              setWorkshopTab(undefined);
+              setWorkshopFocusChapter(null);
+            }}
             onArtefactReady={(text) => {
               setDraftPage(text);
               setManuscriptSource(text);
               goTo('write');
             }}
             onManuscriptChange={setManuscriptSource}
-            onBriefChange={(patch) => {
-              const next = { ...brief, ...patch };
-              setBrief(next);
-              saveBrief(next);
-            }}
+            onBriefChange={patchBrief}
           />
         );
       case 'redpen':
@@ -744,6 +846,24 @@ function CaspaUI() {
       case 'settings':
         return <SettingsStudio userEmail={authContext.user?.email} />;
       default:
+        if (isStudioTool(currentView)) {
+          return (
+            <StudioToolBridge
+              tool={currentView}
+              brief={brief}
+              draftPage={draftPage}
+              onBriefChange={patchBrief}
+              onDraftChange={(text) => {
+                setDraftPage(text);
+                setManuscriptSource(text);
+              }}
+              onNavigate={(legacy) => {
+                const mapped = mapLegacyView(String(legacy));
+                if (mapped) goTo(mapped);
+              }}
+            />
+          );
+        }
         return <LaunchpadView onStart={startProject} />;
     }
   };
@@ -784,16 +904,40 @@ function CaspaUI() {
           })}
         </div>
 
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 12 }}>
           <button
             type="button"
             onClick={() => setAdvancedOpen(!advancedOpen)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: 'none', background: 'transparent', color: '#9b8c73', padding: '8px 12px', cursor: 'pointer', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4 }}
           >
-            More tools
+            Rooms
             {advancedOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
           {advancedOpen && advancedNav.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === currentView;
+            return (
+              <button key={item.id} onClick={() => goTo(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, border: 'none', borderRadius: 16, padding: '10px 12px', marginBottom: 4, cursor: 'pointer', textAlign: 'left', background: active ? '#2f2415' : 'transparent', color: active ? '#ffe2a5' : '#c9b898' }}>
+                <Icon size={16} />
+                <span>
+                  <strong style={{ display: 'block', fontSize: 13 }}>{item.label}</strong>
+                  <small style={{ color: active ? '#d6a846' : '#7a6d58', fontSize: 11 }}>{item.detail}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <button
+            type="button"
+            onClick={() => setStudioOpen(!studioOpen)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: 'none', background: 'transparent', color: '#9b8c73', padding: '8px 12px', cursor: 'pointer', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4 }}
+          >
+            Literary engine
+            {studioOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          {studioOpen && studioNav.map((item) => {
             const Icon = item.icon;
             const active = item.id === currentView;
             return (
@@ -835,7 +979,11 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
   const [mode, setMode] = useState<CreativeMode>('novel');
   const [idea, setIdea] = useState('');
   const [showMore, setShowMore] = useState(false);
+  const [showBriefDetails, setShowBriefDetails] = useState(false);
   const [targetWordCount, setTargetWordCount] = useState(defaultTargetWordCount('novel'));
+  const [tone, setTone] = useState('Sharp, vivid, structurally solid.');
+  const [output, setOutput] = useState('Full manuscript: draft every held chapter in order to the aspire-to word count.');
+  const [audience, setAudience] = useState('Literary / general readers.');
 
   const selected = modeCards.find((card) => card.mode === mode)!;
   const SelectedIcon = selected.icon;
@@ -895,9 +1043,16 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
     };
   };
 
+  const applyModeDefaults = (m: CreativeMode) => {
+    const d = defaultsFor(m);
+    setTone(d.tone);
+    setOutput(d.output);
+    setAudience(d.audience);
+    setTargetWordCount(defaultTargetWordCount(m));
+  };
+
   const launch = () => {
-    const d = defaultsFor(mode);
-    onStart(mode, idea, d.tone, d.output, d.audience, targetWordCount);
+    onStart(mode, idea, tone, output, audience, targetWordCount);
   };
 
   return (
@@ -918,7 +1073,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                   key={card.mode}
                   onClick={() => {
                     setMode(card.mode);
-                    setTargetWordCount(defaultTargetWordCount(card.mode));
+                    applyModeDefaults(card.mode);
                   }}
                   style={{ border: `2px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 20, textAlign: 'left', cursor: 'pointer' }}
                 >
@@ -942,7 +1097,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                     key={card.mode}
                     onClick={() => {
                       setMode(card.mode);
-                      setTargetWordCount(defaultTargetWordCount(card.mode));
+                      applyModeDefaults(card.mode);
                     }}
                     style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#1a140e', color: '#fffaf2', borderRadius: 16, padding: 14, textAlign: 'left', cursor: 'pointer' }}
                   >
@@ -979,9 +1134,38 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
             />
           </Field>
 
+          <button
+            type="button"
+            onClick={() => setShowBriefDetails(!showBriefDetails)}
+            style={{ background: 'transparent', border: 'none', color: '#8a6a28', cursor: 'pointer', fontSize: 13, fontWeight: 700, marginBottom: 10, padding: 0 }}
+          >
+            {showBriefDetails ? 'Hide tone / audience / output' : 'Tune tone, audience & output (optional)'}
+          </button>
+          {showBriefDetails && (
+            <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+              <Field label="Tone">
+                <textarea value={tone} onChange={(e) => setTone(e.target.value)} rows={2} style={textareaStyle} />
+              </Field>
+              <Field label="Audience">
+                <textarea value={audience} onChange={(e) => setAudience(e.target.value)} rows={2} style={textareaStyle} />
+              </Field>
+              <Field label="Required output">
+                <textarea value={output} onChange={(e) => setOutput(e.target.value)} rows={2} style={textareaStyle} />
+              </Field>
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
             {selected.examples.map((example) => <button key={example} onClick={() => setIdea(example)} style={chipButton}>{example}</button>)}
           </div>
+
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#73695d', lineHeight: 1.45 }}>
+            {mode === 'picture'
+              ? 'Creates the project and opens Design for spreads & covers.'
+              : mode === 'gold'
+                ? 'Creates the project and opens Gold Refinery to polish pasted text.'
+                : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
+          </p>
 
           <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
             <Sparkles size={19} />{' '}
@@ -1006,16 +1190,25 @@ function ProjectView({
   draftPage,
   manuscriptSource,
   projectStatus,
-  setCurrentView,
+  onGo,
+  onBriefChange,
   onCompleteProject,
 }: {
   brief: ProjectBrief;
   draftPage: string;
   manuscriptSource: string;
   projectStatus: 'active' | 'complete';
-  setCurrentView: (view: ViewType) => void;
+  onGo: (target: WorkflowNavTarget) => void;
+  onBriefChange: (patch: Partial<ProjectBrief>) => void;
   onCompleteProject: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftBrief, setDraftBrief] = useState(brief);
+
+  useEffect(() => {
+    setDraftBrief(brief);
+  }, [brief]);
+
   const steps = useMemo(
     () => getWorkflowSteps(brief, draftPage, manuscriptSource, projectStatus),
     [brief, draftPage, manuscriptSource, projectStatus]
@@ -1029,7 +1222,17 @@ function ProjectView({
     [brief, draftPage, manuscriptSource, projectStatus]
   );
 
-  const goWorkflow = (view: WorkflowView) => setCurrentView(view as ViewType);
+  const saveEdits = () => {
+    onBriefChange({
+      title: draftBrief.title.trim() || brief.title,
+      idea: draftBrief.idea,
+      tone: draftBrief.tone,
+      output: draftBrief.output,
+      audience: draftBrief.audience,
+      targetWordCount: Math.max(100, Number(draftBrief.targetWordCount) || defaultTargetWordCount(brief.mode)),
+    });
+    setEditing(false);
+  };
 
   return (
     <PageShell
@@ -1040,26 +1243,86 @@ function ProjectView({
       <GuidedNextStep
         step={nextStep}
         progress={progress}
-        onGo={goWorkflow}
+        onGo={onGo}
         onComplete={onCompleteProject}
         briefTitle={brief.idea}
       />
 
       <div style={cardGrid}>
         <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
-          <h2 style={sectionTitle}>Brief</h2>
-          <p style={bigText}>{brief.idea}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginTop: 24 }}>
-            <MiniPanel label="Tone" value={brief.tone} />
-            <MiniPanel label="Output" value={brief.output} />
-            <MiniPanel label="Audience" value={brief.audience} />
-            <MiniPanel
-              label="Words"
-              value={`${countWords(draftPage).toLocaleString()} now · ${ (brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString() } aspire-to`}
-            />
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <h2 style={{ ...sectionTitle, margin: 0 }}>Brief</h2>
+            {!editing ? (
+              <button type="button" onClick={() => setEditing(true)} style={ghostButton}>
+                <Pencil size={16} /> Edit brief
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => { setDraftBrief(brief); setEditing(false); }} style={ghostButton}>
+                  Cancel
+                </button>
+                <button type="button" onClick={saveEdits} style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '11px 14px' }}>
+                  <Check size={16} /> Save brief
+                </button>
+              </div>
+            )}
           </div>
+
+          {editing ? (
+            <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+              <Field label="Title">
+                <input
+                  value={draftBrief.title}
+                  onChange={(e) => setDraftBrief({ ...draftBrief, title: e.target.value })}
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Idea / premise">
+                <textarea
+                  value={draftBrief.idea}
+                  onChange={(e) => setDraftBrief({ ...draftBrief, idea: e.target.value })}
+                  rows={4}
+                  style={textareaStyle}
+                />
+              </Field>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <Field label="Tone">
+                  <textarea value={draftBrief.tone} onChange={(e) => setDraftBrief({ ...draftBrief, tone: e.target.value })} rows={3} style={textareaStyle} />
+                </Field>
+                <Field label="Output">
+                  <textarea value={draftBrief.output} onChange={(e) => setDraftBrief({ ...draftBrief, output: e.target.value })} rows={3} style={textareaStyle} />
+                </Field>
+                <Field label="Audience">
+                  <textarea value={draftBrief.audience} onChange={(e) => setDraftBrief({ ...draftBrief, audience: e.target.value })} rows={3} style={textareaStyle} />
+                </Field>
+                <Field label="Aspire-to words">
+                  <input
+                    type="number"
+                    min={100}
+                    step={500}
+                    value={draftBrief.targetWordCount}
+                    onChange={(e) => setDraftBrief({ ...draftBrief, targetWordCount: Math.max(100, Number(e.target.value) || 100) })}
+                    style={inputStyle}
+                  />
+                </Field>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p style={bigText}>{brief.idea}</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginTop: 24 }}>
+                <MiniPanel label="Tone" value={brief.tone} />
+                <MiniPanel label="Output" value={brief.output} />
+                <MiniPanel label="Audience" value={brief.audience} />
+                <MiniPanel
+                  label="Words"
+                  value={`${countWords(draftPage).toLocaleString()} now · ${(brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString()} aspire-to`}
+                />
+              </div>
+            </>
+          )}
         </article>
-        <WorkflowChecklist steps={steps} onGo={goWorkflow} />
+        <WorkflowChecklist steps={steps} onGo={onGo} />
       </div>
     </PageShell>
   );

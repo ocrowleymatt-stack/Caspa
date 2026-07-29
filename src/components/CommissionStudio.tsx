@@ -54,27 +54,66 @@ export interface ProjectBriefLike {
   audience: string;
 }
 
+export type StudioTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
+
 interface Props {
   brief: ProjectBriefLike;
   draftPage: string;
   onArtefactReady: (text: string) => void;
   onManuscriptChange?: (text: string) => void;
   onBriefChange?: (patch: Partial<ProjectBriefLike>) => void;
+  /** Deep-link from Full path / Next step — Diagnose vs Commission land on different tabs. */
+  initialTab?: StudioTab;
+  /** Open / select a chapter from diagnosis summaries or scope. */
+  focusChapter?: number | null;
+  onDeepLinkConsumed?: () => void;
 }
 
-type StudioTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
-
 const STORAGE_KEY = 'caspa.commission';
+const TAB_KEY = 'caspa.commission.tab';
 
 function loadState(): CommissionState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...defaultCommissionState };
     const parsed = JSON.parse(raw);
-    return { ...defaultCommissionState, ...parsed, progress: null, error: null, phase: parsed.chapters?.length ? 'ready' : 'idle' };
+    const hasChapters = Boolean(parsed.chapters?.length);
+    const hasArtefact = Boolean(parsed.artefact?.trim());
+    return {
+      ...defaultCommissionState,
+      ...parsed,
+      progress: null,
+      error: null,
+      phase: hasArtefact ? 'complete' : hasChapters ? 'ready' : 'idle',
+    };
   } catch {
     return { ...defaultCommissionState };
   }
+}
+
+function resolveInitialTab(
+  requested: StudioTab | undefined,
+  state: CommissionState
+): StudioTab {
+  const hasDiagnosis = Boolean(state.diagnosis);
+  if (requested === 'workshop' && (state.artefact || state.phase === 'complete' || state.phase === 'executing')) {
+    return 'workshop';
+  }
+  if (requested === 'recommendations' || requested === 'promises') {
+    return hasDiagnosis ? requested : 'inbox';
+  }
+  if (requested === 'inbox') return 'inbox';
+  if (state.phase === 'complete' && state.artefact) return 'workshop';
+  if (hasDiagnosis) return 'recommendations';
+  try {
+    const saved = localStorage.getItem(TAB_KEY) as StudioTab | null;
+    if (saved === 'workshop' && state.artefact) return 'workshop';
+    if ((saved === 'recommendations' || saved === 'promises') && hasDiagnosis) return saved;
+    if (saved === 'inbox') return 'inbox';
+  } catch {
+    /* ignore */
+  }
+  return 'inbox';
 }
 
 function saveState(state: CommissionState) {
@@ -98,10 +137,14 @@ export default function CommissionStudio({
   onArtefactReady,
   onManuscriptChange,
   onBriefChange,
+  initialTab,
+  focusChapter = null,
+  onDeepLinkConsumed,
 }: Props) {
   const projectKey = getProjectKey(brief);
-  const [tab, setTab] = useState<StudioTab>('inbox');
   const [state, setState] = useState<CommissionState>(loadState);
+  const [tab, setTab] = useState<StudioTab>(() => resolveInitialTab(initialTab, loadState()));
+  const [visitChapter, setVisitChapter] = useState<number | null>(focusChapter ?? null);
   const [inboxText, setInboxText] = useState(() => {
     const fromJam = localStorage.getItem('caspa.manuscriptSource');
     return state.rawInput || fromJam || draftPage || '';
@@ -119,6 +162,14 @@ export default function CommissionStudio({
   useEffect(() => {
     saveState(state);
   }, [state]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_KEY, tab);
+    } catch {
+      /* ignore */
+    }
+  }, [tab]);
 
   useEffect(() => {
     // Keep local direction in sync when parent brief changes and user hasn't edited yet.
@@ -139,6 +190,34 @@ export default function CommissionStudio({
   const update = useCallback((patch: Partial<CommissionState>) => {
     setState((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  const visitChapterSummary = useCallback(
+    (order: number) => {
+      setVisitChapter(order);
+      update({
+        scope: { type: 'single', singleChapter: order, chapterFrom: order, chapterTo: order },
+      });
+      if (state.diagnosis) setTab('recommendations');
+    },
+    [state.diagnosis, update]
+  );
+
+  // Honour Full path deep-links whenever parent asks to visit diagnose / commission.
+  useEffect(() => {
+    if (!initialTab && focusChapter == null) return;
+    const next = resolveInitialTab(initialTab, state);
+    setTab(next);
+    if (focusChapter != null && focusChapter > 0) {
+      setVisitChapter(focusChapter);
+      if (state.diagnosis) {
+        update({
+          scope: { type: 'single', singleChapter: focusChapter, chapterFrom: focusChapter, chapterTo: focusChapter },
+        });
+      }
+    }
+    onDeepLinkConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deep-link keys only
+  }, [initialTab, focusChapter]);
 
   const applyDirectedIdea = useCallback(
     (nextIdea: string) => {
@@ -445,8 +524,11 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
         {tab === 'recommendations' && state.diagnosis && (
           <RecommendationsPanel
             diagnosis={state.diagnosis}
+            chapters={state.chapters}
             selectedIds={state.selectedRecommendationIds}
             scope={state.scope}
+            visitChapter={visitChapter}
+            onVisitChapter={visitChapterSummary}
             onToggle={toggleRecommendation}
             onScopeChange={(scope) => update({ scope })}
             onWriteIt={handleWriteIt}
@@ -484,6 +566,8 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
             phase={state.phase}
             error={state.error}
             promises={state.promises}
+            visitChapter={visitChapter}
+            onVisitChapter={setVisitChapter}
             onUseArtefact={() => onArtefactReady(state.artefact)}
           />
         )}
@@ -609,8 +693,11 @@ function InboxPanel({
 
 function RecommendationsPanel({
   diagnosis,
+  chapters,
   selectedIds,
   scope,
+  visitChapter,
+  onVisitChapter,
   onToggle,
   onScopeChange,
   onWriteIt,
@@ -631,8 +718,11 @@ function RecommendationsPanel({
   ideaStatus,
 }: {
   diagnosis: Diagnosis;
+  chapters: Chapter[];
   selectedIds: string[];
   scope: CommissionScope;
+  visitChapter: number | null;
+  onVisitChapter: (order: number) => void;
   onToggle: (id: string) => void;
   onScopeChange: (s: CommissionScope) => void;
   onWriteIt: () => void;
@@ -654,6 +744,13 @@ function RecommendationsPanel({
 }) {
   const viabilityColor =
     diagnosis.viabilityScore >= 70 ? '#15803d' : diagnosis.viabilityScore >= 40 ? '#b45309' : '#b91c1c';
+  const visited =
+    visitChapter != null
+      ? chapters.find((c) => c.order === visitChapter) ||
+        diagnosis.chapterSummaries.find((c) => c.order === visitChapter)
+      : null;
+  const visitedContent =
+    visitChapter != null ? chapters.find((c) => c.order === visitChapter)?.content || '' : '';
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -675,6 +772,81 @@ function RecommendationsPanel({
         </div>
       </article>
 
+      {diagnosis.chapterSummaries.length > 0 && (
+        <article style={card}>
+          <h2 style={sectionTitle}>Chapters — select & visit</h2>
+          <p style={{ color: '#73695d', marginTop: 0, fontSize: 14 }}>
+            Tap a chapter to open it and set commission scope to that chapter.
+          </p>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {diagnosis.chapterSummaries.map((ch) => {
+              const active = visitChapter === ch.order || scope.singleChapter === ch.order;
+              return (
+                <button
+                  key={ch.order}
+                  type="button"
+                  onClick={() => onVisitChapter(ch.order)}
+                  style={{
+                    textAlign: 'left',
+                    padding: 12,
+                    borderRadius: 12,
+                    border: `1px solid ${active ? '#d6a846' : ch.needsWork ? '#f5d0a9' : '#eadfce'}`,
+                    background: active ? '#fff8ea' : '#fffdf8',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <strong style={{ display: 'block', fontSize: 14 }}>
+                    Ch.{ch.order} · {ch.title}
+                    {ch.needsWork ? ' · needs work' : ''}
+                  </strong>
+                  <small style={{ color: '#8a7a66', lineHeight: 1.4 }}>
+                    {ch.wordCount.toLocaleString()} words — {ch.summary || 'No summary yet'}
+                  </small>
+                </button>
+              );
+            })}
+          </div>
+          {visited && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: 16,
+                borderRadius: 14,
+                border: '1px solid #eadfce',
+                background: '#fffaf2',
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#8a6a28', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                Visiting ch.{'order' in visited ? visited.order : visitChapter}
+              </div>
+              <p style={{ margin: '0 0 10px', fontWeight: 700 }}>
+                {'title' in visited ? visited.title : `Chapter ${visitChapter}`}
+              </p>
+              <p style={{ margin: 0, color: '#6f6252', lineHeight: 1.55, fontSize: 14 }}>
+                {'summary' in visited ? visited.summary : ''}
+              </p>
+              {visitedContent && (
+                <pre
+                  style={{
+                    marginTop: 12,
+                    maxHeight: 220,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'Georgia, Cambria, serif',
+                    fontSize: 14,
+                    lineHeight: 1.65,
+                    color: '#2f281f',
+                  }}
+                >
+                  {visitedContent.slice(0, 2400)}
+                  {visitedContent.length > 2400 ? '…' : ''}
+                </pre>
+              )}
+            </div>
+          )}
+        </article>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(300px, 0.8fr)', gap: 20 }} className="commission-grid">
         <article style={card}>
           <h2 style={sectionTitle}>Recommendations</h2>
@@ -686,6 +858,7 @@ function RecommendationsPanel({
                 rec={rec}
                 selected={selectedIds.includes(rec.id)}
                 onToggle={() => onToggle(rec.id)}
+                onVisitChapter={onVisitChapter}
               />
             ))}
           </div>
@@ -741,7 +914,14 @@ function RecommendationsPanel({
 
           <article style={card}>
             <h2 style={sectionTitle}>Scope</h2>
-            <ScopePicker scope={scope} chapterMax={chapterMax} onChange={onScopeChange} />
+            <ScopePicker
+              scope={scope}
+              chapterMax={chapterMax}
+              chapters={chapters}
+              visitChapter={visitChapter}
+              onVisitChapter={onVisitChapter}
+              onChange={onScopeChange}
+            />
           </article>
 
           <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#5b4724', cursor: 'pointer' }}>
@@ -875,10 +1055,12 @@ function RecommendationRow({
   rec,
   selected,
   onToggle,
+  onVisitChapter,
 }: {
   rec: Recommendation;
   selected: boolean;
   onToggle: () => void;
+  onVisitChapter: (order: number) => void;
 }) {
   const severityColor = {
     critical: '#fecaca',
@@ -887,9 +1069,7 @@ function RecommendationRow({
   }[rec.severity];
 
   return (
-    <button
-      type="button"
-      onClick={onToggle}
+    <div
       style={{
         display: 'flex',
         gap: 12,
@@ -899,10 +1079,12 @@ function RecommendationRow({
         borderRadius: 14,
         border: `2px solid ${selected ? '#d6a846' : '#eadfce'}`,
         background: selected ? '#fff8ea' : '#fffdf8',
-        cursor: 'pointer',
       }}
     >
-      <div
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={selected ? 'Deselect recommendation' : 'Select recommendation'}
         style={{
           width: 22,
           height: 22,
@@ -913,39 +1095,95 @@ function RecommendationRow({
           placeItems: 'center',
           flexShrink: 0,
           marginTop: 2,
+          cursor: 'pointer',
+          padding: 0,
         }}
       >
         {selected && <Check size={14} color="#1d1408" />}
-      </div>
+      </button>
       <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: 15 }}>{rec.title}</strong>
-          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: severityColor, textTransform: 'uppercase' }}>
-            {rec.severity}
-          </span>
-        </div>
-        <p style={{ margin: '6px 0 0', color: '#6f6252', lineHeight: 1.5, fontSize: 14 }}>{rec.detail}</p>
+        <button
+          type="button"
+          onClick={onToggle}
+          style={{
+            display: 'block',
+            width: '100%',
+            textAlign: 'left',
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            cursor: 'pointer',
+            color: 'inherit',
+          }}
+        >
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 15 }}>{rec.title}</strong>
+            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: severityColor, textTransform: 'uppercase' }}>
+              {rec.severity}
+            </span>
+          </div>
+          <p style={{ margin: '6px 0 0', color: '#6f6252', lineHeight: 1.5, fontSize: 14 }}>{rec.detail}</p>
+        </button>
+        {rec.chapterRefs && rec.chapterRefs.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {rec.chapterRefs.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onVisitChapter(n)}
+                style={{
+                  border: '1px solid #eadfce',
+                  background: '#fffaf2',
+                  borderRadius: 999,
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  color: '#5b4724',
+                }}
+              >
+                Visit ch.{n}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-    </button>
+    </div>
   );
 }
 
 function ScopePicker({
   scope,
   chapterMax,
+  chapters,
+  visitChapter,
+  onVisitChapter,
   onChange,
 }: {
   scope: CommissionScope;
   chapterMax: number;
+  chapters: Chapter[];
+  visitChapter: number | null;
+  onVisitChapter: (order: number) => void;
   onChange: (s: CommissionScope) => void;
 }) {
   const options: { type: CommissionScope['type']; label: string; detail: string }[] = [
     { type: 'whole', label: 'Whole manuscript', detail: 'Improve all chapters that need work' },
     { type: 'chapters', label: 'Chapter range', detail: 'Rewrite a run of chapters' },
-    { type: 'single', label: 'Single chapter', detail: 'One chapter only' },
+    { type: 'single', label: 'Single chapter', detail: 'One chapter only — pick below to visit' },
     { type: 'autowrite', label: 'Auto-write all', detail: 'From plan or direction — draft everything' },
     { type: 'rebuild', label: 'Rip up & rebuild', detail: 'Liquidate structure, start fresh' },
   ];
+
+  const inRange = (order: number) => {
+    if (scope.type === 'single') return order === (scope.singleChapter ?? visitChapter ?? 1);
+    if (scope.type === 'chapters') {
+      const from = scope.chapterFrom ?? 1;
+      const to = scope.chapterTo ?? chapterMax;
+      return order >= from && order <= to;
+    }
+    return false;
+  };
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -960,7 +1198,7 @@ function ScopePicker({
                 type: opt.type,
                 chapterFrom: 1,
                 chapterTo: chapterMax,
-                singleChapter: 1,
+                singleChapter: visitChapter ?? 1,
               })
             }
             style={{
@@ -1013,10 +1251,50 @@ function ScopePicker({
             min={1}
             max={chapterMax}
             value={scope.singleChapter ?? 1}
-            onChange={(e) => onChange({ ...scope, singleChapter: Number(e.target.value) })}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              onChange({ ...scope, singleChapter: n });
+              onVisitChapter(n);
+            }}
             style={numInput}
           />
         </label>
+      )}
+
+      {(scope.type === 'single' || scope.type === 'chapters') && chapters.length > 0 && (
+        <div style={{ display: 'grid', gap: 6, marginTop: 6, maxHeight: 180, overflow: 'auto' }}>
+          {chapters
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((ch) => {
+              const active = inRange(ch.order) || visitChapter === ch.order;
+              return (
+                <button
+                  key={ch.id || ch.order}
+                  type="button"
+                  onClick={() => {
+                    if (scope.type === 'single') {
+                      onChange({ ...scope, type: 'single', singleChapter: ch.order });
+                    }
+                    onVisitChapter(ch.order);
+                  }}
+                  style={{
+                    textAlign: 'left',
+                    padding: '8px 10px',
+                    borderRadius: 10,
+                    border: `1px solid ${active ? '#d6a846' : '#eadfce'}`,
+                    background: active ? '#fff8ea' : '#fffdf8',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                  }}
+                >
+                  <strong>
+                    Ch.{ch.order} {ch.title}
+                  </strong>
+                </button>
+              );
+            })}
+        </div>
       )}
     </div>
   );
@@ -1099,6 +1377,8 @@ function WorkshopPanel({
   phase,
   error,
   promises,
+  visitChapter,
+  onVisitChapter,
   onUseArtefact,
 }: {
   progress: CommissionState['progress'];
@@ -1107,12 +1387,20 @@ function WorkshopPanel({
   phase: CommissionState['phase'];
   error: string | null;
   promises: StoryPromise[];
+  visitChapter: number | null;
+  onVisitChapter: (order: number | null) => void;
   onUseArtefact: () => void;
 }) {
   const totalWords = chapters.reduce(
     (sum, c) => sum + (c.content?.split(/\s+/).filter(Boolean).length || 0),
     0
   );
+  const sorted = chapters.slice().sort((a, b) => a.order - b.order);
+  const activeChapter =
+    visitChapter != null ? sorted.find((c) => c.order === visitChapter) : null;
+  const displayText = activeChapter?.content?.trim()
+    ? `# ${activeChapter.title}\n\n${activeChapter.content}`
+    : artefact;
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -1160,6 +1448,7 @@ function WorkshopPanel({
                 <h2 style={{ ...sectionTitle, margin: 0 }}>Your manuscript</h2>
                 <p style={{ color: '#73695d', margin: '8px 0 0' }}>
                   {chapters.length} chapters · {totalWords.toLocaleString()} words
+                  {activeChapter ? ` · viewing ch.${activeChapter.order}` : ' · full artefact'}
                 </p>
               </div>
               <button type="button" onClick={onUseArtefact} style={{ ...primaryBtn, width: 'auto' }}>
@@ -1168,10 +1457,51 @@ function WorkshopPanel({
             </div>
           </article>
 
+          {sorted.length > 0 && (
+            <article style={card}>
+              <h2 style={sectionTitle}>Visit chapters</h2>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => onVisitChapter(null)}
+                  style={{
+                    border: `1px solid ${visitChapter == null ? '#d6a846' : '#eadfce'}`,
+                    background: visitChapter == null ? '#fff8ea' : '#fffdf8',
+                    borderRadius: 999,
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  Full artefact
+                </button>
+                {sorted.map((ch) => (
+                  <button
+                    key={ch.id || ch.order}
+                    type="button"
+                    onClick={() => onVisitChapter(ch.order)}
+                    style={{
+                      border: `1px solid ${visitChapter === ch.order ? '#d6a846' : '#eadfce'}`,
+                      background: visitChapter === ch.order ? '#fff8ea' : '#fffdf8',
+                      borderRadius: 999,
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    Ch.{ch.order} {ch.title}
+                  </button>
+                ))}
+              </div>
+            </article>
+          )}
+
           <article style={card}>
             <textarea
               readOnly
-              value={artefact}
+              value={displayText}
               style={{
                 width: '100%',
                 minHeight: '60vh',
