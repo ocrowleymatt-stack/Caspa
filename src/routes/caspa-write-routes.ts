@@ -27,7 +27,41 @@ import { buildServerPlotHoldBlock, type ServerPlotHold } from '../services/liter
 
 const router = express.Router();
 
-const VALID_MODES: NovelWriteProMode[] = ['novel', 'script', 'musical', 'adaptation', 'polish', 'chaos'];
+const VALID_MODES: NovelWriteProMode[] = [
+  'novel',
+  'nonfiction',
+  'essay',
+  'poetry',
+  'script',
+  'musical',
+  'adaptation',
+  'polish',
+  'chaos',
+];
+
+function defaultGenreForMode(mode: NovelWriteProMode): string {
+  switch (mode) {
+    case 'nonfiction':
+      return 'Creative Non-Fiction';
+    case 'essay':
+      return 'Educational';
+    case 'poetry':
+      return 'Epic Poetry';
+    case 'script':
+      return 'Stage Play';
+    case 'musical':
+      return 'Musical / Show';
+    case 'adaptation':
+      return 'Literary Fiction';
+    case 'polish':
+      return 'Literary Fiction';
+    case 'chaos':
+      return 'Experimental';
+    case 'novel':
+    default:
+      return 'Literary Fiction';
+  }
+}
 
 router.get('/awards', (_req, res) => {
   res.json({ success: true, data: { lenses: BUILTIN_AWARD_LENSES } });
@@ -61,7 +95,7 @@ router.post('/seed', async (req, res) => {
 router.post('/auto-write', async (req, res) => {
   const {
     mode = 'novel',
-    genre = 'Literary fiction',
+    genre = '',
     premise = '',
     tone = '',
     output = 'Chapter One (1500–2500 words)',
@@ -82,6 +116,7 @@ router.post('/auto-write', async (req, res) => {
   };
 
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const resolvedGenre = genre?.trim() ? genre : defaultGenreForMode(safeMode);
   const lens = getAwardLens(prizeLensId);
   const job = createJob('auto-write', 'drafting');
   updateJob(job.id, { status: 'running' });
@@ -91,7 +126,7 @@ router.post('/auto-write', async (req, res) => {
     const prompt = buildAutoWritePrompt({
       mode: safeMode,
       modeTitle: modeTitle(safeMode),
-      genre,
+      genre: resolvedGenre,
       premise,
       tone,
       output,
@@ -123,7 +158,7 @@ router.post('/auto-write', async (req, res) => {
 router.post('/prize-draft', async (req, res) => {
   const {
     mode = 'novel',
-    genre = 'Literary fiction',
+    genre = '',
     premise = '',
     tone = '',
     output = 'Opening chapter (1800–2800 words)',
@@ -144,11 +179,12 @@ router.post('/prize-draft', async (req, res) => {
   };
 
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const resolvedGenre = genre?.trim() ? genre : defaultGenreForMode(safeMode);
   const lens = getAwardLens(prizeLensId);
   const input = {
     mode: safeMode,
     modeTitle: modeTitle(safeMode),
-    genre,
+    genre: resolvedGenre,
     premise,
     tone,
     output,
@@ -165,7 +201,7 @@ router.post('/prize-draft', async (req, res) => {
     const planRaw = await callServerAi(buildPlanningPrompt(input), true);
     const plan = parseStructuredPlan(planRaw, {
       premise,
-      genre,
+      genre: resolvedGenre,
       tone,
       formatDecision: output,
     });
@@ -286,7 +322,7 @@ router.post('/prize-pass', async (req, res) => {
 router.post('/continue', async (req, res) => {
   const {
     mode = 'novel',
-    genre = 'Literary fiction',
+    genre = '',
     premise = '',
     tone = '',
     sourceText = '',
@@ -303,6 +339,7 @@ router.post('/continue', async (req, res) => {
   };
 
   const safeMode = VALID_MODES.includes(mode) ? mode : 'novel';
+  const resolvedGenre = genre?.trim() ? genre : defaultGenreForMode(safeMode);
   const lens = getAwardLens(prizeLensId);
   const holdBlock = buildServerPlotHoldBlock(plotHold);
   const pending =
@@ -319,7 +356,7 @@ router.post('/continue', async (req, res) => {
     const prompt = buildAutoWritePrompt({
       mode: safeMode,
       modeTitle: modeTitle(safeMode),
-      genre: genre || plotHold?.genre || 'Literary fiction',
+      genre: resolvedGenre || plotHold?.genre,
       premise: premise || plotHold?.premise || '',
       tone: tone || plotHold?.tone || '',
       output: 'Next scene / chapter section only (900–1600 words). Do not restart the book.',
