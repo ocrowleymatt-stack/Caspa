@@ -1,6 +1,10 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * ORPHAN — not mounted by live src/App.tsx.
+ * Kept for reference only. Live show work: ShowBoxStudio + ShowCommandCenter + showBoxService.
+ * See src/components/_orphans/README.md.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
