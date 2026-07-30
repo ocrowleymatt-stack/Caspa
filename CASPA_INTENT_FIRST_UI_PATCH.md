@@ -20,8 +20,6 @@ This patch changes the active `src/App.tsx` experience from a tool-first dashboa
   - Produce
 - Gold is repositioned as an improvement/polishing room rather than the front door.
 - A clean **White Page** workspace has been added for drafting.
-- A clean **Open WebUI Driver** workspace has been added.
-- The Open WebUI room generates a copyable driver prompt from the current project brief and white-page canvas.
 - The existing Firebase authentication wrapper remains in place.
 
 ## Product reasoning
@@ -38,4 +36,4 @@ Not:
 
 ## Important implementation note
 
-The patch is currently inline-style heavy so it can be deployed quickly without adding a CSS dependency or changing the build pipeline. A later pass should split this into `CaspaLaunchpad.tsx`, `WhitePage.tsx`, `OpenWebUIDriver.tsx`, and a shared CSS/theme file.
+The patch is currently inline-style heavy so it can be deployed quickly without adding a CSS dependency or changing the build pipeline. A later pass should split this into `CaspaLaunchpad.tsx`, `WhitePage.tsx`, and a shared CSS/theme file.

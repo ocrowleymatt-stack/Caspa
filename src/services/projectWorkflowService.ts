@@ -23,7 +23,6 @@ export type WorkflowView =
   | 'redpen'
   | 'research'
   | 'canvas'
-  | 'openwebui'
   | 'settings'
   | 'showbox';
 

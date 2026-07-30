@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
   ClipboardList,
   Clapperboard,
-  Copy,
   Download,
   FileText,
   Music2,
@@ -138,36 +137,6 @@ function modeLabel(mode: CreativeMode) {
   return modeCards.find(card => card.mode === mode)?.title.replace('Write a ', '').replace('Make a ', '').replace('Build a ', '') || 'Project';
 }
 
-function buildOpenWebUIPrompt(project: Project, mode: CreativeMode, whitePage: string, desiredOutput: string) {
-  const musicalInstruction = mode === 'musical'
-    ? '\nMUSIC REQUIREMENT\n- Do not merely output a prompt. Produce concrete music material: song structure, tempo, key, chord progression, lyrics, melody contour, arrangement notes, and a DAW/Suno/Udio export block only as a secondary handoff.'
-    : '';
-
-  return `You are Caspa, Matthew O'Crowley's private creative production room.
-
-PROJECT
-Title: ${project.title || 'Untitled'}
-Mode: ${modeLabel(mode)}
-Format: ${project.type}
-Genre: ${project.genre || 'Not fixed yet'}
-Tone: ${project.tone || 'Literate, vivid, witty, sharp, production-minded'}
-Premise: ${project.premise || '[No formal premise yet]'}
-Required output: ${desiredOutput}
-
-CURRENT WHITE PAGE
-${whitePage.trim() || '[Blank page. Start by proposing the strongest opening move.]'}
-
-OPERATING METHOD
-- Start from the current page/canvas, not generic writing advice.
-- Preserve the weirdness and ambition; do not sand the magic off.
-- Make it usable immediately: scenes, beats, chapters, song list, production tasks, revised text, or music material.
-- Challenge weak structure directly, but keep the user's voice alive.
-- When useful, give the next concrete draft section rather than a lecture.${musicalInstruction}
-
-TASK
-Drive this project forward now.`;
-}
-
 function createMusicSketch(idea: string, tone: string) {
   return `# Music Sketch
 
@@ -230,7 +199,6 @@ export default function Dashboard({
   const [desiredOutput, setDesiredOutput] = useState(outputs[1]);
   const [tone, setTone] = useState(project.tone || 'Funny, vivid, slightly dangerous, but structurally disciplined.');
   const [whitePage, setWhitePage] = useState('');
-  const [copied, setCopied] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -252,11 +220,6 @@ export default function Dashboard({
 
   const activeCard = modeCards.find(card => card.mode === selectedMode) || modeCards[0];
   const wordCount = project.stats?.totalWords || chapters.reduce((total, chapter) => total + (chapter.wordCount || chapter.content?.split(/\s+/).filter(Boolean).length || 0), 0);
-
-  const openWebUIPrompt = useMemo(
-    () => buildOpenWebUIPrompt(project, selectedMode, whitePage, desiredOutput),
-    [project, selectedMode, whitePage, desiredOutput],
-  );
 
   const startProject = (route: ViewType = activeCard.route) => {
     const cleanIdea = idea.trim();
@@ -323,12 +286,6 @@ export default function Dashboard({
       },
       lastModified: Date.now(),
     });
-  };
-
-  const copyPrompt = async () => {
-    await navigator.clipboard.writeText(openWebUIPrompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
   };
 
   const playMusicDemo = async () => {
@@ -572,7 +529,7 @@ export default function Dashboard({
           </section>
         )}
 
-        <section className="grid grid-cols-1 xl:grid-cols-[1fr_0.95fr] gap-6">
+        <section className="grid grid-cols-1 gap-6">
           <article className="rounded-[1.5rem] bg-white border border-[#e4dac8] p-5 md:p-7 shadow-sm">
             <div className="flex items-center justify-between gap-4 mb-4">
               <div>
@@ -592,24 +549,6 @@ export default function Dashboard({
               <button onClick={() => setView('memory')} className="rounded-xl border border-[#d8c89e] px-4 py-2.5 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff7df] transition">Story bible</button>
               <button onClick={() => setView('intelligence')} className="rounded-xl border border-[#d8c89e] px-4 py-2.5 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff7df] transition">Red Pen</button>
               <button onClick={() => uploadInputRef.current?.click()} className="rounded-xl border border-[#d8c89e] px-4 py-2.5 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff7df] transition">Upload manuscript</button>
-            </div>
-          </article>
-
-          <article className="rounded-[1.5rem] bg-white border border-[#e4dac8] p-5 md:p-7 shadow-sm">
-            <div className="flex items-center justify-between gap-4 mb-4">
-              <div>
-                <div className="text-xs uppercase tracking-[0.2em] text-[#8b6b18] font-semibold">Open WebUI Driver</div>
-                <h2 className="text-2xl font-serif font-semibold text-[#1c2433]">Copy this into Open WebUI</h2>
-              </div>
-              <UploadCloud className="text-[#b58b19]" />
-            </div>
-            <pre className="min-h-[430px] max-h-[430px] overflow-auto whitespace-pre-wrap rounded-2xl border border-[#e0d6c4] bg-[#fbf8f1] p-5 text-xs leading-6 text-[#263044]">
-              {openWebUIPrompt}
-            </pre>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button onClick={copyPrompt} className="inline-flex items-center gap-2 rounded-xl bg-[#1c2433] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2e394d] transition">
-                <Copy size={15} /> {copied ? 'Copied' : 'Copy Open WebUI prompt'}
-              </button>
               <button onClick={saveToCloud} disabled={isSaving} className="rounded-xl border border-[#d8c89e] px-4 py-2.5 text-sm font-semibold text-[#7c5e10] hover:bg-[#fff7df] transition disabled:opacity-50">
                 {isSaving ? 'Saving...' : 'Save project'}
               </button>
