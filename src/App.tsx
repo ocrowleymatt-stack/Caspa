@@ -273,7 +273,7 @@ const primaryNav: NavItem[] = [
 
 const advancedNav: NavItem[] = [
   { id: 'launchpad', label: 'New Work', detail: 'Start another project', group: 'advanced', icon: Sparkles },
-  { id: 'workshop', label: 'Workshop', detail: 'Diagnose & commission', group: 'advanced', icon: Hammer },
+  { id: 'workshop', label: 'Workshop', detail: 'Diagnose → commission → artefact', group: 'advanced', icon: Hammer },
   { id: 'bible', label: 'Story Bible', detail: 'Canon and characters', group: 'advanced', icon: BookOpen },
   { id: 'psychology', label: 'Psychology', detail: 'Emotional journeys', group: 'advanced', icon: Brain },
   { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'advanced', icon: CircleAlert },
@@ -820,10 +820,11 @@ function CaspaUI() {
               setWorkshopTab(undefined);
               setWorkshopFocusChapter(null);
             }}
-            onArtefactReady={(text) => {
+            onArtefactReady={(text, leave) => {
               setDraftPage(text);
               setManuscriptSource(text);
-              goTo('write');
+              if (leave === 'write') goTo('write');
+              if (leave === 'quickwrite') goTo('quickwrite');
             }}
             onManuscriptChange={setManuscriptSource}
             onBriefChange={patchBrief}

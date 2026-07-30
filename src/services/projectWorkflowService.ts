@@ -27,7 +27,7 @@ export type WorkflowView =
   | 'settings'
   | 'showbox';
 
-export type WorkshopTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
+export type WorkshopTab = 'inbox' | 'recommendations' | 'commission' | 'promises' | 'workshop';
 
 export type WorkflowStepId =
   | 'start_brief'
@@ -36,6 +36,7 @@ export type WorkflowStepId =
   | 'show_pack'
   | 'workshop_diagnose'
   | 'workshop_write'
+  | 'workshop_review'
   | 'review_draft'
   | 'polish_optional'
   | 'export'
@@ -225,10 +226,19 @@ export function getWorkflowSteps(
     steps.push({
       id: 'workshop_write',
       title: 'Commission the rewrite',
-      why: 'Select fixes and scope, then Write it — scenes and lyric passes land as artefact.',
-      action: commissionComplete ? 'View artefact' : hasDiagnosis ? 'Finish commission' : 'Open Workshop',
+      why: 'Confirm approved fixes and scope on the Commission station, then Write it.',
+      action: commissionComplete ? 'Re-commission' : hasDiagnosis ? 'Open Commission' : 'Open Workshop',
       view: 'workshop',
-      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
+      workshopTab: hasDiagnosis ? 'commission' : 'inbox',
+      done: commissionComplete,
+    });
+    steps.push({
+      id: 'workshop_review',
+      title: 'Review the artefact',
+      why: 'Stay in Workshop and read what was written before you leave for White Page or Just write.',
+      action: commissionComplete ? 'Open Artefact' : 'Finish commission first',
+      view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'commission' : 'inbox',
       done: commissionComplete,
     });
     steps.push({
@@ -289,10 +299,19 @@ export function getWorkflowSteps(
     steps.push({
       id: 'workshop_write',
       title: 'Commission the rewrite',
-      why: 'Direct the idea, tick fixes, Write it. Artefact lands ready for a table read.',
-      action: commissionComplete ? 'View artefact' : hasDiagnosis ? 'Finish commission' : 'Open Workshop',
+      why: 'Confirm approved fixes and scope on Commission, then Write it.',
+      action: commissionComplete ? 'Re-commission' : hasDiagnosis ? 'Open Commission' : 'Open Workshop',
       view: 'workshop',
-      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
+      workshopTab: hasDiagnosis ? 'commission' : 'inbox',
+      done: commissionComplete,
+    });
+    steps.push({
+      id: 'workshop_review',
+      title: 'Review the artefact',
+      why: 'Read the commissioned pages in Workshop before the table read.',
+      action: commissionComplete ? 'Open Artefact' : 'Finish commission first',
+      view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'commission' : 'inbox',
       done: commissionComplete,
     });
     steps.push({
@@ -399,10 +418,19 @@ export function getWorkflowSteps(
     steps.push({
       id: 'workshop_write',
       title: 'Commission the rewrite',
-      why: 'Select recommendations and scope, then Write it. Caspa produces a manuscript-ready artefact.',
-      action: commissionComplete ? 'View artefact' : hasDiagnosis ? 'Finish commission' : 'Open Workshop',
+      why: 'Confirm approved fixes and scope on Commission, then Write it.',
+      action: commissionComplete ? 'Re-commission' : hasDiagnosis ? 'Open Commission' : 'Open Workshop',
       view: 'workshop',
-      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
+      workshopTab: hasDiagnosis ? 'commission' : 'inbox',
+      done: commissionComplete,
+    });
+    steps.push({
+      id: 'workshop_review',
+      title: 'Review the artefact',
+      why: 'Stay in Workshop and check claims before White Page.',
+      action: commissionComplete ? 'Open Artefact' : 'Finish commission first',
+      view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'commission' : 'inbox',
       done: commissionComplete,
     });
     steps.push({
@@ -451,17 +479,27 @@ export function getWorkflowSteps(
     steps.push({
       id: 'workshop_write',
       title: poetry ? 'Commission the cut / rewrite' : 'Commission the rewrite',
-      why: 'Direct the idea if needed, select recommendations, then Write it. Caspa produces a manuscript-ready artefact for White Page.',
-      action: commissionComplete ? 'View artefact' : hasChapters ? 'Finish commission' : 'Open Workshop',
+      why: 'Confirm approved fixes and scope on Commission, then Write it.',
+      action: commissionComplete ? 'Re-commission' : hasDiagnosis ? 'Open Commission' : 'Open Workshop',
       view: 'workshop',
-      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'recommendations' : 'inbox',
+      workshopTab: hasDiagnosis ? 'commission' : 'inbox',
+      done: commissionComplete,
+    });
+
+    steps.push({
+      id: 'workshop_review',
+      title: 'Review the artefact',
+      why: 'Read what Caspa produced in Workshop before you leave for White Page or Just write.',
+      action: commissionComplete ? 'Open Artefact' : 'Finish commission first',
+      view: 'workshop',
+      workshopTab: commissionComplete ? 'workshop' : hasDiagnosis ? 'commission' : 'inbox',
       done: commissionComplete,
     });
 
     steps.push({
       id: 'review_draft',
       title: 'Read the draft',
-      why: 'Read what Caspa produced. Edit in White Page before you export — machines do not know your ending yet.',
+      why: 'Edit in White Page before you export — machines do not know your ending yet.',
       action: 'Open White Page',
       view: 'write',
       done: commissionComplete && words >= (poetry ? 40 : 100),

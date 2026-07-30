@@ -98,7 +98,7 @@ export function WorkflowChecklist({
     <article style={card}>
       <h2 style={sectionTitle}>Full path</h2>
       <p style={{ margin: '0 0 16px', color: '#73695d', fontSize: 14, lineHeight: 1.5 }}>
-        Every step is selectable and opens that room — Diagnose lands on Recommendations; Commission lands on Write it / artefact.
+        Every step is selectable — Diagnose → Recommendations; Commission → Write it; Review artefact stays in Workshop before White Page.
       </p>
       <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
         {steps.map((s) => (
@@ -132,7 +132,16 @@ export function WorkflowChecklist({
                 <small style={{ color: '#73695d', lineHeight: 1.4 }}>{s.why}</small>
                 {s.workshopTab && (
                   <small style={{ display: 'block', marginTop: 4, color: '#9b6d16', fontWeight: 600 }}>
-                    Opens Workshop → {s.workshopTab === 'recommendations' ? 'Recommendations' : s.workshopTab === 'workshop' ? 'Artefact' : s.workshopTab === 'inbox' ? 'Inbox' : 'Promises'}
+                    Opens Workshop →{' '}
+                    {s.workshopTab === 'recommendations'
+                      ? 'Recommendations'
+                      : s.workshopTab === 'commission'
+                        ? 'Commission'
+                        : s.workshopTab === 'workshop'
+                          ? 'Artefact'
+                          : s.workshopTab === 'inbox'
+                            ? 'Inbox'
+                            : 'Promises'}
                   </small>
                 )}
               </span>

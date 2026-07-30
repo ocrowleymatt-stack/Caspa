@@ -4,7 +4,8 @@
 
 import React from 'react';
 import { Check, Circle, Clapperboard, Download, Hammer, Music2, Zap } from 'lucide-react';
-import type { WorkflowNavTarget } from '../services/projectWorkflowService';
+import type { WorkflowNavTarget, WorkshopTab } from '../services/projectWorkflowService';
+import type { CommissionState } from '../types/commission';
 import { hasShowBoxContent, loadShowBox, showBoxPieceCount } from '../services/showBoxService';
 
 interface Props {
@@ -12,9 +13,36 @@ interface Props {
   onGo: (target: WorkflowNavTarget) => void;
 }
 
+function loadCommissionLite(): { hasDiagnosis: boolean; complete: boolean } {
+  try {
+    const raw = localStorage.getItem('caspa.commission');
+    if (!raw) return { hasDiagnosis: false, complete: false };
+    const parsed = JSON.parse(raw) as Partial<CommissionState>;
+    return {
+      hasDiagnosis: Boolean(parsed.diagnosis),
+      complete: Boolean(parsed.artefact?.trim()),
+    };
+  } catch {
+    return { hasDiagnosis: false, complete: false };
+  }
+}
+
 export default function ShowCommandCenter({ bookWords, onGo }: Props) {
   const live = showBoxPieceCount(loadShowBox());
   const hasPack = hasShowBoxContent();
+  const workshop = loadCommissionLite();
+
+  const workshopTab: WorkshopTab = workshop.complete
+    ? 'workshop'
+    : workshop.hasDiagnosis
+      ? 'commission'
+      : 'inbox';
+
+  const workshopDetail = workshop.complete
+    ? 'Review artefact'
+    : workshop.hasDiagnosis
+      ? 'Confirm & Write it'
+      : 'Diagnose & commission';
 
   const stations = [
     {
@@ -36,9 +64,9 @@ export default function ShowCommandCenter({ bookWords, onGo }: Props) {
     {
       id: 'workshop',
       label: 'Workshop',
-      detail: 'Diagnose & commission',
-      done: false,
-      target: { view: 'workshop' as const, workshopTab: 'inbox' as const },
+      detail: workshopDetail,
+      done: workshop.complete,
+      target: { view: 'workshop' as const, workshopTab },
       icon: Hammer,
     },
     {
