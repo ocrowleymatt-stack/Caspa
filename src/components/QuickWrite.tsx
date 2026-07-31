@@ -18,6 +18,7 @@ import {
   countWords,
   defaultTargetWordCount,
   planQualityCut,
+  wordCountPresets,
   type CutPlan,
 } from '../services/wordCountService';
 import { formatShowPackForWriting, hasShowBoxContent } from '../services/showBoxService';
@@ -60,6 +61,7 @@ type Props = {
   onTargetWordCountChange?: (n: number) => void;
   onGoPublish: () => void;
   onGoWorkshop: () => void;
+  onGoNextStep?: () => void;
   onGoShowBox?: () => void;
 };
 
@@ -95,6 +97,7 @@ export default function QuickWrite({
   onTargetWordCountChange,
   onGoPublish,
   onGoWorkshop,
+  onGoNextStep,
   onGoShowBox,
 }: Props) {
   const mode = writeModeForBrief(brief.mode);
@@ -535,6 +538,30 @@ export default function QuickWrite({
         </label>
       </div>
 
+      {onTargetWordCountChange && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: -8 }}>
+          {wordCountPresets(brief.mode).map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => onTargetWordCountChange(preset.words)}
+              style={{
+                border: `1px solid ${targetWords === preset.words ? '#d6a846' : '#e3d7c4'}`,
+                background: targetWords === preset.words ? '#fff3d5' : '#fff8ea',
+                color: '#5b4724',
+                borderRadius: 999,
+                padding: '7px 11px',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: targetWords === preset.words ? 800 : 500,
+              }}
+            >
+              {preset.label} · {preset.words.toLocaleString()}
+            </button>
+          ))}
+        </div>
+      )}
+
       {step === 'seed' && (
         <section style={card}>
           <h3 style={h3}>1. Seed</h3>
@@ -684,15 +711,22 @@ export default function QuickWrite({
 
       {step === 'pack' && (
         <section style={card}>
-          <h3 style={h3}>5. Pack</h3>
-          <p style={muted}>Export when the draft earns it. Or keep polishing in Workshop / Gold.</p>
+          <h3 style={h3}>5. Pack — finish the book</h3>
+          <p style={muted}>
+            Export the manuscript, then move it to Library from Publish or Next step. That is the finished-book ending.
+          </p>
           {qualityScore != null && (
             <p style={{ margin: '0 0 12px', fontWeight: 700 }}>Readiness score: {qualityScore}/100</p>
           )}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" onClick={onGoPublish} style={btn('#d6a846', '#1d1408')}>
-              <Download size={16} /> Publish pack
+              <Download size={16} /> Export / finish
             </button>
+            {onGoNextStep && (
+              <button type="button" onClick={onGoNextStep} style={btn('#1f2937', '#fff')}>
+                Next step path
+              </button>
+            )}
             <button type="button" onClick={onGoWorkshop} style={btn('#fffaf2', '#4a3b28')}>
               Open Workshop
             </button>

@@ -68,7 +68,7 @@ try {
 
   await page.evaluate(() => {
     const btn = Array.from(document.querySelectorAll('button')).find((b) =>
-      /Start writing|Open Design|Open Gold/i.test(b.textContent || ''),
+      /Write it|Start writing|Open Design|Open Gold/i.test(b.textContent || ''),
     );
     if (!btn) throw new Error('Start button not found');
     btn.click();

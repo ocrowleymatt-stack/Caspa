@@ -323,10 +323,10 @@ export function getWorkflowSteps(
     });
     steps.push({
       id: 'export',
-      title: 'Export when ready',
+      title: 'Export the finished script',
       why: gate.blockers.length
         ? `Blocked: ${gate.blockers[0]}`
-        : 'Publish Pack for pitch / rehearsal export.',
+        : 'Publish Pack for pitch / rehearsal export. Then move to Library.',
       action: gate.canExport ? 'Export script' : 'Check export gate',
       view: 'publish',
       done: gate.canExport,
@@ -378,10 +378,10 @@ export function getWorkflowSteps(
     });
     steps.push({
       id: 'export',
-      title: 'Export when ready',
+      title: 'Export the finished manuscript',
       why: gate.blockers.length
         ? `Blocked: ${gate.blockers[0]}`
-        : 'Publish Pack for manuscript export.',
+        : 'Publish Pack for manuscript export. Then move to Library.',
       action: gate.canExport ? 'Export manuscript' : 'Check export gate',
       view: 'publish',
       done: gate.canExport,
@@ -442,10 +442,10 @@ export function getWorkflowSteps(
     });
     steps.push({
       id: 'export',
-      title: 'Export when ready',
+      title: 'Export the finished manuscript',
       why: gate.blockers.length
         ? `Blocked: ${gate.blockers[0]}`
-        : 'Publish Pack for manuscript export.',
+        : 'Publish Pack for manuscript export. Then move to Library.',
       action: gate.canExport ? 'Export manuscript' : 'Check export gate',
       view: 'publish',
       done: gate.canExport,
@@ -518,10 +518,10 @@ export function getWorkflowSteps(
 
     steps.push({
       id: 'export',
-      title: 'Export when ready',
+      title: 'Export the finished manuscript',
       why: gate.blockers.length
         ? `Blocked: ${gate.blockers[0]}`
-        : 'Publish Pack checks promises and word count so nothing broken leaves the building.',
+        : 'Publish Pack checks promises and word count so nothing broken leaves the building. Then move it to Library.',
       action: gate.canExport ? 'Export manuscript' : 'Check export gate',
       view: 'publish',
       done: gate.canExport,
@@ -530,7 +530,7 @@ export function getWorkflowSteps(
 
   steps.push({
     id: 'complete_to_library',
-    title: 'Move to library',
+    title: 'Move finished book to library',
     why: 'Finished work belongs on the shelf, not the workbench. Completing clears the active slot for your next project.',
     action: 'Complete project',
     view: 'library',
@@ -566,6 +566,80 @@ export function getProgressSummary(
   const done = steps.filter((s) => s.done).length;
   const total = steps.length;
   return { done, total, percent: total ? Math.round((done / total) * 100) : 0 };
+}
+
+/** High-level phases on the path to a finished book — for the Next-step rail. */
+export type WorkflowPhaseId = 'setup' | 'draft' | 'workshop' | 'finish';
+
+export interface WorkflowPhase {
+  id: WorkflowPhaseId;
+  label: string;
+  /** True when every required step in this phase is done. */
+  done: boolean;
+  /** True when the current next step belongs here. */
+  current: boolean;
+}
+
+function phaseForStepId(id: WorkflowStepId): WorkflowPhaseId {
+  switch (id) {
+    case 'start_brief':
+      return 'setup';
+    case 'draft_or_paste':
+    case 'research_sources':
+    case 'show_pack':
+      return 'draft';
+    case 'workshop_diagnose':
+    case 'workshop_write':
+    case 'workshop_review':
+    case 'review_draft':
+    case 'polish_optional':
+      return 'workshop';
+    case 'export':
+    case 'complete_to_library':
+    case 'rest_in_library':
+      return 'finish';
+    default:
+      return 'draft';
+  }
+}
+
+const PHASE_ORDER: WorkflowPhaseId[] = ['setup', 'draft', 'workshop', 'finish'];
+
+const PHASE_LABELS: Record<WorkflowPhaseId, string> = {
+  setup: 'Brief',
+  draft: 'Draft',
+  workshop: 'Workshop',
+  finish: 'Finished book',
+};
+
+/**
+ * Four-stop rail: Brief → Draft → Workshop → Finished book.
+ * Makes end stages (export + library) visible from the first screen.
+ */
+export function getWorkflowPhases(
+  brief: ProjectBriefLike,
+  draftPage: string,
+  manuscriptSource: string,
+  projectStatus: 'active' | 'complete',
+  nextStepId?: WorkflowStepId
+): WorkflowPhase[] {
+  const steps = getWorkflowSteps(brief, draftPage, manuscriptSource, projectStatus).filter((s) => !s.optional);
+  const currentPhase = nextStepId ? phaseForStepId(nextStepId) : phaseForStepId(steps.find((s) => !s.done)?.id || 'rest_in_library');
+
+  return PHASE_ORDER.map((id) => {
+    const inPhase = steps.filter((s) => phaseForStepId(s.id) === id);
+    const done = inPhase.length === 0 ? id !== currentPhase : inPhase.every((s) => s.done);
+    return {
+      id,
+      label: PHASE_LABELS[id],
+      done,
+      current: currentPhase === id,
+    };
+  });
+}
+
+export function isFinishStage(stepId: WorkflowStepId): boolean {
+  return stepId === 'export' || stepId === 'complete_to_library' || stepId === 'rest_in_library';
 }
 
 export function projectKeyForBrief(brief: ProjectBriefLike): string {

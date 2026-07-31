@@ -156,6 +156,61 @@ export function defaultTargetWordCount(mode: string): number {
   }
 }
 
+/** Quick presets so writers can manipulate length without hunting settings. */
+export function wordCountPresets(mode: string): { label: string; words: number }[] {
+  switch (mode) {
+    case 'essay':
+      return [
+        { label: 'Short', words: 1500 },
+        { label: 'Feature', words: 3000 },
+        { label: 'Long read', words: 6000 },
+      ];
+    case 'poetry':
+      return [
+        { label: 'Poem', words: 200 },
+        { label: 'Sequence', words: 800 },
+        { label: 'Pamphlet', words: 2500 },
+      ];
+    case 'picture':
+      return [
+        { label: 'Board', words: 200 },
+        { label: 'Picture book', words: 500 },
+        { label: 'Longer', words: 900 },
+      ];
+    case 'script':
+      return [
+        { label: 'One-act', words: 8000 },
+        { label: 'Full length', words: 20000 },
+        { label: 'Series bible', words: 35000 },
+      ];
+    case 'musical':
+      return [
+        { label: 'Fringe', words: 12000 },
+        { label: 'Full show', words: 25000 },
+        { label: 'Epic', words: 40000 },
+      ];
+    case 'nonfiction':
+      return [
+        { label: 'Short', words: 25000 },
+        { label: 'Standard', words: 50000 },
+        { label: 'Long', words: 80000 },
+      ];
+    case 'gold':
+    case 'polish':
+      return [
+        { label: 'Novella', words: 40000 },
+        { label: 'Novel', words: 80000 },
+        { label: 'Epic', words: 120000 },
+      ];
+    default:
+      return [
+        { label: 'Novella', words: 40000 },
+        { label: 'Novel', words: 80000 },
+        { label: 'Epic', words: 120000 },
+      ];
+  }
+}
+
 export type CutPlan = {
   beforeWords: number;
   targetWords: number | null;

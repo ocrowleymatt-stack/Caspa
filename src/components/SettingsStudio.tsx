@@ -1,5 +1,5 @@
 /**
- * Settings — account, privacy, local backup/restore, deploy readiness
+ * Settings — account, privacy, local backup/restore, deploy readiness, project knobs
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import {
   collectLocalSnapshot,
   snapshotKeyCount,
 } from '../services/localSnapshotService';
+import { defaultTargetWordCount, wordCountPresets } from '../services/wordCountService';
 
 interface BackupMeta {
   id: string;
@@ -25,11 +26,19 @@ interface DoctorReadiness {
   warnings?: string[];
 }
 
-interface Props {
-  userEmail?: string;
+interface ProjectBriefLite {
+  title: string;
+  mode: string;
+  targetWordCount: number;
 }
 
-export default function SettingsStudio({ userEmail }: Props) {
+interface Props {
+  userEmail?: string;
+  brief?: ProjectBriefLite | null;
+  onBriefChange?: (patch: { targetWordCount: number }) => void;
+}
+
+export default function SettingsStudio({ userEmail, brief, onBriefChange }: Props) {
   const [backups, setBackups] = useState<BackupMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -123,6 +132,8 @@ export default function SettingsStudio({ userEmail }: Props) {
   };
 
   const isLocal = !userEmail || userEmail.includes('local@caspa');
+  const wordsTarget =
+    brief && brief.targetWordCount > 0 ? brief.targetWordCount : brief ? defaultTargetWordCount(brief.mode) : 0;
 
   return (
     <section style={{ minHeight: '100vh', padding: '48px clamp(20px, 5vw, 72px)', background: '#f5efe5' }}>
@@ -132,10 +143,61 @@ export default function SettingsStudio({ userEmail }: Props) {
             Settings
           </div>
           <h1 style={{ margin: '6px 0 8px', fontSize: 'clamp(36px, 5vw, 56px)', lineHeight: 1, letterSpacing: -2 }}>
-            Account & privacy
+            Account & project
           </h1>
           <p style={{ margin: 0, color: '#73695d', fontSize: 17 }}>{isLocal ? 'Local workspace' : userEmail}</p>
         </div>
+
+        {brief && onBriefChange && (
+          <article style={{ ...card, marginBottom: 18 }}>
+            <h2 style={sectionTitle}>Active project settings</h2>
+            <p style={{ margin: '0 0 14px', color: '#73695d', lineHeight: 1.55 }}>
+              {brief.title} · {brief.mode}. Aspire-to word count drives Just write chapter budgets and the finished-book target.
+            </p>
+            <label style={{ display: 'block', marginBottom: 12 }}>
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: '#5c5146', marginBottom: 7 }}>
+                Aspire-to words
+              </span>
+              <input
+                type="number"
+                min={100}
+                step={500}
+                value={wordsTarget}
+                onChange={(e) => onBriefChange({ targetWordCount: Math.max(100, Number(e.target.value) || 100) })}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  border: '1px solid #e2d6c3',
+                  borderRadius: 14,
+                  padding: '13px 14px',
+                  background: '#fffdf8',
+                  fontSize: 15,
+                }}
+              />
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {wordCountPresets(brief.mode).map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => onBriefChange({ targetWordCount: preset.words })}
+                  style={{
+                    border: `1px solid ${wordsTarget === preset.words ? '#d6a846' : '#e3d7c4'}`,
+                    background: wordsTarget === preset.words ? '#fff3d5' : '#fff8ea',
+                    color: '#5b4724',
+                    borderRadius: 999,
+                    padding: '8px 11px',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: wordsTarget === preset.words ? 800 : 500,
+                  }}
+                >
+                  {preset.label} · {preset.words.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </article>
+        )}
 
         <article style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12 }}>

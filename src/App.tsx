@@ -72,10 +72,11 @@ import {
 import {
   getNextStep,
   getProgressSummary,
+  getWorkflowPhases,
   getWorkflowSteps,
   type WorkflowNavTarget,
 } from './services/projectWorkflowService';
-import { countWords, defaultTargetWordCount } from './services/wordCountService';
+import { countWords, defaultTargetWordCount, wordCountPresets } from './services/wordCountService';
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
 import { clearShowBox, hasShowBoxContent } from './services/showBoxService';
@@ -689,11 +690,12 @@ function CaspaUI() {
     localStorage.removeItem('caspa.commission.tab');
     clearShowBox();
     clearPlotHold();
-    // Match CTA: picture → Design, show → Show Box, polish → Gold, else → Next step.
+    // Paste idea → Write it: fiction/nonfiction go straight to Just write.
+    // Picture → Design, show → Show Box, polish → Gold.
     if (mode === 'picture') goTo('design');
     else if (mode === 'musical') goTo('showbox');
     else if (mode === 'gold') goTo('gold');
-    else goTo('project');
+    else goTo('quickwrite');
   };
 
   const patchBrief = (patch: Partial<ProjectBrief>) => {
@@ -734,6 +736,7 @@ function CaspaUI() {
               }}
               onGoPublish={() => goTo('publish')}
               onGoWorkshop={() => goTo('workshop')}
+              onGoNextStep={() => goTo('project')}
               onGoShowBox={() => goTo('showbox')}
             />
           </PageShell>
@@ -846,7 +849,13 @@ function CaspaUI() {
           />
         );
       case 'settings':
-        return <SettingsStudio userEmail={authContext.user?.email} />;
+        return (
+          <SettingsStudio
+            userEmail={authContext.user?.email}
+            brief={hasActiveProject() ? brief : null}
+            onBriefChange={patchBrief}
+          />
+        );
       default:
         if (isStudioTool(currentView)) {
           return (
@@ -886,7 +895,7 @@ function CaspaUI() {
         </div>
 
         <div style={{ marginBottom: 20, padding: '0 8px', fontSize: 12, color: '#a89572', lineHeight: 1.5 }}>
-          One step at a time. Advanced rooms stay tucked away until you need them.
+          Paste an idea → Write it. Next step shows the path to a finished book.
         </div>
 
         <div style={{ marginBottom: 12 }}>
@@ -1121,12 +1130,12 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
             <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fff3d5', color: '#7a5514', display: 'grid', placeItems: 'center' }}><SelectedIcon size={24} /></div>
             <div>
               <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>{selected.title}</div>
-              <h2 style={{ margin: 0, fontSize: 24 }}>One idea is enough</h2>
+              <h2 style={{ margin: 0, fontSize: 24 }}>Paste the idea. Write it.</h2>
             </div>
           </div>
 
-          <Field label="Idea / premise">
-            <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder={selected.examples[0] || 'Start with a wound, a place, a desire…'} />
+          <Field label="Paste your idea">
+            <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder={selected.examples[0] || 'Paste the premise. Wound, place, desire — one paragraph is enough.'} />
           </Field>
 
           <Field label="Aspire-to word count">
@@ -1138,6 +1147,23 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
               onChange={(e) => setTargetWordCount(Math.max(100, Number(e.target.value) || 100))}
               style={{ ...textareaStyle, minHeight: 0, padding: '12px 14px' }}
             />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+              {wordCountPresets(mode).map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setTargetWordCount(preset.words)}
+                  style={{
+                    ...chipButton,
+                    borderColor: targetWordCount === preset.words ? '#d6a846' : '#e3d7c4',
+                    background: targetWordCount === preset.words ? '#fff3d5' : '#fff8ea',
+                    fontWeight: targetWordCount === preset.words ? 800 : 400,
+                  }}
+                >
+                  {preset.label} · {preset.words.toLocaleString()}
+                </button>
+              ))}
+            </div>
           </Field>
 
           <button
@@ -1145,7 +1171,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
             onClick={() => setShowBriefDetails(!showBriefDetails)}
             style={{ background: 'transparent', border: 'none', color: '#8a6a28', cursor: 'pointer', fontSize: 13, fontWeight: 700, marginBottom: 10, padding: 0 }}
           >
-            {showBriefDetails ? 'Hide tone / audience / output' : 'Tune tone, audience & output (optional)'}
+            {showBriefDetails ? 'Hide tone / audience / output' : 'More settings — tone, audience & output'}
           </button>
           {showBriefDetails && (
             <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
@@ -1172,9 +1198,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                 ? 'Creates the project and opens Show in a Box — songs, running order, music sketch, production pack.'
                 : mode === 'gold'
                   ? 'Creates the project and opens Gold Refinery to polish pasted text.'
-                  : mode === 'script'
-                    ? 'Creates the project and opens guided next steps for an actable script.'
-                    : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
+                  : 'Paste the idea → Write it opens Just write. Next step keeps the path to a finished book (Workshop → Export → Library).'}
           </p>
 
           <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
@@ -1185,13 +1209,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                 ? 'Open Show in a Box'
                 : mode === 'gold'
                   ? 'Open Gold'
-                  : mode === 'script'
-                    ? 'Start script'
-                    : mode === 'nonfiction' || mode === 'essay'
-                      ? 'Start non-fiction'
-                      : mode === 'poetry'
-                        ? 'Start poem'
-                        : 'Start writing'}
+                  : 'Write it'}
           </button>
         </div>
       </div>
@@ -1223,6 +1241,12 @@ function ProjectView({
     setDraftBrief(brief);
   }, [brief]);
 
+  const wordsNow = useMemo(
+    () => countWords(draftPage || manuscriptSource),
+    [draftPage, manuscriptSource]
+  );
+  const wordsTarget = brief.targetWordCount || defaultTargetWordCount(brief.mode);
+
   const steps = useMemo(
     () => getWorkflowSteps(brief, draftPage, manuscriptSource, projectStatus),
     [brief, draftPage, manuscriptSource, projectStatus]
@@ -1234,6 +1258,10 @@ function ProjectView({
   const progress = useMemo(
     () => getProgressSummary(brief, draftPage, manuscriptSource, projectStatus),
     [brief, draftPage, manuscriptSource, projectStatus]
+  );
+  const phases = useMemo(
+    () => getWorkflowPhases(brief, draftPage, manuscriptSource, projectStatus, nextStep.id),
+    [brief, draftPage, manuscriptSource, projectStatus, nextStep.id]
   );
 
   const saveEdits = () => {
@@ -1248,23 +1276,85 @@ function ProjectView({
     setEditing(false);
   };
 
+  const setTargetWords = (n: number) => {
+    const next = Math.max(100, Math.round(n) || 100);
+    onBriefChange({ targetWordCount: next });
+  };
+
   return (
     <PageShell
       kicker="Guided workflow"
       title={brief.title}
-      subtitle={`${modeLabels[brief.mode] || brief.mode} · ${projectStatus === 'complete' ? 'In library' : 'Active project'} · ${formatDate(brief.createdAt)}`}
+      subtitle={`${modeLabels[brief.mode] || brief.mode} · ${projectStatus === 'complete' ? 'In library' : 'Active project'} · ${formatDate(brief.createdAt)} · path to finished book`}
     >
       <GuidedNextStep
         step={nextStep}
         progress={progress}
+        phases={phases}
         onGo={onGo}
         onComplete={onCompleteProject}
         briefTitle={brief.idea}
+        wordsNow={wordsNow}
+        wordsTarget={wordsTarget}
       />
 
       {(brief.mode === 'musical' || hasShowBoxContent()) && (
-        <ShowCommandCenter bookWords={countWords(draftPage || manuscriptSource)} onGo={onGo} />
+        <ShowCommandCenter bookWords={wordsNow} onGo={onGo} />
       )}
+
+      <article style={{ ...cardStyle, marginBottom: 18 }}>
+        <h2 style={{ ...sectionTitle, marginBottom: 6 }}>Project settings</h2>
+        <p style={{ margin: '0 0 16px', color: '#73695d', fontSize: 14, lineHeight: 1.5 }}>
+          Manipulate length and brief knobs anytime. Aspire-to word count drives Just write chapter budgets.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
+          <Field label="Aspire-to words">
+            <input
+              type="number"
+              min={100}
+              step={500}
+              value={wordsTarget}
+              onChange={(e) => setTargetWords(Number(e.target.value))}
+              style={inputStyle}
+            />
+          </Field>
+          <MiniPanel
+            label="Progress"
+            value={`${wordsNow.toLocaleString()} now · ${Math.min(100, Math.round((wordsNow / Math.max(1, wordsTarget)) * 100))}% of aspire-to`}
+          />
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {wordCountPresets(brief.mode).map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => setTargetWords(preset.words)}
+              style={{
+                ...chipButton,
+                borderColor: wordsTarget === preset.words ? '#d6a846' : '#e3d7c4',
+                background: wordsTarget === preset.words ? '#fff3d5' : '#fff8ea',
+                fontWeight: wordsTarget === preset.words ? 800 : 400,
+              }}
+            >
+              {preset.label} · {preset.words.toLocaleString()}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button type="button" onClick={() => onGo({ view: 'quickwrite' })} style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '11px 16px' }}>
+            <Zap size={16} /> Write it
+          </button>
+          <button type="button" onClick={() => onGo({ view: 'workshop', workshopTab: 'inbox' })} style={ghostButton}>
+            <Hammer size={16} /> Workshop
+          </button>
+          <button type="button" onClick={() => onGo({ view: 'publish' })} style={ghostButton}>
+            <Download size={16} /> Export / finish
+          </button>
+          <button type="button" onClick={() => onGo({ view: 'library' })} style={ghostButton}>
+            <Library size={16} /> Library
+          </button>
+        </div>
+      </article>
 
       <div style={cardGrid}>
         <article style={{ ...cardStyle, gridColumn: 'span 2' }}>
@@ -1334,7 +1424,7 @@ function ProjectView({
                 <MiniPanel label="Audience" value={brief.audience} />
                 <MiniPanel
                   label="Words"
-                  value={`${countWords(draftPage).toLocaleString()} now · ${(brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString()} aspire-to`}
+                  value={`${wordsNow.toLocaleString()} now · ${wordsTarget.toLocaleString()} aspire-to`}
                 />
               </div>
             </>
