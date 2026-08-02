@@ -3,22 +3,9 @@
  */
 
 import express from 'express';
-import puppeteer from 'puppeteer';
+import { getSharedBrowser } from '../services/puppeteerBrowser';
 
 const router = express.Router();
-
-let browserInstance: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
-
-async function getBrowser() {
-  if (!browserInstance) {
-    browserInstance = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    });
-  }
-  return browserInstance;
-}
 
 type PdfProfile = 'screen-pdf' | 'kdp-novel' | 'course-book' | 'subject-bible' | 'professional-print';
 
@@ -58,7 +45,7 @@ router.post('/pdf', async (req, res) => {
       return res.status(400).json({ success: false, message: 'HTML content required' });
     }
 
-    const browser = await getBrowser();
+    const browser = await getSharedBrowser();
     const page = await browser.newPage();
 
     try {

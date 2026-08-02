@@ -1,9 +1,9 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BookMetadataService } from "./BookMetadataService";
 import { ContentIntelligence } from './ContentIntelligenceService';
 import { CMYKValidator } from './CMYKValidator';
+import { getSharedBrowser, closeSharedBrowser } from './puppeteerBrowser';
 
 /** A generated illustration ready to place in the PDF (url + caption). */
 export interface AssembledIllustration {
@@ -80,21 +80,9 @@ export interface AssemblyOptions {
 }
 
 export class PDFAssemblyService {
-  private browser: Browser | null = null;
-
-  /**
-   * Initialize Puppeteer browser instance.
-   * Honours PUPPETEER_EXECUTABLE_PATH, otherwise uses the bundled Chromium
-   * (matches caspa-export-routes so it launches in every environment).
-   */
+  /** Kept for backward compatibility; the browser is now the shared singleton. */
   async initBrowser(): Promise<void> {
-    if (!this.browser) {
-      this.browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      });
-    }
+    await getSharedBrowser();
   }
 
   /**
@@ -162,11 +150,8 @@ export class PDFAssemblyService {
   async generateScreenPDF(
     options: AssemblyOptions
   ): Promise<{ buffer: Buffer; output: PDFOutput }> {
-    await this.initBrowser();
-
-    if (!this.browser) throw new Error('Browser initialization failed');
-
-    const page = await this.browser.newPage();
+    const browser = await getSharedBrowser();
+    const page = await browser.newPage();
     const screenSpec: PrintSpecification = {
       colorSpace: 'sRGB',
       resolution: 72,
@@ -248,10 +233,8 @@ export class PDFAssemblyService {
       console.warn('Print spec warnings:', validation.warnings);
     }
 
-    await this.initBrowser();
-    if (!this.browser) throw new Error('Browser initialization failed');
-
-    const page = await this.browser.newPage();
+    const browser = await getSharedBrowser();
+    const page = await browser.newPage();
 
     try {
       const html = this.buildHTML(options, printSpec);
@@ -430,18 +413,14 @@ export class PDFAssemblyService {
    * Cleanup browser
    */
   async closeBrowser(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-    }
+    await closeSharedBrowser();
   }
 
   /**
    * Simple text-based PDF generation for service API
    */
   async generateSimpleScreenPDF(title: string, content: string): Promise<{ buffer: Buffer; output: SimplePDFOutput }> {
-    await this.initBrowser();
-    if (!this.browser) throw new Error('Browser initialization failed');
+    const browser = await getSharedBrowser();
 
     const html = `
       <!DOCTYPE html>
@@ -461,7 +440,7 @@ export class PDFAssemblyService {
       </html>
     `;
 
-    const page = await this.browser.newPage();
+    const page = await browser.newPage();
     try {
       await page.setContent(html, { waitUntil: 'networkidle2' });
       const buffer = Buffer.from(await page.pdf({
