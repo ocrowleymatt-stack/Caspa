@@ -72,3 +72,11 @@ export function createCircuitBreaker(
     },
   };
 }
+
+/**
+ * Process-wide circuit breaker shared by every server-side AI router
+ * (/api/ai/call and serverAiHelper) so provider health is tracked once.
+ */
+export const sharedCircuitBreaker: CircuitBreaker = createCircuitBreaker(
+  Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 30_000,
+);

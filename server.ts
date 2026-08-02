@@ -27,12 +27,8 @@ import {
   AI_PROVIDERS,
   isProviderConfigured,
   selectAttemptOrder,
-  createCircuitBreaker,
+  sharedCircuitBreaker as aiBreaker,
 } from './src/services/aiRouterPolicy';
-
-// Per-provider circuit breaker for /api/ai/call (skip a provider after it fails).
-const AI_PROVIDER_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 30_000;
-const aiBreaker = createCircuitBreaker(AI_PROVIDER_COOLDOWN_MS);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
