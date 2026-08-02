@@ -111,3 +111,15 @@ When generating content for the user inside the "Brainstorm," "Intelligence Lab,
 **CORE COMMAND:**
 Write with precision, menace, beauty, restraint, and momentum. No sludge. No padding. No cowardice. 
 Find the wound. Give it a room. Give it a mask. Apply pressure. Make every scene turn. Cut the pretty sludge. End on an image that bites.
+
+## Cursor Cloud specific instructions
+
+Caspa is a single monolithic Express + React (Vite) app. One process on port `3000` serves both the SPA and every `/api/*` route — there is no separate frontend dev server. The `Caspa/` subdirectory is a legacy Vite-only scaffold (excluded from the root `tsconfig.json`); do not run it as the app.
+
+Scripts live in `package.json`. Key non-obvious gotchas:
+
+- **Dev mode must be forced.** `npm run dev` runs `tsx server.ts`, but the server defaults to PRODUCTION mode (serving prebuilt static files from `dist/`) unless `NODE_ENV=development` is set. For Vite HMR / live dev, run `NODE_ENV=development npm run dev`. Plain `npm run dev` without that env requires a prior `npm run build`.
+- **AI keys are optional for running/testing the app.** No key is needed for startup, the local-first UI, or local project persistence (drafts live in browser `localStorage`). Without a provider key, only AI generation routes fail and `GET /api/doctor` reports `degraded`/`blocked` (readiness blocker "No AI provider configured") — this is expected and does NOT stop the server. To enable AI end to end, set `GEMINI_API_KEY` in `.env` (or another provider key: `VITE_GROK_API_KEY`, `VITE_OPENAI_API_KEY`, `VITE_ANTHROPIC_API_KEY`, `VITE_VENICE_API_KEY`) or run Ollama on `:11434`.
+- **Lint is a type-check and currently red.** `npm run lint` is `tsc --noEmit` and reports pre-existing type errors on `main`. The build does NOT type-check — `npm run build` (Vite + esbuild transpile) succeeds regardless. Don't treat lint failures as introduced by your setup.
+- **Smoke tests need a running server on `:3000`.** With the server up: `npm run smoke:local-project` (uses headless Puppeteer/Chromium; validates the local-first create + reload flow, no AI needed) and `npm run deploy:smoke`. Puppeteer's Chromium is installed by `npm install` and works headless with `--no-sandbox`.
+- Health/readiness endpoints (no secrets): `GET /health` and `GET /api/doctor`.
