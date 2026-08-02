@@ -9,3 +9,17 @@ declare module '*.module.scss' {
   const classes: { readonly [key: string]: string };
   export default classes;
 }
+
+// pdf-parse is imported via its lib entry (see pdf-upload-routes.ts); type it here.
+declare module 'pdf-parse/lib/pdf-parse.js' {
+  interface PdfParseResult {
+    text: string;
+    numpages: number;
+    numrender: number;
+    info: Record<string, any>;
+    metadata: any;
+    version: string;
+  }
+  function pdfParse(dataBuffer: Buffer, options?: Record<string, any>): Promise<PdfParseResult>;
+  export default pdfParse;
+}
