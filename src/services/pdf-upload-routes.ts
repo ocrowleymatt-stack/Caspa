@@ -7,7 +7,7 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
-import * as pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 
 const router = express.Router();
 
@@ -26,9 +26,7 @@ const upload = multer({
   },
 });
 
-interface UploadedFile extends Express.Multer.File {
-  path?: string;
-}
+type UploadedFile = Express.Multer.File;
 
 interface PDFContent {
   title?: string;

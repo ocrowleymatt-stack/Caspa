@@ -915,6 +915,7 @@ app.use("/api/caspa/write", caspaWriteRoutes);
 app.use("/api/caspa/design", caspaDesignRoutes);
 app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
+app.use("/api/pdf-upload", pdfUploadRoutes);
 
 
 // ── Pilot Seat: structural directive ──────────────────────────────────────────
