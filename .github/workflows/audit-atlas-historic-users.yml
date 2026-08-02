@@ -1,0 +1,531 @@
+name: Audit Atlas historic users
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-atlas-historic-users.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select Atlas SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          if [ -z "$key" ]; then
+            echo "::error::No Atlas SSH secret is available to this workflow."
+            exit 2
+          fi
+          mkdir -p ~/.ssh audit-output
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run read-only Atlas inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/atlas_user_audit.py <<'PY'
+          import base64
+          import json
+          import os
+          import re
+          import shutil
+          import sqlite3
+          import subprocess
+          import tempfile
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          EMAIL_RE = re.compile(r"(?i)(?<![A-Z0-9._%+\-])[A-Z0-9._%+\-]{1,64}@[A-Z0-9.-]{1,253}\.[A-Z]{2,63}(?![A-Z0-9._%+\-])")
+          ROOTS = [
+              Path('/root/Caspa'), Path('/root'), Path('/srv'), Path('/opt'),
+              Path('/var/www'), Path('/var/lib/docker/volumes'), Path('/root/.pm2/logs')
+          ]
+          SKIP_DIRS = {
+              '.git', 'node_modules', 'dist', 'build', '.cache', '__pycache__',
+              'proc', 'sys', 'dev', 'run', 'tmp', '.npm', '.pnpm-store'
+          }
+          TEXT_EXTS = {
+              '.json', '.jsonl', '.ndjson', '.csv', '.tsv', '.txt', '.log', '.sql',
+              '.dump', '.env', '.yaml', '.yml', '.md', '.xml', '.html', '.js', '.ts',
+              '.tsx', '.jsx', '.conf', '.ini', '.toml', '.properties', '.backup'
+          }
+          SQLITE_EXTS = {'.db', '.sqlite', '.sqlite3'}
+          MAX_FILE_BYTES = 12 * 1024 * 1024
+          MAX_FILES = 80000
+
+          report = {
+              'generatedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+              'host': os.uname().nodename,
+              'emails': [],
+              'structuredUsers': [],
+              'firebaseAuthUsers': [],
+              'firestoreUsers': [],
+              'databaseSources': [],
+              'adminAttempts': [],
+              'containers': [],
+              'scan': {'roots': [], 'filesExamined': 0, 'filesSkipped': 0, 'errors': []},
+          }
+          email_index = {}
+          structured_seen = set()
+          service_accounts = []
+          database_urls = []
+
+          def safe_text(value, limit=240):
+              if value is None:
+                  return None
+              text = str(value).replace('\x00', '').strip()
+              return text[:limit] if text else None
+
+          def classification(email):
+              domain = email.rsplit('@', 1)[-1].lower()
+              if domain in {'example.com', 'caspa.workspace', 'localhost.local', 'test.com'}:
+                  return 'placeholder'
+              if domain.endswith('gserviceaccount.com') or domain.endswith('firebaseapp.com'):
+                  return 'system'
+              if domain.endswith('users.noreply.github.com') or domain in {'cursor.com'}:
+                  return 'developer-metadata'
+              return 'possible-user'
+
+          def add_email(email, source, kind='text-match', context=None):
+              email = email.strip('.,;:()[]{}<>\"\'').lower()
+              if not EMAIL_RE.fullmatch(email):
+                  return
+              key = (email, source, kind)
+              if key in email_index:
+                  return
+              item = {
+                  'email': email,
+                  'classification': classification(email),
+                  'source': source,
+                  'kind': kind,
+              }
+              if context:
+                  item['context'] = {k: safe_text(v) for k, v in context.items() if safe_text(v)}
+              email_index[key] = item
+              report['emails'].append(item)
+
+          def add_structured(source, record, kind='structured-record'):
+              email = safe_text(record.get('email'))
+              if not email or not EMAIL_RE.fullmatch(email):
+                  return
+              normal = {
+                  'email': email.lower(),
+                  'displayName': safe_text(record.get('displayName') or record.get('display_name') or record.get('name')),
+                  'uid': safe_text(record.get('uid') or record.get('userId') or record.get('user_id') or record.get('id')),
+                  'createdAt': safe_text(record.get('createdAt') or record.get('created_at') or record.get('createTime')),
+                  'lastLoginAt': safe_text(record.get('lastLoginAt') or record.get('last_login_at') or record.get('lastSignedIn') or record.get('updateTime')),
+                  'source': source,
+                  'kind': kind,
+              }
+              sig = json.dumps(normal, sort_keys=True)
+              if sig in structured_seen:
+                  return
+              structured_seen.add(sig)
+              report['structuredUsers'].append(normal)
+              add_email(normal['email'], source, kind, normal)
+
+          def inspect_json(value, source):
+              if isinstance(value, dict):
+                  email_values = []
+                  for key, child in value.items():
+                      if isinstance(child, str) and ('email' in key.lower() or EMAIL_RE.search(child)):
+                          email_values.extend(EMAIL_RE.findall(child))
+                  for email in email_values:
+                      add_structured(source, {
+                          'email': email,
+                          'displayName': value.get('displayName') or value.get('display_name') or value.get('name'),
+                          'uid': value.get('uid') or value.get('userId') or value.get('user_id') or value.get('id'),
+                          'createdAt': value.get('createdAt') or value.get('created_at') or value.get('createTime'),
+                          'lastLoginAt': value.get('lastLoginAt') or value.get('last_login_at') or value.get('lastSignedIn') or value.get('updateTime'),
+                      }, 'json-record')
+                  if value.get('type') == 'service_account' and value.get('private_key') and value.get('client_email') and value.get('project_id'):
+                      service_accounts.append(value)
+                  for child in value.values():
+                      inspect_json(child, source)
+              elif isinstance(value, list):
+                  for child in value:
+                      inspect_json(child, source)
+
+          def inspect_sqlite(path):
+              try:
+                  conn = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+                  conn.row_factory = sqlite3.Row
+                  tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+                  for table in tables:
+                      cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{table.replace(chr(34), chr(34)*2)}")')]
+                      email_cols = [c for c in cols if 'email' in c.lower()]
+                      identity_cols = [c for c in cols if c.lower() in {'name','displayname','display_name','uid','userid','user_id','id','createdat','created_at','lastloginat','last_login_at','lastsignedin'}]
+                      for email_col in email_cols:
+                          selected = list(dict.fromkeys([email_col] + identity_cols))
+                          quoted = ','.join('"' + c.replace('"', '""') + '"' for c in selected)
+                          qtable = '"' + table.replace('"', '""') + '"'
+                          try:
+                              rows = conn.execute(f'SELECT {quoted} FROM {qtable} WHERE "{email_col.replace(chr(34), chr(34)*2)}" IS NOT NULL LIMIT 5000')
+                              for row in rows:
+                                  data = dict(row)
+                                  add_structured(f'sqlite:{path}:{table}', {
+                                      'email': data.get(email_col),
+                                      'displayName': data.get('displayName') or data.get('display_name') or data.get('name'),
+                                      'uid': data.get('uid') or data.get('userId') or data.get('user_id') or data.get('id'),
+                                      'createdAt': data.get('createdAt') or data.get('created_at'),
+                                      'lastLoginAt': data.get('lastLoginAt') or data.get('last_login_at') or data.get('lastSignedIn'),
+                                  }, 'sqlite-row')
+                          except Exception as exc:
+                              report['scan']['errors'].append(f'sqlite query {path}:{table}:{email_col}: {exc}')
+                  conn.close()
+                  report['databaseSources'].append({'type': 'sqlite', 'path': str(path), 'tables': tables[:200]})
+              except Exception as exc:
+                  report['scan']['errors'].append(f'sqlite open {path}: {exc}')
+
+          files_examined = 0
+          visited = set()
+          for root in ROOTS:
+              if not root.exists():
+                  continue
+              real = str(root.resolve())
+              if real in visited:
+                  continue
+              visited.add(real)
+              report['scan']['roots'].append(real)
+              for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+                  dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith('.git')]
+                  for filename in filenames:
+                      if files_examined >= MAX_FILES:
+                          break
+                      path = Path(dirpath) / filename
+                      files_examined += 1
+                      report['scan']['filesExamined'] = files_examined
+                      try:
+                          if path.is_symlink() or not path.is_file():
+                              continue
+                          size = path.stat().st_size
+                          suffix = path.suffix.lower()
+                          if suffix in SQLITE_EXTS:
+                              inspect_sqlite(path)
+                              continue
+                          is_text_candidate = suffix in TEXT_EXTS or filename.startswith('.env') or filename in {'config', 'credentials'}
+                          if not is_text_candidate or size > MAX_FILE_BYTES:
+                              report['scan']['filesSkipped'] += 1
+                              continue
+                          raw = path.read_bytes()
+                          if b'\x00' in raw[:8192]:
+                              report['scan']['filesSkipped'] += 1
+                              continue
+                          text = raw.decode('utf-8', errors='ignore')
+                          source = str(path)
+                          for email in EMAIL_RE.findall(text):
+                              add_email(email, source)
+                          for line in text.splitlines():
+                              if re.match(r'\s*(DATABASE_URL|POSTGRES_URL|MYSQL_URL)\s*=', line):
+                                  value = line.split('=', 1)[1].strip().strip('"\'')
+                                  if value and value not in database_urls:
+                                      database_urls.append(value)
+                          if suffix in {'.json', '.jsonl', '.ndjson'} and size <= 8 * 1024 * 1024:
+                              try:
+                                  if suffix == '.json':
+                                      inspect_json(json.loads(text), source)
+                                  else:
+                                      for line in text.splitlines():
+                                          try:
+                                              inspect_json(json.loads(line), source)
+                                          except Exception:
+                                              pass
+                              except Exception:
+                                  pass
+                      except PermissionError:
+                          report['scan']['filesSkipped'] += 1
+                      except Exception as exc:
+                          report['scan']['errors'].append(f'file {path}: {exc}')
+                  if files_examined >= MAX_FILES:
+                      break
+
+          def run(cmd, timeout=60, env=None):
+              return subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=env)
+
+          def inspect_postgres_command(prefix, source):
+              q = "SELECT table_schema,table_name,column_name FROM information_schema.columns WHERE lower(column_name) LIKE '%email%' AND table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2,3"
+              res = run(prefix + ['-At', '-F', '\t', '-c', q], timeout=90)
+              if res.returncode != 0:
+                  report['adminAttempts'].append({'source': source, 'status': 'error', 'error': safe_text(res.stderr, 500)})
+                  return
+              cols = [line.split('\t') for line in res.stdout.splitlines() if line.count('\t') >= 2]
+              report['databaseSources'].append({'type': 'postgres', 'source': source, 'emailColumns': cols[:500]})
+              for schema, table, column in cols[:500]:
+                  ident = lambda s: '"' + s.replace('"', '""') + '"'
+                  sql = f"SELECT DISTINCT {ident(column)}::text FROM {ident(schema)}.{ident(table)} WHERE {ident(column)} IS NOT NULL LIMIT 5000"
+                  got = run(prefix + ['-At', '-c', sql], timeout=90)
+                  if got.returncode == 0:
+                      for value in got.stdout.splitlines():
+                          for email in EMAIL_RE.findall(value):
+                              add_email(email, f'{source}:{schema}.{table}.{column}', 'postgres-row')
+
+          if shutil.which('docker'):
+              ps = run(['docker', 'ps', '--format', '{{json .}}'], timeout=30)
+              for line in ps.stdout.splitlines():
+                  try:
+                      item = json.loads(line)
+                  except Exception:
+                      continue
+                  report['containers'].append({k: item.get(k) for k in ('ID','Image','Names','Status','Ports')})
+                  image = (item.get('Image') or '').lower()
+                  name = item.get('Names') or item.get('ID')
+                  if 'postgres' in image and name:
+                      inspect = run(['docker', 'inspect', name], timeout=30)
+                      try:
+                          env_list = json.loads(inspect.stdout)[0]['Config'].get('Env', [])
+                          env_map = dict(x.split('=', 1) for x in env_list if '=' in x)
+                          user = env_map.get('POSTGRES_USER', 'postgres')
+                          dbname = env_map.get('POSTGRES_DB', user)
+                          inspect_postgres_command(['docker', 'exec', name, 'psql', '-U', user, '-d', dbname], f'docker:{name}:{dbname}')
+                      except Exception as exc:
+                          report['adminAttempts'].append({'source': f'docker:{name}', 'status': 'error', 'error': safe_text(exc)})
+
+          for url in database_urls:
+              try:
+                  parsed = urllib.parse.urlparse(url)
+                  if parsed.scheme in {'postgres', 'postgresql'} and shutil.which('psql'):
+                      inspect_postgres_command(['psql', url], 'DATABASE_URL:postgres')
+              except Exception as exc:
+                  report['adminAttempts'].append({'source': 'DATABASE_URL', 'status': 'error', 'error': safe_text(exc)})
+
+          def b64url(data):
+              return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+
+          def service_account_token(sa):
+              now = int(time.time())
+              header = b64url(json.dumps({'alg':'RS256','typ':'JWT'}, separators=(',',':')).encode())
+              payload = b64url(json.dumps({
+                  'iss': sa['client_email'],
+                  'scope': 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit',
+                  'aud': 'https://oauth2.googleapis.com/token',
+                  'iat': now,
+                  'exp': now + 3600,
+              }, separators=(',',':')).encode())
+              signing_input = f'{header}.{payload}'.encode()
+              with tempfile.NamedTemporaryFile('w', delete=False) as keyfile:
+                  keyfile.write(sa['private_key'])
+                  key_path = keyfile.name
+              try:
+                  signed = subprocess.check_output(['openssl','dgst','-sha256','-sign',key_path], input=signing_input)
+              finally:
+                  os.unlink(key_path)
+              assertion = f'{header}.{payload}.{b64url(signed)}'
+              body = urllib.parse.urlencode({'grant_type':'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion':assertion}).encode()
+              req = urllib.request.Request('https://oauth2.googleapis.com/token', data=body, method='POST')
+              req.add_header('Content-Type','application/x-www-form-urlencoded')
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  return json.load(resp)['access_token']
+
+          def api_json(url, token):
+              req = urllib.request.Request(url)
+              req.add_header('Authorization', f'Bearer {token}')
+              with urllib.request.urlopen(req, timeout=45) as resp:
+                  return json.load(resp)
+
+          known_targets = [
+              ('novelwrite-27763', '(default)'),
+              ('gen-lang-client-0205637637', 'brummage'),
+              ('gen-lang-client-0205637637', 'ai-studio-08a00c39-531c-4982-a77f-5179077846d4'),
+          ]
+
+          def query_google_admin(token, credential_source):
+              projects = sorted(set([p for p, _ in known_targets]))
+              for project in projects:
+                  page_token = None
+                  total = 0
+                  try:
+                      while True:
+                          url = f'https://identitytoolkit.googleapis.com/v1/projects/{project}/accounts:batchGet?maxResults=1000'
+                          if page_token:
+                              url += '&nextPageToken=' + urllib.parse.quote(page_token)
+                          data = api_json(url, token)
+                          for user in data.get('users', []):
+                              email = user.get('email')
+                              if email:
+                                  item = {
+                                      'project': project,
+                                      'email': email.lower(),
+                                      'displayName': safe_text(user.get('displayName')),
+                                      'uid': safe_text(user.get('localId')),
+                                      'createdAt': safe_text(user.get('createdAt')),
+                                      'lastLoginAt': safe_text(user.get('lastLoginAt')),
+                                      'source': credential_source,
+                                  }
+                                  report['firebaseAuthUsers'].append(item)
+                                  add_structured(f'firebase-auth:{project}:{credential_source}', item, 'firebase-auth')
+                              total += 1
+                          page_token = data.get('nextPageToken')
+                          if not page_token:
+                              break
+                      report['adminAttempts'].append({'source': credential_source, 'target': f'firebase-auth:{project}', 'status': 'ok', 'count': total})
+                  except Exception as exc:
+                      report['adminAttempts'].append({'source': credential_source, 'target': f'firebase-auth:{project}', 'status': 'error', 'error': safe_text(exc, 500)})
+
+              for project, database in known_targets:
+                  page_token = None
+                  total = 0
+                  try:
+                      while True:
+                          db = urllib.parse.quote(database, safe='')
+                          url = f'https://firestore.googleapis.com/v1/projects/{project}/databases/{db}/documents/users?pageSize=1000'
+                          if page_token:
+                              url += '&pageToken=' + urllib.parse.quote(page_token)
+                          data = api_json(url, token)
+                          for doc in data.get('documents', []):
+                              fields = doc.get('fields', {})
+                              def field(name):
+                                  obj = fields.get(name, {})
+                                  return obj.get('stringValue') or obj.get('integerValue') or obj.get('timestampValue')
+                              email = field('email')
+                              if email:
+                                  item = {
+                                      'project': project, 'database': database,
+                                      'email': email.lower(),
+                                      'displayName': safe_text(field('displayName')),
+                                      'uid': doc.get('name','').rsplit('/',1)[-1],
+                                      'createdAt': safe_text(field('createdAt') or doc.get('createTime')),
+                                      'lastLoginAt': safe_text(field('lastLoginAt') or doc.get('updateTime')),
+                                      'source': credential_source,
+                                  }
+                                  report['firestoreUsers'].append(item)
+                                  add_structured(f'firestore:{project}:{database}:{credential_source}', item, 'firestore-user')
+                              total += 1
+                          page_token = data.get('nextPageToken')
+                          if not page_token:
+                              break
+                      report['adminAttempts'].append({'source': credential_source, 'target': f'firestore:{project}:{database}', 'status': 'ok', 'count': total})
+                  except Exception as exc:
+                      report['adminAttempts'].append({'source': credential_source, 'target': f'firestore:{project}:{database}', 'status': 'error', 'error': safe_text(exc, 500)})
+
+          for index, sa in enumerate(service_accounts[:20]):
+              source = f'service-account:{sa.get("client_email")}:{index}'
+              try:
+                  token = service_account_token(sa)
+                  query_google_admin(token, source)
+              except Exception as exc:
+                  report['adminAttempts'].append({'source': source, 'status': 'token_error', 'error': safe_text(exc, 500)})
+
+          if shutil.which('gcloud'):
+              for command, label in [
+                  (['gcloud','auth','application-default','print-access-token'], 'gcloud-adc'),
+                  (['gcloud','auth','print-access-token'], 'gcloud-user'),
+              ]:
+                  try:
+                      res = run(command, timeout=45)
+                      token = res.stdout.strip()
+                      if res.returncode == 0 and token:
+                          query_google_admin(token, label)
+                      else:
+                          report['adminAttempts'].append({'source': label, 'status': 'token_error', 'error': safe_text(res.stderr, 500)})
+                  except Exception as exc:
+                      report['adminAttempts'].append({'source': label, 'status': 'token_error', 'error': safe_text(exc, 500)})
+
+          if shutil.which('firebase'):
+              for project in sorted(set(p for p, _ in known_targets)):
+                  tmp = tempfile.NamedTemporaryFile(suffix='.json', delete=False)
+                  tmp.close()
+                  try:
+                      res = run(['firebase','auth:export',tmp.name,'--project',project,'--format=json','--non-interactive'], timeout=120)
+                      if res.returncode == 0:
+                          data = json.loads(Path(tmp.name).read_text())
+                          users = data.get('users', data if isinstance(data, list) else [])
+                          for user in users:
+                              email = user.get('email')
+                              if email:
+                                  item = {
+                                      'project': project,
+                                      'email': email.lower(),
+                                      'displayName': safe_text(user.get('displayName')),
+                                      'uid': safe_text(user.get('localId') or user.get('uid')),
+                                      'createdAt': safe_text(user.get('createdAt')),
+                                      'lastLoginAt': safe_text(user.get('lastLoginAt')),
+                                      'source': 'firebase-cli',
+                                  }
+                                  report['firebaseAuthUsers'].append(item)
+                                  add_structured(f'firebase-cli:{project}', item, 'firebase-auth-export')
+                          report['adminAttempts'].append({'source': 'firebase-cli', 'target': project, 'status': 'ok', 'count': len(users)})
+                      else:
+                          report['adminAttempts'].append({'source': 'firebase-cli', 'target': project, 'status': 'error', 'error': safe_text(res.stderr, 500)})
+                  except Exception as exc:
+                      report['adminAttempts'].append({'source': 'firebase-cli', 'target': project, 'status': 'error', 'error': safe_text(exc, 500)})
+                  finally:
+                      try: os.unlink(tmp.name)
+                      except Exception: pass
+
+          report['summary'] = {
+              'uniquePossibleUserEmails': sorted(set(x['email'] for x in report['emails'] if x['classification'] == 'possible-user')),
+              'possibleUserEmailCount': len(set(x['email'] for x in report['emails'] if x['classification'] == 'possible-user')),
+              'structuredUserCount': len(report['structuredUsers']),
+              'firebaseAuthUserCount': len(report['firebaseAuthUsers']),
+              'firestoreUserCount': len(report['firestoreUsers']),
+          }
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 \
+            "${ATLAS_USER}@${ATLAS_HOST}" 'python3 -' \
+            < /tmp/atlas_user_audit.py > audit-output/report.json
+
+          test -s audit-output/report.json
+          jq '{generatedAt, summary, scan:{filesExamined:.scan.filesExamined,filesSkipped:.scan.filesSkipped}, containers:(.containers|length), adminAttempts:(.adminAttempts|length)}' audit-output/report.json
+
+      - name: Encrypt audit result
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/audit-public.pem <<'KEY'
+          -----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAq5OBklcUw+R4b80ZhGmk
+          7QzTW4SnyIN+qHEymnVDPeaX2wRCfgN69UyUAFWMAxSrA9iqt3chqPCDCuA1U3Pv
+          HFHkrnePo87YatCZKdllFEkaiZN2lBKL5s/fzixVuvGfcm6A5bBVYZpo7nPcU8Sj
+          Kj+0aaPXYAj87l9lNEjXi1aEGtxoDQ5QF6+pcaGWegFoQL5quHO8HK/e0iA3LV9U
+          6cs5sisSlvxx3k8dRoBV8/62w1uDQTEYaWQraz+bNUX9TaYXGu4PdHhun+w69hs3
+          hANmwW/TxM7mRVTH+fDPiKjOWLxgkdkzk0CK8PyLGshY+W1d4iH537NXNkAw9Sie
+          VGOWUI5FBrmCvI1Kaf9CwoaiqQ2ucR/YhYzllSzfd7v4UEF5vmCyb/ZUmxsNfffq
+          IJCGL1Bf/9Yloq3/6Xb7xVr2bBqO/XT5zyekdU1cc6M7mvwZm+ETobVXMS//WWfl
+          peKlT9xm4koAPHB8rtMEcGlQpecROv7KBnu2cQU3BkQHAgMBAAE=
+          -----END PUBLIC KEY-----
+          KEY
+          openssl rand -hex 32 > /tmp/audit-pass.txt
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -pass file:/tmp/audit-pass.txt \
+            -in audit-output/report.json \
+            -out audit-output/report.json.enc
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/audit-public.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/audit-pass.txt -out audit-output/passphrase.enc
+          sha256sum audit-output/report.json.enc audit-output/passphrase.enc
+          shred -u audit-output/report.json /tmp/audit-pass.txt ~/.ssh/id_ed25519 || true
+
+      - name: Upload encrypted audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-historic-users-encrypted
+          path: |
+            audit-output/report.json.enc
+            audit-output/passphrase.enc
+          if-no-files-found: error
+          retention-days: 1
