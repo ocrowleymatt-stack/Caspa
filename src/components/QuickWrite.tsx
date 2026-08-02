@@ -221,7 +221,7 @@ export default function QuickWrite({
       if (!res.ok || !json.success) throw new Error(json.message || 'Draft failed');
       const text = json.data.text || '';
       onDraftChange(text);
-      if (hold && focus) setPlotHold(markBeatDrafted(hold, focus.title));
+      if (hold && focus) setPlotHold(markBeatDrafted(focus.id));
       setCritic(json.data.criticReport || '');
       setQualityScore(json.data.quality?.overallScore ?? null);
       setStep('draft');
@@ -260,7 +260,7 @@ export default function QuickWrite({
         mode
       );
       onDraftChange(`${draftPage.trim()}${heading}${next}`.trim());
-      if (hold && focus) setPlotHold(markBeatDrafted(hold, focus.title));
+      if (hold && focus) setPlotHold(markBeatDrafted(focus.id));
       const got = json.data.wordCount?.toLocaleString?.() || countWords(next).toLocaleString();
       const aim = json.data.sectionTarget ? ` (target ${Number(json.data.sectionTarget).toLocaleString()})` : '';
       setStatus(`Added ${got} words${aim}.`);
@@ -313,7 +313,7 @@ export default function QuickWrite({
           manuscript = `${manuscript.trim()}${sectionHeading(beat.title, done, mode)}${chunk}`.trim();
         }
         onDraftChange(manuscript);
-        hold = markBeatDrafted(hold, beat.title);
+        hold = markBeatDrafted(beat.id) || hold;
         setPlotHold(hold);
         if (json.data.quality?.overallScore != null) lastScore = json.data.quality.overallScore;
         done += 1;

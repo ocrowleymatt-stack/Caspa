@@ -828,7 +828,7 @@ app.post('/api/content/generate-illustrations', async (req, res) => {
     const grokService = createGrokImagineService();
     
     // Estimate cost upfront
-    const estimatedCost = grokService.estimateCost(illustrations.length);
+    const estimatedCost = grokService.estimateCost(illustrations);
 
     // Start generation (non-blocking)
     const generationPromise = grokService.generateIllustrations({
@@ -878,7 +878,9 @@ app.post('/api/content/estimate-cost', async (req, res) => {
     }
 
     const grokService = createGrokImagineService();
-    const estimatedCost = grokService.estimateCost(illustrationCount);
+    const estimatedCost = grokService.estimateCost(
+      Array.from({ length: illustrationCount }, () => ({}))
+    );
     const estimatedTimeSeconds = illustrationCount * 15; // rough estimate
 
     return res.json({
