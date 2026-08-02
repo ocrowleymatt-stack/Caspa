@@ -23,6 +23,16 @@ import caspaWriteRoutes from './src/routes/caspa-write-routes';
 import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 import { getBuildInfo } from './src/services/buildInfoService';
+import {
+  AI_PROVIDERS,
+  isProviderConfigured,
+  selectAttemptOrder,
+  createCircuitBreaker,
+} from './src/services/aiRouterPolicy';
+
+// Per-provider circuit breaker for /api/ai/call (skip a provider after it fails).
+const AI_PROVIDER_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 30_000;
+const aiBreaker = createCircuitBreaker(AI_PROVIDER_COOLDOWN_MS);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -319,15 +329,28 @@ app.post("/api/ai/call", async (req, res) => {
     providers.unshift(providerOverride);
   }
 
-  const allPossible = ['grok', 'openai', 'claude', 'gemini', 'venice'];
-  allPossible.forEach(p => {
+  AI_PROVIDERS.forEach(p => {
     if (!providers.includes(p)) {
       providers.push(p);
     }
   });
 
+  // Skip providers with no key, and skip any currently in circuit-breaker cooldown
+  // (unless every configured provider is cooling down — then try them anyway).
+  const { attempt, anyConfigured } = selectAttemptOrder(
+    providers,
+    (p) => isProviderConfigured(p),
+    (p) => aiBreaker.isOpen(p),
+  );
+
+  if (!anyConfigured) {
+    return res.status(503).json({
+      message: "No AI provider configured on the server. Set one of GROK/OPENAI/ANTHROPIC/GEMINI/VENICE API keys (or run Ollama).",
+    });
+  }
+
   let lastError = null;
-  for (const provider of providers) {
+  for (const provider of attempt) {
     try {
       let result: string | null = null;
       console.log(`[Express Backend] Trying provider: ${provider} for prompt`);
@@ -351,10 +374,12 @@ app.post("/api/ai/call", async (req, res) => {
       }
 
       if (result) {
+        aiBreaker.recordSuccess(provider);
         console.log(`[Express Backend] Provider ${provider} succeeded.`);
         return res.json({ result, provider });
       }
     } catch (error: any) {
+      aiBreaker.recordFailure(provider);
       console.warn(`[Express Backend] Provider ${provider} failed:`, error.message || error);
       lastError = error;
       // Continue loop for fallbacks
