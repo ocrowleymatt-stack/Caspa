@@ -1,4 +1,6 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
 import { BookMetadataService } from "./BookMetadataService";
 import { ContentIntelligence } from './ContentIntelligenceService';
 import { CMYKValidator } from './CMYKValidator';
@@ -490,25 +492,25 @@ export class PDFAssemblyService {
     try {
       // Write temporary RGB PDF
       const tempDir = '/tmp/caspa-cmyk-convert';
-      if (!require('fs').existsSync(tempDir)) {
-        require('fs').mkdirSync(tempDir, { recursive: true });
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
       }
       
-      const tempRGBPath = require('path').join(tempDir, `temp-${Date.now()}.pdf`);
-      const tempCMYKPath = require('path').join(tempDir, `temp-cmyk-${Date.now()}.pdf`);
+      const tempRGBPath = path.join(tempDir, `temp-${Date.now()}.pdf`);
+      const tempCMYKPath = path.join(tempDir, `temp-cmyk-${Date.now()}.pdf`);
       
-      require('fs').writeFileSync(tempRGBPath, screenPDF.buffer);
+      fs.writeFileSync(tempRGBPath, screenPDF.buffer);
       
       // Validate and convert
       const validator = new CMYKValidator();
       const result = await validator.convertRGBToCMYK(tempRGBPath, tempCMYKPath);
       
-      if (result.success && require('fs').existsSync(tempCMYKPath)) {
-        const cmykBuffer = require('fs').readFileSync(tempCMYKPath);
+      if (result.success && fs.existsSync(tempCMYKPath)) {
+        const cmykBuffer = fs.readFileSync(tempCMYKPath);
         
         // Clean up temp files
-        require('fs').unlinkSync(tempRGBPath);
-        require('fs').unlinkSync(tempCMYKPath);
+        fs.unlinkSync(tempRGBPath);
+        fs.unlinkSync(tempCMYKPath);
         
         return {
           buffer: cmykBuffer,
@@ -522,9 +524,9 @@ export class PDFAssemblyService {
         };
       } else {
         // Fallback to RGB if conversion fails
-        require('fs').unlinkSync(tempRGBPath);
-        if (require('fs').existsSync(tempCMYKPath)) {
-          require('fs').unlinkSync(tempCMYKPath);
+        fs.unlinkSync(tempRGBPath);
+        if (fs.existsSync(tempCMYKPath)) {
+          fs.unlinkSync(tempCMYKPath);
         }
         console.warn('CMYK conversion failed, returning RGB:', result.error);
         return screenPDF;
