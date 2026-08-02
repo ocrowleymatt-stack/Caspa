@@ -1,0 +1,179 @@
+name: Trusted Atlas user audit
+
+on:
+  push:
+    branches:
+      - audit/atlas-historic-users-20260802
+    paths:
+      - '.github/workflows/audit-atlas-users-push.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Prepare trusted SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key" || { echo '::error::No Atlas SSH key available'; exit 2; }
+          mkdir -p ~/.ssh audit-output
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Collect read-only user evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/atlas_users.py <<'PY'
+          import json, os, re, sqlite3, subprocess
+          from pathlib import Path
+
+          rx = re.compile(r'(?i)(?<![A-Z0-9._%+\-])[A-Z0-9._%+\-]{1,64}@[A-Z0-9.-]{1,253}\.[A-Z]{2,63}(?![A-Z0-9._%+\-])')
+          roots = [Path('/root/Caspa'), Path('/root/.pm2/logs'), Path('/opt/atlas'), Path('/var/www'), Path('/var/lib/docker/volumes'), Path('/root')]
+          skip = {'.git','node_modules','dist','build','.cache','.npm','.pnpm-store','models','blobs','overlay2','containers'}
+          text_ext = {'.json','.jsonl','.ndjson','.csv','.tsv','.txt','.log','.sql','.env','.yaml','.yml','.md','.xml','.html','.conf','.ini','.toml','.backup'}
+          db_ext = {'.db','.sqlite','.sqlite3'}
+          found = {}
+          databases = []
+          errors = []
+          files = 0
+
+          def add(email, source, kind, context=None):
+              email = email.strip('.,;:()[]{}<>\"\'').lower()
+              if not rx.fullmatch(email): return
+              key = (email, source, kind)
+              if key in found: return
+              found[key] = {'email':email,'source':source,'kind':kind,'context':context or {}}
+
+          def scan_db(path):
+              try:
+                  con = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+                  con.row_factory = sqlite3.Row
+                  tables = [r[0] for r in con.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'")]
+                  hit_tables = []
+                  for table in tables:
+                      qtable = '"' + table.replace('"','""') + '"'
+                      cols = [r[1] for r in con.execute(f'pragma table_info({qtable})')]
+                      ecols = [c for c in cols if 'email' in c.lower()]
+                      if not ecols: continue
+                      hit_tables.append({'table':table,'emailColumns':ecols,'columns':cols[:100]})
+                      identity = [c for c in cols if c.lower() in {'id','uid','user_id','userid','name','display_name','displayname','role','created_at','createdat','last_login_at','lastloginat'}]
+                      for ec in ecols:
+                          selected = list(dict.fromkeys([ec] + identity))
+                          qcols = ','.join('"'+c.replace('"','""')+'"' for c in selected)
+                          try:
+                              for row in con.execute(f'SELECT {qcols} FROM {qtable} WHERE "{ec.replace(chr(34),chr(34)*2)}" IS NOT NULL LIMIT 5000'):
+                                  data = dict(row)
+                                  for email in rx.findall(str(data.get(ec,''))):
+                                      context = {k:str(v)[:200] for k,v in data.items() if k != ec and v is not None}
+                                      add(email, f'sqlite:{path}:{table}', 'database-row', context)
+                          except Exception as exc:
+                              errors.append(f'{path}:{table}:{ec}: {exc}')
+                  con.close()
+                  if hit_tables: databases.append({'path':str(path),'tables':hit_tables})
+              except Exception as exc:
+                  errors.append(f'open {path}: {exc}')
+
+          visited = set()
+          for root in roots:
+              if not root.exists(): continue
+              real = str(root.resolve())
+              if real in visited: continue
+              visited.add(real)
+              for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+                  dirnames[:] = [d for d in dirnames if d not in skip]
+                  for name in filenames:
+                      files += 1
+                      if files > 100000: break
+                      p = Path(dirpath)/name
+                      try:
+                          if p.is_symlink() or not p.is_file(): continue
+                          if p.suffix.lower() in db_ext or name in {'database.sqlite','webui.db'}:
+                              scan_db(p); continue
+                          if p.stat().st_size > 12*1024*1024: continue
+                          if p.suffix.lower() not in text_ext and not name.startswith('.env'): continue
+                          raw = p.read_bytes()
+                          if b'\x00' in raw[:8192]: continue
+                          text = raw.decode('utf-8','ignore')
+                          for email in rx.findall(text): add(email, str(p), 'text-file')
+                      except Exception as exc:
+                          errors.append(f'{p}: {exc}')
+                  if files > 100000: break
+
+          containers = []
+          try:
+              ps = subprocess.run(['docker','ps','--format','{{json .}}'],text=True,capture_output=True,timeout=30)
+              for line in ps.stdout.splitlines():
+                  try: containers.append(json.loads(line))
+                  except Exception: pass
+          except Exception as exc: errors.append(f'docker: {exc}')
+
+          print(json.dumps({
+              'host':os.uname().nodename,
+              'filesExamined':files,
+              'emails':sorted(found.values(), key=lambda x:(x['email'],x['source'])),
+              'uniqueEmails':sorted(set(x['email'] for x in found.values())),
+              'databases':databases,
+              'containers':containers,
+              'errors':errors[:1000]
+          }, indent=2))
+          PY
+
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 \
+            "${ATLAS_USER}@${ATLAS_HOST}" 'python3 -' \
+            < /tmp/atlas_users.py > audit-output/report.json
+          test -s audit-output/report.json
+          jq '{filesExamined, uniqueEmailCount:(.uniqueEmails|length), databaseCount:(.databases|length), containerCount:(.containers|length), errorCount:(.errors|length)}' audit-output/report.json
+
+      - name: Encrypt before upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/public.pem <<'KEY'
+          -----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAq5OBklcUw+R4b80ZhGmk
+          7QzTW4SnyIN+qHEymnVDPeaX2wRCfgN69UyUAFWMAxSrA9iqt3chqPCDCuA1U3Pv
+          HFHkrnePo87YatCZKdllFEkaiZN2lBKL5s/fzixVuvGfcm6A5bBVYZpo7nPcU8Sj
+          Kj+0aaPXYAj87l9lNEjXi1aEGtxoDQ5QF6+pcaGWegFoQL5quHO8HK/e0iA3LV9U
+          6cs5sisSlvxx3k8dRoBV8/62w1uDQTEYaWQraz+bNUX9TaYXGu4PdHhun+w69hs3
+          hANmwW/TxM7mRVTH+fDPiKjOWLxgkdkzk0CK8PyLGshY+W1d4iH537NXNkAw9Sie
+          VGOWUI5FBrmCvI1Kaf9CwoaiqQ2ucR/YhYzllSzfd7v4UEF5vmCyb/ZUmxsNfffq
+          IJCGL1Bf/9Yloq3/6Xb7xVr2bBqO/XT5zyekdU1cc6M7mvwZm+ETobVXMS//WWfl
+          peKlT9xm4koAPHB8rtMEcGlQpecROv7KBnu2cQU3BkQHAgMBAAE=
+          -----END PUBLIC KEY-----
+          KEY
+          openssl rand -hex 32 > /tmp/pass.txt
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/pass.txt \
+            -in audit-output/report.json -out audit-output/report.json.enc
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/public.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/pass.txt -out audit-output/passphrase.enc
+          sha256sum audit-output/report.json.enc audit-output/passphrase.enc
+          shred -u audit-output/report.json /tmp/pass.txt ~/.ssh/id_ed25519 || true
+
+      - name: Upload encrypted result
+        uses: actions/upload-artifact@v4
+        with:
+          name: trusted-atlas-users-encrypted
+          path: |
+            audit-output/report.json.enc
+            audit-output/passphrase.enc
+          retention-days: 1
+          if-no-files-found: error
