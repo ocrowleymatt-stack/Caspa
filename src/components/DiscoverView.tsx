@@ -379,7 +379,7 @@ export default function DiscoverView({
                   <span className="text-xs text-gray-500">{(f.size / 1024).toFixed(0)}KB</span>
                   {f.status === 'parsing' && <Loader2 size={14} className="text-violet-400 animate-spin" />}
                   {f.status === 'ready' && <CheckCircle2 size={14} className="text-emerald-400" />}
-                  {f.status === 'error' && <AlertCircle size={14} className="text-red-400" title={f.error} />}
+                  {f.status === 'error' && <span title={f.error}><AlertCircle size={14} className="text-red-400" /></span>}
                   <button
                     onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
                     disabled={isProcessing}
