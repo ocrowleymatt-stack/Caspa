@@ -33,8 +33,7 @@ async function callGemini(prompt: string, json: boolean = false): Promise<string
         ...(json ? { responseMimeType: 'application/json' } : {}),
       },
     });
-    const text = response.response.text();
-    return text;
+    return response.text || '';
   } catch (error) {
     console.error('Gemini API error:', error);
     throw error;

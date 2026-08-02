@@ -21,9 +21,9 @@ let metadataService: BookMetadataService | null = null;
 let apiManager: ServiceAPIManager | null = null;
 
 function getMetadataService() {
-  const gemini = getGemini();
-  if (!metadataService && gemini) {
-    metadataService = new BookMetadataService(gemini);
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!metadataService && apiKey) {
+    metadataService = new BookMetadataService(apiKey);
   }
   return metadataService;
 }
@@ -39,7 +39,7 @@ function getAPIManager() {
       // Create a minimal API manager without metadata (phase 4a test mode)
       console.log('⚠️  Gemini API not configured - metadata generation disabled');
       // Use a mock metadata service for now
-      const mockMetadata = new BookMetadataService(gemini || ({} as any));
+      const mockMetadata = new BookMetadataService('');
       apiManager = new ServiceAPIManager(pdfService, mockMetadata, gemini || ({} as any));
     }
   }

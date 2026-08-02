@@ -1,6 +1,22 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { BookMetadataService } from "./BookMetadataService";
-import { ContentIntelligence, IllustrationAsset } from './ContentIntelligenceService';
+import { ContentIntelligence } from './ContentIntelligenceService';
+import { CMYKValidator } from './CMYKValidator';
+
+/** A generated illustration ready to place in the PDF (url + caption). */
+export interface AssembledIllustration {
+  url: string;
+  description: string;
+}
+
+/** Output shape for the simple text-only PDF helpers used by the batch service. */
+export interface SimplePDFOutput {
+  format: string;
+  colorSpace: 'sRGB' | 'CMYK';
+  resolution: number;
+  pageCount: number;
+  fileSize: number;
+}
 
 export interface DesignProfile {
   typography: {
@@ -55,24 +71,26 @@ export interface PDFOutput {
 
 export interface AssemblyOptions {
   contentIntelligence: ContentIntelligence;
-  illustrations: IllustrationAsset[];
+  illustrations: AssembledIllustration[];
   designProfile: DesignProfile;
   outputMode: 'screen' | 'professional';
   turbo?: boolean; // Skip some optimizations for speed
 }
 
-class PDFAssemblyService {
+export class PDFAssemblyService {
   private browser: Browser | null = null;
 
   /**
-   * Initialize Puppeteer browser instance
+   * Initialize Puppeteer browser instance.
+   * Honours PUPPETEER_EXECUTABLE_PATH, otherwise uses the bundled Chromium
+   * (matches caspa-export-routes so it launches in every environment).
    */
   async initBrowser(): Promise<void> {
     if (!this.browser) {
       this.browser = await puppeteer.launch({
-        executablePath: '/usr/bin/chromium-browser',
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       });
     }
   }
@@ -164,7 +182,7 @@ class PDFAssemblyService {
       await page.setContent(html, { waitUntil: 'networkidle2' });
 
       // Screen-friendly settings
-      const buffer = await page.pdf({
+      const buffer = Buffer.from(await page.pdf({
         format: 'A4',
         margin: {
           top: `${options.designProfile.layout.marginTop}mm`,
@@ -174,7 +192,7 @@ class PDFAssemblyService {
         },
         printBackground: true,
         preferCSSPageSize: true,
-      });
+      }));
 
       const pageCount = (await page.evaluate(() => {
         const style = document.createElement('style');
@@ -241,7 +259,7 @@ class PDFAssemblyService {
       const bleedMm = printSpec.bleedSize;
       const safetyMm = printSpec.safetyZone;
 
-      const buffer = await page.pdf({
+      const buffer = Buffer.from(await page.pdf({
         format: 'A4',
         margin: {
           top: `${options.designProfile.layout.marginTop + safetyMm}mm`,
@@ -251,7 +269,7 @@ class PDFAssemblyService {
         },
         printBackground: true,
         preferCSSPageSize: true,
-      });
+      }));
 
       // In production, this would invoke actual CMYK conversion via ImageMagick or similar
       console.log(
@@ -313,7 +331,7 @@ class PDFAssemblyService {
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>${contentIntelligence.documentType}</title>
+      <title>${contentIntelligence.documentType.category}</title>
       <style>
         * {
           margin: 0;
@@ -387,15 +405,15 @@ class PDFAssemblyService {
       <div class="print-spec" data-color-space="${spec.colorSpace}" data-resolution="${spec.resolution}dpi" 
            data-bleed="${spec.bleedSize}mm" data-safety="${spec.safetyZone}mm"></div>
       
-      <h1>${contentIntelligence.title}</h1>
-      <p>${contentIntelligence.summary}</p>
+      <h1>${contentIntelligence.documentType.category}</h1>
+      <p>${contentIntelligence.structure.mainContent}</p>
 
       ${illustrationHTML}
 
       <div data-page>
         <h2>Document Specification</h2>
-        <p><strong>Type:</strong> ${contentIntelligence.documentType}</p>
-        <p><strong>Pages:</strong> ~${contentIntelligence.estimatedPageCount}</p>
+        <p><strong>Type:</strong> ${contentIntelligence.documentType.type}</p>
+        <p><strong>Pages:</strong> ~${contentIntelligence.documentType.estimatedPages}</p>
         <p><strong>Color Space:</strong> ${spec.colorSpace}</p>
         <p><strong>Resolution:</strong> ${spec.resolution} DPI</p>
         <p><strong>Bleed:</strong> ${spec.bleedSize}mm</p>
@@ -419,7 +437,7 @@ class PDFAssemblyService {
   /**
    * Simple text-based PDF generation for service API
    */
-  async generateSimpleScreenPDF(title: string, content: string): Promise<{ buffer: Buffer; output: PDFOutput }> {
+  async generateSimpleScreenPDF(title: string, content: string): Promise<{ buffer: Buffer; output: SimplePDFOutput }> {
     await this.initBrowser();
     if (!this.browser) throw new Error('Browser initialization failed');
 
@@ -444,11 +462,11 @@ class PDFAssemblyService {
     const page = await this.browser.newPage();
     try {
       await page.setContent(html, { waitUntil: 'networkidle2' });
-      const buffer = await page.pdf({
+      const buffer = Buffer.from(await page.pdf({
         format: 'A4',
         margin: { top: '20mm', bottom: '20mm', left: '25mm', right: '20mm' },
         printBackground: true,
-      });
+      }));
 
       return {
         buffer,
@@ -465,7 +483,7 @@ class PDFAssemblyService {
     }
   }
 
-  async generateSimpleProfessionalPDF(title: string, content: string): Promise<{ buffer: Buffer; output: PDFOutput }> {
+  async generateSimpleProfessionalPDF(title: string, content: string): Promise<{ buffer: Buffer; output: SimplePDFOutput }> {
     // Phase 4b: Generate screen PDF then convert to CMYK for professional print
     const screenPDF = await this.generateSimpleScreenPDF(title, content);
     
