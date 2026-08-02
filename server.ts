@@ -8,7 +8,6 @@ import { createGrokImagineService, type GenerationRequest, type GenerationResult
 import pdfRoutes from './src/services/pdf-assembly-routes';
 import { createBookMetadataRoutes } from './src/services/book-metadata-routes';
 import serviceApiRoutes from './src/services/service-api-routes';
-import phase6Routes from './src/services/phase6-routes';
 import ollamaRoutes from './src/routes/ollama-routes';
 import assistantRoutes from './src/routes/assistant-routes';
 import caspaResearchRoutes from './src/routes/caspa-research-routes';
@@ -923,7 +922,6 @@ app.post('/api/content/estimate-cost', async (req, res) => {
 // Mount PDF Assembly routes (BEFORE static/Vite middleware)
 app.use("/api/metadata", createBookMetadataRoutes(process.env.GEMINI_API_KEY!));
 app.use("/api/service", serviceApiRoutes);
-app.use("/api/phase6", phase6Routes);
 app.use("/api/ollama", ollamaRoutes);
 app.use("/api/caspa/research", caspaResearchRoutes);
 app.use("/api/caspa/canvas", caspaCanvasRoutes);
