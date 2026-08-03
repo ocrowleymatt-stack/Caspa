@@ -61,6 +61,8 @@ import QuickWrite from './components/QuickWrite';
 import StudioToolBridge, { type StudioToolId } from './components/StudioToolBridge';
 import ShowBoxStudio from './components/ShowBoxStudio';
 import ShowCommandCenter from './components/ShowCommandCenter';
+import LegalCasesDashboard from './components/LegalCasesDashboard';
+import BettingGamePanel from './components/BettingGamePanel';
 import {
   completeProject,
   loadProjectSnapshot,
@@ -138,6 +140,8 @@ type ViewType =
   | 'canvas'
   | 'settings'
   | 'showbox'
+  | 'legal-cases'
+  | 'betting-game'
   | StudioToolId;
 
 type ProjectBrief = {
@@ -292,6 +296,11 @@ const studioNav: NavItem[] = [
   { id: 'autodraft', label: 'Auto Drafter', detail: 'Deep-draft chapters', group: 'studio', icon: Zap },
   { id: 'pilot', label: 'Pilot Seat', detail: 'Directive steering', group: 'studio', icon: Navigation2 },
   { id: 'prizes', label: 'Prize Calibration', detail: 'Lens pressure test', group: 'studio', icon: Award },
+];
+
+const omniToolNav: NavItem[] = [
+  { id: 'legal-cases', label: 'Legal Cases', detail: 'Browse investigations and evidence', group: 'advanced', icon: FileText },
+  { id: 'betting-game', label: 'Betting Game', detail: 'ML predictions and leaderboard', group: 'advanced', icon: Zap },
 ];
 
 const modeCards: Array<{
@@ -847,6 +856,10 @@ function CaspaUI() {
         );
       case 'settings':
         return <SettingsStudio userEmail={authContext.user?.email} />;
+      case 'legal-cases':
+        return <LegalCasesDashboard />;
+      case 'betting-game':
+        return <BettingGamePanel />;
       default:
         if (isStudioTool(currentView)) {
           return (
@@ -940,6 +953,23 @@ function CaspaUI() {
             {studioOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
           {studioOpen && studioNav.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === currentView;
+            return (
+              <button key={item.id} onClick={() => goTo(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, border: 'none', borderRadius: 16, padding: '10px 12px', marginBottom: 4, cursor: 'pointer', textAlign: 'left', background: active ? '#2f2415' : 'transparent', color: active ? '#ffe2a5' : '#c9b898' }}>
+                <Icon size={16} />
+                <span>
+                  <strong style={{ display: 'block', fontSize: 13 }}>{item.label}</strong>
+                  <small style={{ color: active ? '#d6a846' : '#7a6d58', fontSize: 11 }}>{item.detail}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4, color: '#8f8068', margin: '0 8px 8px' }}>Omni Tools</div>
+          {omniToolNav.map((item) => {
             const Icon = item.icon;
             const active = item.id === currentView;
             return (
