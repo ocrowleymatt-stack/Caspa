@@ -81,7 +81,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { AIService } from './services/ai';
 
 // Components
-import Dashboard from './components/Dashboard';
+import Dashboard from './components/_orphans/Dashboard.music-sketch';
 import Brainstorm from './components/Brainstorm';
 import CharacterForge from './components/CharacterForge';
 import PlotArchitect from './components/PlotArchitect';
