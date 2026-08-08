@@ -524,6 +524,7 @@ router.post('/continue', async (req, res) => {
     prizeLensId,
     plotHold,
     output,
+    focusBeat: requestedFocusBeat,
     wholeBook = false,
     targetWordCount = null,
   } = req.body as {
@@ -535,6 +536,7 @@ router.post('/continue', async (req, res) => {
     prizeLensId?: string;
     plotHold?: ServerPlotHold;
     output?: string;
+    focusBeat?: string;
     wholeBook?: boolean;
     targetWordCount?: number | null;
   };
@@ -543,13 +545,20 @@ router.post('/continue', async (req, res) => {
   const resolvedGenre = genre?.trim() ? genre : defaultGenreForMode(safeMode);
   const lens = getAwardLens(prizeLensId);
   const holdBlock = buildServerPlotHoldBlock(plotHold);
+  const requestedTitle = requestedFocusBeat?.split(':', 1)[0]?.trim();
+  const requestedBeat = requestedTitle
+    ? plotHold?.beats?.find((b) => b.title.trim() === requestedTitle)
+    : null;
   const pending =
+    requestedBeat ||
     plotHold?.beats?.find((b) => (b.status || 'pending') === 'pending') ||
     plotHold?.beats?.find((b) => b.status !== 'drafted') ||
     null;
-  const focusBeat = pending
-    ? `${pending.title}: ${pending.turn}`
-    : 'Continue from the last page with the next inevitable turn.';
+  const focusBeat = requestedFocusBeat?.trim()
+    ? requestedFocusBeat.trim()
+    : pending
+      ? `${pending.title}: ${pending.turn}`
+      : 'Continue from the last page with the next inevitable turn.';
   const budget = budgetFromRequest({ mode: safeMode, targetWordCount, sourceText, plotHold });
   const kind = beatKindForMode(safeMode);
   const continueOutput =
@@ -597,7 +606,7 @@ router.post('/continue', async (req, res) => {
       data: {
         text,
         focusBeat,
-        beatTitle: pending?.title || null,
+        beatTitle: pending?.title || requestedTitle || null,
         wordCount: countWords(text),
         sectionTarget: budget?.sectionTarget ?? null,
         bookTarget: budget?.bookTarget ?? null,
@@ -626,4 +635,3 @@ router.get('/engine', (_req, res) => {
 });
 
 export default router;
-
