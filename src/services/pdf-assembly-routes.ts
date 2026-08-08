@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import PDFAssemblyService, { AssemblyOptions, PDFOutput } from './PDFAssemblyService';
 import { analyzeContent, ContentAnalysisInput, ContentIntelligence } from './ContentIntelligenceService';
 import { createGrokImagineService } from './GrokImagineService';
+import { CostEstimatorService } from './CostEstimatorService';
 import { GoogleGenAI } from '@google/genai';
 
 const router = Router();
@@ -33,8 +34,7 @@ async function callGemini(prompt: string, json: boolean = false): Promise<string
         ...(json ? { responseMimeType: 'application/json' } : {}),
       },
     });
-    const text = response.response.text();
-    return text;
+    return response.text || '';
   } catch (error) {
     console.error('Gemini API error:', error);
     throw error;
@@ -290,7 +290,6 @@ router.get('/pdf/specs', (req: Request, res: Response) => {
 // Cost Estimation
 router.post('/estimate', (req, res) => {
   try {
-    const { CostEstimatorService } = require('./CostEstimatorService');
     const estimator = new CostEstimatorService();
     const estimate = estimator.estimateCost(req.body);
     res.json(estimate);

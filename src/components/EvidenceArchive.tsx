@@ -267,7 +267,7 @@ const EvidenceArchive: React.FC<Props> = ({
                           <button onClick={() => setPreviewItem(item)} className="opacity-0 group-hover:opacity-100 ml-1 transition-opacity"><Eye size={11} className="text-text-secondary hover:text-text-primary" /></button>
                         </>
                       )}
-                      {item.status === 'error' && <AlertCircle size={11} className="text-red-400" title={item.errorMsg} />}
+                      {item.status === 'error' && <span title={item.errorMsg}><AlertCircle size={11} className="text-red-400" /></span>}
                       <button onClick={() => removeItem(item.id)} className="opacity-0 group-hover:opacity-100 ml-1 transition-opacity"><X size={11} className="text-text-secondary hover:text-red-400" /></button>
                     </div>
                   </div>

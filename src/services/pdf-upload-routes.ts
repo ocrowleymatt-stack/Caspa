@@ -7,7 +7,10 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs/promises';
-import * as pdfParse from 'pdf-parse';
+// Import the lib entry, not the package index: pdf-parse@1.x runs a debug block
+// (`if (!module.parent)`) that reads a bundled test PDF and crashes the process
+// when loaded via tsx/esbuild. The lib entry skips that wrapper.
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 
 const router = express.Router();
 
@@ -26,9 +29,7 @@ const upload = multer({
   },
 });
 
-interface UploadedFile extends Express.Multer.File {
-  path?: string;
-}
+type UploadedFile = Express.Multer.File;
 
 interface PDFContent {
   title?: string;

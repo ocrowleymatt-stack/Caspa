@@ -26,9 +26,15 @@ function extractMessageText(data: any): string | null {
   return joined.trim() || null;
 }
 
-type WebSearchResult =
-  | { ok: true; text: string }
-  | { ok: false; reason: 'not_configured' | 'timeout' | 'http_error' | 'empty' | 'network'; detail?: string };
+// Single shape (not a discriminated union): the project compiles without
+// strictNullChecks, where TS does not narrow the `else` branch of `if (x.ok)`,
+// so reason/detail must exist on the type directly.
+interface WebSearchResult {
+  ok: boolean;
+  text?: string;
+  reason?: 'not_configured' | 'timeout' | 'http_error' | 'empty' | 'network';
+  detail?: string;
+}
 
 async function grokWebSearch(prompt: string): Promise<WebSearchResult> {
   const key = grokKey();

@@ -56,6 +56,7 @@ import RedPenStudio from './components/RedPenStudio';
 import SettingsStudio from './components/SettingsStudio';
 import StoryBibleStudio from './components/StoryBibleStudio';
 import GuidedNextStep, { WorkflowChecklist } from './components/GuidedNextStep';
+import WorkflowStageBar from './components/WorkflowStageBar';
 import BookDesignStudio from './components/BookDesignStudio';
 import QuickWrite from './components/QuickWrite';
 import StudioToolBridge, { type StudioToolId } from './components/StudioToolBridge';
@@ -75,6 +76,7 @@ import {
   getNextStep,
   getProgressSummary,
   getWorkflowSteps,
+  stepToNavTarget,
   type WorkflowNavTarget,
 } from './services/projectWorkflowService';
 import { countWords, defaultTargetWordCount } from './services/wordCountService';
@@ -711,6 +713,30 @@ function CaspaUI() {
     saveBrief(next);
   };
 
+  const guidedNextStep = useMemo(
+    () => getNextStep(brief, draftPage, manuscriptSource, projectStatus),
+    [brief, draftPage, manuscriptSource, projectStatus]
+  );
+
+  const roomLabel = useMemo(() => {
+    const all = [...primaryNav, ...advancedNav, ...studioNav];
+    return all.find((n) => n.id === currentView)?.label;
+  }, [currentView]);
+
+  const showStageBar =
+    hasActiveProject() &&
+    currentView !== 'launchpad' &&
+    currentView !== 'project' &&
+    currentView !== 'library';
+
+  const handleStageContinue = () => {
+    if (guidedNextStep.id === 'complete_to_library') {
+      handleCompleteProject();
+      return;
+    }
+    goWorkflow(stepToNavTarget(guidedNextStep));
+  };
+
   const renderView = () => {
     switch (currentView) {
       case 'launchpad':
@@ -884,12 +910,12 @@ function CaspaUI() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100dvh', background: '#f5efe5', color: '#172033' }}>
+    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: '#f5efe5', color: '#172033' }}>
       <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mobile-menu" style={{ position: 'fixed', top: 16, left: 16, zIndex: 60, border: '1px solid #e0d3bf', background: '#fffaf2', borderRadius: 12, padding: 10 }}>
         {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
 
-      <aside style={{ width: 300, minWidth: 300, height: '100dvh', position: 'sticky', top: 0, background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar">
+      <aside style={{ width: 300, minWidth: 300, height: '100%', background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar">
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 28 }}>
           <div style={{ width: 46, height: 46, borderRadius: 16, background: '#d6a846', color: '#1a1208', display: 'grid', placeItems: 'center' }}><Sparkles size={24} /></div>
           <div>
@@ -990,7 +1016,19 @@ function CaspaUI() {
         </div>
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, minHeight: '100dvh' }}>{renderView()}</main>
+      <main style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          {renderView()}
+        </div>
+        {showStageBar ? (
+          <WorkflowStageBar
+            nextStep={guidedNextStep}
+            roomLabel={roomLabel}
+            onBack={() => goTo('project')}
+            onContinue={handleStageContinue}
+          />
+        ) : null}
+      </main>
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -1091,8 +1129,24 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
     onStart(mode, idea, tone, output, audience, targetWordCount);
   };
 
+  const ctaLabel =
+    mode === 'picture'
+      ? 'Open Design'
+      : mode === 'musical'
+        ? 'Open Show in a Box'
+        : mode === 'gold'
+          ? 'Open Gold'
+          : mode === 'script'
+            ? 'Start script'
+            : mode === 'nonfiction' || mode === 'essay'
+              ? 'Start non-fiction'
+              : mode === 'poetry'
+                ? 'Start poem'
+                : 'Start writing';
+
   return (
-    <section style={{ minHeight: '100vh', padding: '54px clamp(24px, 5vw, 72px)', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
+    <section style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
+      <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '54px clamp(24px, 5vw, 72px) 24px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)', marginBottom: 24 }}>
           <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
@@ -1207,21 +1261,36 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                     : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
           </p>
 
-          <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
-            <Sparkles size={19} />{' '}
-            {mode === 'picture'
-              ? 'Open Design'
-              : mode === 'musical'
-                ? 'Open Show in a Box'
-                : mode === 'gold'
-                  ? 'Open Gold'
-                  : mode === 'script'
-                    ? 'Start script'
-                    : mode === 'nonfiction' || mode === 'essay'
-                      ? 'Start non-fiction'
-                      : mode === 'poetry'
-                        ? 'Start poem'
-                        : 'Start writing'}
+        </div>
+      </div>
+      </div>
+
+      {/* Always-visible footer so the primary step is reachable without hunting/scrolling. */}
+      <div
+        style={{
+          flexShrink: 0,
+          borderTop: '1px solid #e3d8c4',
+          background: 'rgba(23,18,12,0.97)',
+          color: '#fffaf2',
+          boxShadow: '0 -10px 40px rgba(23,18,12,0.28)',
+          padding: '14px clamp(24px, 5vw, 72px)',
+        }}
+      >
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 14, color: '#d7c8aa' }}>
+            {idea.trim() ? (
+              <>
+                <strong style={{ color: '#fffaf2' }}>{selected.title}</strong> · ready when you are
+              </>
+            ) : (
+              'Pick a form and add an idea to begin'
+            )}
+          </span>
+          <button
+            onClick={launch}
+            style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '14px 24px', fontSize: 16 }}
+          >
+            <Sparkles size={19} /> {ctaLabel}
           </button>
         </div>
       </div>

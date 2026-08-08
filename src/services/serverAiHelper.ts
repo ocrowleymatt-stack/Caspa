@@ -1,6 +1,15 @@
 /**
- * Server-side AI helper for Caspa routes (provider fallback chain)
+ * Server-side AI helper for Caspa routes (provider fallback chain).
+ * Shares the routing policy + circuit breaker with /api/ai/call so an unhealthy
+ * provider is skipped everywhere, not just in one router.
  */
+
+import {
+  isProviderConfigured,
+  selectAttemptOrder,
+  sharedCircuitBreaker as breaker,
+} from './aiRouterPolicy';
+import { callUnifiedRouterChat } from './unifiedRouter';
 
 export async function callServerAi(
   prompt: string,
@@ -10,24 +19,45 @@ export async function callServerAi(
   const maxTokens = opts?.maxTokens ?? (json ? 4096 : 8192);
   const timeoutMs = opts?.timeoutMs ?? (maxTokens > 12000 ? 240000 : 120000);
 
-  const providers: Array<{ name: string; fn: () => Promise<string | null> }> = [
-    { name: 'grok', fn: () => callGrok(prompt, json, maxTokens, timeoutMs) },
-    { name: 'gemini', fn: () => callGemini(prompt, json, maxTokens, timeoutMs) },
-    { name: 'openai', fn: () => callOpenai(prompt, json, maxTokens, timeoutMs) },
-  ];
+  // Prefer host Unified Router, then grok → gemini → openai.
+  const callers: Record<string, () => Promise<string | null>> = {
+    unified: () =>
+      callUnifiedRouterChat(prompt, { json, maxTokens, timeoutMs }).catch(() => null),
+    grok: () => callGrok(prompt, json, maxTokens, timeoutMs),
+    gemini: () => callGemini(prompt, json, maxTokens, timeoutMs),
+    openai: () => callOpenai(prompt, json, maxTokens, timeoutMs),
+  };
+
+  const { attempt, anyConfigured } = selectAttemptOrder(
+    ['unified', 'grok', 'gemini', 'openai'],
+    (p) => isProviderConfigured(p),
+    (p) => breaker.isOpen(p),
+  );
+
+  if (!anyConfigured) {
+    throw new Error(
+      'No AI provider configured (set UNIFIED_ROUTER_URL, or a GROK/GEMINI/OPENAI API key, or run Ollama).'
+    );
+  }
 
   let lastError: Error | null = null;
-  for (const provider of providers) {
+  for (const name of attempt) {
     try {
-      const result = await provider.fn();
-      if (result?.trim()) return result;
+      const result = await callers[name]();
+      if (result?.trim()) {
+        breaker.recordSuccess(name);
+        return result;
+      }
+      // Null/empty (missing key handled upstream, or HTTP/quota error) = soft failure.
+      breaker.recordFailure(name);
     } catch (err) {
+      breaker.recordFailure(name);
       lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[ServerAI] ${provider.name} failed:`, lastError.message);
+      console.warn(`[ServerAI] ${name} failed:`, lastError.message);
     }
   }
 
-  throw lastError || new Error('No AI provider available');
+  throw lastError || new Error('All configured AI providers failed');
 }
 
 async function callGrok(

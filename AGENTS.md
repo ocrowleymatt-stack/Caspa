@@ -111,3 +111,19 @@ When generating content for the user inside the "Brainstorm," "Intelligence Lab,
 **CORE COMMAND:**
 Write with precision, menace, beauty, restraint, and momentum. No sludge. No padding. No cowardice. 
 Find the wound. Give it a room. Give it a mask. Apply pressure. Make every scene turn. Cut the pretty sludge. End on an image that bites.
+
+## Cursor Cloud specific instructions
+
+Caspa is a single monolithic Express + React (Vite) app. One process on port `3000` serves both the SPA and every `/api/*` route — there is no separate frontend dev server. The `Caspa/` subdirectory is a legacy Vite-only scaffold (excluded from the root `tsconfig.json`); do not run it as the app.
+
+Scripts live in `package.json`. Key non-obvious gotchas:
+
+- **Dev mode must be forced.** `npm run dev` runs `tsx server.ts`, but the server defaults to PRODUCTION mode (serving prebuilt static files from `dist/`) unless `NODE_ENV=development` is set. For Vite HMR / live dev, run `NODE_ENV=development npm run dev`. Plain `npm run dev` without that env requires a prior `npm run build`.
+- **AI keys are optional for running/testing the app.** No key is needed for startup, the local-first UI, or local project persistence (drafts live in browser `localStorage`). Without a provider key, only AI generation routes fail and `GET /api/doctor` reports `degraded`/`blocked` (readiness blocker "No AI provider configured") — this is expected and does NOT stop the server. To enable AI end to end, prefer the host **Unified Router** via `UNIFIED_ROUTER_URL`, or set `GEMINI_API_KEY` / another provider key, or run Ollama on `:11434`.
+- **Unified Router (preferred AI path when available).** OpenAI-compatible chat at `{base}/api/chat/completions`. Bases: `http://127.0.0.1:9999` (same host), `http://172.18.0.1:9999` (from Docker containers); external nginx vhost is in `/etc/nginx/conf.d/auth-gateway.conf`. Set `UNIFIED_ROUTER_URL` (optional `UNIFIED_ROUTER_API_KEY`, `UNIFIED_ROUTER_MODEL`). Caspa treats provider id `unified` as first in `/api/ai/call` and `serverAiHelper`. This cloud VM usually cannot reach the host router — leave the URL unset here; set it on the real host/Docker deploy.
+- **Lint is a type-check; keep it at zero.** `npm run lint` is `tsc --noEmit`. Note the build does NOT type-check — `npm run build` (Vite + esbuild transpile) succeeds even with type errors — so run `npm run lint` before committing to catch breakage the build would hide.
+- **Tests:** `npm test` runs the Node test runner via tsx over `tests/*.test.ts` (no extra deps). Browser-only globals like `localStorage` are shimmed inside the test files.
+- **Smoke tests need a running server on `:3000`.** With the server up: `npm run smoke:local-project` (uses headless Puppeteer/Chromium; validates the local-first create + reload flow, no AI needed) and `npm run deploy:smoke`. Puppeteer's Chromium is installed by `npm install` and works headless with `--no-sandbox`.
+- Health/readiness endpoints (no secrets): `GET /health` and `GET /api/doctor`.
+- **Studio rooms scroll inside `<main>`; workflow Back/Continue lives in `WorkflowStageBar`.** With an active project (not Launchpad / Next step / Library), the shell shows a footer bar: Back → guided hub (`project`), Continue → `getNextStep` / `stepToNavTarget` (or complete-to-library). Do not reintroduce per-room-only “Back” as the sole navigation.
+- **Long AI calls use client `fetchWithTimeout`.** Shared helper: `src/lib/fetchWithTimeout.ts` (180s default, 300s for draft/gold). Timeouts surface as recoverable copy (“draft is still saved”) via `friendlyFetchError` — do not treat them as project corruption. Server provider aborts remain separate (`server.ts` / `serverAiHelper.ts`).

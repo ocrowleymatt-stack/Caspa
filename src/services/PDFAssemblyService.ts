@@ -1,6 +1,24 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
 import { BookMetadataService } from "./BookMetadataService";
-import { ContentIntelligence, IllustrationAsset } from './ContentIntelligenceService';
+import { ContentIntelligence } from './ContentIntelligenceService';
+import { CMYKValidator } from './CMYKValidator';
+import { getSharedBrowser, closeSharedBrowser } from './puppeteerBrowser';
+
+/** A generated illustration ready to place in the PDF (url + caption). */
+export interface AssembledIllustration {
+  url: string;
+  description: string;
+}
+
+/** Output shape for the simple text-only PDF helpers used by the batch service. */
+export interface SimplePDFOutput {
+  format: string;
+  colorSpace: 'sRGB' | 'CMYK';
+  resolution: number;
+  pageCount: number;
+  fileSize: number;
+}
 
 export interface DesignProfile {
   typography: {
@@ -55,26 +73,16 @@ export interface PDFOutput {
 
 export interface AssemblyOptions {
   contentIntelligence: ContentIntelligence;
-  illustrations: IllustrationAsset[];
+  illustrations: AssembledIllustration[];
   designProfile: DesignProfile;
   outputMode: 'screen' | 'professional';
   turbo?: boolean; // Skip some optimizations for speed
 }
 
-class PDFAssemblyService {
-  private browser: Browser | null = null;
-
-  /**
-   * Initialize Puppeteer browser instance
-   */
+export class PDFAssemblyService {
+  /** Kept for backward compatibility; the browser is now the shared singleton. */
   async initBrowser(): Promise<void> {
-    if (!this.browser) {
-      this.browser = await puppeteer.launch({
-        executablePath: '/usr/bin/chromium-browser',
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
-    }
+    await getSharedBrowser();
   }
 
   /**
@@ -142,11 +150,8 @@ class PDFAssemblyService {
   async generateScreenPDF(
     options: AssemblyOptions
   ): Promise<{ buffer: Buffer; output: PDFOutput }> {
-    await this.initBrowser();
-
-    if (!this.browser) throw new Error('Browser initialization failed');
-
-    const page = await this.browser.newPage();
+    const browser = await getSharedBrowser();
+    const page = await browser.newPage();
     const screenSpec: PrintSpecification = {
       colorSpace: 'sRGB',
       resolution: 72,
@@ -164,7 +169,7 @@ class PDFAssemblyService {
       await page.setContent(html, { waitUntil: 'networkidle2' });
 
       // Screen-friendly settings
-      const buffer = await page.pdf({
+      const buffer = Buffer.from(await page.pdf({
         format: 'A4',
         margin: {
           top: `${options.designProfile.layout.marginTop}mm`,
@@ -174,7 +179,7 @@ class PDFAssemblyService {
         },
         printBackground: true,
         preferCSSPageSize: true,
-      });
+      }));
 
       const pageCount = (await page.evaluate(() => {
         const style = document.createElement('style');
@@ -228,10 +233,8 @@ class PDFAssemblyService {
       console.warn('Print spec warnings:', validation.warnings);
     }
 
-    await this.initBrowser();
-    if (!this.browser) throw new Error('Browser initialization failed');
-
-    const page = await this.browser.newPage();
+    const browser = await getSharedBrowser();
+    const page = await browser.newPage();
 
     try {
       const html = this.buildHTML(options, printSpec);
@@ -241,7 +244,7 @@ class PDFAssemblyService {
       const bleedMm = printSpec.bleedSize;
       const safetyMm = printSpec.safetyZone;
 
-      const buffer = await page.pdf({
+      const buffer = Buffer.from(await page.pdf({
         format: 'A4',
         margin: {
           top: `${options.designProfile.layout.marginTop + safetyMm}mm`,
@@ -251,7 +254,7 @@ class PDFAssemblyService {
         },
         printBackground: true,
         preferCSSPageSize: true,
-      });
+      }));
 
       // In production, this would invoke actual CMYK conversion via ImageMagick or similar
       console.log(
@@ -313,7 +316,7 @@ class PDFAssemblyService {
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>${contentIntelligence.documentType}</title>
+      <title>${contentIntelligence.documentType.category}</title>
       <style>
         * {
           margin: 0;
@@ -387,15 +390,15 @@ class PDFAssemblyService {
       <div class="print-spec" data-color-space="${spec.colorSpace}" data-resolution="${spec.resolution}dpi" 
            data-bleed="${spec.bleedSize}mm" data-safety="${spec.safetyZone}mm"></div>
       
-      <h1>${contentIntelligence.title}</h1>
-      <p>${contentIntelligence.summary}</p>
+      <h1>${contentIntelligence.documentType.category}</h1>
+      <p>${contentIntelligence.structure.mainContent}</p>
 
       ${illustrationHTML}
 
       <div data-page>
         <h2>Document Specification</h2>
-        <p><strong>Type:</strong> ${contentIntelligence.documentType}</p>
-        <p><strong>Pages:</strong> ~${contentIntelligence.estimatedPageCount}</p>
+        <p><strong>Type:</strong> ${contentIntelligence.documentType.type}</p>
+        <p><strong>Pages:</strong> ~${contentIntelligence.documentType.estimatedPages}</p>
         <p><strong>Color Space:</strong> ${spec.colorSpace}</p>
         <p><strong>Resolution:</strong> ${spec.resolution} DPI</p>
         <p><strong>Bleed:</strong> ${spec.bleedSize}mm</p>
@@ -410,18 +413,14 @@ class PDFAssemblyService {
    * Cleanup browser
    */
   async closeBrowser(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-    }
+    await closeSharedBrowser();
   }
 
   /**
    * Simple text-based PDF generation for service API
    */
-  async generateSimpleScreenPDF(title: string, content: string): Promise<{ buffer: Buffer; output: PDFOutput }> {
-    await this.initBrowser();
-    if (!this.browser) throw new Error('Browser initialization failed');
+  async generateSimpleScreenPDF(title: string, content: string): Promise<{ buffer: Buffer; output: SimplePDFOutput }> {
+    const browser = await getSharedBrowser();
 
     const html = `
       <!DOCTYPE html>
@@ -441,14 +440,14 @@ class PDFAssemblyService {
       </html>
     `;
 
-    const page = await this.browser.newPage();
+    const page = await browser.newPage();
     try {
       await page.setContent(html, { waitUntil: 'networkidle2' });
-      const buffer = await page.pdf({
+      const buffer = Buffer.from(await page.pdf({
         format: 'A4',
         margin: { top: '20mm', bottom: '20mm', left: '25mm', right: '20mm' },
         printBackground: true,
-      });
+      }));
 
       return {
         buffer,
@@ -465,32 +464,32 @@ class PDFAssemblyService {
     }
   }
 
-  async generateSimpleProfessionalPDF(title: string, content: string): Promise<{ buffer: Buffer; output: PDFOutput }> {
+  async generateSimpleProfessionalPDF(title: string, content: string): Promise<{ buffer: Buffer; output: SimplePDFOutput }> {
     // Phase 4b: Generate screen PDF then convert to CMYK for professional print
     const screenPDF = await this.generateSimpleScreenPDF(title, content);
     
     try {
       // Write temporary RGB PDF
       const tempDir = '/tmp/caspa-cmyk-convert';
-      if (!require('fs').existsSync(tempDir)) {
-        require('fs').mkdirSync(tempDir, { recursive: true });
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
       }
       
-      const tempRGBPath = require('path').join(tempDir, `temp-${Date.now()}.pdf`);
-      const tempCMYKPath = require('path').join(tempDir, `temp-cmyk-${Date.now()}.pdf`);
+      const tempRGBPath = path.join(tempDir, `temp-${Date.now()}.pdf`);
+      const tempCMYKPath = path.join(tempDir, `temp-cmyk-${Date.now()}.pdf`);
       
-      require('fs').writeFileSync(tempRGBPath, screenPDF.buffer);
+      fs.writeFileSync(tempRGBPath, screenPDF.buffer);
       
       // Validate and convert
       const validator = new CMYKValidator();
       const result = await validator.convertRGBToCMYK(tempRGBPath, tempCMYKPath);
       
-      if (result.success && require('fs').existsSync(tempCMYKPath)) {
-        const cmykBuffer = require('fs').readFileSync(tempCMYKPath);
+      if (result.success && fs.existsSync(tempCMYKPath)) {
+        const cmykBuffer = fs.readFileSync(tempCMYKPath);
         
         // Clean up temp files
-        require('fs').unlinkSync(tempRGBPath);
-        require('fs').unlinkSync(tempCMYKPath);
+        fs.unlinkSync(tempRGBPath);
+        fs.unlinkSync(tempCMYKPath);
         
         return {
           buffer: cmykBuffer,
@@ -504,9 +503,9 @@ class PDFAssemblyService {
         };
       } else {
         // Fallback to RGB if conversion fails
-        require('fs').unlinkSync(tempRGBPath);
-        if (require('fs').existsSync(tempCMYKPath)) {
-          require('fs').unlinkSync(tempCMYKPath);
+        fs.unlinkSync(tempRGBPath);
+        if (fs.existsSync(tempCMYKPath)) {
+          fs.unlinkSync(tempCMYKPath);
         }
         console.warn('CMYK conversion failed, returning RGB:', result.error);
         return screenPDF;

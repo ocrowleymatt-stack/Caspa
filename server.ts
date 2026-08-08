@@ -8,7 +8,6 @@ import { createGrokImagineService, type GenerationRequest, type GenerationResult
 import pdfRoutes from './src/services/pdf-assembly-routes';
 import { createBookMetadataRoutes } from './src/services/book-metadata-routes';
 import serviceApiRoutes from './src/services/service-api-routes';
-import phase6Routes from './src/services/phase6-routes';
 import ollamaRoutes from './src/routes/ollama-routes';
 import assistantRoutes from './src/routes/assistant-routes';
 import caspaResearchRoutes from './src/routes/caspa-research-routes';
@@ -23,6 +22,13 @@ import caspaWriteRoutes from './src/routes/caspa-write-routes';
 import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 import { getBuildInfo } from './src/services/buildInfoService';
+import {
+  AI_PROVIDERS,
+  isProviderConfigured,
+  selectAttemptOrder,
+  sharedCircuitBreaker as aiBreaker,
+} from './src/services/aiRouterPolicy';
+import { callUnifiedRouterChat } from './src/services/unifiedRouter';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -307,11 +313,16 @@ app.post("/api/ai/call", async (req, res) => {
   const providers: string[] = [];
   const veniceKey = process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY;
 
+  // Host Unified Router (OpenAI-compatible) wins when UNIFIED_ROUTER_URL is set.
+  if (isProviderConfigured('unified')) {
+    providers.push('unified');
+  }
+
   if (isSensitive && veniceKey) {
     // If Venice is present, put it at the very top of fallbacks for sensitive prompts
-    providers.push('venice');
-    if (primaryProvider !== 'venice') providers.push(primaryProvider);
-  } else {
+    if (!providers.includes('venice')) providers.push('venice');
+    if (primaryProvider !== 'venice' && !providers.includes(primaryProvider)) providers.push(primaryProvider);
+  } else if (!providers.includes(primaryProvider)) {
     providers.push(primaryProvider);
   }
 
@@ -319,20 +330,40 @@ app.post("/api/ai/call", async (req, res) => {
     providers.unshift(providerOverride);
   }
 
-  const allPossible = ['grok', 'openai', 'claude', 'gemini', 'venice'];
-  allPossible.forEach(p => {
+  AI_PROVIDERS.forEach(p => {
     if (!providers.includes(p)) {
       providers.push(p);
     }
   });
 
+  // Skip providers with no key, and skip any currently in circuit-breaker cooldown
+  // (unless every configured provider is cooling down — then try them anyway).
+  const { attempt, anyConfigured } = selectAttemptOrder(
+    providers,
+    (p) => isProviderConfigured(p),
+    (p) => aiBreaker.isOpen(p),
+  );
+
+  if (!anyConfigured) {
+    return res.status(503).json({
+      message: "No AI provider configured on the server. Set UNIFIED_ROUTER_URL, a GROK/OPENAI/ANTHROPIC/GEMINI/VENICE API key, or run Ollama.",
+    });
+  }
+
   let lastError = null;
-  for (const provider of providers) {
+  for (const provider of attempt) {
     try {
       let result: string | null = null;
       console.log(`[Express Backend] Trying provider: ${provider} for prompt`);
 
       switch (provider) {
+        case 'unified':
+          result = await callUnifiedRouterChat(prompt, {
+            json,
+            maxTokens,
+            timeoutMs: aiCallTimeoutMs(maxTokens),
+          });
+          break;
         case 'gemini':
           result = await callGeminiOnServer({ prompt, model, json, maxTokens, useSearch });
           break;
@@ -351,10 +382,12 @@ app.post("/api/ai/call", async (req, res) => {
       }
 
       if (result) {
+        aiBreaker.recordSuccess(provider);
         console.log(`[Express Backend] Provider ${provider} succeeded.`);
         return res.json({ result, provider });
       }
     } catch (error: any) {
+      aiBreaker.recordFailure(provider);
       console.warn(`[Express Backend] Provider ${provider} failed:`, error.message || error);
       lastError = error;
       // Continue loop for fallbacks
@@ -828,7 +861,7 @@ app.post('/api/content/generate-illustrations', async (req, res) => {
     const grokService = createGrokImagineService();
     
     // Estimate cost upfront
-    const estimatedCost = grokService.estimateCost(illustrations.length);
+    const estimatedCost = grokService.estimateCost(illustrations);
 
     // Start generation (non-blocking)
     const generationPromise = grokService.generateIllustrations({
@@ -878,7 +911,9 @@ app.post('/api/content/estimate-cost', async (req, res) => {
     }
 
     const grokService = createGrokImagineService();
-    const estimatedCost = grokService.estimateCost(illustrationCount);
+    const estimatedCost = grokService.estimateCost(
+      Array.from({ length: illustrationCount }, () => ({}))
+    );
     const estimatedTimeSeconds = illustrationCount * 15; // rough estimate
 
     return res.json({
@@ -900,7 +935,6 @@ app.post('/api/content/estimate-cost', async (req, res) => {
 // Mount PDF Assembly routes (BEFORE static/Vite middleware)
 app.use("/api/metadata", createBookMetadataRoutes(process.env.GEMINI_API_KEY!));
 app.use("/api/service", serviceApiRoutes);
-app.use("/api/phase6", phase6Routes);
 app.use("/api/ollama", ollamaRoutes);
 app.use("/api/caspa/research", caspaResearchRoutes);
 app.use("/api/caspa/canvas", caspaCanvasRoutes);
@@ -913,6 +947,7 @@ app.use("/api/caspa/write", caspaWriteRoutes);
 app.use("/api/caspa/design", caspaDesignRoutes);
 app.use("/api/assist", assistantRoutes);
 app.use("/api", pdfRoutes);
+app.use("/api/pdf-upload", pdfUploadRoutes);
 
 
 // ── Pilot Seat: structural directive ──────────────────────────────────────────

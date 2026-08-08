@@ -6,8 +6,9 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import type PDFAssemblyService from './PDFAssemblyService';
+import type { PDFAssemblyService } from './PDFAssemblyService';
 import { BookMetadataService } from './BookMetadataService';
+import { getDataDir } from './dataPaths';
 import type { GoogleGenAI } from '@google/genai';
 
 export interface JobRequest {
@@ -50,8 +51,10 @@ export interface DocumentResult {
   processingTime?: number;
 }
 
-const JOBS_DIR = '/opt/caspa/data/service-jobs';
-const RESULTS_DIR = '/opt/caspa/data/service-results';
+// Derive from CASPA_DATA_DIR (defaults to ./data) so the batch service runs in
+// any environment, not only a host where /opt/caspa/data is writable.
+const JOBS_DIR = path.join(getDataDir(), 'service-jobs');
+const RESULTS_DIR = path.join(getDataDir(), 'service-results');
 
 export class ServiceAPIManager {
   private jobs: Map<string, JobStatus> = new Map();
@@ -204,11 +207,11 @@ export class ServiceAPIManager {
         // Generate metadata if requested
         if (request.includeMetadata && this.metadataService) {
           try {
-            const metadata = await this.metadataService.generateMetadata({
-              manuscriptText: manuscript.content,
-              isbn: manuscript.isbn,
-              authorName: manuscript.authorName,
-            });
+            const metadata = await this.metadataService.generateMetadata(
+              manuscript.content,
+              manuscript.title,
+              manuscript.isbn,
+            );
             result.metadata = metadata;
           } catch (metaError) {
             console.warn(`Metadata generation skipped for ${manuscript.id}:`, metaError);

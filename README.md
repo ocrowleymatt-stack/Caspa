@@ -65,6 +65,9 @@ Doctor endpoint (safe, no secrets): `GET /api/doctor` — readiness score plus `
 | `CASPA_DATA_DIR` | Prod recommended | Jobs + backups persistence |
 | `VITE_GROK_API_KEY` / `OPENAI` / `ANTHROPIC` / `VENICE` | Optional | Extra providers |
 | `OLLAMA_URL` | Optional | Default `http://127.0.0.1:11434/api` |
+| `UNIFIED_ROUTER_URL` | Optional | Host Unified Router base (`http://127.0.0.1:9999` or Docker `http://172.18.0.1:9999`). Preferred AI path via `/api/chat/completions`. |
+| `UNIFIED_ROUTER_API_KEY` | Optional | Bearer token if the router requires auth |
+| `UNIFIED_ROUTER_MODEL` | Optional | Model id sent to the router (default `llama3.2`) |
 
 ## How to use
 
