@@ -28,6 +28,7 @@ import {
   selectAttemptOrder,
   sharedCircuitBreaker as aiBreaker,
 } from './src/services/aiRouterPolicy';
+import { callUnifiedRouterChat } from './src/services/unifiedRouter';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -312,11 +313,16 @@ app.post("/api/ai/call", async (req, res) => {
   const providers: string[] = [];
   const veniceKey = process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY;
 
+  // Host Unified Router (OpenAI-compatible) wins when UNIFIED_ROUTER_URL is set.
+  if (isProviderConfigured('unified')) {
+    providers.push('unified');
+  }
+
   if (isSensitive && veniceKey) {
     // If Venice is present, put it at the very top of fallbacks for sensitive prompts
-    providers.push('venice');
-    if (primaryProvider !== 'venice') providers.push(primaryProvider);
-  } else {
+    if (!providers.includes('venice')) providers.push('venice');
+    if (primaryProvider !== 'venice' && !providers.includes(primaryProvider)) providers.push(primaryProvider);
+  } else if (!providers.includes(primaryProvider)) {
     providers.push(primaryProvider);
   }
 
@@ -340,7 +346,7 @@ app.post("/api/ai/call", async (req, res) => {
 
   if (!anyConfigured) {
     return res.status(503).json({
-      message: "No AI provider configured on the server. Set one of GROK/OPENAI/ANTHROPIC/GEMINI/VENICE API keys (or run Ollama).",
+      message: "No AI provider configured on the server. Set UNIFIED_ROUTER_URL, a GROK/OPENAI/ANTHROPIC/GEMINI/VENICE API key, or run Ollama.",
     });
   }
 
@@ -351,6 +357,13 @@ app.post("/api/ai/call", async (req, res) => {
       console.log(`[Express Backend] Trying provider: ${provider} for prompt`);
 
       switch (provider) {
+        case 'unified':
+          result = await callUnifiedRouterChat(prompt, {
+            json,
+            maxTokens,
+            timeoutMs: aiCallTimeoutMs(maxTokens),
+          });
+          break;
         case 'gemini':
           result = await callGeminiOnServer({ prompt, model, json, maxTokens, useSearch });
           break;

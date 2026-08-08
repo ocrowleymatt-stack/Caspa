@@ -5,11 +5,14 @@
  * what order" decision is testable without booting the Express server.
  */
 
-export const AI_PROVIDERS = ['grok', 'openai', 'claude', 'gemini', 'venice'] as const;
+/** Prefer the host Unified Router when UNIFIED_ROUTER_URL is set. */
+export const AI_PROVIDERS = ['unified', 'grok', 'openai', 'claude', 'gemini', 'venice'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
 /** Env var names (server + Vite aliases) that configure each provider. */
 export const AI_PROVIDER_ENV_KEYS: Record<string, string[]> = {
+  // URL presence configures the unified router (optional bearer via UNIFIED_ROUTER_API_KEY).
+  unified: ['UNIFIED_ROUTER_URL'],
   grok: ['GROK_API_KEY', 'XAI_API_KEY', 'VITE_GROK_API_KEY'],
   openai: ['OPENAI_API_KEY', 'VITE_OPENAI_API_KEY'],
   claude: ['ANTHROPIC_API_KEY', 'VITE_ANTHROPIC_API_KEY'],
@@ -17,7 +20,7 @@ export const AI_PROVIDER_ENV_KEYS: Record<string, string[]> = {
   venice: ['VENICE_API_KEY', 'VITE_VENICE_API_KEY'],
 };
 
-/** True when at least one of a provider's API keys is present in the env. */
+/** True when at least one of a provider's API keys / URL is present in the env. */
 export function isProviderConfigured(
   provider: string,
   env: NodeJS.ProcessEnv = process.env,

@@ -14,6 +14,12 @@ test('isProviderConfigured respects presence and blank values', () => {
   assert.equal(isProviderConfigured('gemini', env), false, 'absent key is not configured');
 });
 
+test('unified router is configured by UNIFIED_ROUTER_URL and is preferred first', () => {
+  assert.equal(isProviderConfigured('unified', { UNIFIED_ROUTER_URL: 'http://127.0.0.1:9999' } as NodeJS.ProcessEnv), true);
+  assert.equal(isProviderConfigured('unified', { UNIFIED_ROUTER_URL: '  ' } as NodeJS.ProcessEnv), false);
+  assert.equal(AI_PROVIDERS[0], 'unified');
+});
+
 test('selectAttemptOrder drops unconfigured providers', () => {
   const cfg = (p: string) => p === 'grok' || p === 'openai';
   const { attempt, anyConfigured } = selectAttemptOrder([...AI_PROVIDERS], cfg, () => false);

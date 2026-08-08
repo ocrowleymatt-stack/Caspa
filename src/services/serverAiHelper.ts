@@ -9,6 +9,7 @@ import {
   selectAttemptOrder,
   sharedCircuitBreaker as breaker,
 } from './aiRouterPolicy';
+import { callUnifiedRouterChat } from './unifiedRouter';
 
 export async function callServerAi(
   prompt: string,
@@ -18,21 +19,25 @@ export async function callServerAi(
   const maxTokens = opts?.maxTokens ?? (json ? 4096 : 8192);
   const timeoutMs = opts?.timeoutMs ?? (maxTokens > 12000 ? 240000 : 120000);
 
-  // Preserve this path's own priority order (grok → gemini → openai).
+  // Prefer host Unified Router, then grok → gemini → openai.
   const callers: Record<string, () => Promise<string | null>> = {
+    unified: () =>
+      callUnifiedRouterChat(prompt, { json, maxTokens, timeoutMs }).catch(() => null),
     grok: () => callGrok(prompt, json, maxTokens, timeoutMs),
     gemini: () => callGemini(prompt, json, maxTokens, timeoutMs),
     openai: () => callOpenai(prompt, json, maxTokens, timeoutMs),
   };
 
   const { attempt, anyConfigured } = selectAttemptOrder(
-    ['grok', 'gemini', 'openai'],
+    ['unified', 'grok', 'gemini', 'openai'],
     (p) => isProviderConfigured(p),
     (p) => breaker.isOpen(p),
   );
 
   if (!anyConfigured) {
-    throw new Error('No AI provider configured (set GROK, GEMINI, or OPENAI API key, or run Ollama).');
+    throw new Error(
+      'No AI provider configured (set UNIFIED_ROUTER_URL, or a GROK/GEMINI/OPENAI API key, or run Ollama).'
+    );
   }
 
   let lastError: Error | null = null;

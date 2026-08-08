@@ -8,6 +8,7 @@ import { getBuildInfo } from './buildInfoService';
 import { getJobAudit } from './jobQueueService';
 import { jobStorePresent } from './jobStoreService';
 import { backupsPresent, listBackups } from './localBackupService';
+import { probeUnifiedRouter } from './unifiedRouter';
 
 const OLLAMA_API = (() => {
   const raw = (process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api').trim().replace(/\/$/, '');
@@ -40,6 +41,8 @@ function buildReadiness(snapshot: {
   openaiConfigured: boolean;
   anthropicConfigured: boolean;
   grokConfigured: boolean;
+  unifiedConfigured: boolean;
+  unifiedAvailable: boolean;
   ollamaAvailable: boolean;
   usingDefaultDataDir: boolean;
 }) {
@@ -56,10 +59,23 @@ function buildReadiness(snapshot: {
     snapshot.anthropicConfigured ||
     snapshot.grokConfigured;
 
-  if (!anyCloudAi && !snapshot.ollamaAvailable) {
-    blockers.push('No AI provider configured. Set GEMINI_API_KEY (or another provider), or start Ollama.');
-  } else if (!anyCloudAi && snapshot.ollamaAvailable) {
-    warnings.push('Only Ollama is available. Cloud models offline until an API key is set.');
+  const anyAi =
+    anyCloudAi || snapshot.ollamaAvailable || (snapshot.unifiedConfigured && snapshot.unifiedAvailable);
+
+  if (!anyAi) {
+    if (snapshot.unifiedConfigured && !snapshot.unifiedAvailable) {
+      blockers.push(
+        'UNIFIED_ROUTER_URL is set but the router is unreachable. Check 127.0.0.1:9999 (host) or 172.18.0.1:9999 (Docker).'
+      );
+    } else {
+      blockers.push(
+        'No AI provider configured. Set UNIFIED_ROUTER_URL, GEMINI_API_KEY (or another provider), or start Ollama.'
+      );
+    }
+  } else if (!anyCloudAi && !snapshot.unifiedConfigured && snapshot.ollamaAvailable) {
+    warnings.push('Only Ollama is available. Cloud models offline until an API key or UNIFIED_ROUTER_URL is set.');
+  } else if (snapshot.unifiedConfigured && !snapshot.unifiedAvailable) {
+    warnings.push('Unified router configured but offline — falling back to other providers.');
   }
 
   if (!snapshot.geminiConfigured) {
@@ -93,6 +109,7 @@ function buildReadiness(snapshot: {
 export async function getDoctorSnapshot() {
   const build = getBuildInfo();
   const ollama = await probeOllama();
+  const unified = await probeUnifiedRouter();
   const publicUiPresent = fileExists(['dist', 'index.html']);
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
   const openaiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY);
@@ -107,6 +124,8 @@ export async function getDoctorSnapshot() {
     openaiConfigured,
     anthropicConfigured,
     grokConfigured,
+    unifiedConfigured: unified.configured,
+    unifiedAvailable: unified.available,
     ollamaAvailable: ollama.available,
     usingDefaultDataDir,
   });
@@ -139,6 +158,7 @@ export async function getDoctorSnapshot() {
       anthropicConfigured,
       grokConfigured,
       veniceConfigured,
+      unifiedRouter: unified,
       ollama,
       liveWebSearchConfigured: grokConfigured,
     },
