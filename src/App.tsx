@@ -987,17 +987,25 @@ function CaspaUI() {
       </aside>
 
       <main style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          {renderView()}
-        </div>
-        {showStageBar ? (
-          <WorkflowStageBar
-            nextStep={guidedNextStep}
-            roomLabel={roomLabel}
-            onBack={() => goTo('project')}
-            onContinue={handleStageContinue}
-          />
-        ) : null}
+        {/* Launchpad owns its own scroll+footer — nesting it in another scroller
+            pushed Start writing under the large hero card. */}
+        {currentView === 'launchpad' ? (
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{renderView()}</div>
+        ) : (
+          <>
+            <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+              {renderView()}
+            </div>
+            {showStageBar ? (
+              <WorkflowStageBar
+                nextStep={guidedNextStep}
+                roomLabel={roomLabel}
+                onBack={() => goTo('project')}
+                onContinue={handleStageContinue}
+              />
+            ) : null}
+          </>
+        )}
       </main>
 
       <style>{`
@@ -1115,127 +1123,145 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                 : 'Start writing';
 
   return (
-    <section style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
-      <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '54px clamp(24px, 5vw, 72px) 24px' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)', marginBottom: 24 }}>
-          <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
-          <h1 style={{ fontSize: 'clamp(40px, 7vw, 72px)', lineHeight: .9, margin: 0, letterSpacing: -2.5 }}>What are we making?</h1>
-          <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 18, lineHeight: 1.5, marginTop: 18 }}>
-            Fiction is one door. Non-fiction, picture books, a show in a box — pick the form first.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 28 }}>
-            {heroCards.map((card) => {
-              const Icon = card.icon;
-              const active = card.mode === mode;
-              return (
-                <button
-                  key={card.mode}
-                  onClick={() => {
-                    setMode(card.mode);
-                    applyModeDefaults(card.mode);
-                  }}
-                  style={{ border: `2px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#21180f', color: '#fffaf2', borderRadius: 20, padding: 20, textAlign: 'left', cursor: 'pointer' }}
-                >
-                  <Icon size={26} style={{ color: '#d6a846', marginBottom: 12 }} />
-                  <strong style={{ display: 'block', marginBottom: 6, fontSize: 18 }}>{card.title}</strong>
-                  <small style={{ color: '#c4b18b', lineHeight: 1.4 }}>{card.subtitle}</small>
-                </button>
-              );
-            })}
-          </div>
-          <button type="button" onClick={() => setShowMore(!showMore)} style={{ marginTop: 18, background: 'transparent', border: 'none', color: '#a89572', cursor: 'pointer', fontSize: 13 }}>
-            {showMore ? 'Hide other formats' : 'More formats (script, essay, poetry, adaptation…)'}
-          </button>
-          {showMore && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 12 }}>
-              {moreCards.map((card) => {
+    <section style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
+      <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '32px clamp(20px, 4vw, 56px) 20px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gap: 20 }}>
+          <div style={{ borderRadius: 28, padding: '28px clamp(20px, 3vw, 36px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 24px 70px rgba(23,18,12,.2)' }}>
+            <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 12 }}>Caspa</div>
+            <h1 style={{ fontSize: 'clamp(32px, 5vw, 56px)', lineHeight: 0.95, margin: 0, letterSpacing: -2 }}>What are we making?</h1>
+            <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 16, lineHeight: 1.5, marginTop: 12 }}>
+              Fiction is one door. Non-fiction, picture books, a show in a box — pick the form first.
+            </p>
+            {/* Fixed 5-col on wide screens so Polish is never tucked under the right column */}
+            <div
+              className="launchpad-mode-grid"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10, marginTop: 22 }}
+            >
+              {heroCards.map((card) => {
                 const Icon = card.icon;
                 const active = card.mode === mode;
                 return (
                   <button
                     key={card.mode}
+                    type="button"
                     onClick={() => {
                       setMode(card.mode);
                       applyModeDefaults(card.mode);
                     }}
-                    style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#1a140e', color: '#fffaf2', borderRadius: 16, padding: 14, textAlign: 'left', cursor: 'pointer' }}
+                    style={{
+                      border: `2px solid ${active ? '#d6a846' : '#3a2d1d'}`,
+                      background: active ? '#2b2115' : '#21180f',
+                      color: '#fffaf2',
+                      borderRadius: 18,
+                      padding: '14px 12px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      minWidth: 0,
+                    }}
                   >
-                    <Icon size={18} style={{ color: '#d6a846', marginBottom: 8 }} />
-                    <strong style={{ display: 'block', fontSize: 14 }}>{card.title}</strong>
+                    <Icon size={22} style={{ color: '#d6a846', marginBottom: 8 }} />
+                    <strong style={{ display: 'block', marginBottom: 4, fontSize: 15 }}>{card.title}</strong>
+                    <small style={{ color: '#c4b18b', lineHeight: 1.35, display: 'block' }}>{card.subtitle}</small>
                   </button>
                 );
               })}
             </div>
-          )}
-        </div>
-
-        <div style={{ borderRadius: 28, padding: 28, ...surface }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 16, background: '#fff3d5', color: '#7a5514', display: 'grid', placeItems: 'center' }}><SelectedIcon size={24} /></div>
-            <div>
-              <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>{selected.title}</div>
-              <h2 style={{ margin: 0, fontSize: 24 }}>One idea is enough</h2>
-            </div>
+            <button type="button" onClick={() => setShowMore(!showMore)} style={{ marginTop: 14, background: 'transparent', border: 'none', color: '#a89572', cursor: 'pointer', fontSize: 13 }}>
+              {showMore ? 'Hide other formats' : 'More formats (script, essay, poetry, adaptation…)'}
+            </button>
+            {showMore && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginTop: 10 }}>
+                {moreCards.map((card) => {
+                  const Icon = card.icon;
+                  const active = card.mode === mode;
+                  return (
+                    <button
+                      key={card.mode}
+                      type="button"
+                      onClick={() => {
+                        setMode(card.mode);
+                        applyModeDefaults(card.mode);
+                      }}
+                      style={{ border: `1px solid ${active ? '#d6a846' : '#3a2d1d'}`, background: active ? '#2b2115' : '#1a140e', color: '#fffaf2', borderRadius: 14, padding: 12, textAlign: 'left', cursor: 'pointer' }}
+                    >
+                      <Icon size={16} style={{ color: '#d6a846', marginBottom: 6 }} />
+                      <strong style={{ display: 'block', fontSize: 13 }}>{card.title}</strong>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <Field label="Idea / premise">
-            <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={5} style={textareaStyle} placeholder={selected.examples[0] || 'Start with a wound, a place, a desire…'} />
-          </Field>
-
-          <Field label="Aspire-to word count">
-            <input
-              type="number"
-              min={100}
-              step={500}
-              value={targetWordCount}
-              onChange={(e) => setTargetWordCount(Math.max(100, Number(e.target.value) || 100))}
-              style={{ ...textareaStyle, minHeight: 0, padding: '12px 14px' }}
-            />
-          </Field>
-
-          <button
-            type="button"
-            onClick={() => setShowBriefDetails(!showBriefDetails)}
-            style={{ background: 'transparent', border: 'none', color: '#8a6a28', cursor: 'pointer', fontSize: 13, fontWeight: 700, marginBottom: 10, padding: 0 }}
-          >
-            {showBriefDetails ? 'Hide tone / audience / output' : 'Tune tone, audience & output (optional)'}
-          </button>
-          {showBriefDetails && (
-            <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
-              <Field label="Tone">
-                <textarea value={tone} onChange={(e) => setTone(e.target.value)} rows={2} style={textareaStyle} />
-              </Field>
-              <Field label="Audience">
-                <textarea value={audience} onChange={(e) => setAudience(e.target.value)} rows={2} style={textareaStyle} />
-              </Field>
-              <Field label="Required output">
-                <textarea value={output} onChange={(e) => setOutput(e.target.value)} rows={2} style={textareaStyle} />
-              </Field>
+          <div style={{ borderRadius: 24, padding: 24, ...surface }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: '#fff3d5', color: '#7a5514', display: 'grid', placeItems: 'center' }}><SelectedIcon size={22} /></div>
+              <div>
+                <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1 }}>{selected.title}</div>
+                <h2 style={{ margin: 0, fontSize: 22 }}>One idea is enough</h2>
+              </div>
             </div>
-          )}
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-            {selected.examples.map((example) => <button key={example} onClick={() => setIdea(example)} style={chipButton}>{example}</button>)}
+            <Field label="Idea / premise">
+              <textarea value={idea} onChange={(e) => setIdea(e.target.value)} rows={4} style={textareaStyle} placeholder={selected.examples[0] || 'Start with a wound, a place, a desire…'} />
+            </Field>
+
+            <Field label="Aspire-to word count">
+              <input
+                type="number"
+                min={100}
+                step={500}
+                value={targetWordCount}
+                onChange={(e) => setTargetWordCount(Math.max(100, Number(e.target.value) || 100))}
+                style={{ ...textareaStyle, minHeight: 0, padding: '12px 14px' }}
+              />
+            </Field>
+
+            <button
+              type="button"
+              onClick={() => setShowBriefDetails(!showBriefDetails)}
+              style={{ background: 'transparent', border: 'none', color: '#8a6a28', cursor: 'pointer', fontSize: 13, fontWeight: 700, marginBottom: 10, padding: 0 }}
+            >
+              {showBriefDetails ? 'Hide tone / audience / output' : 'Tune tone, audience & output (optional)'}
+            </button>
+            {showBriefDetails && (
+              <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+                <Field label="Tone">
+                  <textarea value={tone} onChange={(e) => setTone(e.target.value)} rows={2} style={textareaStyle} />
+                </Field>
+                <Field label="Audience">
+                  <textarea value={audience} onChange={(e) => setAudience(e.target.value)} rows={2} style={textareaStyle} />
+                </Field>
+                <Field label="Required output">
+                  <textarea value={output} onChange={(e) => setOutput(e.target.value)} rows={2} style={textareaStyle} />
+                </Field>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {selected.examples.map((example) => (
+                <button key={example} type="button" onClick={() => setIdea(example)} style={chipButton}>
+                  {example}
+                </button>
+              ))}
+            </div>
+
+            <p style={{ margin: 0, fontSize: 13, color: '#73695d', lineHeight: 1.45 }}>
+              {mode === 'picture'
+                ? 'Creates the project and opens Design for spreads & covers.'
+                : mode === 'musical'
+                  ? 'Creates the project and opens Show in a Box — songs, running order, music sketch, production pack.'
+                  : mode === 'gold'
+                    ? 'Creates the project and opens Gold Refinery to polish pasted text.'
+                    : mode === 'script'
+                      ? 'Creates the project and opens guided next steps for an actable script.'
+                      : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
+            </p>
           </div>
-
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#73695d', lineHeight: 1.45 }}>
-            {mode === 'picture'
-              ? 'Creates the project and opens Design for spreads & covers.'
-              : mode === 'musical'
-                ? 'Creates the project and opens Show in a Box — songs, running order, music sketch, production pack.'
-                : mode === 'gold'
-                  ? 'Creates the project and opens Gold Refinery to polish pasted text.'
-                  : mode === 'script'
-                    ? 'Creates the project and opens guided next steps for an actable script.'
-                    : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
-          </p>
-
         </div>
       </div>
-      </div>
 
-      {/* Always-visible footer so the primary step is reachable without hunting/scrolling. */}
+      {/* Always-visible footer — sibling of the scroller, never under the hero. */}
       <div
         style={{
           flexShrink: 0,
@@ -1243,7 +1269,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
           background: 'rgba(23,18,12,0.97)',
           color: '#fffaf2',
           boxShadow: '0 -10px 40px rgba(23,18,12,0.28)',
-          padding: '14px clamp(24px, 5vw, 72px)',
+          padding: '14px clamp(20px, 4vw, 56px)',
         }}
       >
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
@@ -1257,6 +1283,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
             )}
           </span>
           <button
+            type="button"
             onClick={launch}
             style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '14px 24px', fontSize: 16 }}
           >
@@ -1264,6 +1291,18 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
           </button>
         </div>
       </div>
+
+      <style>{`
+        @media (max-width: 1100px) {
+          .launchpad-mode-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 720px) {
+          .launchpad-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 420px) {
+          .launchpad-mode-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </section>
   );
 }
