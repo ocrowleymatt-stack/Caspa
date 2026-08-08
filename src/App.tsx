@@ -1061,8 +1061,24 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
     onStart(mode, idea, tone, output, audience, targetWordCount);
   };
 
+  const ctaLabel =
+    mode === 'picture'
+      ? 'Open Design'
+      : mode === 'musical'
+        ? 'Open Show in a Box'
+        : mode === 'gold'
+          ? 'Open Gold'
+          : mode === 'script'
+            ? 'Start script'
+            : mode === 'nonfiction' || mode === 'essay'
+              ? 'Start non-fiction'
+              : mode === 'poetry'
+                ? 'Start poem'
+                : 'Start writing';
+
   return (
-    <section style={{ minHeight: '100vh', padding: '54px clamp(24px, 5vw, 72px)', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
+    <section style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
+      <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '54px clamp(24px, 5vw, 72px) 24px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)', marginBottom: 24 }}>
           <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
@@ -1177,21 +1193,36 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                     : 'Creates the project and opens your guided next step (Just write → Workshop diagnose → commission).'}
           </p>
 
-          <button onClick={launch} style={{ ...primaryButton('#d6a846', '#1d1408'), padding: '16px 18px', fontSize: 16 }}>
-            <Sparkles size={19} />{' '}
-            {mode === 'picture'
-              ? 'Open Design'
-              : mode === 'musical'
-                ? 'Open Show in a Box'
-                : mode === 'gold'
-                  ? 'Open Gold'
-                  : mode === 'script'
-                    ? 'Start script'
-                    : mode === 'nonfiction' || mode === 'essay'
-                      ? 'Start non-fiction'
-                      : mode === 'poetry'
-                        ? 'Start poem'
-                        : 'Start writing'}
+        </div>
+      </div>
+      </div>
+
+      {/* Always-visible footer so the primary step is reachable without hunting/scrolling. */}
+      <div
+        style={{
+          flexShrink: 0,
+          borderTop: '1px solid #e3d8c4',
+          background: 'rgba(23,18,12,0.97)',
+          color: '#fffaf2',
+          boxShadow: '0 -10px 40px rgba(23,18,12,0.28)',
+          padding: '14px clamp(24px, 5vw, 72px)',
+        }}
+      >
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 14, color: '#d7c8aa' }}>
+            {idea.trim() ? (
+              <>
+                <strong style={{ color: '#fffaf2' }}>{selected.title}</strong> · ready when you are
+              </>
+            ) : (
+              'Pick a form and add an idea to begin'
+            )}
+          </span>
+          <button
+            onClick={launch}
+            style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '14px 24px', fontSize: 16 }}
+          >
+            <Sparkles size={19} /> {ctaLabel}
           </button>
         </div>
       </div>
