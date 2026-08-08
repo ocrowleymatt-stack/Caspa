@@ -102,7 +102,7 @@ export function assembleShowPack(
     .join('\n\n');
 }
 
-/** Compact context block for writing engines, Open WebUI, commission, prize draft. */
+/** Compact context block for writing engines, commission, and prize draft. */
 export function formatShowPackForWriting(state: ShowBoxState = loadShowBox()): string {
   if (!hasShowBoxContent(state)) return '';
   const parts: string[] = ['SHOW IN A BOX — LOCKED PACK CONTEXT'];

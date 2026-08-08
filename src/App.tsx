@@ -15,7 +15,6 @@ import {
   ChevronUp,
   CircleAlert,
   Clapperboard,
-  Copy,
   Download,
   FileText,
   GitBranch,
@@ -36,7 +35,6 @@ import {
   Search,
   Settings,
   Sparkles,
-  UploadCloud,
   Users,
   Wand2,
   Hammer,
@@ -63,6 +61,8 @@ import QuickWrite from './components/QuickWrite';
 import StudioToolBridge, { type StudioToolId } from './components/StudioToolBridge';
 import ShowBoxStudio from './components/ShowBoxStudio';
 import ShowCommandCenter from './components/ShowCommandCenter';
+import LegalCasesDashboard from './components/LegalCasesDashboard';
+import BettingGamePanel from './components/BettingGamePanel';
 import {
   completeProject,
   loadProjectSnapshot,
@@ -80,7 +80,7 @@ import {
 import { countWords, defaultTargetWordCount } from './services/wordCountService';
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
-import { clearShowBox, formatShowPackForWriting, hasShowBoxContent } from './services/showBoxService';
+import { clearShowBox, hasShowBoxContent } from './services/showBoxService';
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
 declare const process: any;
@@ -133,7 +133,6 @@ type ViewType =
   | 'redpen'
   | 'workshop'
   | 'gold'
-  | 'openwebui'
   | 'library'
   | 'research'
   | 'publish'
@@ -141,6 +140,8 @@ type ViewType =
   | 'canvas'
   | 'settings'
   | 'showbox'
+  | 'legal-cases'
+  | 'betting-game'
   | StudioToolId;
 
 type ProjectBrief = {
@@ -273,13 +274,12 @@ const primaryNav: NavItem[] = [
 
 const advancedNav: NavItem[] = [
   { id: 'launchpad', label: 'New Work', detail: 'Start another project', group: 'advanced', icon: Sparkles },
-  { id: 'workshop', label: 'Workshop', detail: 'Diagnose & commission', group: 'advanced', icon: Hammer },
+  { id: 'workshop', label: 'Workshop', detail: 'Diagnose → commission → artefact', group: 'advanced', icon: Hammer },
   { id: 'bible', label: 'Story Bible', detail: 'Canon and characters', group: 'advanced', icon: BookOpen },
   { id: 'psychology', label: 'Psychology', detail: 'Emotional journeys', group: 'advanced', icon: Brain },
   { id: 'redpen', label: 'Red Pen', detail: 'Quick issue scan', group: 'advanced', icon: CircleAlert },
   { id: 'gold', label: 'Gold Refinery', detail: 'Polish existing text', group: 'advanced', icon: Wand2 },
   { id: 'canvas', label: 'Jam Canvas', detail: 'Storyboards', group: 'advanced', icon: Pencil },
-  { id: 'openwebui', label: 'Open WebUI', detail: 'External model driver', group: 'advanced', icon: UploadCloud },
   { id: 'research', label: 'Research Desk', detail: 'Sources and notes', group: 'advanced', icon: Search },
   { id: 'settings', label: 'Settings', detail: 'Backup and account', group: 'advanced', icon: Settings },
 ];
@@ -296,6 +296,11 @@ const studioNav: NavItem[] = [
   { id: 'autodraft', label: 'Auto Drafter', detail: 'Deep-draft chapters', group: 'studio', icon: Zap },
   { id: 'pilot', label: 'Pilot Seat', detail: 'Directive steering', group: 'studio', icon: Navigation2 },
   { id: 'prizes', label: 'Prize Calibration', detail: 'Lens pressure test', group: 'studio', icon: Award },
+];
+
+const omniToolNav: NavItem[] = [
+  { id: 'legal-cases', label: 'Legal Cases', detail: 'Browse investigations and evidence', group: 'advanced', icon: FileText },
+  { id: 'betting-game', label: 'Betting Game', detail: 'ML predictions and leaderboard', group: 'advanced', icon: Zap },
 ];
 
 const modeCards: Array<{
@@ -430,40 +435,6 @@ function makeTitle(idea: string, mode: CreativeMode) {
   const cleaned = idea.trim().replace(/\s+/g, ' ');
   if (!cleaned) return `New ${modeLabels[mode]}`;
   return cleaned.length > 58 ? `${cleaned.slice(0, 55)}...` : cleaned;
-}
-
-function buildOpenWebUIPrompt(brief: ProjectBrief, canvas: string) {
-  const showPack = formatShowPackForWriting();
-  return `You are Caspa, a private creative production room for Matthew O'Crowley.
-
-PROJECT
-Title: ${brief.title}
-Mode: ${modeLabels[brief.mode]}
-Idea: ${brief.idea}
-Tone: ${brief.tone}
-Audience: ${brief.audience}
-Required output: ${brief.output}
-Aspire-to length: ~${(brief.targetWordCount || defaultTargetWordCount(brief.mode)).toLocaleString()} words
-${showPack ? `\n${showPack}\n` : ''}
-OPERATING METHOD
-- Treat the project as a living creative file for ${modeLabels[brief.mode]}.
-- Keep answers practical, direct and production-minded.
-- Start from the user's latest page/canvas rather than generic advice.
-- When drafting, provide usable material immediately.
-- When planning, produce clear beats, scenes, chapters, sections, songs, arguments, or production tasks as the form requires.
-- Preserve voice, weirdness and ambition. Do not sand the magic off.
-- For non-fiction and essays: prefer evidence, structure, and earned claims over invented drama. Do not force novel wound/desire framing.
-- For Show in a Box / musical: honour the locked song list, running order, cast, and production pack. Do not invent conflicting numbers.
-- Cut by need for the best product — never a fixed percentage quota.
-- Challenge weak structure, but do not flatten the premise.
-
-CURRENT WHITE PAGE / CANVAS
-${canvas || '[Blank page — start by proposing the strongest opening move.]'}
-
-TASK
-Drive the project forward. Give the next best creative output now.
-
-When the author says "commission this" or "write it", produce a clean manuscript-ready block they can send to Caspa Workshop.`;
 }
 
 function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void }) {
@@ -820,10 +791,11 @@ function CaspaUI() {
               setWorkshopTab(undefined);
               setWorkshopFocusChapter(null);
             }}
-            onArtefactReady={(text) => {
+            onArtefactReady={(text, leave) => {
               setDraftPage(text);
               setManuscriptSource(text);
-              goTo('write');
+              if (leave === 'write') goTo('write');
+              if (leave === 'quickwrite') goTo('quickwrite');
             }}
             onManuscriptChange={setManuscriptSource}
             onBriefChange={patchBrief}
@@ -839,18 +811,6 @@ function CaspaUI() {
         );
       case 'gold':
         return <GoldRefinery brief={brief} draftPage={draftPage} setDraftPage={setDraftPage} />;
-      case 'openwebui':
-        return (
-          <OpenWebUIDriverView
-            brief={brief}
-            draftPage={draftPage}
-            setDraftPage={setDraftPage}
-            onSendToWorkshop={(text) => {
-              setManuscriptSource(text);
-              goTo('workshop');
-            }}
-          />
-        );
       case 'research':
         return <ResearchLibrary brief={brief} manuscriptText={manuscriptSource || draftPage} />;
       case 'library':
@@ -896,6 +856,10 @@ function CaspaUI() {
         );
       case 'settings':
         return <SettingsStudio userEmail={authContext.user?.email} />;
+      case 'legal-cases':
+        return <LegalCasesDashboard />;
+      case 'betting-game':
+        return <BettingGamePanel />;
       default:
         if (isStudioTool(currentView)) {
           return (
@@ -989,6 +953,23 @@ function CaspaUI() {
             {studioOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
           {studioOpen && studioNav.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === currentView;
+            return (
+              <button key={item.id} onClick={() => goTo(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, border: 'none', borderRadius: 16, padding: '10px 12px', marginBottom: 4, cursor: 'pointer', textAlign: 'left', background: active ? '#2f2415' : 'transparent', color: active ? '#ffe2a5' : '#c9b898' }}>
+                <Icon size={16} />
+                <span>
+                  <strong style={{ display: 'block', fontSize: 13 }}>{item.label}</strong>
+                  <small style={{ color: active ? '#d6a846' : '#7a6d58', fontSize: 11 }}>{item.detail}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4, color: '#8f8068', margin: '0 8px 8px' }}>Omni Tools</div>
+          {omniToolNav.map((item) => {
             const Icon = item.icon;
             const active = item.id === currentView;
             return (
@@ -1432,60 +1413,6 @@ function WhitePageView({ brief, draftPage, setDraftPage, setCurrentView }: { bri
         )}
         <textarea value={draftPage} onChange={(e) => setDraftPage(e.target.value)} placeholder="Start writing here. Scene, chapter, song brief, treatment, argument, joke list, anything. This is deliberately white and boring so the work gets loud." style={{ width: '100%', minHeight: '72vh', border: '1px solid #dfd3c0', borderRadius: 10, padding: '42px clamp(22px, 5vw, 72px)', fontSize: 20, lineHeight: 1.75, color: '#111827', background: '#ffffff', boxShadow: '0 24px 90px rgba(40, 29, 12, .10)', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'Georgia, Cambria, serif' }} />
       </div>
-    </div>
-  );
-}
-
-function OpenWebUIDriverView({
-  brief,
-  draftPage,
-  setDraftPage,
-  onSendToWorkshop,
-}: {
-  brief: ProjectBrief;
-  draftPage: string;
-  setDraftPage: (value: string) => void;
-  onSendToWorkshop: (text: string) => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const prompt = buildOpenWebUIPrompt(brief, draftPage);
-
-  const copyPrompt = async () => {
-    await navigator.clipboard.writeText(prompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', background: '#f2f2f0', padding: '36px clamp(18px, 4vw, 56px)' }}>
-      <div style={{ maxWidth: 1260, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 390px', gap: 22 }} className="responsive-grid">
-        <section style={{ background: '#ffffff', border: '1px solid #dedede', minHeight: '82vh', padding: '46px clamp(22px, 5vw, 72px)', boxShadow: '0 18px 70px rgba(0,0,0,.08)' }}>
-          <div style={kickerStyle}>Open WebUI clear page</div>
-          <input value={brief.title} readOnly style={{ border: 'none', borderBottom: '1px solid #e5e5e5', width: '100%', fontSize: 34, fontWeight: 800, padding: '0 0 16px', marginBottom: 24, color: '#111827', background: 'transparent' }} />
-          <textarea value={draftPage} onChange={(e) => setDraftPage(e.target.value)} placeholder="Use this as your clean project-driving page. Paste the generated driver prompt into Open WebUI, then keep the working text here." style={{ width: '100%', minHeight: '58vh', border: 'none', resize: 'vertical', fontSize: 19, lineHeight: 1.75, color: '#111827', fontFamily: 'Georgia, Cambria, serif', background: '#fff' }} />
-        </section>
-
-        <aside style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
-          <article style={cardStyle}>
-            <h2 style={sectionTitle}>Driver prompt</h2>
-            <p style={{ color: '#62584c', lineHeight: 1.6 }}>Copy this into Open WebUI to make any model behave like the project room, not a random chatbot with opinions and no shoes.</p>
-            <button onClick={copyPrompt} style={primaryButton(copied ? '#15803d' : '#1f2937', '#fff')}>{copied ? <Check size={18} /> : <Copy size={18} />}{copied ? 'Copied' : 'Copy Open WebUI prompt'}</button>
-            <button
-              type="button"
-              onClick={() => onSendToWorkshop(draftPage)}
-              disabled={!draftPage.trim()}
-              style={{ ...primaryButton('#d6a846', '#1d1408'), marginTop: 10 }}
-            >
-              <Hammer size={18} /> Commission this in Workshop
-            </button>
-          </article>
-          <article style={cardStyle}>
-            <h2 style={sectionTitle}>Project packet</h2>
-            <pre style={{ whiteSpace: 'pre-wrap', overflow: 'auto', maxHeight: 420, background: '#f7f3eb', border: '1px solid #eadfce', borderRadius: 16, padding: 16, fontSize: 12, lineHeight: 1.55 }}>{prompt}</pre>
-          </article>
-        </aside>
-      </div>
-      <style>{`@media (max-width: 1050px) { .responsive-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
 }

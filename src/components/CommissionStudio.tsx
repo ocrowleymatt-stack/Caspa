@@ -1,6 +1,6 @@
 /**
- * Caspa Commission Studio — Inbox → Recommendations → Workshop
- * Paste a manuscript, get recommendations, click Write it.
+ * Caspa Workshop — Inbox → Recommendations → Commission → Artefact
+ * Paste a manuscript, pick fixes, confirm the commission, review the artefact, then leave.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -16,6 +16,7 @@ import {
   Sparkles,
   Upload,
   Wand2,
+  Zap,
 } from 'lucide-react';
 import type { StoryPromise } from '../types/promise';
 import { computePromiseHealth } from '../types/promise';
@@ -54,15 +55,18 @@ export interface ProjectBriefLike {
   audience: string;
 }
 
-export type StudioTab = 'inbox' | 'recommendations' | 'promises' | 'workshop';
+export type StudioTab = 'inbox' | 'recommendations' | 'commission' | 'promises' | 'workshop';
+
+export type ArtefactLeave = 'write' | 'quickwrite';
 
 interface Props {
   brief: ProjectBriefLike;
   draftPage: string;
-  onArtefactReady: (text: string) => void;
+  /** Sync artefact into draft; optional leave target opens White Page or Just write. */
+  onArtefactReady: (text: string, leave?: ArtefactLeave | null) => void;
   onManuscriptChange?: (text: string) => void;
   onBriefChange?: (patch: Partial<ProjectBriefLike>) => void;
-  /** Deep-link from Full path / Next step — Diagnose vs Commission land on different tabs. */
+  /** Deep-link from Full path / Next step — Diagnose vs Commission vs Artefact land on different tabs. */
   initialTab?: StudioTab;
   /** Open / select a chapter from diagnosis summaries or scope. */
   focusChapter?: number | null;
@@ -99,15 +103,20 @@ function resolveInitialTab(
   if (requested === 'workshop' && (state.artefact || state.phase === 'complete' || state.phase === 'executing')) {
     return 'workshop';
   }
+  if (requested === 'commission') {
+    return hasDiagnosis ? 'commission' : 'inbox';
+  }
   if (requested === 'recommendations' || requested === 'promises') {
     return hasDiagnosis ? requested : 'inbox';
   }
   if (requested === 'inbox') return 'inbox';
   if (state.phase === 'complete' && state.artefact) return 'workshop';
+  if (state.phase === 'executing') return 'workshop';
   if (hasDiagnosis) return 'recommendations';
   try {
     const saved = localStorage.getItem(TAB_KEY) as StudioTab | null;
     if (saved === 'workshop' && state.artefact) return 'workshop';
+    if (saved === 'commission' && hasDiagnosis) return 'commission';
     if ((saved === 'recommendations' || saved === 'promises') && hasDiagnosis) return saved;
     if (saved === 'inbox') return 'inbox';
   } catch {
@@ -414,7 +423,8 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
         progress: { phase: 'complete', message: 'Done.', percent: 100 },
       });
 
-      onArtefactReady(result.artefact);
+      // Sync into the project draft, but stay on Artefact so review is a real step.
+      onArtefactReady(result.artefact, null);
     } catch (err) {
       update({
         phase: 'error',
@@ -433,10 +443,10 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
         <header style={{ marginBottom: 28 }}>
           <div style={kicker}>Caspa Workshop</div>
           <h1 style={{ margin: '6px 0 8px', fontSize: 'clamp(36px, 5vw, 56px)', lineHeight: 1, letterSpacing: -2 }}>
-            Paste. Direct the idea. Write it.
+            Paste. Diagnose. Commission. Review.
           </h1>
           <p style={{ margin: 0, maxWidth: 720, color: '#73695d', fontSize: 18, lineHeight: 1.5 }}>
-            Drop a manuscript. Steer the premise before you commit. Tick what you agree with, then Write it.
+            Drop a manuscript, tick the fixes, confirm the commission, then read the artefact before you leave.
           </p>
         </header>
 
@@ -445,13 +455,19 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
             [
               ['inbox', 'Inbox', Upload],
               ['recommendations', 'Recommendations', AlertCircle],
+              ['commission', 'Commission', Wand2],
               ['promises', 'Promises', Link2],
-              ['workshop', 'Workshop', Hammer],
+              ['workshop', 'Artefact', Hammer],
             ] as const
           ).map(([id, label, Icon]) => {
             const active = tab === id;
             const disabled =
-              (id === 'recommendations' || id === 'promises') && !state.diagnosis;
+              ((id === 'recommendations' || id === 'promises' || id === 'commission') && !state.diagnosis) ||
+              (id === 'workshop' &&
+                !state.artefact &&
+                state.phase !== 'executing' &&
+                state.phase !== 'complete' &&
+                state.phase !== 'error');
             return (
               <button
                 key={id}
@@ -477,6 +493,11 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
                 {id === 'recommendations' && state.diagnosis && (
                   <span style={{ background: '#d6a846', color: '#1d1408', borderRadius: 999, padding: '2px 8px', fontSize: 11 }}>
                     {state.diagnosis.recommendations.length}
+                  </span>
+                )}
+                {id === 'commission' && state.diagnosis && (
+                  <span style={{ background: '#eadfce', color: '#1d1408', borderRadius: 999, padding: '2px 8px', fontSize: 11 }}>
+                    {state.selectedRecommendationIds.length}
                   </span>
                 )}
                 {id === 'promises' && state.promises.length > 0 && (
@@ -530,14 +551,39 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
             visitChapter={visitChapter}
             onVisitChapter={visitChapterSummary}
             onToggle={toggleRecommendation}
-            onScopeChange={(scope) => update({ scope })}
-            onWriteIt={handleWriteIt}
-            executing={state.phase === 'executing'}
-            chapterMax={chapterMax}
+            onContinueToCommission={() => setTab('commission')}
             suggestedResearch={suggestedResearch}
             onResearchTopic={handleResearchTopic}
             researchLoading={researchLoading}
             libraryCount={libraryCount}
+            directedIdea={directedIdea}
+            onDirectedIdeaChange={(value) => {
+              setDirectedIdea(value);
+              setIdeaDirty(true);
+              setIdeaStatus('');
+            }}
+            onApplyIdea={() => applyDirectedIdea(directedIdea)}
+            onSuggestIdea={handleSuggestIdea}
+            ideaBusy={ideaBusy}
+            ideaDirty={ideaDirty}
+            ideaStatus={ideaStatus}
+          />
+        )}
+
+        {tab === 'commission' && state.diagnosis && (
+          <CommissionPanel
+            diagnosis={state.diagnosis}
+            chapters={state.chapters}
+            selectedIds={state.selectedRecommendationIds}
+            scope={state.scope}
+            visitChapter={visitChapter}
+            onVisitChapter={visitChapterSummary}
+            onToggle={toggleRecommendation}
+            onScopeChange={(scope) => update({ scope })}
+            onWriteIt={handleWriteIt}
+            onBackToRecommendations={() => setTab('recommendations')}
+            executing={state.phase === 'executing'}
+            chapterMax={chapterMax}
             autoResearch={autoResearch}
             onAutoResearchChange={setAutoResearch}
             directedIdea={directedIdea}
@@ -568,7 +614,13 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
             promises={state.promises}
             visitChapter={visitChapter}
             onVisitChapter={setVisitChapter}
-            onUseArtefact={() => onArtefactReady(state.artefact)}
+            onOpenWhitePage={() => onArtefactReady(state.artefact, 'write')}
+            onOpenJustWrite={() => onArtefactReady(state.artefact, 'quickwrite')}
+            onDiagnoseAgain={() => {
+              if (state.artefact.trim()) setInboxText(state.artefact);
+              setTab('inbox');
+            }}
+            onRetryCommission={() => setTab('commission')}
           />
         )}
       </div>
@@ -680,9 +732,9 @@ function InboxPanel({
           <h2 style={sectionTitle}>What happens next</h2>
           <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.9, color: '#4a3b28' }}>
             <li>Direct or sharpen the book idea</li>
-            <li>Caspa recognises plan vs manuscript</li>
-            <li>You pick fixes and scope, then Write it</li>
-            <li>Finished prose lands in Workshop</li>
+            <li>Diagnose — pick the fixes you agree with</li>
+            <li>Commission — confirm scope, then Write it</li>
+            <li>Review the artefact before you leave</li>
           </ol>
         </article>
       </aside>
@@ -699,16 +751,11 @@ function RecommendationsPanel({
   visitChapter,
   onVisitChapter,
   onToggle,
-  onScopeChange,
-  onWriteIt,
-  executing,
-  chapterMax,
+  onContinueToCommission,
   suggestedResearch,
   onResearchTopic,
   researchLoading,
   libraryCount,
-  autoResearch,
-  onAutoResearchChange,
   directedIdea,
   onDirectedIdeaChange,
   onApplyIdea,
@@ -724,16 +771,11 @@ function RecommendationsPanel({
   visitChapter: number | null;
   onVisitChapter: (order: number) => void;
   onToggle: (id: string) => void;
-  onScopeChange: (s: CommissionScope) => void;
-  onWriteIt: () => void;
-  executing: boolean;
-  chapterMax: number;
+  onContinueToCommission: () => void;
   suggestedResearch: string[];
   onResearchTopic: (topic: string) => void;
   researchLoading: boolean;
   libraryCount: number;
-  autoResearch: boolean;
-  onAutoResearchChange: (v: boolean) => void;
   directedIdea: string;
   onDirectedIdeaChange: (v: string) => void;
   onApplyIdea: () => void;
@@ -899,8 +941,156 @@ function RecommendationsPanel({
           <article style={card}>
             <h2 style={sectionTitle}>Direct the idea</h2>
             <p style={{ color: '#73695d', marginTop: 0, fontSize: 14, lineHeight: 1.5 }}>
-              Steer the premise before you commit. Write it will follow this direction.
+              Steer the premise before you commission. The next step locks scope and Write it.
             </p>
+            <IdeaDirectionCard
+              directedIdea={directedIdea}
+              onDirectedIdeaChange={onDirectedIdeaChange}
+              onApplyIdea={onApplyIdea}
+              onSuggestIdea={onSuggestIdea}
+              ideaBusy={ideaBusy}
+              ideaDirty={ideaDirty}
+              ideaStatus={ideaStatus}
+            />
+          </article>
+
+          <button
+            type="button"
+            onClick={onContinueToCommission}
+            disabled={selectedIds.length === 0}
+            style={primaryBtn}
+          >
+            <Wand2 size={20} />
+            Continue to Commission
+          </button>
+
+          {diagnosis.suggestRebuild && (
+            <p style={{ fontSize: 13, color: '#b45309', margin: 0, lineHeight: 1.5 }}>
+              Caspa thinks this needs a full restructure. Tick &quot;Rip up and rebuild&quot; if you agree, then commission.
+            </p>
+          )}
+
+          {selectedIds.length === 0 && (
+            <p style={{ fontSize: 13, color: '#b45309', margin: 0, lineHeight: 1.5 }}>
+              Tick at least one recommendation before you commission.
+            </p>
+          )}
+        </aside>
+      </div>
+
+      {diagnosis.editorNotes && (
+        <article style={card}>
+          <h2 style={sectionTitle}>Editor notes</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, lineHeight: 1.6, color: '#4a3b28' }}>
+            {diagnosis.editorNotes}
+          </pre>
+        </article>
+      )}
+    </div>
+  );
+}
+
+function CommissionPanel({
+  diagnosis,
+  chapters,
+  selectedIds,
+  scope,
+  visitChapter,
+  onVisitChapter,
+  onToggle,
+  onScopeChange,
+  onWriteIt,
+  onBackToRecommendations,
+  executing,
+  chapterMax,
+  autoResearch,
+  onAutoResearchChange,
+  directedIdea,
+  onDirectedIdeaChange,
+  onApplyIdea,
+  onSuggestIdea,
+  ideaBusy,
+  ideaDirty,
+  ideaStatus,
+}: {
+  diagnosis: Diagnosis;
+  chapters: Chapter[];
+  selectedIds: string[];
+  scope: CommissionScope;
+  visitChapter: number | null;
+  onVisitChapter: (order: number) => void;
+  onToggle: (id: string) => void;
+  onScopeChange: (s: CommissionScope) => void;
+  onWriteIt: () => void;
+  onBackToRecommendations: () => void;
+  executing: boolean;
+  chapterMax: number;
+  autoResearch: boolean;
+  onAutoResearchChange: (v: boolean) => void;
+  directedIdea: string;
+  onDirectedIdeaChange: (v: string) => void;
+  onApplyIdea: () => void;
+  onSuggestIdea: () => void;
+  ideaBusy: boolean;
+  ideaDirty: boolean;
+  ideaStatus: string;
+}) {
+  const selected = diagnosis.recommendations.filter((r) => selectedIds.includes(r.id));
+  const scopeLabel =
+    scope.type === 'whole'
+      ? 'Whole manuscript'
+      : scope.type === 'rebuild'
+        ? 'Rip up and rebuild'
+        : scope.type === 'single'
+          ? `Chapter ${scope.singleChapter ?? 1}`
+          : `Chapters ${scope.chapterFrom ?? 1}–${scope.chapterTo ?? chapterMax}`;
+
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+      <article style={card}>
+        <div style={kicker}>Commission</div>
+        <h2 style={{ ...sectionTitle, marginTop: 8 }}>Confirm what Caspa will write</h2>
+        <p style={{ color: '#73695d', margin: '0 0 8px', lineHeight: 1.55, maxWidth: 720 }}>
+          This is the missing beat after diagnosis: lock the idea, the approved fixes, and the scope — then Write it.
+          The artefact stays here for review before White Page or Just write.
+        </p>
+      </article>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(300px, 0.85fr)', gap: 20 }} className="commission-grid">
+        <article style={card}>
+          <h2 style={sectionTitle}>Approved fixes ({selected.length})</h2>
+          {selected.length === 0 ? (
+            <p style={{ color: '#b45309', margin: 0 }}>
+              Nothing selected yet.{' '}
+              <button
+                type="button"
+                onClick={onBackToRecommendations}
+                style={{ background: 'none', border: 'none', color: '#9b6d16', fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+              >
+                Back to Recommendations
+              </button>
+            </p>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {selected.map((rec) => (
+                <RecommendationRow
+                  key={rec.id}
+                  rec={rec}
+                  selected
+                  onToggle={() => onToggle(rec.id)}
+                  onVisitChapter={onVisitChapter}
+                />
+              ))}
+            </div>
+          )}
+          <button type="button" onClick={onBackToRecommendations} style={{ ...ghostBtn, marginTop: 14, width: 'fit-content' }}>
+            Edit recommendations
+          </button>
+        </article>
+
+        <aside style={{ display: 'grid', gap: 16, alignContent: 'start' }}>
+          <article style={card}>
+            <h2 style={sectionTitle}>Direct the idea</h2>
             <IdeaDirectionCard
               directedIdea={directedIdea}
               onDirectedIdeaChange={onDirectedIdeaChange}
@@ -914,6 +1104,7 @@ function RecommendationsPanel({
 
           <article style={card}>
             <h2 style={sectionTitle}>Scope</h2>
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: '#8a7a66' }}>Currently: {scopeLabel}</p>
             <ScopePicker
               scope={scope}
               chapterMax={chapterMax}
@@ -941,20 +1132,12 @@ function RecommendationsPanel({
 
           {diagnosis.suggestRebuild && (
             <p style={{ fontSize: 13, color: '#b45309', margin: 0, lineHeight: 1.5 }}>
-              Caspa thinks this needs a full restructure. Tick &quot;Rip up and rebuild&quot; if you agree.
+              Rebuild suggested — tick &quot;Rip up and rebuild&quot; on Recommendations if you want the full restructure.
             </p>
           )}
         </aside>
       </div>
-
-      {diagnosis.editorNotes && (
-        <article style={card}>
-          <h2 style={sectionTitle}>Editor notes</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, lineHeight: 1.6, color: '#4a3b28' }}>
-            {diagnosis.editorNotes}
-          </pre>
-        </article>
-      )}
+      <style>{`@media (max-width: 900px) { .commission-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
 }
@@ -1379,7 +1562,10 @@ function WorkshopPanel({
   promises,
   visitChapter,
   onVisitChapter,
-  onUseArtefact,
+  onOpenWhitePage,
+  onOpenJustWrite,
+  onDiagnoseAgain,
+  onRetryCommission,
 }: {
   progress: CommissionState['progress'];
   artefact: string;
@@ -1389,7 +1575,10 @@ function WorkshopPanel({
   promises: StoryPromise[];
   visitChapter: number | null;
   onVisitChapter: (order: number | null) => void;
-  onUseArtefact: () => void;
+  onOpenWhitePage: () => void;
+  onOpenJustWrite: () => void;
+  onDiagnoseAgain: () => void;
+  onRetryCommission: () => void;
 }) {
   const totalWords = chapters.reduce(
     (sum, c) => sum + (c.content?.split(/\s+/).filter(Boolean).length || 0),
@@ -1425,7 +1614,10 @@ function WorkshopPanel({
 
       {error && (
         <article style={{ ...card, borderColor: '#fecaca' }}>
-          <p style={{ color: '#b91c1c', margin: 0 }}>{error}</p>
+          <p style={{ color: '#b91c1c', margin: '0 0 12px' }}>{error}</p>
+          <button type="button" onClick={onRetryCommission} style={{ ...primaryBtn, width: 'auto' }}>
+            <Wand2 size={18} /> Back to Commission
+          </button>
         </article>
       )}
 
@@ -1443,16 +1635,30 @@ function WorkshopPanel({
           )}
 
           <article style={card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
               <div>
-                <h2 style={{ ...sectionTitle, margin: 0 }}>Your manuscript</h2>
+                <div style={kicker}>Artefact</div>
+                <h2 style={{ ...sectionTitle, margin: '8px 0 0' }}>Review before you leave</h2>
                 <p style={{ color: '#73695d', margin: '8px 0 0' }}>
                   {chapters.length} chapters · {totalWords.toLocaleString()} words
                   {activeChapter ? ` · viewing ch.${activeChapter.order}` : ' · full artefact'}
                 </p>
               </div>
-              <button type="button" onClick={onUseArtefact} style={{ ...primaryBtn, width: 'auto' }}>
-                <PenLine size={18} /> Open in White Page
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" onClick={onOpenJustWrite} style={{ ...ghostBtn, background: '#fffaf2' }}>
+                  <Zap size={18} /> Open in Just write
+                </button>
+                <button type="button" onClick={onOpenWhitePage} style={{ ...primaryBtn, width: 'auto' }}>
+                  <PenLine size={18} /> Open in White Page
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+              <button type="button" onClick={onDiagnoseAgain} style={ghostBtn}>
+                <Sparkles size={16} /> Diagnose again
+              </button>
+              <button type="button" onClick={onRetryCommission} style={ghostBtn}>
+                <Wand2 size={16} /> Re-commission
               </button>
             </div>
           </article>
@@ -1519,11 +1725,14 @@ function WorkshopPanel({
         </>
       )}
 
-      {phase !== 'complete' && !progress && (
+      {phase !== 'complete' && phase !== 'error' && !progress && (
         <article style={card}>
           <p style={{ color: '#73695d', margin: 0 }}>
-            Commissions appear here with live progress. Analyse a manuscript and click Write it to start.
+            Artefacts land here after Commission → Write it. Review the prose, then open Just write or White Page.
           </p>
+          <button type="button" onClick={onRetryCommission} style={{ ...ghostBtn, marginTop: 12, width: 'fit-content' }}>
+            Go to Commission
+          </button>
         </article>
       )}
     </div>
