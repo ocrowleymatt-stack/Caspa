@@ -56,6 +56,7 @@ import RedPenStudio from './components/RedPenStudio';
 import SettingsStudio from './components/SettingsStudio';
 import StoryBibleStudio from './components/StoryBibleStudio';
 import GuidedNextStep, { WorkflowChecklist } from './components/GuidedNextStep';
+import WorkflowStageBar from './components/WorkflowStageBar';
 import BookDesignStudio from './components/BookDesignStudio';
 import QuickWrite from './components/QuickWrite';
 import StudioToolBridge, { type StudioToolId } from './components/StudioToolBridge';
@@ -73,6 +74,7 @@ import {
   getNextStep,
   getProgressSummary,
   getWorkflowSteps,
+  stepToNavTarget,
   type WorkflowNavTarget,
 } from './services/projectWorkflowService';
 import { countWords, defaultTargetWordCount } from './services/wordCountService';
@@ -702,6 +704,30 @@ function CaspaUI() {
     saveBrief(next);
   };
 
+  const guidedNextStep = useMemo(
+    () => getNextStep(brief, draftPage, manuscriptSource, projectStatus),
+    [brief, draftPage, manuscriptSource, projectStatus]
+  );
+
+  const roomLabel = useMemo(() => {
+    const all = [...primaryNav, ...advancedNav, ...studioNav];
+    return all.find((n) => n.id === currentView)?.label;
+  }, [currentView]);
+
+  const showStageBar =
+    hasActiveProject() &&
+    currentView !== 'launchpad' &&
+    currentView !== 'project' &&
+    currentView !== 'library';
+
+  const handleStageContinue = () => {
+    if (guidedNextStep.id === 'complete_to_library') {
+      handleCompleteProject();
+      return;
+    }
+    goWorkflow(stepToNavTarget(guidedNextStep));
+  };
+
   const renderView = () => {
     switch (currentView) {
       case 'launchpad':
@@ -960,7 +986,19 @@ function CaspaUI() {
         </div>
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, minHeight: '100dvh' }}>{renderView()}</main>
+      <main style={{ flex: 1, minWidth: 0, minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+        <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          {renderView()}
+        </div>
+        {showStageBar ? (
+          <WorkflowStageBar
+            nextStep={guidedNextStep}
+            roomLabel={roomLabel}
+            onBack={() => goTo('project')}
+            onContinue={handleStageContinue}
+          />
+        ) : null}
+      </main>
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }

@@ -7,6 +7,7 @@ import { Type } from "@google/genai";
 import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 import { callCheapTask } from "./llmRouter";
 import { readApiJson } from "./apiJson";
+import { AI_LONG_FETCH_TIMEOUT_MS, fetchWithTimeout, friendlyFetchError } from "../lib/fetchWithTimeout";
 
 const GEMINI_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY as string | undefined;
 const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_GROK_API_KEY : undefined;
@@ -73,16 +74,20 @@ async function callAI(options: {
   useWebSearch?: boolean;
 }) {
   try {
-    const response = await fetch("/api/ai/call", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
+    const response = await fetchWithTimeout(
+      "/api/ai/call",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          ...options,
+          primaryProvider: globalPrimaryProvider
+        })
       },
-      body: JSON.stringify({
-        ...options,
-        primaryProvider: globalPrimaryProvider
-      })
-    });
+      AI_LONG_FETCH_TIMEOUT_MS
+    );
 
     const data = await readApiJson<{ result?: string; message?: string }>(response);
     if (!response.ok) {
@@ -91,7 +96,7 @@ async function callAI(options: {
     return data.result;
   } catch (error: any) {
     console.error("AI Proxy Call failed:", error);
-    throw error;
+    throw new Error(friendlyFetchError(error, "AI call failed"));
   }
 }
 

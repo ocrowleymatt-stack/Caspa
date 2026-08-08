@@ -34,6 +34,12 @@ import {
   ingestManuscript,
 } from '../services/commissionService';
 import {
+  AI_FETCH_TIMEOUT_MS,
+  AI_LONG_FETCH_TIMEOUT_MS,
+  fetchWithTimeout,
+  friendlyFetchError,
+} from '../lib/fetchWithTimeout';
+import {
   addNote,
   deepResearchTopic,
   getProjectKey,
@@ -301,7 +307,7 @@ export default function CommissionStudio({
     } catch (err) {
       update({
         phase: 'error',
-        error: err instanceof Error ? err.message : 'Diagnosis failed',
+        error: friendlyFetchError(err, 'Diagnosis failed'),
       });
       setStatusLine('');
     }
@@ -344,11 +350,15 @@ export default function CommissionStudio({
     setIdeaBusy(true);
     setIdeaStatus('Sharpening the book idea…');
     try {
-      const res = await fetch('/api/caspa/write/seed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, mode: brief.mode || 'novel' }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/write/seed',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seed, mode: brief.mode || 'novel' }),
+        },
+        AI_FETCH_TIMEOUT_MS
+      );
       const json = await res.json();
       if (res.ok && json.success && json.data?.premise) {
         setDirectedIdea(String(json.data.premise));
@@ -361,27 +371,31 @@ export default function CommissionStudio({
         return;
       }
 
-      const aiRes = await fetch('/api/ai/call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `You are Caspa directing a book idea before drafting.
+      const aiRes = await fetchWithTimeout(
+        '/api/ai/call',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: `You are Caspa directing a book idea before drafting.
 
 MODE: ${brief.mode}
 CURRENT IDEA / PREMISE:
 ${seed}
 
 Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesis for nonfiction), concrete place/pressure, and the dramatic or intellectual engine. No title. No bullet list. No preamble.`,
-          maxTokens: 600,
-        }),
-      });
+            maxTokens: 600,
+          }),
+        },
+        AI_LONG_FETCH_TIMEOUT_MS
+      );
       const aiJson = await aiRes.json();
       if (!aiRes.ok || !aiJson.result) throw new Error(aiJson.message || json.message || 'Idea direction failed');
       setDirectedIdea(String(aiJson.result).trim());
       setIdeaDirty(true);
       setIdeaStatus('Suggested direction ready. Review, then Apply.');
     } catch (err) {
-      setIdeaStatus(err instanceof Error ? err.message : 'Could not suggest a direction');
+      setIdeaStatus(friendlyFetchError(err, 'Could not suggest a direction'));
     } finally {
       setIdeaBusy(false);
     }
@@ -428,7 +442,7 @@ Return ONLY a revised premise in 2–5 sentences: clearer wound/desire (or thesi
     } catch (err) {
       update({
         phase: 'error',
-        error: err instanceof Error ? err.message : 'Commission failed',
+        error: friendlyFetchError(err, 'Commission failed'),
         progress: null,
       });
     }

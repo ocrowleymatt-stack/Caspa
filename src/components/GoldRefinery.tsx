@@ -9,6 +9,11 @@ import type { GoldPassDefinition, GoldPassResult, GoldPipelineProgressEvent } fr
 import { GOLD_PASS_DEFINITIONS } from '../types/gold';
 import { loadPlotHold, plotHoldSummary } from '../services/plotHoldService';
 import { formatShowPackForWriting } from '../services/showBoxService';
+import {
+  AI_LONG_FETCH_TIMEOUT_MS,
+  fetchWithTimeout,
+  friendlyFetchError,
+} from '../lib/fetchWithTimeout';
 
 interface Props {
   brief: ProjectBriefLike;
@@ -48,27 +53,31 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
     }
     setStatus('Running Novel Write Pro quality pass…');
     try {
-      const res = await fetch('/api/caspa/novel-write-pro/quality-pass', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: draftPage,
-          mode:
-            brief.mode === 'gold' ? 'polish' :
-            brief.mode === 'picture' ? 'novel' :
-            brief.mode === 'script' || brief.mode === 'musical' || brief.mode === 'adaptation' || brief.mode === 'nonfiction' || brief.mode === 'essay' || brief.mode === 'poetry' || brief.mode === 'chaos'
-              ? brief.mode
-              : 'novel',
-          title: brief.title,
-        }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/novel-write-pro/quality-pass',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: draftPage,
+            mode:
+              brief.mode === 'gold' ? 'polish' :
+              brief.mode === 'picture' ? 'novel' :
+              brief.mode === 'script' || brief.mode === 'musical' || brief.mode === 'adaptation' || brief.mode === 'nonfiction' || brief.mode === 'essay' || brief.mode === 'poetry' || brief.mode === 'chaos'
+                ? brief.mode
+                : 'novel',
+            title: brief.title,
+          }),
+        },
+        AI_LONG_FETCH_TIMEOUT_MS
+      );
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Quality pass failed');
       setQualityScore(data.data.overallScore);
       setRewritePrompt(data.data.recommendedRewritePrompt);
       setStatus(`Quality pass: ${data.data.status} (${data.data.overallScore}%)`);
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : 'Quality pass failed');
+      setStatus(friendlyFetchError(err, 'Quality pass failed'));
     }
   };
 
@@ -86,18 +95,22 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
 
     try {
       const showPack = formatShowPackForWriting();
-      const res = await fetch('/api/caspa/gold/pipeline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: showPack ? `${draftPage}\n\n---\n\n${showPack}` : draftPage,
-          title: brief.title,
-          tone: brief.tone,
-          stream: true,
-          plotHold: plotHold || undefined,
-          mode: brief.mode,
-        }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/gold/pipeline',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: showPack ? `${draftPage}\n\n---\n\n${showPack}` : draftPage,
+            title: brief.title,
+            tone: brief.tone,
+            stream: true,
+            plotHold: plotHold || undefined,
+            mode: brief.mode,
+          }),
+        },
+        AI_LONG_FETCH_TIMEOUT_MS
+      );
 
       if (!res.ok || !res.body) {
         throw new Error('Pipeline request failed');
@@ -152,7 +165,7 @@ export default function GoldRefinery({ brief, draftPage, setDraftPage }: Props) 
         }
       }
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : 'Pipeline failed');
+      setStatus(friendlyFetchError(err, 'Pipeline failed'));
     } finally {
       setRunning(false);
     }

@@ -21,6 +21,12 @@ import {
   type CutPlan,
 } from '../services/wordCountService';
 import { formatShowPackForWriting, hasShowBoxContent } from '../services/showBoxService';
+import {
+  AI_FETCH_TIMEOUT_MS,
+  AI_LONG_FETCH_TIMEOUT_MS,
+  fetchWithTimeout,
+  friendlyFetchError,
+} from '../lib/fetchWithTimeout';
 
 type StepId = 'seed' | 'spine' | 'draft' | 'cut' | 'pack';
 
@@ -179,11 +185,15 @@ export default function QuickWrite({
     setError('');
     setStatus(nonfiction ? 'Expanding seed into a non-fiction proposal…' : 'Expanding seed into a prize-ambition proposal…');
     try {
-      const res = await fetch('/api/caspa/write/seed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seed, mode }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/write/seed',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seed, mode }),
+        },
+        AI_FETCH_TIMEOUT_MS
+      );
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Seed failed');
       setProposal(json.data);
@@ -193,7 +203,7 @@ export default function QuickWrite({
       setStep('spine');
       setStatus(`Plot held. ${plotHoldSummary(held)}`);
     } catch (err: any) {
-      setError(err.message || 'Seed failed');
+      setError(friendlyFetchError(err, 'Seed failed'));
     } finally {
       setBusy(false);
     }
@@ -206,17 +216,21 @@ export default function QuickWrite({
     try {
       const hold = plotHold || loadPlotHold();
       const focus = nextPendingBeat(hold);
-      const res = await fetch('/api/caspa/write/prize-draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...sharedWriteBody(hold, focus),
-          output: nonfiction
-            ? 'Full opening section for the current focus beat — hit the aspire-to section word target'
-            : 'Full opening chapter for the current focus beat — hit the aspire-to section word target',
-          sourceText: draftPage,
-        }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/write/prize-draft',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...sharedWriteBody(hold, focus),
+            output: nonfiction
+              ? 'Full opening section for the current focus beat — hit the aspire-to section word target'
+              : 'Full opening chapter for the current focus beat — hit the aspire-to section word target',
+            sourceText: draftPage,
+          }),
+        },
+        AI_LONG_FETCH_TIMEOUT_MS
+      );
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Draft failed');
       const text = json.data.text || '';
@@ -229,7 +243,7 @@ export default function QuickWrite({
       const aim = json.data.sectionTarget ? ` (target ${Number(json.data.sectionTarget).toLocaleString()})` : '';
       setStatus(`Drafted ${got} words${aim}.`);
     } catch (err: any) {
-      setError(err.message || 'Draft failed');
+      setError(friendlyFetchError(err, 'Draft failed'));
     } finally {
       setBusy(false);
     }
@@ -242,15 +256,19 @@ export default function QuickWrite({
     try {
       const hold = plotHold || loadPlotHold();
       const focus = nextPendingBeat(hold);
-      const res = await fetch('/api/caspa/write/continue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...sharedWriteBody(hold, focus),
-          sourceText: draftPage,
-          wholeBook: false,
-        }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/write/continue',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...sharedWriteBody(hold, focus),
+            sourceText: draftPage,
+            wholeBook: false,
+          }),
+        },
+        AI_LONG_FETCH_TIMEOUT_MS
+      );
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Continue failed');
       const next = json.data.text || '';
@@ -265,7 +283,7 @@ export default function QuickWrite({
       const aim = json.data.sectionTarget ? ` (target ${Number(json.data.sectionTarget).toLocaleString()})` : '';
       setStatus(`Added ${got} words${aim}.`);
     } catch (err: any) {
-      setError(err.message || 'Continue failed');
+      setError(friendlyFetchError(err, 'Continue failed'));
     } finally {
       setBusy(false);
     }
@@ -292,18 +310,22 @@ export default function QuickWrite({
         setStatus(`Writing ${beat.title} (${done + 1}/${total})…`);
 
         const endpoint = !manuscript.trim() ? '/api/caspa/write/prize-draft' : '/api/caspa/write/continue';
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...sharedWriteBody(hold, beat),
-            sourceText: manuscript,
-            wholeBook: true,
-            output: nonfiction
-              ? 'Full section for this beat only — hit the aspire-to section word target. Do not restart or repeat prior sections.'
-              : 'Full chapter for this beat only — hit the aspire-to section word target. Do not restart or repeat prior chapters.',
-          }),
-        });
+        const res = await fetchWithTimeout(
+          endpoint,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...sharedWriteBody(hold, beat),
+              sourceText: manuscript,
+              wholeBook: true,
+              output: nonfiction
+                ? 'Full section for this beat only — hit the aspire-to section word target. Do not restart or repeat prior sections.'
+                : 'Full chapter for this beat only — hit the aspire-to section word target. Do not restart or repeat prior chapters.',
+            }),
+          },
+          AI_LONG_FETCH_TIMEOUT_MS
+        );
         const json = await res.json();
         if (!res.ok || !json.success) throw new Error(json.message || `Failed on ${beat.title}`);
         const chunk = json.data.text || '';
@@ -335,7 +357,7 @@ export default function QuickWrite({
     } catch (err: any) {
       setStep('draft');
       setError(
-        `${err.message || 'Whole-book draft failed'} — partial manuscript kept. Click Write whole book again to continue remaining ${nonfiction ? 'sections' : 'chapters'}.`
+        `${friendlyFetchError(err, 'Whole-book draft failed')} — partial manuscript kept. Click Write whole book again to continue remaining ${nonfiction ? 'sections' : 'chapters'}.`
       );
     } finally {
       setBusy(false);
@@ -358,22 +380,26 @@ export default function QuickWrite({
         : 'Surgical polish only — no forced percentage…'
     );
     try {
-      const res = await fetch('/api/caspa/write/cut', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: draftPage,
-          mode,
-          targetWordCount: targetWords,
-        }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/write/cut',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: draftPage,
+            mode,
+            targetWordCount: targetWords,
+          }),
+        },
+        AI_LONG_FETCH_TIMEOUT_MS
+      );
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Cut failed');
       onDraftChange(json.data.text || '');
       setStep('pack');
       setStatus(`Cut ${json.data.beforeWords} → ${json.data.afterWords} words.`);
     } catch (err: any) {
-      setError(err.message || 'Cut failed');
+      setError(friendlyFetchError(err, 'Cut failed'));
     } finally {
       setBusy(false);
     }
@@ -385,17 +411,21 @@ export default function QuickWrite({
     setError('');
     setStatus(nonfiction ? 'Quality pass assessing readiness…' : 'Prize pass assessing readiness…');
     try {
-      const res = await fetch('/api/caspa/write/prize-pass', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: draftPage,
-          prizeLensId,
-          title: brief.title,
-          mode,
-          targetWordCount: targetWords,
-        }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/caspa/write/prize-pass',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: draftPage,
+            prizeLensId,
+            title: brief.title,
+            mode,
+            targetWordCount: targetWords,
+          }),
+        },
+        AI_LONG_FETCH_TIMEOUT_MS
+      );
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Prize pass failed');
       setQualityScore(Number(json.data.assessment?.overallReadiness || json.data.quality?.overallScore || 0));
@@ -409,7 +439,7 @@ export default function QuickWrite({
       );
       setStatus(json.data.readyEnough ? 'Ready enough to export.' : 'Not prize-ready yet — fix the notes, then re-pass.');
     } catch (err: any) {
-      setError(err.message || 'Prize pass failed');
+      setError(friendlyFetchError(err, 'Prize pass failed'));
     } finally {
       setBusy(false);
     }
