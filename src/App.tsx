@@ -897,12 +897,12 @@ function CaspaUI() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100dvh', background: '#f5efe5', color: '#172033' }}>
+    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: '#f5efe5', color: '#172033' }}>
       <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mobile-menu" style={{ position: 'fixed', top: 16, left: 16, zIndex: 60, border: '1px solid #e0d3bf', background: '#fffaf2', borderRadius: 12, padding: 10 }}>
         {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
 
-      <aside style={{ width: 300, minWidth: 300, height: '100dvh', position: 'sticky', top: 0, background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar">
+      <aside style={{ width: 300, minWidth: 300, height: '100%', background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar">
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 28 }}>
           <div style={{ width: 46, height: 46, borderRadius: 16, background: '#d6a846', color: '#1a1208', display: 'grid', placeItems: 'center' }}><Sparkles size={24} /></div>
           <div>
@@ -986,7 +986,7 @@ function CaspaUI() {
         </div>
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {renderView()}
         </div>
@@ -1115,7 +1115,7 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
                 : 'Start writing';
 
   return (
-    <section style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
+    <section style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'radial-gradient(circle at top left, #fff7e6 0, #f5efe5 36%, #e9dfcf 100%)' }}>
       <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '54px clamp(24px, 5vw, 72px) 24px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)', marginBottom: 24 }}>
