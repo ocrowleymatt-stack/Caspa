@@ -1,0 +1,72 @@
+name: Persistent Data Ingest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/persistent-data-ingest.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Add persistent sidebar ingest
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/App.tsx')
+          text = p.read_text()
+
+          state_anchor = "  const [projectStatus, setProjectStatus] = useState<'active' | 'complete'>(() => loadProjectStatus(loadBrief()));\n"
+          state_insert = state_anchor + "  const [sidebarFastUploading, setSidebarFastUploading] = useState(false);\n  const sidebarFastUploadRef = useRef<HTMLInputElement | null>(null);\n"
+          if 'sidebarFastUploadRef' not in text:
+              if state_anchor not in text: raise SystemExit('state anchor not found')
+              text = text.replace(state_anchor, state_insert, 1)
+
+          handler_anchor = "  const patchBrief = (patch: Partial<ProjectBrief>) => {\n"
+          handler = """  const runSidebarFastUpload = async (list: FileList | null) => {\n    const files = Array.from(list || []);\n    if (!files.length) return;\n    setSidebarFastUploading(true);\n    try {\n      await handleFastDataUpload(files);\n    } finally {\n      setSidebarFastUploading(false);\n      if (sidebarFastUploadRef.current) sidebarFastUploadRef.current.value = '';\n    }\n  };\n\n"""
+          if 'const runSidebarFastUpload' not in text:
+              if handler_anchor not in text: raise SystemExit('handler anchor not found')
+              text = text.replace(handler_anchor, handler + handler_anchor, 1)
+
+          ui_anchor = """        <div style={{ marginBottom: 20, padding: '0 8px', fontSize: 12, color: '#a89572', lineHeight: 1.5 }}>\n          One step at a time. Advanced rooms stay tucked away until you need them.\n        </div>\n\n"""
+          ui = ui_anchor + """        <div style={{ marginBottom: 18 }}>\n          <button\n            type=\"button\"\n            onClick={() => sidebarFastUploadRef.current?.click()}\n            disabled={sidebarFastUploading}\n            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, border: '1px solid #d6a846', borderRadius: 14, padding: '12px 14px', background: '#d6a846', color: '#1d1408', fontWeight: 900, cursor: 'pointer' }}\n          >\n            {sidebarFastUploading ? <Loader size={17} className=\"spin\" /> : <UploadCloud size={17} />}\n            {sidebarFastUploading ? 'Ingesting…' : 'Data Ingest'}\n          </button>\n          <input\n            ref={sidebarFastUploadRef}\n            type=\"file\"\n            multiple\n            accept=\".pdf,.txt,.md,.markdown,.rtf,.html,.htm,.json,.yaml,.yml,.csv,.log,text/*,application/pdf\"\n            style={{ display: 'none' }}\n            onChange={(event) => runSidebarFastUpload(event.target.files)}\n          />\n          <div style={{ color: '#8f8068', fontSize: 10, lineHeight: 1.35, marginTop: 6, padding: '0 4px', textAlign: 'center' }}>\n            PDF · text · data packs → project + shared search index\n          </div>\n        </div>\n\n"""
+          if "'Data Ingest'" not in text:
+              if ui_anchor not in text: raise SystemExit('sidebar UI anchor not found')
+              text = text.replace(ui_anchor, ui, 1)
+
+          p.write_text(text)
+          PY
+          grep -Fq "'Data Ingest'" src/App.tsx
+          git diff --check
+
+      - name: Test
+        run: npm test
+      - name: Production build
+        run: |
+          npm run build
+          test -f dist/index.html
+          test -f dist/server.cjs
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'atlas-automation'
+          git config user.email 'atlas-automation@users.noreply.github.com'
+          git add src/App.tsx
+          git commit -m 'Restore persistent Data Ingest control'
+          git push origin HEAD:main
