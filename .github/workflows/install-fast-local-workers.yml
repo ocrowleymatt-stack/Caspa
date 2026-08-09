@@ -1,0 +1,53 @@
+name: Install Fast Local Workers
+
+on:
+  push:
+    paths:
+      - '.github/workflows/install-fast-local-workers.yml'
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Pull and benchmark small Qwen workers
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ollama pull qwen3:1.7b
+          ollama pull qwen3:4b-instruct
+
+          python3 - <<'PY'
+          import json,time,urllib.request
+          for model in ['qwen3:1.7b','qwen3:4b-instruct']:
+              for run in [1,2]:
+                  payload=json.dumps({
+                    'model':model,
+                    'prompt':'Reply with exactly OK and nothing else.',
+                    'stream':False,
+                    'keep_alive':'30m',
+                    'options':{'num_ctx':2048,'num_predict':8,'temperature':0}
+                  }).encode()
+                  req=urllib.request.Request('http://127.0.0.1:11434/api/generate',data=payload,headers={'Content-Type':'application/json'})
+                  start=time.time()
+                  try:
+                      with urllib.request.urlopen(req,timeout=60) as r:
+                          data=json.load(r)
+                      print(json.dumps({'model':model,'run':run,'ok':True,'ms':round((time.time()-start)*1000),'response':str(data.get('response',''))[:80]}))
+                  except Exception as e:
+                      print(json.dumps({'model':model,'run':run,'ok':False,'ms':round((time.time()-start)*1000),'error':type(e).__name__}))
+          PY
+
+          ollama ps || true
+          free -h | head -3
+          REMOTE
