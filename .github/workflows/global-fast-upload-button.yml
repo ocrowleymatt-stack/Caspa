@@ -1,0 +1,57 @@
+name: Global Fast Upload Button
+
+on:
+  push:
+    paths:
+      - '.github/workflows/global-fast-upload-button.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Add unmissable global fast upload control
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/App.tsx')
+          s = p.read_text()
+          marker = '''  return (\n    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: '#f5efe5', color: '#172033' }}>\n      <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mobile-menu"'''
+          replacement = '''  return (\n    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: '#f5efe5', color: '#172033' }}>\n      <button\n        type="button"\n        onClick={() => sidebarFastUploadRef.current?.click()}\n        disabled={sidebarFastUploading}\n        aria-label="Fast file upload"\n        title="High-speed multi-file upload · 3 files processed in parallel"\n        style={{\n          position: 'fixed',\n          top: 18,\n          right: 18,\n          zIndex: 9999,\n          display: 'flex',\n          alignItems: 'center',\n          gap: 9,\n          border: '2px solid #17120c',\n          borderRadius: 14,\n          padding: '11px 15px',\n          background: '#ffd166',\n          color: '#17120c',\n          fontSize: 12,\n          fontWeight: 950,\n          letterSpacing: 0.5,\n          boxShadow: '0 8px 28px rgba(23,18,12,.24)',\n          cursor: sidebarFastUploading ? 'wait' : 'pointer',\n          opacity: sidebarFastUploading ? 0.82 : 1,\n        }}\n      >\n        {sidebarFastUploading ? <Loader size={17} className="spin" /> : <UploadCloud size={17} />}\n        <span>{sidebarFastUploading ? 'UPLOADING…' : 'FAST FILE UPLOAD'}</span>\n        {!sidebarFastUploading ? <small style={{ fontSize: 9, opacity: 0.72, fontWeight: 800 }}>MULTI</small> : null}\n      </button>\n\n      <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mobile-menu"'''
+          if 'FAST FILE UPLOAD' not in s:
+              if marker not in s:
+                  raise SystemExit('App return marker not found')
+              s = s.replace(marker, replacement, 1)
+          p.write_text(s)
+          PY
+      - name: Verify control and fast path
+        run: |
+          grep -q "FAST FILE UPLOAD" src/App.tsx
+          grep -q "zIndex: 9999" src/App.tsx
+          grep -q "uploadConcurrency = Math.min(3" src/App.tsx
+          grep -q "sidebarFastUploadRef.current?.click()" src/App.tsx
+      - name: Test
+        run: npm test -- --run
+      - name: Production build
+        run: npm run build
+      - name: Commit verified UI surgery
+        run: |
+          if git diff --quiet -- src/App.tsx; then
+            echo 'Already patched'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/App.tsx
+          git commit -m 'Make high-speed file upload globally visible'
+          git push origin HEAD:main
