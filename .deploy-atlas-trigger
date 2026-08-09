@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T22:53:00Z
-reason: make high-speed multi-file upload globally visible outside the sidebar
+deploy requested 2026-08-09T23:18:30Z
+reason: deploy robust nginx timeout auto-detection and rerun production acceptance checks
