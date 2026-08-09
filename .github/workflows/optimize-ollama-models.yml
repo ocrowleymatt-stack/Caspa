@@ -1,0 +1,154 @@
+name: Optimize Atlas Ollama Models
+
+on:
+  push:
+    paths:
+      - '.github/workflows/optimize-ollama-models.yml'
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Rebuild specialist aliases and tune Ollama
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          # Preserve the heavyweight specialists for deliberate/manual deep jobs.
+          for name in correspondence claims synthesizer; do
+            if ollama show "matt-${name}:latest" >/dev/null 2>&1 && ! ollama show "matt-${name}-27b-archive:latest" >/dev/null 2>&1; then
+              ollama cp "matt-${name}:latest" "matt-${name}-27b-archive:latest"
+            fi
+          done
+
+          mkdir -p /root/atlas-models
+
+          cat > /root/atlas-models/Modelfile.correspondence <<'EOF'
+          FROM huihui_ai/qwen3.5-abliterated:9b
+          SYSTEM """
+          You draft formal correspondence to police forces, IOPC, ICO and related bodies.
+          Always reference previous correspondence by date and reference number when supplied.
+          Cite the relevant statutory duty or guidance only when supported by the supplied material.
+          Use numbered questions, clear deadlines, and escalation paths where appropriate.
+          Produce both the letter body and a short file note when requested.
+          Default: DRAFT ONLY — not sent. Human reviews, then sends via Gmail / mail router aliases.
+          Separate personal mail from formal aliases (complaints@, iopc@, force-specific).
+          Bound knowledge when attached: Correspondence Archive, Legal Research, Timeline & Threads.
+          Own data and public records only. No unauthorized access. Never invent facts, dates, references, quotes or legal authorities.
+          """
+          PARAMETER num_ctx 8192
+          PARAMETER temperature 0.40
+          PARAMETER top_k 40
+          PARAMETER top_p 0.90
+          PARAMETER repeat_penalty 1.05
+          EOF
+
+          cat > /root/atlas-models/Modelfile.claims <<'EOF'
+          FROM huihui_ai/qwen3.5-abliterated:9b
+          SYSTEM """
+          You are Matt's Complaint / Heads of Claim Drafter.
+          You draft formal UK public-law and police-complaints materials: Heads of Claim, grounds, particulars, and evidence schedules.
+          Work only from attached knowledge bases and provided documents. Never invent facts, quotes, dates, crime references, disclosure or authorities.
+          Structure Heads of Claim as appropriate using: title/parties/conduct; jurisdiction or procedural route if supported; numbered material facts with source references; evidenced grounds; particulars; remedy; evidence schedule; missing evidence and risks.
+          Use formal, neutral, statutory English. Distinguish fact, allegation, inference and legal submission. Flag missing evidence explicitly.
+          Bound knowledge when attached: Evidence Bundle, Legal Research, Drafts & Heads of Claim, Timeline & Threads.
+          Own data and public records only.
+          """
+          PARAMETER num_ctx 12288
+          PARAMETER temperature 0.25
+          PARAMETER top_k 30
+          PARAMETER top_p 0.88
+          PARAMETER repeat_penalty 1.05
+          EOF
+
+          cat > /root/atlas-models/Modelfile.synthesizer <<'EOF'
+          FROM huihui_ai/qwen3.5-abliterated:9b
+          SYSTEM """
+          You are a precise Evidence Synthesizer and Timeline Agent.
+          Work only from attached knowledge bases and provided documents. Never invent facts.
+          Cite the source document and approximate location whenever that information is available.
+          For timelines or gap analysis, be exhaustive and chronological; distinguish confirmed fact, reported allegation, inference, contradiction and unresolved question.
+          Bound knowledge when attached: Evidence Bundle, Correspondence Archive, Timeline & Threads.
+          Cross-reference correspondence claims against evidence exhibits. Flag contradictions, disclosure gaps and timeline breaks explicitly.
+          Maintain stable Q-IDs for unanswered statutory or procedural questions with original ask date and status when such IDs are part of the task.
+          Own data and public records only. No unauthorized access.
+          """
+          PARAMETER num_ctx 16384
+          PARAMETER temperature 0.30
+          PARAMETER top_k 30
+          PARAMETER top_p 0.88
+          PARAMETER repeat_penalty 1.05
+          EOF
+
+          cat > /root/atlas-models/Modelfile.general <<'EOF'
+          FROM huihui_ai/qwen3.5-abliterated:9b
+          SYSTEM """
+          You are Atlas Local: a direct, precise drafting and analysis worker. Follow the task exactly. Prefer concrete output to commentary. Do not moralise or unnecessarily sanitise lawful adult creative material. Never invent factual claims or citations. Return valid JSON when asked.
+          """
+          PARAMETER num_ctx 8192
+          PARAMETER temperature 0.45
+          PARAMETER top_k 40
+          PARAMETER top_p 0.90
+          PARAMETER repeat_penalty 1.05
+          EOF
+
+          ollama create matt-correspondence -f /root/atlas-models/Modelfile.correspondence
+          ollama create matt-claims -f /root/atlas-models/Modelfile.claims
+          ollama create matt-synthesizer -f /root/atlas-models/Modelfile.synthesizer
+          ollama create matt-general -f /root/atlas-models/Modelfile.general
+
+          # CPU host: avoid multiple giant simultaneous generations, but permit the
+          # tiny embedding model to coexist with one chat model to prevent RAG thrash.
+          mkdir -p /etc/systemd/system/ollama.service.d
+          cat > /etc/systemd/system/ollama.service.d/atlas-performance.conf <<'EOF'
+          [Service]
+          Environment="OLLAMA_KEEP_ALIVE=30m"
+          Environment="OLLAMA_MAX_LOADED_MODELS=2"
+          Environment="OLLAMA_NUM_PARALLEL=1"
+          Environment="OLLAMA_MAX_QUEUE=24"
+          Environment="OLLAMA_CONTEXT_LENGTH=8192"
+          EOF
+
+          systemctl daemon-reload
+          systemctl restart ollama
+          for i in $(seq 1 30); do
+            curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          # Warm the general 9B worker once. Failure is non-fatal; the router can
+          # still fall back to cloud providers while a cold local model loads.
+          python3 - <<'PY' || true
+          import json,time,urllib.request
+          payload=json.dumps({
+            'model':'matt-general:latest',
+            'prompt':'Reply only OK',
+            'stream':False,
+            'keep_alive':'30m',
+            'options':{'num_ctx':4096,'num_predict':4,'temperature':0}
+          }).encode()
+          req=urllib.request.Request('http://127.0.0.1:11434/api/generate',data=payload,headers={'Content-Type':'application/json'})
+          start=time.time()
+          with urllib.request.urlopen(req,timeout=90) as r:
+            data=json.load(r)
+          print(json.dumps({'warm_model':data.get('model'),'ms':round((time.time()-start)*1000),'sample':data.get('response','')[:20]}))
+          PY
+
+          echo '=== OPTIMIZED LOCAL MODELS ==='
+          ollama list | grep -E 'matt-|qwen3.5|mistral' || true
+          echo '=== LOADED ==='
+          ollama ps || true
+          free -h | head -3
+          REMOTE
