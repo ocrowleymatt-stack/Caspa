@@ -4,8 +4,7 @@ name: Deploy Atlas
 # Manual dispatch requires confirm=deploy. A change to .deploy-atlas-trigger on main
 # is also an explicit deployment request, allowing trusted repository automation to deploy.
 # Requires a repository secret with the Atlas SSH private key.
-# Preferred secret name: HETZNER_SSH_KEY
-# Also accepted: ATLAS_SSH_PRIVATE_KEY, SSH_PRIVATE_KEY, DEPLOY_SSH_KEY, SERVER_SSH_KEY
+# Preferred secret name: PRIVATEKEY2 (current), with legacy aliases retained.
 
 on:
   push:
@@ -25,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
       ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
       SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -51,7 +51,7 @@ jobs:
         run: |
           key=""
           chosen=""
-          for name in HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
             if [ -n "${!name}" ]; then
               key="${!name}"
               chosen="$name"
@@ -59,7 +59,7 @@ jobs:
             fi
           done
           if [ -z "$key" ]; then
-            echo "::error::No Atlas SSH secret found. Add HETZNER_SSH_KEY (preferred) in repo Settings → Secrets, then re-run."
+            echo "::error::No Atlas SSH secret found. Add PRIVATEKEY2 (preferred) in repo Settings → Secrets, then re-run."
             exit 2
           fi
           echo "Using secret: $chosen"
