@@ -1,9 +1,9 @@
 /**
  * Dynamic zero/low-cost model pool.
  *
- * Discovers models already available through the host Open WebUI/unified router
- * and direct Ollama. No new API keys are required: it reuses the existing
- * UNIFIED_ROUTER_* and OLLAMA_URL configuration.
+ * Atlas runs Ollama on a CPU-only host. Discovery remains broad, but automatic
+ * execution deliberately favours the 7-10B models and task-specific matt-* aliases;
+ * 27B models remain installed for manual/deep use without blocking interactive work.
  */
 
 import {
@@ -36,19 +36,27 @@ function ollamaBase(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 function isChatCandidate(id: string): boolean {
-  const lower = id.toLowerCase();
-  return !/(embed|embedding|rerank|whisper|speech|tts|transcri|vision-only|image|flux|stable-diffusion|sdxl)/i.test(lower);
+  return !/(embed|embedding|rerank|whisper|speech|tts|transcri|vision-only|image|flux|stable-diffusion|sdxl)/i.test(id);
+}
+
+function sizePenalty(id: string, parameterSize = ''): number {
+  const text = `${id} ${parameterSize}`.toLowerCase();
+  if (/(70b|72b|32b|30b|27b|24b)/.test(text)) return -180;
+  if (/(14b|13b)/.test(text)) return -50;
+  if (/(7b|8b|9b|10b)/.test(text)) return 55;
+  if (/(4b|3b)/.test(text)) return 45;
+  return 0;
 }
 
 function qualityScore(id: string, ownedBy = '', parameterSize = ''): number {
   const lower = `${id} ${ownedBy}`.toLowerCase();
-  let score = 0;
+  let score = sizePenalty(id, parameterSize);
   if (lower.includes(':free')) score += 80;
-  if (/(ollama|local|open-webui)/.test(lower)) score += 55;
-  if (/(qwen3|qwen2\.5|qwen2|deepseek|llama3\.3|llama3\.2|gemma3|mistral|mixtral|phi4|command-r)/.test(lower)) score += 35;
+  if (/(ollama|local|open-webui)/.test(lower)) score += 45;
+  if (/qwen3\.5|qwen3/.test(lower)) score += 55;
+  else if (/(mistral|gemma3|llama3\.3|llama3\.2|phi4|command-r|deepseek)/.test(lower)) score += 35;
+  if (lower.includes('matt-')) score += 35;
   if (/(coder|code)/.test(lower)) score -= 8;
-  if (/(70b|72b|32b|30b|27b|24b|14b|13b)/.test(`${lower} ${parameterSize.toLowerCase()}`)) score += 12;
-  if (/(7b|8b|9b|4b|3b)/.test(`${lower} ${parameterSize.toLowerCase()}`)) score += 7;
   return score;
 }
 
@@ -56,8 +64,6 @@ function likelyFreeModel(id: string, ownedBy = ''): boolean {
   const lower = `${id} ${ownedBy}`.toLowerCase();
   if (lower.includes(':free')) return true;
   if (/(ollama|local|open-webui)/.test(lower)) return true;
-  // Open WebUI often exposes local Ollama IDs without provider metadata.
-  // Bare open-model IDs are treated as likely local; provider/model paths are not.
   if (!id.includes('/') && /(qwen|llama|mistral|mixtral|gemma|deepseek|phi|yi|granite|command-r|neural-chat)/i.test(id)) return true;
   return false;
 }
@@ -107,11 +113,7 @@ export async function discoverOllamaModels(env: NodeJS.ProcessEnv = process.env)
 
 function unifiedDiscoveryUrls(base: string): string[] {
   const clean = base.replace(/\/$/, '');
-  const urls = [
-    `${clean}/api/models`,       // Open WebUI native catalogue
-    `${clean}/v1/models`,        // OpenAI-compatible catalogue
-    `${clean}/models`,
-  ];
+  const urls = [`${clean}/api/models`, `${clean}/v1/models`, `${clean}/models`];
   if (clean.endsWith('/v1')) urls.unshift(`${clean}/models`);
   return [...new Set(urls)];
 }
@@ -126,11 +128,10 @@ function parseUnifiedModels(data: any): any[] {
 export async function discoverUnifiedModels(env: NodeJS.ProcessEnv = process.env): Promise<DiscoveredModel[]> {
   const base = unifiedRouterBase(env);
   if (!base) return [];
-
   const headers = unifiedRouterAuthHeaders(env);
   for (const url of unifiedDiscoveryUrls(base)) {
     try {
-      const response = await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
       if (!response.ok) continue;
       const data = await response.json();
       const parsed = parseUnifiedModels(data)
@@ -150,23 +151,16 @@ export async function discoverUnifiedModels(env: NodeJS.ProcessEnv = process.env
         .filter((entry: DiscoveredModel) => Boolean(entry.id) && isChatCandidate(entry.id));
       if (parsed.length) return parsed.sort((a: DiscoveredModel, b: DiscoveredModel) => b.score - a.score);
     } catch {
-      // Try the next supported catalogue shape.
+      // Try the next catalogue shape.
     }
   }
   return [];
 }
 
-export async function discoverFreeModelPool(
-  env: NodeJS.ProcessEnv = process.env,
-  force = false,
-): Promise<DiscoveredModel[]> {
+export async function discoverFreeModelPool(env: NodeJS.ProcessEnv = process.env, force = false): Promise<DiscoveredModel[]> {
   const now = Date.now();
   if (!force && discoveryCache && now - discoveryCache.at < DISCOVERY_CACHE_MS) return discoveryCache.models;
-
-  const [ollama, unified] = await Promise.all([
-    discoverOllamaModels(env),
-    discoverUnifiedModels(env),
-  ]);
+  const [ollama, unified] = await Promise.all([discoverOllamaModels(env), discoverUnifiedModels(env)]);
   const models = uniqueBySourceAndId([...ollama, ...unified]).sort((a, b) => b.score - a.score);
   discoveryCache = { at: now, models };
   return models;
@@ -176,30 +170,66 @@ export function clearFreeModelDiscoveryCache(): void {
   discoveryCache = null;
 }
 
+function specialistBoost(id: string, prompt: string): number {
+  const p = prompt.toLowerCase();
+  const model = id.toLowerCase();
+  let score = 0;
+  if (model.includes('matt-claims') && /\b(legal|claim|judicial|police|statutory|complaint|evidence|public law|ground|remedy)\b/.test(p)) score += 170;
+  if (model.includes('matt-correspondence') && /\b(email|letter|correspondence|reply|write to|complaint letter|deadline|recipient)\b/.test(p)) score += 170;
+  if (model.includes('matt-synthesizer') && /\b(timeline|synthesi[sz]e|evidence|cross-reference|contradiction|gap analysis|chronolog)\b/.test(p)) score += 170;
+  if (/qwen3\.5.*9b/.test(model)) score += 100;
+  if (model.startsWith('mistral')) score += 70;
+  if (/(27b|26\.9b|27\.8b)/.test(`${model}`)) score -= 200;
+  return score;
+}
+
 export async function callOllamaModelHunt(
   prompt: string,
-  opts: { json?: boolean; maxTokens?: number; system?: string; env?: NodeJS.ProcessEnv; maxAttempts?: number } = {},
+  opts: {
+    json?: boolean;
+    maxTokens?: number;
+    system?: string;
+    env?: NodeJS.ProcessEnv;
+    maxAttempts?: number;
+    mode?: 'speed' | 'balanced' | 'god';
+  } = {},
 ): Promise<{ text: string; model: string }> {
   const env = opts.env || process.env;
-  const models = await discoverOllamaModels(env);
-  if (!models.length) throw new Error('No local Ollama chat models are currently available');
+  const mode = opts.mode || 'balanced';
+  const discovered = await discoverOllamaModels(env);
+  if (!discovered.length) throw new Error('No local Ollama chat models are currently available');
 
-  const candidates = models.slice(0, Math.max(1, opts.maxAttempts || 3));
+  // Heavy 27B models are intentionally excluded from automatic interactive routing on
+  // this CPU-only host. They remain installed and available for deliberate manual jobs.
+  const candidates = discovered
+    .map((model) => ({ ...model, runScore: model.score + specialistBoost(model.id, prompt) }))
+    .filter((model) => !/(27b|26\.9b|27\.8b)/i.test(`${model.id} ${model.parameterSize || ''}`))
+    .sort((a, b) => b.runScore - a.runScore)
+    .slice(0, Math.max(1, opts.maxAttempts || 2));
+
+  if (!candidates.length) throw new Error('No interactive-size local Ollama models are available');
   let lastError: Error | null = null;
   for (const candidate of candidates) {
     try {
+      const localTimeout = mode === 'speed' ? 30_000 : mode === 'god' ? 60_000 : 45_000;
       const response = await fetch(`${ollamaBase(env)}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(opts.maxTokens && opts.maxTokens >= 1500 ? 120_000 : 75_000),
+        signal: AbortSignal.timeout(localTimeout),
         body: JSON.stringify({
           model: candidate.id,
           prompt: opts.json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt,
-          system: opts.system || 'You are a precise, high-quality literary and analytical assistant.',
-          temperature: 0.45,
-          num_predict: opts.maxTokens || 1600,
+          system: opts.system || 'You are a precise, high-quality literary and analytical assistant. Never invent facts.',
           stream: false,
+          keep_alive: '30m',
           ...(opts.json ? { format: 'json' } : {}),
+          options: {
+            num_ctx: mode === 'god' ? 12288 : 8192,
+            num_predict: Math.min(opts.maxTokens || 1200, mode === 'speed' ? 700 : 1800),
+            temperature: opts.json ? 0.2 : mode === 'god' ? 0.55 : 0.4,
+            top_p: 0.9,
+            repeat_penalty: 1.05,
+          },
         }),
       });
       if (!response.ok) {
@@ -214,7 +244,7 @@ export async function callOllamaModelHunt(
       lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
-  throw lastError || new Error('All discovered Ollama models failed');
+  throw lastError || new Error('Interactive local model pool exhausted');
 }
 
 export async function callUnifiedModelHunt(
@@ -235,9 +265,8 @@ export async function callUnifiedModelHunt(
   const configured = unifiedRouterModel(env);
   const discovered = await discoverUnifiedModels(env);
   const freeCandidates = discovered.filter((model) => model.likelyFree).map((model) => model.id);
-  const candidates = [...new Set([configured, ...freeCandidates])].slice(0, Math.max(1, opts.maxAttempts || 4));
-  const system = opts.system || 'You are a precise, high-quality literary and analytical assistant.';
-  const timeoutMs = opts.timeoutMs ?? (opts.maxTokens && opts.maxTokens >= 1500 ? 120_000 : 75_000);
+  const candidates = [...new Set([configured, ...freeCandidates])].slice(0, Math.max(1, opts.maxAttempts || 3));
+  const timeout = opts.timeoutMs ?? 60_000;
   let lastError: Error | null = null;
 
   for (const model of candidates) {
@@ -245,15 +274,15 @@ export async function callUnifiedModelHunt(
       const response = await fetch(url, {
         method: 'POST',
         headers: unifiedRouterAuthHeaders(env),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(timeout),
         body: JSON.stringify({
           model,
           messages: [
-            { role: 'system', content: system },
+            { role: 'system', content: opts.system || 'You are a precise, high-quality literary and analytical assistant.' },
             { role: 'user', content: opts.json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt },
           ],
           max_tokens: opts.maxTokens || 4096,
-          temperature: 0.55,
+          temperature: 0.5,
         }),
       });
       if (!response.ok) {
@@ -268,5 +297,5 @@ export async function callUnifiedModelHunt(
       lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
-  throw lastError || new Error('All discovered unified/free models failed');
+  throw lastError || new Error('Unified model pool exhausted');
 }
