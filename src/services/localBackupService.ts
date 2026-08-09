@@ -1,10 +1,10 @@
 /**
- * Local-first backup service — JSON snapshots on disk
+ * Local-first backup service — user-scoped JSON snapshots on disk.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { getBackupsDir } from './dataPaths';
 
 export interface BackupMeta {
@@ -27,17 +27,27 @@ function normalizeBackupId(id: string): string | null {
   return BACKUP_ID_PATTERN.test(trimmed) ? trimmed : null;
 }
 
-function backupPath(id: string): string | null {
+function scopeHash(scope: string): string {
+  return createHash('sha256').update(scope).digest('hex').slice(0, 32);
+}
+
+function scopedBackupDir(scope: string): string {
+  const dir = path.join(getBackupsDir(), 'users', scopeHash(scope));
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function backupPath(scope: string, id: string): string | null {
   const safeId = normalizeBackupId(id);
   if (!safeId) return null;
-  return path.join(getBackupsDir(), `${safeId}.json`);
+  return path.join(scopedBackupDir(scope), `${safeId}.json`);
 }
 
 function safeLabel(label: string): string {
   return label.trim().slice(0, 80) || 'snapshot';
 }
 
-export function createBackup(entries: Record<string, string>, label = 'manual'): BackupMeta {
+export function createBackup(scope: string, entries: Record<string, string>, label = 'manual'): BackupMeta {
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   const payload: BackupSnapshot = {
@@ -50,12 +60,12 @@ export function createBackup(entries: Record<string, string>, label = 'manual'):
     },
     entries,
   };
-  fs.writeFileSync(backupPath(id)!, JSON.stringify(payload, null, 2), 'utf8');
+  fs.writeFileSync(backupPath(scope, id)!, JSON.stringify(payload, null, 2), 'utf8');
   return payload.meta;
 }
 
-export function listBackups(): BackupMeta[] {
-  const dir = getBackupsDir();
+export function listBackups(scope: string): BackupMeta[] {
+  const dir = scopedBackupDir(scope);
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
   const metas: BackupMeta[] = [];
 
@@ -72,10 +82,9 @@ export function listBackups(): BackupMeta[] {
   return metas.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function loadBackup(id: string): BackupSnapshot | null {
-  const file = backupPath(id);
-  if (!file) return null;
-  if (!fs.existsSync(file)) return null;
+export function loadBackup(scope: string, id: string): BackupSnapshot | null {
+  const file = backupPath(scope, id);
+  if (!file || !fs.existsSync(file)) return null;
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8')) as BackupSnapshot;
   } catch {
@@ -83,14 +92,14 @@ export function loadBackup(id: string): BackupSnapshot | null {
   }
 }
 
-export function deleteBackup(id: string): boolean {
-  const file = backupPath(id);
-  if (!file) return false;
-  if (!fs.existsSync(file)) return false;
+export function deleteBackup(scope: string, id: string): boolean {
+  const file = backupPath(scope, id);
+  if (!file || !fs.existsSync(file)) return false;
   fs.unlinkSync(file);
   return true;
 }
 
-export function backupsPresent(): boolean {
-  return fs.existsSync(getBackupsDir()) && listBackups().length > 0;
+export function backupsPresent(scope?: string): boolean {
+  if (!scope) return fs.existsSync(getBackupsDir());
+  return listBackups(scope).length > 0;
 }
