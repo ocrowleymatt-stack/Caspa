@@ -9,7 +9,7 @@
   --live-primary-soft: #ead6ff;
   --live-accent: #8fe3cf;
   --live-text: #f8f3fb;
-  --live-muted: #b9aec2;
+  --live-muted: #c8bfd0;
   --live-border: rgba(212,166,255,.24);
 }
 
@@ -24,8 +24,8 @@
   --cs-gold: #d4a6ff;
   --cs-gold-soft: #ead6ff;
   --cs-ivory: #f8f3fb;
-  --cs-muted: #b9aec2;
-  --cs-grey: #aaa0b3;
+  --cs-muted: #c8bfd0;
+  --cs-grey: #bcb2c4;
   --cs-violet: #b77dea;
   --cs-indigo: #6d5fa8;
   --cs-green: #8fe3cf;
@@ -127,14 +127,52 @@
   color: #170e1d !important;
 }
 
+/* Old cream/brown interface text converted to accessible plum-theme text. */
+#root [style*="color: #1d1408"],
+#root [style*="color:#1d1408"],
+#root [style*="color: #2b2115"],
+#root [style*="color:#2b2115"],
+#root [style*="color: #2f2415"],
+#root [style*="color:#2f2415"],
+#root [style*="color: #3b3126"],
+#root [style*="color:#3b3126"],
+#root [style*="color: #4a4035"],
+#root [style*="color:#4a4035"],
+#root [style*="color: #5b4724"],
+#root [style*="color:#5b4724"],
+#root [style*="color: #5c5146"],
+#root [style*="color:#5c5146"],
+#root [style*="color: rgb(29, 20, 8)"],
+#root [style*="color: rgb(43, 33, 21)"],
+#root [style*="color: rgb(47, 36, 21)"],
+#root [style*="color: rgb(59, 49, 38)"],
+#root [style*="color: rgb(74, 64, 53)"],
+#root [style*="color: rgb(91, 71, 36)"],
+#root [style*="color: rgb(92, 81, 70)"] {
+  color: var(--live-text) !important;
+}
+
+#root [style*="color: #73695d"],
+#root [style*="color:#73695d"],
+#root [style*="color: #8a7a66"],
+#root [style*="color:#8a7a66"],
+#root [style*="color: #8a7d6b"],
+#root [style*="color:#8a7d6b"],
+#root [style*="color: #9b9184"],
+#root [style*="color:#9b9184"],
+#root [style*="color: #a89572"],
+#root [style*="color:#a89572"],
+#root [style*="color: #c9b898"],
+#root [style*="color:#c9b898"],
 #root [style*="color: rgb(109, 98, 85)"],
+#root [style*="color: rgb(115, 105, 93)"],
+#root [style*="color: rgb(138, 122, 102)"],
 #root [style*="color: rgb(138, 125, 107)"],
 #root [style*="color: rgb(155, 145, 132)"],
 #root [style*="color: rgb(168, 149, 114)"],
 #root [style*="color: rgb(201, 184, 152)"],
 #root [style*="color: rgb(122, 109, 88)"],
-#root [style*="color: rgb(143, 128, 104)"],
-#root [style*="color: rgb(115, 105, 93)"] { color: var(--live-muted) !important; }
+#root [style*="color: rgb(143, 128, 104)"] { color: var(--live-muted) !important; }
 
 #root [style*="background: rgb(21, 27, 41)"],
 #root [style*="background-color: rgb(21, 27, 41)"],
@@ -151,6 +189,22 @@
 #root [style*="background: rgb(142, 167, 255)"],
 #root [style*="background-color: rgb(142, 167, 255)"] { background: var(--live-primary) !important; color: #160f1f !important; }
 
+/* Safety net: old pages frequently hard-code dark child text inside a surface whose background
+   is now dark. Make ordinary copy inherit the surface colour. Interactive controls retain
+   their own colour, and manuscript/paper previews are deliberately exempt. */
+#root main :where(h1,h2,h3,h4,h5,h6,p,small,label,li,dt,dd,blockquote,strong,b,em,code,span):not(.manuscript-page *):not(.book-page *):not(.print-page *) {
+  color: inherit !important;
+}
+
+/* Preserve deliberate hierarchy where a component marks supporting copy. */
+#root main :where(.text-text-secondary,.text-slate-400,.text-slate-500,.text-gray-400,.text-gray-500,.muted,.secondary-text):not(.manuscript-page *) {
+  color: var(--live-muted) !important;
+}
+
+/* Links and active accents must remain visibly distinct after the inheritance safety net. */
+#root main a:not(.manuscript-page *) { color: var(--live-primary-soft) !important; }
+#root main a:hover:not(.manuscript-page *) { color: var(--live-accent) !important; }
+
 #root :is(input,textarea,select):not(.manuscript-page *) {
   background: #120d18 !important;
   color: var(--live-text) !important;
@@ -160,6 +214,7 @@
   border-color: var(--live-primary) !important;
   outline: 2px solid rgba(143,227,207,.22) !important;
 }
+#root :is(input,textarea)::placeholder { color: #9f94a8 !important; opacity: 1; }
 #root button:focus-visible,
 #root a:focus-visible,
 #root [role="button"]:focus-visible {
