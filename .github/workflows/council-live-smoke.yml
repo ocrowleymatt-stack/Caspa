@@ -5,7 +5,7 @@ on:
     paths:
       - '.github/workflows/council-live-smoke.yml'
 
-# Final validation marker: 2026-08-09T02:55Z
+# Claude diagnostics marker: 2026-08-09T02:56Z
 jobs:
   probe:
     runs-on: ubuntu-latest
