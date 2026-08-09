@@ -2,6 +2,7 @@ import {StrictMode, Component, ErrorInfo, ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import './components/CaspaThemeOverride.css';
 
 // Safely patch crypto.randomUUID to prevent runtime crashes in non-secure contexts or certain webviews
 if (typeof window !== 'undefined') {
