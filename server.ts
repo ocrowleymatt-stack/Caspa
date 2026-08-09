@@ -83,8 +83,9 @@ async function callGeminiOnServer(options: {
 
   const { prompt, model = 'gemini-2.0-flash', json = false, maxTokens, useSearch = false } = options;
 
-  // Enforce prohibited models upgrade to gemini-2.0-flash
-  const prohibited = [
+  // Retired Gemini generations are upgraded at the server boundary so older
+  // client code cannot take the whole routing layer down when Google retires a model.
+  const retiredModels = [
     'gemini-1.5-flash',
     'gemini-1.5-pro',
     'gemini-pro',
@@ -92,7 +93,7 @@ async function callGeminiOnServer(options: {
     'gemini-2.0-pro',
     'gemini-2.0-flash-thinking'
   ];
-  const activeModel = prohibited.includes(model) ? 'gemini-2.0-flash' : model;
+  const activeModel = retiredModels.includes(model) ? 'gemini-3.6-flash' : model;
 
   const controller = new AbortController();
   const geminiTimeoutMs = aiCallTimeoutMs(maxTokens);
@@ -104,7 +105,6 @@ async function callGeminiOnServer(options: {
       contents: prompt,
       config: {
         systemInstruction: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand. You provide raw, high-fidelity output.",
-        temperature: 0.7,
         ...(json && !useSearch ? { responseMimeType: 'application/json' } : {}),
         ...(maxTokens ? { maxOutputTokens: maxTokens } : {}),
         ...(useSearch ? { tools: [{ googleSearch: {} }] } : {})
@@ -187,7 +187,7 @@ async function callClaude(prompt: string, json = false, maxTokens?: number) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-sonnet-5",
         max_tokens: maxTokens || 4096,
         messages: [
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
