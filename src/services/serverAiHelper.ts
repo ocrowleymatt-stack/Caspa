@@ -10,6 +10,40 @@ import {
   sharedCircuitBreaker as breaker,
 } from './aiRouterPolicy';
 import { callUnifiedRouterChat } from './unifiedRouter';
+import { buildOrganicStimulusBlock } from './literary/organicStimulusService';
+
+const FICTION_HUMANITY_CONTRACT = `
+CASPA FICTION HUMANITY CONTRACT — APPLY UNLESS THE USER EXPLICITLY REQUESTS AN ESSAY-COLLECTION, FRAGMENTARY, ANTHOLOGY OR LINKED-STORIES FORM
+- WRITE ONE ACTUAL NOVEL. Chapters are successive movements of the same causal, emotional and temporal organism — not self-contained essays sharing a theme.
+- Every chapter inherits live state from the previous one: who knows what, what has changed, what remains physically present, what has been promised, who is avoiding whom, and what consequence is already in motion.
+- Do not restart the premise, reintroduce the cast, re-explain the theme, or manufacture a fresh thesis at each chapter boundary. A chapter boundary is a cut in the flow, not amnesia.
+- Let scenes continue across chapter boundaries when that is the strongest form. Chapters need not have mini-introductions or mini-conclusions.
+- Trust the reader. Omit explanations that the reader can infer from action, juxtaposition, image, silence or prior knowledge. Do not translate every gesture into its emotional meaning.
+- Silence is content. Characters may not answer, may answer sideways, may leave a thought unfinished, may misunderstand, may avoid the obvious subject. Do not fill every gap with explanatory dialogue or narration.
+- Human memory is reconstructive, selective and state-dependent. Unless the story establishes otherwise, recollection may lose detail, shift emphasis, fuse adjacent moments, preserve a sensory shard while losing sequence, or become more certain than it deserves. Never use memory degradation as a continuity excuse: distinguish character uncertainty from authorial contradiction.
+- Psychological response has latency and displacement. Shock may produce practical behaviour before feeling; grief may arrive through irritation or routine; fear may narrow attention; shame may create concealment; attachment can produce contradictory action. Do not make every character react on cue in the same emotional register.
+- Preserve private interiority. The narrator does not have to explain what a character cannot yet formulate.
+- Vary duration honestly: a consequential minute may occupy pages; six uneventful months may pass in a sentence. Do not give every beat equal textual weight.
+- Permit negative space: withheld scene, off-stage consequence, ellipsis, jump cut, object residue, changed routine, absence. Use these only where causality remains legible.
+- Recurring images must transform with context. Never deploy motifs at regular intervals like scheduled decorations.
+- Literary influence means craft abstraction, never imitation: focal distance, omission, compression, syntactic pressure, duration, scene architecture, comic timing, restraint, image logic. Do not copy or closely mimic an author's recognisable prose.
+- Surprise must emerge from character, world and consequence. Never pick a stock 'random twist', phrase, metaphor or emotional beat from a hidden list.
+`.trim();
+
+function looksLikeCaspaWriting(prompt: string) {
+  return /\bCaspa\b/i.test(prompt) && /(draft|write|rewrite|novel|fiction|chapter|scene|story|spine|prose|literary|poetry|script|musical|seed|planning)/i.test(prompt);
+}
+
+function looksNonfiction(prompt: string) {
+  return /(NON-FICTION|nonfiction|Essay \/ article|MODE\s*\n(?:nonfiction|essay)|PROJECT TYPE[^\n]*(?:Non-fiction|Essay))/i.test(prompt);
+}
+
+async function enrichCreativePrompt(prompt: string) {
+  if (!looksLikeCaspaWriting(prompt) || looksNonfiction(prompt)) return prompt;
+  let stimulus = '';
+  try { stimulus = await buildOrganicStimulusBlock(); } catch { /* optional anti-pattern stimulus must never block writing */ }
+  return `${prompt}\n\n${FICTION_HUMANITY_CONTRACT}${stimulus ? `\n\n${stimulus}` : ''}`;
+}
 
 export async function callServerAi(
   prompt: string,
@@ -18,14 +52,15 @@ export async function callServerAi(
 ): Promise<string> {
   const maxTokens = opts?.maxTokens ?? (json ? 4096 : 8192);
   const timeoutMs = opts?.timeoutMs ?? (maxTokens > 12000 ? 240000 : 120000);
+  const routedPrompt = await enrichCreativePrompt(prompt);
 
   // Prefer host Unified Router, then grok → gemini → openai.
   const callers: Record<string, () => Promise<string | null>> = {
     unified: () =>
-      callUnifiedRouterChat(prompt, { json, maxTokens, timeoutMs }).catch(() => null),
-    grok: () => callGrok(prompt, json, maxTokens, timeoutMs),
-    gemini: () => callGemini(prompt, json, maxTokens, timeoutMs),
-    openai: () => callOpenai(prompt, json, maxTokens, timeoutMs),
+      callUnifiedRouterChat(routedPrompt, { json, maxTokens, timeoutMs }).catch(() => null),
+    grok: () => callGrok(routedPrompt, json, maxTokens, timeoutMs),
+    gemini: () => callGemini(routedPrompt, json, maxTokens, timeoutMs),
+    openai: () => callOpenai(routedPrompt, json, maxTokens, timeoutMs),
   };
 
   const { attempt, anyConfigured } = selectAttemptOrder(
