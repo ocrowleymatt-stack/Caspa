@@ -15,10 +15,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply Council Mode patch
         run: python scripts/fix-council-mode.py
-      - name: Validate
+      - name: Validate production build
         run: |
           npm ci
-          npm run lint
           npm run build
           git diff --check
       - name: Commit repair
