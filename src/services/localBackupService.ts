@@ -47,6 +47,22 @@ function safeLabel(label: string): string {
   return label.trim().slice(0, 80) || 'snapshot';
 }
 
+function readMetasFromDir(dir: string): BackupMeta[] {
+  if (!fs.existsSync(dir)) return [];
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  const metas: BackupMeta[] = [];
+  for (const file of files) {
+    try {
+      const raw = fs.readFileSync(path.join(dir, file), 'utf8');
+      const parsed = JSON.parse(raw) as BackupSnapshot;
+      if (parsed.meta?.id) metas.push(parsed.meta);
+    } catch {
+      /* skip corrupt files */
+    }
+  }
+  return metas;
+}
+
 export function createBackup(scope: string, entries: Record<string, string>, label = 'manual'): BackupMeta {
   const id = randomUUID();
   const createdAt = new Date().toISOString();
@@ -64,21 +80,26 @@ export function createBackup(scope: string, entries: Record<string, string>, lab
   return payload.meta;
 }
 
-export function listBackups(scope: string): BackupMeta[] {
-  const dir = scopedBackupDir(scope);
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
-  const metas: BackupMeta[] = [];
-
-  for (const file of files) {
-    try {
-      const raw = fs.readFileSync(path.join(dir, file), 'utf8');
-      const parsed = JSON.parse(raw) as BackupSnapshot;
-      if (parsed.meta?.id) metas.push(parsed.meta);
-    } catch {
-      /* skip corrupt files */
+/**
+ * With a scope, return only that user's backups. Without a scope, aggregate
+ * metadata solely for the public health/doctor count; no restore path can use
+ * this aggregate view and no user identifier is exposed.
+ */
+export function listBackups(scope?: string): BackupMeta[] {
+  let metas: BackupMeta[] = [];
+  if (scope) {
+    metas = readMetasFromDir(scopedBackupDir(scope));
+  } else {
+    const root = getBackupsDir();
+    // Legacy pre-separation snapshots in the root are counted for diagnostics.
+    metas.push(...readMetasFromDir(root));
+    const usersDir = path.join(root, 'users');
+    if (fs.existsSync(usersDir)) {
+      for (const entry of fs.readdirSync(usersDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) metas.push(...readMetasFromDir(path.join(usersDir, entry.name)));
+      }
     }
   }
-
   return metas.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -100,6 +121,5 @@ export function deleteBackup(scope: string, id: string): boolean {
 }
 
 export function backupsPresent(scope?: string): boolean {
-  if (!scope) return fs.existsSync(getBackupsDir());
   return listBackups(scope).length > 0;
 }
