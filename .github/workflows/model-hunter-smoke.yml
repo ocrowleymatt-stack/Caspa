@@ -1,0 +1,14 @@
+name: Model Hunter Smoke
+
+on:
+  push:
+    paths:
+      - '.github/workflows/model-hunter-smoke.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe live model catalogue and free routes
+        run: node scripts/model-hunter-smoke.mjs
