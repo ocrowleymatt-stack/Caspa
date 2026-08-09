@@ -1,0 +1,72 @@
+name: Repair Finish Book Flow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-finish-flow.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch finish-book flow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 1) Workshop must never silently no-op because diagnosis returned zero recommendations.
+          p = Path('src/components/CommissionStudio.tsx')
+          s = p.read_text()
+          old = """  const runCommission = async (ids: string[], scope: CommissionScope) => {\n    if (!state.diagnosis || state.chapters.length === 0 || ids.length === 0) return;\n    const nextIdea = directedIdea.trim() || brief.idea;\n    const writeBrief = { ...brief, idea: nextIdea };\n"""
+          new = """  const runCommission = async (ids: string[], scope: CommissionScope) => {\n    if (!state.diagnosis || state.chapters.length === 0) {\n      update({ phase: 'error', error: 'Add and analyse a manuscript before finishing the book.' });\n      return;\n    }\n    const effectiveIds = ids.length ? ids : (recommendedIds(state.diagnosis).length ? recommendedIds(state.diagnosis) : ['rec-complete-book']);\n    const nextIdea = directedIdea.trim() || brief.idea;\n    const writeBrief = { ...brief, idea: nextIdea };\n"""
+          if old not in s:
+              raise SystemExit('CommissionStudio runCommission pattern not found')
+          s = s.replace(old, new, 1)
+          s = s.replace("selectedRecommendationIds: ids,\n      scope,", "selectedRecommendationIds: effectiveIds,\n      scope,", 1)
+          s = s.replace("        ids,\n        scope,", "        effectiveIds,\n        scope,", 1)
+          s = s.replace("disabled={executing || selectedIds.length === 0}", "disabled={executing}", 1)
+          s = s.replace("{executing ? 'Finishing…' : `Finish book with ${selectedIds.length} fix${selectedIds.length === 1 ? '' : 'es'}`}", "{executing ? 'Finishing…' : selectedIds.length ? `Finish book with ${selectedIds.length} fix${selectedIds.length === 1 ? '' : 'es'}` : 'Finish book'}", 1)
+          s = s.replace("{selectedIds.length === 0 && <p style={{ color: '#ffcf8f', fontSize: 13, margin: 0 }}>Select at least one fix, or use “Accept plan & finish book”.</p>}", "{selectedIds.length === 0 && <p style={{ color: '#d6cbdc', fontSize: 13, margin: 0 }}>No fixes selected — Caspa will still complete the book to the agreed brief.</p>}", 1)
+          p.write_text(s)
+
+          # 2) Server endpoint accepts a valid finish request even when there are no editorial recommendations.
+          p = Path('src/routes/caspa-gold-routes.ts')
+          s = p.read_text()
+          old = "!brief || !Array.isArray(chapters) || !chapters.length || !diagnosis || !Array.isArray(selectedRecommendationIds) || !selectedRecommendationIds.length || !scope"
+          new = "!brief || !Array.isArray(chapters) || !chapters.length || !diagnosis || !Array.isArray(selectedRecommendationIds) || !scope"
+          if old not in s:
+              raise SystemExit('gold route validation pattern not found')
+          s = s.replace(old, new, 1)
+          s = s.replace("brief, chapters, diagnosis, selectedRecommendationIds and scope are required", "brief, chapters, diagnosis, selectedRecommendationIds array and scope are required", 1)
+          p.write_text(s)
+
+          # 3) Finish-book jobs must not inherit a tiny stale section/picture target.
+          p = Path('src/services/serverCommissionJobService.ts')
+          s = p.read_text()
+          old = """function targetWords(brief: ServerCommissionBrief): number {\n  if (typeof brief.targetWordCount === 'number' && brief.targetWordCount > 0) return brief.targetWordCount;\n  if (brief.mode === 'essay') return 3000;\n  if (brief.mode === 'poetry') return 800;\n  if (brief.mode === 'nonfiction') return 50000;\n  if (brief.mode === 'script') return 20000;\n  if (brief.mode === 'musical') return 25000;\n  if (brief.mode === 'picture') return 500;\n  return 80000;\n}\n"""
+          new = """function targetWords(brief: ServerCommissionBrief): number {\n  const supplied = typeof brief.targetWordCount === 'number' && Number.isFinite(brief.targetWordCount) && brief.targetWordCount > 0\n    ? Math.round(brief.targetWordCount)\n    : 0;\n  const mode = (brief.mode || '').toLowerCase();\n\n  // Workshop means FINISH THE BOOK. Tiny values commonly leak in from a previous\n  // picture/section/quick-write brief; treating 700 words as a nonfiction book\n  // silently produces a pamphlet and incorrectly calls it complete. Short-form\n  // work remains available through essay/poetry/picture modes.\n  if (mode === 'nonfiction') return supplied >= 5000 ? supplied : 50000;\n  if (mode === 'novel' || mode === 'adaptation' || mode === 'chaos') return supplied >= 10000 ? supplied : 80000;\n  if (mode === 'script') return supplied >= 5000 ? supplied : 20000;\n  if (mode === 'musical') return supplied >= 8000 ? supplied : 25000;\n  if (mode === 'essay') return supplied || 3000;\n  if (mode === 'poetry') return supplied || 800;\n  if (mode === 'picture') return supplied || 500;\n  return supplied >= 10000 ? supplied : 80000;\n}\n"""
+          if old not in s:
+              raise SystemExit('server targetWords pattern not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Build
+        run: npm ci && npm run build
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ocrowleymatt-stack'
+          git config user.email 'ocrowley.matt@gmail.com'
+          git add src/components/CommissionStudio.tsx src/routes/caspa-gold-routes.ts src/services/serverCommissionJobService.ts
+          git commit -m 'Fix finish-book no-op and stale word targets'
+          git push origin HEAD:main
