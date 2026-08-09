@@ -47,7 +47,8 @@ jobs:
           grep -Eq '<div id="root"|<div id="app"|Caspa' /tmp/caspa-home.html
           echo "homepage HTTP $code"
 
-          echo '--- nginx long-request timeout ---'
+          echo '--- repair + verify nginx long-request timeout ---'
+          bash scripts/atlas-nginx-timeouts.sh
           nginx -T 2>/dev/null | grep -E 'proxy_read_timeout 1800s|proxy_read_timeout 30m' >/dev/null
           echo 'nginx timeout >= 30 minutes: OK'
 
