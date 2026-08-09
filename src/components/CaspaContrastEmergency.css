@@ -1,0 +1,99 @@
+/*
+ * Caspa contrast safety layer.
+ * Loaded LAST. Its sole job is readability after the site-wide dark theme migration.
+ * Manuscript / print / book-page previews are deliberately excluded.
+ */
+
+:root {
+  --contrast-body: #f8f3fb;
+  --contrast-muted: #d0c6d7;
+  --contrast-accent: #ead6ff;
+  --contrast-link: #c8f4e8;
+}
+
+/* The previous compatibility rule used `inherit`, which can inherit an old brown inline
+   colour from a parent. Force ordinary interface copy to known high-contrast colours. */
+#root :is(main,aside,.caspa-sidebar,.cs-shell,.gold-refinery)
+  :is(h1,h2,h3,h4,h5,h6,p,li,dt,dd,blockquote,label,strong,b,em)
+  :not(button *):not(a *):not(.manuscript-page *):not(.book-page *):not(.print-page *):not([data-paper-preview] *) {
+  color: var(--contrast-body) !important;
+}
+
+#root :is(main,aside,.caspa-sidebar,.cs-shell,.gold-refinery)
+  :is(small,.muted,.secondary-text,.text-text-secondary,.text-slate-400,.text-slate-500,.text-gray-400,.text-gray-500)
+  :not(button *):not(a *):not(.manuscript-page *):not(.book-page *):not(.print-page *):not([data-paper-preview] *) {
+  color: var(--contrast-muted) !important;
+}
+
+/* Span is heavily used for labels/counters. Only force it when it is not inside an
+   interactive control or a paper preview. */
+#root :is(main,aside,.caspa-sidebar,.cs-shell,.gold-refinery) span
+  :not(button *):not(a *):not(.manuscript-page *):not(.book-page *):not(.print-page *) {
+  color: inherit;
+}
+
+/* Catch the common legacy brown/charcoal inline colours directly. */
+#root [style*="color: #17120c"], #root [style*="color:#17120c"],
+#root [style*="color: #1d1408"], #root [style*="color:#1d1408"],
+#root [style*="color: #21180f"], #root [style*="color:#21180f"],
+#root [style*="color: #2b2115"], #root [style*="color:#2b2115"],
+#root [style*="color: #2f2415"], #root [style*="color:#2f2415"],
+#root [style*="color: #3b3126"], #root [style*="color:#3b3126"],
+#root [style*="color: #4a4035"], #root [style*="color:#4a4035"],
+#root [style*="color: #5b4724"], #root [style*="color:#5b4724"],
+#root [style*="color: #5c5146"], #root [style*="color:#5c5146"],
+#root [style*="color: #6d6255"], #root [style*="color:#6d6255"],
+#root [style*="color: #73695d"], #root [style*="color:#73695d"],
+#root [style*="color: #7a6d58"], #root [style*="color:#7a6d58"],
+#root [style*="color: #8a7a66"], #root [style*="color:#8a7a66"],
+#root [style*="color: #8a7d6b"], #root [style*="color:#8a7d6b"],
+#root [style*="color: #9b9184"], #root [style*="color:#9b9184"] {
+  color: var(--contrast-body) !important;
+}
+
+/* Known old accent browns become the new lilac accent. */
+#root [style*="color: #9b6d16"], #root [style*="color:#9b6d16"],
+#root [style*="color: #8a6a28"], #root [style*="color:#8a6a28"],
+#root [style*="color: #7a5514"], #root [style*="color:#7a5514"],
+#root [style*="color: #d6a846"], #root [style*="color:#d6a846"] {
+  color: var(--contrast-accent) !important;
+}
+
+/* Controls get explicit colours, rather than inheriting unpredictable legacy inline text. */
+#root :is(input,textarea,select) {
+  color: var(--contrast-body) !important;
+}
+#root :is(input,textarea)::placeholder {
+  color: #b8adbf !important;
+  opacity: 1 !important;
+}
+#root button:not([disabled]) {
+  text-shadow: none;
+}
+#root a:not(.manuscript-page *):not(.book-page *):not(.print-page *) {
+  color: var(--contrast-link) !important;
+}
+
+/* Ensure cards that were recoloured dark cannot retain dark inherited copy. */
+#root :is(.ethereal-panel,.gold-refinery__card,.gold-refinery__pass,.cs-card,.cs-aside-panel,.cs-simple-screen)
+  :is(h1,h2,h3,h4,h5,h6,p,li,label,strong,b,em,small)
+  :not(button *):not(a *):not(.manuscript-page *) {
+  color: var(--contrast-body) !important;
+}
+
+/* Paper/manuscript surfaces retain conventional dark-on-light typography. */
+#root :is(.manuscript-page,.book-page,.print-page,[data-paper-preview]) {
+  color: #191919 !important;
+}
+#root :is(.manuscript-page,.book-page,.print-page,[data-paper-preview]) :is(h1,h2,h3,h4,h5,h6,p,span,small,label,li,strong,b,em) {
+  color: inherit !important;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --contrast-body: #ffffff;
+    --contrast-muted: #eee8f2;
+    --contrast-accent: #f2e6ff;
+    --contrast-link: #d6fff5;
+  }
+}
