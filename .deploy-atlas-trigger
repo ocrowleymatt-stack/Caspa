@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T02:46:30Z
-reason: deploy resilient multi-provider Council Mode with pinned seats and fail-soft recovery
+deploy requested 2026-08-09T02:50:30Z
+reason: migrate Council Mode Gemini and Claude seats to current live model IDs
