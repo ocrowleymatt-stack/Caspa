@@ -127,6 +127,16 @@ const MODEL_PREFERENCES: Record<CloudProvider, Record<IntelligenceMode, string[]
 };
 
 function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: IntelligenceMode): string[] {
+  // Council seats favour diverse, strong *fast* models. God Mode reserves the
+  // slower reasoning/multi-agent engines for synthesis and genuinely deep tasks,
+  // instead of making every critic seat pay maximum latency.
+  if (task === 'council') {
+    if (provider === 'grok') return ['grok-4.5', 'grok-4.20-0309-non-reasoning'];
+    if (provider === 'gemini') return ['gemini-3.6-flash', 'gemini-3.5-flash'];
+    if (provider === 'venice') return ['openai-gpt-oss-120b', 'qwen3-6-27b'];
+    if (provider === 'openai') return ['gpt-5.4-mini', 'gpt-5.5'];
+    if (provider === 'claude') return ['claude-sonnet-5', 'claude-fable-5'];
+  }
   if (provider === 'grok') {
     if (task === 'creative' && mode !== 'speed') return ['grok-4.5'];
     if (task === 'fast') return ['grok-4.20-0309-non-reasoning'];
@@ -152,6 +162,31 @@ export async function modelCandidates(provider: CloudProvider, mode: Intelligenc
   if (!available.length) return unique.slice(0, 4);
   const filtered = unique.filter((id) => available.includes(id));
   return (filtered.length ? filtered : unique).slice(0, 4);
+}
+
+function requireValidJson(text: string): string {
+  let candidate = text.trim();
+  if (candidate.startsWith('```')) {
+    candidate = candidate.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+  try {
+    JSON.parse(candidate);
+    return candidate;
+  } catch {
+    // Some otherwise-good models prepend a sentence. Salvage a single JSON
+    // object/array only when it parses cleanly; otherwise reject and try the next model.
+    const objectStart = candidate.indexOf('{');
+    const objectEnd = candidate.lastIndexOf('}');
+    const arrayStart = candidate.indexOf('[');
+    const arrayEnd = candidate.lastIndexOf(']');
+    const slices: string[] = [];
+    if (objectStart >= 0 && objectEnd > objectStart) slices.push(candidate.slice(objectStart, objectEnd + 1));
+    if (arrayStart >= 0 && arrayEnd > arrayStart) slices.push(candidate.slice(arrayStart, arrayEnd + 1));
+    for (const slice of slices) {
+      try { JSON.parse(slice); return slice; } catch { /* continue */ }
+    }
+    throw new Error('Model ignored required JSON output format');
+  }
 }
 
 function outputTextFromResponses(data: any): string {
@@ -312,6 +347,7 @@ export async function callCloudProvider(provider: CloudProvider, prompt: string,
       else if (provider === 'claude') text = await callClaude(prompt, model, { ...opts, task, mode });
       else text = await callVenice(prompt, model, { ...opts, task, mode });
       if (!text) throw new Error(`${provider}/${model} returned empty output`);
+      if (opts.json) text = requireValidJson(text);
       return { text, model, provider };
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error));

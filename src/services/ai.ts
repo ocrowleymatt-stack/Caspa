@@ -454,23 +454,36 @@ Based ONLY on the provided text and strictly following any structural plans foun
     const failedSeats: { role: string; index: number; error: any }[] = [];
     const concurrency = intelligenceMode === 'god' || intelligenceMode === 'speed' ? 4 : 3;
 
+    let settledCount = 0;
     for (let offset = 0; offset < roles.length; offset += concurrency) {
       const batch = roles.slice(offset, offset + concurrency);
-      const settled = await Promise.allSettled(
-        batch.map((role, batchIndex) => runSeat(role, offset + batchIndex, true))
-      );
-
-      settled.forEach((result, batchIndex) => {
-        const role = batch[batchIndex];
+      const seatPromises = batch.map((role, batchIndex) => {
         const index = offset + batchIndex;
-        if (result.status === 'fulfilled') {
-          critiques.push(result.value);
-        } else {
+        return runSeat(role, index, true)
+          .then((critique) => {
+            critiques.push(critique);
+            settledCount += 1;
+            // Crucially, do not wait for the slowest member of the batch before
+            // showing useful work. The UI receives each completed chair at once.
+            onProgress?.([...critiques], settledCount, roles.length);
+            return critique;
+          })
+          .catch((error) => {
+            settledCount += 1;
+            onProgress?.([...critiques], settledCount, roles.length);
+            throw error;
+          });
+      });
+
+      const settled = await Promise.allSettled(seatPromises);
+      settled.forEach((result, batchIndex) => {
+        if (result.status === 'rejected') {
+          const role = batch[batchIndex];
+          const index = offset + batchIndex;
           console.warn(`[Council] Seat ${role} failed on pinned provider ${providerRotation[index % providerRotation.length]}:`, result.reason);
           failedSeats.push({ role, index, error: result.reason });
         }
       });
-      onProgress?.([...critiques], Math.min(offset + batch.length, roles.length), roles.length);
     }
 
     for (const failed of failedSeats) {
