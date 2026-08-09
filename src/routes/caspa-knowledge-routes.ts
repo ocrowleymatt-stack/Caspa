@@ -12,6 +12,14 @@ import {
   type KnowledgeAlias,
 } from '../services/knowledgeIndexService';
 import { syncCloudKnowledge } from '../services/cloudKnowledgeIngestionService';
+import {
+  beginCloudOAuth,
+  completeCloudOAuth,
+  disconnectCloudAutopilot,
+  getCloudAutopilotStatus,
+  runCloudConnection,
+  type AutopilotProvider,
+} from '../services/cloudKnowledgeAutopilotService';
 
 const router = express.Router();
 
@@ -43,6 +51,11 @@ async function withScope(req: Request, res: express.Response, fn: (scope: string
     console.error('[knowledge]', error?.message || error);
     return res.status(500).json({ success: false, message: error?.message || 'Knowledge operation failed' });
   }
+}
+
+function parseProvider(value: unknown): AutopilotProvider | null {
+  const provider = String(value || '');
+  return provider === 'dropbox' || provider === 'gdrive' ? provider : null;
 }
 
 router.get('/status', (req, res) => withScope(req, res, (scope) => {
@@ -114,11 +127,67 @@ router.post('/ingest/text', (req, res) => withScope(req, res, async (scope) => {
   res.json({ success: true, data });
 }));
 
-router.post('/cloud/sync', (req, res) => withScope(req, res, async (scope) => {
-  const provider = String(req.body?.provider || '');
-  if (provider !== 'dropbox' && provider !== 'gdrive') {
-    return res.status(400).json({ success: false, message: 'provider must be dropbox or gdrive' });
+// ── Durable per-user cloud autopilot ──────────────────────────────────────────
+router.get('/cloud/status', (req, res) => withScope(req, res, (scope) => {
+  res.json({ success: true, data: { connections: getCloudAutopilotStatus(scope) } });
+}));
+
+router.post('/cloud/oauth/start', (req, res) => withScope(req, res, (scope) => {
+  const provider = parseProvider(req.body?.provider);
+  if (!provider) return res.status(400).json({ success: false, message: 'provider must be dropbox or gdrive' });
+  const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = forwarded || req.protocol || 'https';
+  const origin = `${protocol}://${req.get('host')}`;
+  res.json({ success: true, data: beginCloudOAuth(scope, provider, origin) });
+}));
+
+// OAuth callback is authenticated by the short-lived, high-entropy state that
+// was created for an already authenticated Atlas scope. No provider token is
+// ever sent back to browser JavaScript.
+router.get('/cloud/oauth/callback/:provider', async (req, res) => {
+  const provider = parseProvider(req.params.provider);
+  const state = String(req.query.state || '');
+  const code = String(req.query.code || '');
+  const providerError = String(req.query.error_description || req.query.error || '');
+  if (!provider) return res.status(400).send('Unknown cloud provider');
+  if (providerError) {
+    return res.redirect(`/?cloud=${provider}&cloud_error=${encodeURIComponent(providerError.slice(0, 300))}`);
   }
+  try {
+    await completeCloudOAuth(provider, state, code);
+    return res.redirect(`/?cloud=${provider}&cloud_connected=1`);
+  } catch (error: any) {
+    console.error('[knowledge/oauth]', error?.message || error);
+    return res.redirect(`/?cloud=${provider}&cloud_error=${encodeURIComponent(String(error?.message || error).slice(0, 300))}`);
+  }
+});
+
+router.post('/cloud/run', (req, res) => withScope(req, res, async (scope) => {
+  const provider = parseProvider(req.body?.provider);
+  if (!provider) return res.status(400).json({ success: false, message: 'provider must be dropbox or gdrive' });
+  const data = await runCloudConnection(scope, provider);
+  res.json({
+    success: true,
+    data: {
+      result: data,
+      connections: getCloudAutopilotStatus(scope),
+      status: getKnowledgeStatus(scope),
+    },
+  });
+}));
+
+router.delete('/cloud/:provider', (req, res) => withScope(req, res, (scope) => {
+  const provider = parseProvider(req.params.provider);
+  if (!provider) return res.status(400).json({ success: false, message: 'provider must be dropbox or gdrive' });
+  disconnectCloudAutopilot(scope, provider);
+  res.json({ success: true, data: { connections: getCloudAutopilotStatus(scope) } });
+}));
+
+// Legacy/session-token manual sync remains for compatibility with older clients.
+// It is intentionally separate from the encrypted unattended OAuth connection.
+router.post('/cloud/sync', (req, res) => withScope(req, res, async (scope) => {
+  const provider = parseProvider(req.body?.provider);
+  if (!provider) return res.status(400).json({ success: false, message: 'provider must be dropbox or gdrive' });
   const accessToken = String(req.headers['x-cloud-access-token'] || '').trim();
   if (!accessToken) return res.status(400).json({ success: false, message: 'Cloud access token is required' });
   const maxFiles = Math.max(1, Math.min(30, Number(req.body?.maxFiles || 8)));
