@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T15:10:58Z
-reason: simplify Workshop into manuscript -> approve plan -> finish book -> review, with one-click recommended finish route
+deploy requested 2026-08-09T15:34:00Z
+reason: allow Dropbox/iCloud/Drive files through source picker by removing MIME pre-filtering
