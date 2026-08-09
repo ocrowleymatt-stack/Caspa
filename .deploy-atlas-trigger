@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T13:27:10Z
-reason: restore Fast Data Upload, isolate browser workspaces per user, and scope server backups by verified Firebase UID or local device
+deploy requested 2026-08-09T13:29:20Z
+reason: redeploy Fast Data Upload and user-isolated databases after fixing public doctor backup aggregation
