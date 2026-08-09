@@ -2,13 +2,14 @@
  * Settings — account, privacy, local backup/restore, deploy readiness
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Loader, RefreshCw, UploadCloud, Activity } from 'lucide-react';
 import {
   applyLocalSnapshot,
   collectLocalSnapshot,
   snapshotKeyCount,
 } from '../services/localSnapshotService';
+import { getDeviceBackupScope, persistActiveUserDatabase } from '../services/userDatabaseService';
 
 interface BackupMeta {
   id: string;
@@ -27,9 +28,11 @@ interface DoctorReadiness {
 
 interface Props {
   userEmail?: string;
+  userId?: string;
+  onFastUpload?: (files: File[]) => Promise<void>;
 }
 
-export default function SettingsStudio({ userEmail }: Props) {
+export default function SettingsStudio({ userEmail, userId, onFastUpload }: Props) {
   const [backups, setBackups] = useState<BackupMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -38,16 +41,29 @@ export default function SettingsStudio({ userEmail }: Props) {
   const [doctorVersion, setDoctorVersion] = useState('');
   const [buildFingerprint, setBuildFingerprint] = useState('');
   const [checkingDoctor, setCheckingDoctor] = useState(false);
+  const [fastUploading, setFastUploading] = useState(false);
+  const fastUploadRef = useRef<HTMLInputElement | null>(null);
+
+  const storageHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    if (userId && userId !== 'local-guest') {
+      const { getAuth } = await import('firebase/auth');
+      const current = getAuth().currentUser;
+      if (!current) throw new Error('Your Firebase session is not available. Sign in again before using server backups.');
+      const token = await current.getIdToken();
+      return { Authorization: `Bearer ${token}` };
+    }
+    return { 'X-Caspa-Local-Scope': getDeviceBackupScope() };
+  }, [userId]);
 
   const refreshBackups = useCallback(async () => {
     try {
-      const res = await fetch('/api/caspa/storage/backups');
+      const res = await fetch('/api/caspa/storage/backups', { headers: await storageHeaders() });
       const data = await res.json();
       if (data.success) setBackups(data.data.backups || []);
     } catch {
       /* offline */
     }
-  }, []);
+  }, [storageHeaders]);
 
   const refreshDoctor = useCallback(async () => {
     setCheckingDoctor(true);
@@ -84,9 +100,10 @@ export default function SettingsStudio({ userEmail }: Props) {
     setStatus('Saving backup…');
     try {
       const entries = collectLocalSnapshot();
+      persistActiveUserDatabase();
       const res = await fetch('/api/caspa/storage/backup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await storageHeaders()) },
         body: JSON.stringify({
           entries,
           label: `backup-${new Date().toISOString().slice(0, 10)}`,
@@ -109,10 +126,11 @@ export default function SettingsStudio({ userEmail }: Props) {
     setLoading(true);
     setStatus('Restoring…');
     try {
-      const res = await fetch(`/api/caspa/storage/restore/${id}`);
+      const res = await fetch(`/api/caspa/storage/restore/${id}`, { headers: await storageHeaders() });
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Restore failed');
       const applied = applyLocalSnapshot(data.data.entries);
+      persistActiveUserDatabase();
       setStatus(`Restored ${applied} keys. Reload the page to see changes everywhere.`);
       setKeyCount(snapshotKeyCount());
     } catch (err) {
@@ -123,6 +141,23 @@ export default function SettingsStudio({ userEmail }: Props) {
   };
 
   const isLocal = !userEmail || userEmail.includes('local@caspa');
+
+  const runFastUpload = async (files: FileList | null) => {
+    if (!onFastUpload) return;
+    const selected = Array.from(files || []);
+    if (!selected.length) return;
+    setFastUploading(true);
+    setStatus('Reading uploaded data…');
+    try {
+      await onFastUpload(selected);
+      setStatus(`Loaded ${selected.length} file${selected.length === 1 ? '' : 's'} into a new isolated project.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Fast data upload failed.');
+    } finally {
+      setFastUploading(false);
+      if (fastUploadRef.current) fastUploadRef.current.value = '';
+    }
+  };
 
   return (
     <section style={{ minHeight: '100vh', padding: '48px clamp(20px, 5vw, 72px)', background: '#f5efe5' }}>
@@ -178,13 +213,37 @@ export default function SettingsStudio({ userEmail }: Props) {
         </article>
 
         <article style={{ ...card, marginTop: 18 }}>
-          <h2 style={sectionTitle}>Authentication</h2>
+          <h2 style={sectionTitle}>Authentication & data separation</h2>
           <p style={{ margin: 0, lineHeight: 1.6, color: '#5c5146' }}>
             {isLocal
-              ? 'You are in local mode — work stays in this browser. Sign in from the login screen if you want a cloud account; back up below either way.'
-              : 'Signed in with Firebase. Creative work still lives in browser local storage unless you back it up below.'}
+              ? 'Local workspace is isolated to this device scope. Signing into another account unmounts this workspace before the other user is loaded.'
+              : 'Signed in with Firebase. Browser projects and server backups are now isolated to this verified user ID; another signed-in user gets a separate database.'}
+          </p>
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: '#8a7a66', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+            Database: {isLocal ? 'local-device' : `user:${(userId || '').slice(0, 10)}…`}
           </p>
         </article>
+
+        {onFastUpload ? (
+          <article style={{ ...card, marginTop: 18, borderColor: '#d6a846' }}>
+            <h2 style={sectionTitle}>Fast Data Upload</h2>
+            <p style={{ margin: '0 0 14px', color: '#73695d', lineHeight: 1.6 }}>
+              Drop a manuscript or evidence/data pack straight into a fresh project. PDF, text, Markdown, RTF, HTML, JSON, YAML and CSV are accepted; multiple files are combined with filenames preserved.
+            </p>
+            <button type="button" onClick={() => fastUploadRef.current?.click()} disabled={fastUploading} style={primaryBtn}>
+              {fastUploading ? <Loader size={16} className="spin" /> : <UploadCloud size={16} />}
+              {fastUploading ? 'Reading data…' : 'Fast Data Upload'}
+            </button>
+            <input
+              ref={fastUploadRef}
+              type="file"
+              multiple
+              accept=".pdf,.txt,.md,.markdown,.rtf,.html,.htm,.json,.yaml,.yml,.csv,.log,text/*,application/pdf"
+              style={{ display: 'none' }}
+              onChange={(event) => runFastUpload(event.target.files)}
+            />
+          </article>
+        ) : null}
 
         <article style={{ ...card, marginTop: 18 }}>
           <h2 style={sectionTitle}>Local-first backup</h2>

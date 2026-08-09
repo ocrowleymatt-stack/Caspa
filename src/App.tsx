@@ -4,7 +4,7 @@
  * Caspa Creative Engine - intent-first studio UI
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Award,
@@ -41,6 +41,7 @@ import {
   Brain,
   Bug,
   Pencil,
+  UploadCloud,
   Zap,
   X,
 } from 'lucide-react';
@@ -72,6 +73,11 @@ import {
   saveCurrentProjectState,
   switchToProject,
 } from './services/projectShelfService';
+import {
+  activateUserDatabase,
+  deactivateUserDatabase,
+  persistActiveUserDatabase,
+} from './services/userDatabaseService';
 import {
   getNextStep,
   getProgressSummary,
@@ -707,6 +713,69 @@ function CaspaUI() {
     else goTo('project');
   };
 
+  const handleFastDataUpload = async (files: File[]) => {
+    if (!files.length) return;
+    saveCurrentProjectState();
+
+    const parsed: Array<{ name: string; text: string }> = [];
+    for (const file of files.slice(0, 20)) {
+      if (file.size > 100 * 1024 * 1024) throw new Error(`${file.name} is over the 100MB fast-upload limit.`);
+
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        const form = new FormData();
+        form.append('pdf', file);
+        const response = await fetch('/api/pdf-upload/upload', { method: 'POST', body: form });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.content?.text) {
+          throw new Error(data?.details || data?.error || `Could not parse ${file.name}`);
+        }
+        parsed.push({ name: file.name, text: String(data.content.text) });
+        continue;
+      }
+
+      if (!/\.(txt|md|markdown|rtf|html?|json|ya?ml|csv|log)$/i.test(file.name) && !file.type.startsWith('text/')) {
+        throw new Error(`${file.name} is not yet supported by Fast Data Upload. Use PDF, text, Markdown, RTF, HTML, JSON, YAML or CSV.`);
+      }
+      parsed.push({ name: file.name, text: await file.text() });
+    }
+
+    const useful = parsed.filter((item) => item.text.trim());
+    if (!useful.length) throw new Error('The uploaded files contained no readable text.');
+
+    const combined = useful.length === 1
+      ? useful[0].text
+      : useful.map((item) => `===== ${item.name} =====\n\n${item.text}`).join('\n\n');
+    const title = useful.length === 1
+      ? useful[0].name.replace(/\.[^.]+$/, '') || 'Uploaded material'
+      : `Data pack — ${new Date().toLocaleDateString('en-GB')}`;
+
+    const nextBrief: ProjectBrief = {
+      title,
+      mode: 'adaptation',
+      idea: useful.length === 1 ? `Fast data upload: ${useful[0].name}` : `Fast data upload: ${useful.length} source files`,
+      tone: 'Preserve the source voice and evidential boundaries. Structure before embellishment.',
+      output: 'Analyse, organise and turn the uploaded material into the strongest appropriate finished form.',
+      audience: 'Determine from the source material and project intent.',
+      targetWordCount: defaultTargetWordCount('adaptation'),
+      createdAt: new Date().toISOString(),
+    };
+
+    setBrief(nextBrief);
+    saveBrief(nextBrief);
+    setProjectStatus('active');
+    setDraftPage('');
+    setManuscriptSource(combined);
+    localStorage.setItem('caspa.whitePage', '');
+    localStorage.setItem('caspa.manuscriptSource', combined);
+    localStorage.removeItem('caspa.commission');
+    localStorage.removeItem('caspa.commission.tab');
+    clearShowBox();
+    clearPlotHold();
+    recordProjectSnapshot(nextBrief);
+    persistActiveUserDatabase();
+    goTo('workshop');
+  };
+
   const patchBrief = (patch: Partial<ProjectBrief>) => {
     const next = { ...brief, ...patch };
     setBrief(next);
@@ -740,7 +809,7 @@ function CaspaUI() {
   const renderView = () => {
     switch (currentView) {
       case 'launchpad':
-        return <LaunchpadView onStart={startProject} />;
+        return <LaunchpadView onStart={startProject} onFastUpload={handleFastDataUpload} />;
       case 'project':
         return (
           <ProjectView
@@ -881,7 +950,7 @@ function CaspaUI() {
           />
         );
       case 'settings':
-        return <SettingsStudio userEmail={authContext.user?.email} />;
+        return <SettingsStudio userEmail={authContext.user?.email} userId={authContext.user?.uid} onFastUpload={handleFastDataUpload} />;
       case 'legal-cases':
         return <LegalCasesDashboard />;
       case 'betting-game':
@@ -905,7 +974,7 @@ function CaspaUI() {
             />
           );
         }
-        return <LaunchpadView onStart={startProject} />;
+        return <LaunchpadView onStart={startProject} onFastUpload={handleFastDataUpload} />;
     }
   };
 
@@ -1045,7 +1114,10 @@ function CaspaUI() {
   );
 }
 
-function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string, tone: string, output: string, audience: string, targetWordCount?: number) => void }) {
+function LaunchpadView({ onStart, onFastUpload }: {
+  onStart: (mode: CreativeMode, idea: string, tone: string, output: string, audience: string, targetWordCount?: number) => void;
+  onFastUpload: (files: File[]) => Promise<void>;
+}) {
   const [mode, setMode] = useState<CreativeMode>('novel');
   const [idea, setIdea] = useState('');
   const [showMore, setShowMore] = useState(false);
@@ -1054,6 +1126,24 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
   const [tone, setTone] = useState('Sharp, vivid, structurally solid.');
   const [output, setOutput] = useState('Full manuscript: draft every held chapter in order to the aspire-to word count.');
   const [audience, setAudience] = useState('Literary / general readers.');
+  const [fastUploading, setFastUploading] = useState(false);
+  const [fastUploadError, setFastUploadError] = useState('');
+  const fastUploadRef = useRef<HTMLInputElement | null>(null);
+
+  const runFastUpload = async (list: FileList | null) => {
+    const files = Array.from(list || []);
+    if (!files.length) return;
+    setFastUploading(true);
+    setFastUploadError('');
+    try {
+      await onFastUpload(files);
+    } catch (error) {
+      setFastUploadError(error instanceof Error ? error.message : 'Fast upload failed.');
+    } finally {
+      setFastUploading(false);
+      if (fastUploadRef.current) fastUploadRef.current.value = '';
+    }
+  };
 
   const selected = modeCards.find((card) => card.mode === mode)!;
   const SelectedIcon = selected.icon;
@@ -1154,6 +1244,27 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
           <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 18, lineHeight: 1.5, marginTop: 18 }}>
             Fiction is one door. Non-fiction, picture books, a show in a box — pick the form first.
           </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
+            <button
+              type="button"
+              onClick={() => fastUploadRef.current?.click()}
+              disabled={fastUploading}
+              style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '12px 16px' }}
+            >
+              {fastUploading ? <Loader size={17} className="spin" /> : <UploadCloud size={17} />}
+              {fastUploading ? 'Reading data…' : 'Fast Data Upload'}
+            </button>
+            <span style={{ alignSelf: 'center', color: '#a89572', fontSize: 12 }}>PDF · TXT · MD · RTF · HTML · JSON · YAML · CSV · up to 20 files</span>
+            <input
+              ref={fastUploadRef}
+              type="file"
+              multiple
+              accept=".pdf,.txt,.md,.markdown,.rtf,.html,.htm,.json,.yaml,.yml,.csv,.log,text/*,application/pdf"
+              style={{ display: 'none' }}
+              onChange={(event) => runFastUpload(event.target.files)}
+            />
+          </div>
+          {fastUploadError ? <p style={{ margin: '10px 0 0', color: '#ffb4aa', fontSize: 13 }}>{fastUploadError}</p> : null}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 28 }}>
             {heroCards.map((card) => {
               const Icon = card.icon;
@@ -1286,12 +1397,22 @@ function LaunchpadView({ onStart }: { onStart: (mode: CreativeMode, idea: string
               'Pick a form and add an idea to begin'
             )}
           </span>
-          <button
-            onClick={launch}
-            style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '14px 24px', fontSize: 16 }}
-          >
-            <Sparkles size={19} /> {ctaLabel}
-          </button>
+          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => fastUploadRef.current?.click()}
+              disabled={fastUploading}
+              style={{ ...ghostButton, color: '#ffe2a5', borderColor: '#6b5430', background: '#21180f' }}
+            >
+              <UploadCloud size={17} /> Fast Data Upload
+            </button>
+            <button
+              onClick={launch}
+              style={{ ...primaryButton('#d6a846', '#1d1408'), width: 'auto', padding: '14px 24px', fontSize: 16 }}
+            >
+              <Sparkles size={19} /> {ctaLabel}
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -1623,10 +1744,16 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  const acceptUser = (nextUser: User) => {
+    activateUserDatabase(nextUser.uid);
+    if (nextUser.email) localStorage.setItem('currentUserEmail', nextUser.email);
+    setUser(nextUser);
+  };
+
   useEffect(() => {
     try {
       if (localStorage.getItem(LOCAL_GUEST_KEY) === '1') {
-        setUser(createLocalGuest());
+        acceptUser(createLocalGuest());
         setAuthLoading(false);
         return;
       }
@@ -1656,7 +1783,7 @@ export default function App() {
 
         const unsubscribe = onAuthStateChanged(getAuth(), (firebaseUser) => {
           if (firebaseUser) {
-            setUser({ uid: firebaseUser.uid, email: firebaseUser.email || '', displayName: firebaseUser.displayName || '' });
+            acceptUser({ uid: firebaseUser.uid, email: firebaseUser.email || '', displayName: firebaseUser.displayName || '' });
           }
           setAuthLoading(false);
         });
@@ -1675,6 +1802,12 @@ export default function App() {
   }, []);
 
   const handleSignOut = async () => {
+    try {
+      persistActiveUserDatabase();
+      deactivateUserDatabase(user?.uid);
+    } catch (error) {
+      console.warn('Could not fully unmount user database during sign-out:', error);
+    }
     try {
       localStorage.removeItem(LOCAL_GUEST_KEY);
     } catch {
@@ -1698,7 +1831,7 @@ export default function App() {
     return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#17120c', color: '#fffaf2' }}><div style={{ textAlign: 'center' }}><Loader size={46} className="spin" /><p>Loading Caspa...</p></div></div>;
   }
 
-  if (!user) return <CaspaLogin onLoginSuccess={setUser} />;
+  if (!user) return <CaspaLogin onLoginSuccess={acceptUser} />;
 
   return (
     <AuthContext.Provider value={{ user, loading: authLoading, signOut: handleSignOut }}>
