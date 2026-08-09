@@ -1,0 +1,107 @@
+name: Probe Existing WebUI Upstream
+
+on:
+  push:
+    paths:
+      - '.github/workflows/probe-webui-upstream.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Probe configured upstream safely
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'python3 -' <<'PY'
+          import json, subprocess, urllib.request, urllib.error, os, re
+
+          raw = subprocess.check_output([
+              'docker','inspect','atlas-openwebui','--format','{{json .Config.Env}}'
+          ], text=True)
+          env_items = json.loads(raw)
+          env = {}
+          for item in env_items:
+              if '=' in item:
+                  k,v=item.split('=',1); env[k]=v
+          base=(env.get('OPENAI_API_BASE_URL') or '').rstrip('/')
+          key=env.get('OPENAI_API_KEY') or ''
+          print('OPENWEBUI_UPSTREAM_BASE=' + (base or '[unset]'))
+          print('OPENWEBUI_UPSTREAM_KEY_PRESENT=' + ('yes' if key else 'no'))
+
+          def request(url, payload=None, timeout=12):
+              headers={'Content-Type':'application/json'}
+              if key: headers['Authorization']='Bearer '+key
+              data=json.dumps(payload).encode() if payload is not None else None
+              req=urllib.request.Request(url,data=data,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=timeout) as r:
+                      body=r.read().decode('utf-8','replace')
+                      return r.status,body
+              except urllib.error.HTTPError as e:
+                  return e.code,e.read().decode('utf-8','replace')
+              except Exception as e:
+                  return 0,type(e).__name__
+
+          if base:
+              candidates=[]
+              if base.endswith('/v1'):
+                  candidates += [base+'/models']
+              else:
+                  candidates += [base+'/models',base+'/v1/models']
+              model_ids=[]
+              for url in dict.fromkeys(candidates):
+                  status,body=request(url)
+                  print('MODEL_ENDPOINT status=%s url=%s' % (status,url))
+                  if status==200:
+                      try:
+                          parsed=json.loads(body)
+                          rows=parsed.get('data',parsed.get('models',parsed if isinstance(parsed,list) else []))
+                          model_ids=[str(x.get('id') or x.get('name') or x.get('model')) for x in rows if isinstance(x,dict)]
+                          print('UPSTREAM_MODELS=' + json.dumps(model_ids[:40]))
+                      except Exception:
+                          print('UPSTREAM_MODELS_PARSE=non-json')
+                      if model_ids: break
+              chat_base = base if base.endswith('/v1') else base + '/v1'
+              for model in model_ids[:8]:
+                  payload={'model':model,'messages':[{'role':'user','content':'Reply only OK'}],'max_tokens':4,'temperature':0}
+                  status,body=request(chat_base+'/chat/completions',payload,15)
+                  sample=''
+                  if status==200:
+                      try: sample=str(json.loads(body).get('choices',[{}])[0].get('message',{}).get('content',''))[:60]
+                      except Exception: pass
+                  print(json.dumps({'model':model,'chat_status':status,'sample':sample}))
+                  if status==200: break
+
+          print('=== UNIFIED ROUTER SOURCE ROUTES ===')
+          path='/root/unified-router/router.js'
+          try:
+              text=open(path,encoding='utf-8',errors='replace').read().splitlines()
+              for i,line in enumerate(text,1):
+                  if re.search(r"app\.(?:get|post|use)\(|OLLAMA|OPENAI|MODEL|fetch\(",line,re.I):
+                      safe=re.sub(r"(['\"])(?:sk-|xai-|AIza|key-|token-)[^'\"]+\1",r"\1[redacted]\1",line)
+                      print(f'{i}: {safe[:500]}')
+          except Exception as e:
+              print('router_source_error='+type(e).__name__)
+          PY
