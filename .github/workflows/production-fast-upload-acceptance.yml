@@ -1,0 +1,60 @@
+name: Production Fast Upload Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-fast-upload-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Assert live body upload control
+        run: |
+          node --input-type=module <<'NODE'
+          import puppeteer from 'puppeteer';
+          const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+          try {
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1365, height: 768 });
+            const response = await page.goto('https://caspa.ocrowley.com/', { waitUntil: 'networkidle0', timeout: 45000 });
+            if (!response || !response.ok()) throw new Error(`Production navigation failed: ${response?.status()}`);
+            await page.waitForSelector('#atlas-body-fast-upload', { visible: true, timeout: 15000 });
+            const result = await page.$eval('#atlas-body-fast-upload', (el) => {
+              const r = el.getBoundingClientRect();
+              const s = getComputedStyle(el);
+              const top = document.elementFromPoint(Math.min(innerWidth - 2, r.x + r.width / 2), Math.min(innerHeight - 2, r.y + r.height / 2));
+              return {
+                text: (el.textContent || '').trim(),
+                display: s.display,
+                visibility: s.visibility,
+                opacity: s.opacity,
+                zIndex: s.zIndex,
+                topElementId: top?.id || '',
+                rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+                viewport: { width: innerWidth, height: innerHeight },
+              };
+            });
+            console.log(JSON.stringify(result, null, 2));
+            if (!result.text.includes('FAST FILE UPLOAD')) throw new Error('Production fast upload label missing');
+            if (result.display === 'none' || result.visibility === 'hidden' || Number(result.opacity) <= 0) throw new Error('Production fast upload is hidden');
+            if (!/^\d+$/.test(result.zIndex) || Number(result.zIndex) < 1000000) throw new Error(`Production z-index invalid: ${result.zIndex}`);
+            if (result.rect.width < 180 || result.rect.height < 40) throw new Error('Production control too small');
+            if (result.rect.x < 0 || result.rect.y < 0 || result.rect.x + result.rect.width > result.viewport.width || result.rect.y + result.rect.height > result.viewport.height) throw new Error('Production control outside viewport');
+            if (result.topElementId !== 'atlas-body-fast-upload') throw new Error(`Production control is covered by ${result.topElementId || 'another element'}`);
+          } finally {
+            await browser.close();
+          }
+          NODE
