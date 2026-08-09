@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T02:50:30Z
-reason: migrate Council Mode Gemini and Claude seats to current live model IDs
+deploy requested 2026-08-09T02:54:20Z
+reason: use Claude Sonnet 4.6 for Council compatibility and revalidate all provider seats
