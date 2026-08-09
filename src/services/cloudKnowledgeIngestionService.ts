@@ -327,6 +327,9 @@ async function transcribeOne(filePath: string, offsetMs: number): Promise<Knowle
   const form = new FormData();
   form.append('file', new Blob([bytes]), path.basename(filePath));
   form.append('model', process.env.KNOWLEDGE_TRANSCRIBE_MODEL || 'whisper-1');
+  // Atlas corpus audio is English. Pin the input language so Whisper cannot
+  // mis-detect an English accent/noisy recording as Welsh (cy).
+  form.append('language', 'en');
   form.append('response_format', 'verbose_json');
   form.append('timestamp_granularities[]', 'segment');
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
