@@ -1,0 +1,74 @@
+name: Force Whisper English
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/force-whisper-english.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Force transcription language to English
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/services/cloudKnowledgeIngestionService.ts')
+          text = p.read_text()
+          old = "  form.append('model', process.env.KNOWLEDGE_TRANSCRIBE_MODEL || 'whisper-1');\n  form.append('response_format', 'verbose_json');"
+          new = "  form.append('model', process.env.KNOWLEDGE_TRANSCRIBE_MODEL || 'whisper-1');\n  // Atlas corpus audio is English. Pin the input language so Whisper cannot\n  // mis-detect an English accent/noisy recording as Welsh (cy).\n  form.append('language', 'en');\n  form.append('response_format', 'verbose_json');"
+          if old not in text:
+              if "form.append('language', 'en');" in text:
+                  print('Whisper language is already pinned to English.')
+              else:
+                  raise SystemExit('Transcription patch anchor not found')
+          else:
+              p.write_text(text.replace(old, new, 1))
+          PY
+
+          grep -Fq "form.append('language', 'en');" src/services/cloudKnowledgeIngestionService.ts
+          if grep -Fq "form.append('language', 'cy');" src/services/cloudKnowledgeIngestionService.ts; then
+            echo 'Welsh language pin unexpectedly present' >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Test
+        run: npm test
+
+      - name: Production build
+        run: |
+          npm run build
+          test -f dist/index.html
+          test -f dist/server.cjs
+
+      - name: Commit verified source patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No source change required.'
+            exit 0
+          fi
+          git config user.name 'atlas-automation'
+          git config user.email 'atlas-automation@users.noreply.github.com'
+          git add src/services/cloudKnowledgeIngestionService.ts
+          git commit -m 'Pin Whisper transcription language to English'
+          git push origin HEAD:main
