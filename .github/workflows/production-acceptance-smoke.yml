@@ -1,0 +1,136 @@
+name: Production Acceptance Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-acceptance-smoke.yml'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_atlas
+          chmod 600 ~/.ssh/id_atlas
+          ssh-keyscan -H "$ATLAS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Production acceptance checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_atlas -o IdentitiesOnly=yes "$ATLAS_USER@$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /root/Caspa
+
+          echo '--- service health ---'
+          curl -fsS http://127.0.0.1:3000/health
+          echo
+
+          echo '--- public doctor ---'
+          curl -fsS https://caspa.ocrowley.com/api/doctor
+          echo
+
+          echo '--- homepage ---'
+          code=$(curl -sS -o /tmp/caspa-home.html -w '%{http_code}' https://caspa.ocrowley.com/)
+          test "$code" = "200"
+          test -s /tmp/caspa-home.html
+          grep -Eq '<div id="root"|<div id="app"|Caspa' /tmp/caspa-home.html
+          echo "homepage HTTP $code"
+
+          echo '--- nginx long-request timeout ---'
+          nginx -T 2>/dev/null | grep -E 'proxy_read_timeout 1800s|proxy_read_timeout 30m' >/dev/null
+          echo 'nginx timeout >= 30 minutes: OK'
+
+          echo '--- route validation ---'
+          bad=$(curl -sS -o /tmp/bad-commission.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/caspa/gold/commission -H 'Content-Type: application/json' -d '{}')
+          test "$bad" = "400"
+          node -e "const j=require('/tmp/bad-commission.json'); if(j.success!==false) process.exit(1)"
+          echo 'commission validation: OK'
+
+          echo '--- TypeScript and unit tests ---'
+          npm run lint
+          npm test
+
+          echo '--- live persistent Commission canary ---'
+          cat >/tmp/canary.json <<'JSON'
+          {
+            "brief": {
+              "title": "Caspa Production Canary",
+              "mode": "nonfiction",
+              "idea": "Explain in a concise practical guide how to organise a desk before starting a writing session.",
+              "tone": "Clear, practical, concise",
+              "output": "Short practical guide",
+              "audience": "General reader",
+              "targetWordCount": 700
+            },
+            "chapters": [{
+              "id": "canary-ch-1",
+              "title": "Prepare the desk",
+              "summary": "Give practical steps for clearing distractions, arranging essential tools, and creating a repeatable start routine.",
+              "content": "",
+              "order": 0,
+              "plotNodeIds": [],
+              "tags": [],
+              "isPlan": true,
+              "directives": [],
+              "updatedAt": 0,
+              "wordCount": 0
+            }],
+            "diagnosis": {
+              "verdict": "Write the guide.",
+              "inputType": "plan",
+              "wordCount": 0,
+              "chapterCount": 1,
+              "viabilityScore": 90,
+              "suggestRebuild": false,
+              "recommendations": [{
+                "id": "canary-write",
+                "title": "Write practical guide",
+                "detail": "Produce usable nonfiction guidance with clear structure and no invented factual claims.",
+                "severity": "major",
+                "defaultSelected": true,
+                "actionType": "rewrite",
+                "chapterRefs": [1]
+              }],
+              "chapterSummaries": [{"order":0,"title":"Prepare the desk","summary":"Practical setup","wordCount":0,"needsWork":true}],
+              "editorNotes": "Production canary."
+            },
+            "selectedRecommendationIds": ["canary-write"],
+            "scope": {"type":"whole"},
+            "autoResearch": false,
+            "promises": []
+          }
+          JSON
+
+          submit=$(curl -fsS -X POST http://127.0.0.1:3000/api/caspa/gold/commission -H 'Content-Type: application/json' --data-binary @/tmp/canary.json)
+          job=$(printf '%s' "$submit" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); if(!j.success||!j.data?.jobId) process.exit(2); process.stdout.write(j.data.jobId)})")
+          echo "canary job: $job"
+
+          for i in $(seq 1 120); do
+            status=$(curl -fsS "http://127.0.0.1:3000/api/caspa/gold/jobs/$job")
+            state=$(printf '%s' "$status" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s).data; process.stdout.write(String(j.status||''))})")
+            stage=$(printf '%s' "$status" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s).data; process.stdout.write(String(j.stage||''))})")
+            echo "[$i] $state $stage"
+            if [ "$state" = "complete" ]; then
+              printf '%s' "$status" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s).data; const w=Number(j.result?.words||0); const text=String(j.result?.artefact||j.result?.finalText||''); if(w<650||!text.trim()) { console.error('bad result',w,text.length); process.exit(3) } console.log('Commission canary complete:',w,'words')})"
+              exit 0
+            fi
+            if [ "$state" = "failed" ]; then
+              printf '%s' "$status" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s).data; console.error(j.error||'Commission failed')})"
+              exit 4
+            fi
+            sleep 4
+          done
+          echo 'Commission canary timed out' >&2
+          exit 5
+          REMOTE
