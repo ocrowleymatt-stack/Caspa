@@ -1,0 +1,57 @@
+name: Probe Atlas Open WebUI Direct
+
+on:
+  push:
+    paths:
+      - '.github/workflows/probe-openwebui-direct.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Probe Open WebUI and router routes
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== OPEN WEBUI 3002 ==='
+          for path in /health /api/models /api/v1/models /v1/models; do
+            code=$(curl -sS -o /tmp/owui -w '%{http_code}' --max-time 5 "http://127.0.0.1:3002${path}" 2>/dev/null || true)
+            echo "path=${path} http=${code}"
+            head -c 600 /tmp/owui 2>/dev/null | tr '\n' ' '; echo
+          done
+          echo '=== OPEN WEBUI ENV NAMES ONLY ==='
+          docker inspect atlas-openwebui --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed 's/=.*//' | sort | grep -Ei 'API|AUTH|OLLAMA|OPENAI|MODEL|WEBUI' || true
+          echo '=== UNIFIED ROUTER PROCESS ==='
+          pid=$(ss -ltnp 2>/dev/null | sed -nE 's/.*:9999 .*pid=([0-9]+).*/\1/p' | head -1)
+          if [ -n "$pid" ]; then
+            echo -n 'cwd='; readlink "/proc/$pid/cwd" || true
+            echo -n 'cmd='; tr '\0' ' ' < "/proc/$pid/cmdline"; echo
+            cwd=$(readlink "/proc/$pid/cwd" || true)
+            if [ -n "$cwd" ] && [ -d "$cwd" ]; then
+              grep -RhoE "(app|router)\.(get|post)\(['\"][^'\"]+" "$cwd" --include='*.js' --include='*.cjs' --include='*.mjs' 2>/dev/null | head -60 || true
+            fi
+          fi
+          REMOTE
