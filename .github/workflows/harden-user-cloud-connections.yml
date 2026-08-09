@@ -1,0 +1,49 @@
+name: Harden User Cloud Connections
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/harden-user-cloud-connections.py'
+      - '.github/workflows/harden-user-cloud-connections.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  harden-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply cloud credential isolation patch
+        run: python3 scripts/harden-user-cloud-connections.py
+
+      - name: Test and build
+        run: |
+          npm ci
+          npm test
+          npm run build
+          git diff --check
+
+      - name: Commit verified integration
+        run: |
+          git config user.name 'atlas-automation'
+          git config user.email 'atlas-automation@users.noreply.github.com'
+          git add src/lib/firebase.ts src/lib/dropbox.ts src/App.tsx src/components/KnowledgeCloudPanel.tsx .deploy-atlas-trigger
+          if git diff --cached --quiet; then
+            echo 'No integration changes to commit.'
+          else
+            git commit -m 'Enforce per-user Drive and Dropbox credential isolation'
+            git push origin main
+          fi
