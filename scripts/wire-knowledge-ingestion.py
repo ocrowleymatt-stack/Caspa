@@ -63,9 +63,7 @@ patch(
 # Operational defaults/documentation.
 env_path = ROOT / '.env.example'
 env_text = env_path.read_text()
-block = """
-
-# Atlas shared knowledge/corpus engine
+block = """# Atlas shared knowledge/corpus engine
 # Local semantic embeddings via Ollama. Pull with: ollama pull embeddinggemma
 KNOWLEDGE_EMBED_MODEL=embeddinggemma
 # Set to off for lexical-only emergency mode.
@@ -75,10 +73,9 @@ KNOWLEDGE_MAX_FILE_BYTES=367001600
 # Maximum provider inventory records per scan.
 KNOWLEDGE_INVENTORY_LIMIT=25000
 # Audio/video transcription model. whisper-1 is used for segment timecodes.
-KNOWLEDGE_TRANSCRIBE_MODEL=whisper-1
-"""
+KNOWLEDGE_TRANSCRIBE_MODEL=whisper-1"""
 if 'KNOWLEDGE_EMBED_MODEL=' not in env_text:
-    env_path.write_text(env_text.rstrip() + block + '\n')
+    env_path.write_text(env_text.rstrip() + '\n\n' + block.strip() + '\n')
     print('patched: .env.example')
 else:
     print('already patched: .env.example')
