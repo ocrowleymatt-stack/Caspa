@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/council-live-smoke.yml'
 
+# Re-run marker: 2026-08-09T02:52Z
 jobs:
   probe:
     runs-on: ubuntu-latest
