@@ -29,6 +29,23 @@ export interface ProjectBriefLike {
 const FINISH_FLOOR = 0.95;
 const FINISH_CEILING = 1.05;
 const ACTIVE_JOB_PREFIX = 'caspa.commission.serverJob:';
+const ANALYSIS_DEADLINE_MS = 25_000;
+
+async function withAnalysisDeadline<T>(work: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ANALYSIS_DEADLINE_MS);
+      }),
+    ]);
+  } catch {
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function countWords(text: string | undefined | null): number {
   return (text || '').trim().split(/\s+/).filter(Boolean).length;
@@ -100,7 +117,11 @@ export async function ingestManuscript(
   const projectType = briefToProjectType(brief.mode);
   onProgress?.('Recognising input type…');
 
-  const detected = await AIService.detectIngestionType(text);
+  const heuristicPlan = /(^|\n)\s*(chapter|part|section|act|scene)\s+\d+/i.test(text) && countWords(text) < 12000;
+  const detected = await withAnalysisDeadline(
+    AIService.detectIngestionType(text),
+    heuristicPlan ? 'plan' : 'manuscript'
+  );
   const isPlan = detected === 'plan';
   onProgress?.(isPlan ? 'Book plan detected — extracting structure…' : 'Manuscript detected — splitting chapters…');
 
@@ -233,8 +254,22 @@ Rules:
 - Be willing to say the idea isn't working
 ${inputType === 'plan' ? '- This is a PLAN not prose — recommend structure fixes and drafting order, not line edits' : ''}`;
 
-  const raw = await AIService.callAI({ prompt, json: true, model: 'gemini-2.0-flash', maxTokens: 4096 });
-  const parsed = safeParseJSON(raw, {});
+  const fallbackDiagnosis = {
+    verdict: `Caspa could not get a timely editorial-model response, so it has built a safe local finish plan instead. The manuscript has ${wordCount.toLocaleString()} words across ${chapters.length} chapter${chapters.length === 1 ? '' : 's'} and will still be handed to the persistent finish worker.`,
+    viabilityScore: wordCount > 0 ? 65 : 35,
+    suggestRebuild: inputType === 'plan' || chapters.length <= 1,
+    editorNotes: 'Editorial diagnosis timed out. Caspa is continuing with deterministic structure/length safeguards rather than aborting the finish flow.',
+    recommendations: [
+      { id: 'rec-structure', title: 'Complete the book structure', detail: 'Preserve useful source material, repair chapter architecture, and deliver every promised section before polishing prose.', severity: 'critical', defaultSelected: true, actionType: inputType === 'plan' ? 'rebuild' : 'restructure' },
+      { id: 'rec-length', title: 'Reach the requested finished length', detail: `Expand substantive coverage to the requested ${target.toLocaleString()}-word book target without padding or repetition.`, severity: 'critical', defaultSelected: true, actionType: 'rewrite' },
+      ...(isNonfictionBrief(brief) ? [{ id: 'rec-evidence', title: 'Strengthen guide quality and evidence', detail: 'Use clear explanatory hierarchy, examples, practical material, source-aware claims, citation flags, and useful tables/figures where warranted.', severity: 'major', defaultSelected: true, actionType: 'research' }] : []),
+    ],
+  };
+  const raw = await withAnalysisDeadline(
+    AIService.callAI({ prompt, json: true, model: 'gemini-2.0-flash', maxTokens: 4096 }),
+    JSON.stringify(fallbackDiagnosis)
+  );
+  const parsed = safeParseJSON(raw, fallbackDiagnosis);
   const recommendations: Recommendation[] = (parsed.recommendations || []).map(
     (r: Partial<Recommendation>, i: number) => ({
       id: r.id || `rec-${i + 1}`,
