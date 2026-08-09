@@ -1,0 +1,51 @@
+name: Data Ingest Speed Surgery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/speed-up-data-ingest.py'
+      - '.github/workflows/data-ingest-speed-surgery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply fast-ingest surgery
+        run: python3 scripts/speed-up-data-ingest.py
+      - name: Verify invariants
+        shell: bash
+        run: |
+          grep -q 'deferEmbeddings?: boolean' src/services/knowledgeIndexService.ts
+          grep -q 'queueMissingEmbeddings' src/services/knowledgeIndexService.ts
+          grep -q 'uploadConcurrency = Math.min(3' src/App.tsx
+          grep -q 'WORKING_SOURCE_MAX_CHARS = 3_000_000' src/App.tsx
+          grep -q "KNOWLEDGE_TRANSCRIBE_CONCURRENCY" src/services/cloudKnowledgeIngestionService.ts
+      - name: Test
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Commit verified surgery
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No source change required.'
+            exit 0
+          fi
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add src/App.tsx src/services/knowledgeClient.ts src/services/knowledgeIndexService.ts src/services/cloudKnowledgeIngestionService.ts src/routes/caspa-knowledge-routes.ts
+          git commit -m 'Make data ingest parallel and defer vector enrichment'
+          git push origin HEAD:main
