@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T16:47:20Z
-reason: deploy verified per-user Drive and Dropbox credential isolation
+deploy requested 2026-08-09T17:37:00Z
+reason: autonomous per-user cloud ingestion and Council timeout resilience
