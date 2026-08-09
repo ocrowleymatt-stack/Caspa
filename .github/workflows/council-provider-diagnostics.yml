@@ -1,0 +1,49 @@
+name: Council Provider Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/council-provider-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Probe strict Council providers
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base = 'https://caspa.ocrowley.com';
+          for (const provider of ['grok', 'gemini', 'venice', 'openai', 'claude']) {
+            const started = Date.now();
+            try {
+              const response = await fetch(`${base}/api/ai/call`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                signal: AbortSignal.timeout(24000),
+                body: JSON.stringify({
+                  prompt: 'Return only this JSON object: {"content":"OK","severity":"low","suggestions":["OK"]}',
+                  json: true,
+                  maxTokens: 120,
+                  providerOverride: provider,
+                  strictProvider: true,
+                  intelligenceMode: 'balanced',
+                  taskHint: 'council',
+                  skipLocalFallback: true
+                })
+              });
+              const body = await response.json().catch(() => ({}));
+              console.log(JSON.stringify({ provider, ms: Date.now() - started, status: response.status, model: body.model || null, error: body.error || null, message: body.message || null, ok: response.ok && Boolean(body.result) }));
+            } catch (error) {
+              console.log(JSON.stringify({ provider, ms: Date.now() - started, status: 0, error: String(error?.message || error), ok: false }));
+            }
+          }
+          NODE
