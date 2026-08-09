@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T11:36:00Z
-reason: load final Midnight Plum theme after redesign CSS and override legacy gold shell visibly
+deploy requested 2026-08-09T11:46:00Z
+reason: recolour the actual production App.tsx shell at caspa.ocrowley.com, not the dormant redesign skin
