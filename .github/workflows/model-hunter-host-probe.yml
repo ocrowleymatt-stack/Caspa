@@ -1,0 +1,79 @@
+name: Model Hunter Host Probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/model-hunter-host-probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Probe model services and local latency
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== SERVICE PORTS ==='
+          ss -ltn | awk 'NR==1 || /:(3000|3001|5000|8000|8080|8081|8888|9999|11434)[[:space:]]/' || true
+          echo '=== OPEN WEBUI CANDIDATES ==='
+          for port in 3001 5000 8000 8080 8081 8888 9999; do
+            code=$(curl -sS -o /tmp/model_probe_body -w '%{http_code}' --max-time 3 "http://127.0.0.1:${port}/api/models" 2>/dev/null || true)
+            if [ "$code" != "000" ] && [ -n "$code" ]; then
+              echo "port=${port} api_models_http=${code}"
+              head -c 180 /tmp/model_probe_body | tr '\n' ' '; echo
+            fi
+          done
+          echo '=== OLLAMA TINY BENCHMARK ==='
+          python3 - <<'PY'
+          import json, subprocess, time, urllib.request
+          try:
+              with urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=5) as r:
+                  models=json.load(r).get('models',[])
+          except Exception as e:
+              print('tags_error=', type(e).__name__)
+              raise SystemExit(0)
+          names=[m.get('name') or m.get('model') for m in models if (m.get('name') or m.get('model'))]
+          def weight(name):
+              n=name.lower()
+              if '9b' in n: return 0
+              if 'mistral' in n: return 1
+              if 'matt-' in n: return 2
+              if '27b' in n: return 5
+              return 3
+          for name in sorted(names, key=weight):
+              payload=json.dumps({'model':name,'prompt':'Reply only OK','stream':False,'options':{'num_predict':4}}).encode()
+              req=urllib.request.Request('http://127.0.0.1:11434/api/generate',data=payload,headers={'Content-Type':'application/json'})
+              start=time.time()
+              try:
+                  with urllib.request.urlopen(req, timeout=22) as r:
+                      data=json.load(r)
+                  ms=round((time.time()-start)*1000)
+                  print(json.dumps({'model':name,'ok':True,'ms':ms,'sample':str(data.get('response',''))[:40]}))
+              except Exception as e:
+                  ms=round((time.time()-start)*1000)
+                  print(json.dumps({'model':name,'ok':False,'ms':ms,'error':type(e).__name__}))
+          PY
+          REMOTE
