@@ -1,5 +1,18 @@
 /* Final sitewide colour authority. Imported after all application modules. */
 
+:root {
+  --live-bg: #0d0912;
+  --live-bg-2: #15101d;
+  --live-card: #1d1526;
+  --live-card-2: #261b31;
+  --live-primary: #d4a6ff;
+  --live-primary-soft: #ead6ff;
+  --live-accent: #8fe3cf;
+  --live-text: #f8f3fb;
+  --live-muted: #b9aec2;
+  --live-border: rgba(212,166,255,.24);
+}
+
 .cs-shell {
   --cs-obsidian: #09070d;
   --cs-bg: #0d0912;
@@ -17,108 +30,183 @@
   --cs-indigo: #6d5fa8;
   --cs-green: #8fe3cf;
   --cs-red: #e98d98;
-
-  background:
-    radial-gradient(circle at 82% 8%, rgba(212,166,255,.13), transparent 31%),
-    radial-gradient(circle at 68% 58%, rgba(143,227,207,.07), transparent 28%),
-    linear-gradient(135deg, #09070d 0%, #100a17 46%, #0b0d14 100%) !important;
+  background: radial-gradient(circle at 82% 8%, rgba(212,166,255,.13), transparent 31%), radial-gradient(circle at 68% 58%, rgba(143,227,207,.07), transparent 28%), linear-gradient(135deg, #09070d 0%, #100a17 46%, #0b0d14 100%) !important;
   color: #f8f3fb !important;
 }
 
-.cs-shell .cs-sidebar {
-  background:
-    linear-gradient(180deg, rgba(20,13,27,.98), rgba(10,7,14,.99)),
-    radial-gradient(circle at 50% 5%, rgba(212,166,255,.11), transparent 38%) !important;
+.cs-shell .cs-sidebar { background: linear-gradient(180deg, rgba(20,13,27,.98), rgba(10,7,14,.99)), radial-gradient(circle at 50% 5%, rgba(212,166,255,.11), transparent 38%) !important; }
+.cs-shell .cs-topbar { background: rgba(14, 9, 19, .82) !important; border-color: rgba(212,166,255,.18) !important; }
+.cs-shell .cs-card, .cs-shell .cs-aside-panel, .cs-shell .cs-simple-screen { background: linear-gradient(180deg, rgba(30,20,40,.94), rgba(16,11,23,.96)) !important; border-color: rgba(212,166,255,.20) !important; }
+.cs-shell .cs-hero { background: linear-gradient(90deg, rgba(29,18,39,.97) 0%, rgba(23,15,32,.91) 58%, rgba(16,12,24,.88) 100%), radial-gradient(circle at 76% 8%, rgba(143,227,207,.08), transparent 27%) !important; }
+.cs-shell .cs-nav__item.is-active { background: linear-gradient(90deg, rgba(212,166,255,.20), rgba(143,227,207,.035)) !important; border-color: rgba(212,166,255,.44) !important; box-shadow: inset 2px 0 0 #d4a6ff !important; }
+.cs-shell .cs-button--gold { background: linear-gradient(180deg, #ead6ff, #c994f3) !important; color: #1a1021 !important; border-color: rgba(234,214,255,.38) !important; }
+.cs-shell .cs-ring { background: conic-gradient(#d4a6ff var(--progress), rgba(255,255,255,.08) 0deg) !important; }
+.cs-shell .cs-progress-bar span { background: linear-gradient(90deg, #b77dea, #8fe3cf) !important; }
+.cs-shell .cs-health-orb { background: radial-gradient(circle, rgba(212,166,255,.16), transparent 62%), conic-gradient(from 45deg, #d4a6ff, #8fe3cf, #b77dea, #d4a6ff) !important; }
+.cs-shell .cs-search, .cs-shell .cs-icon-button, .cs-shell .cs-quick-actions button, .cs-shell .cs-assistant-action, .cs-shell .cs-suggestion, .cs-shell .cs-character-card { background-color: rgba(212,166,255,.035) !important; border-color: rgba(212,166,255,.18) !important; }
+.cs-shell :is(input, textarea, select) { background: #120d18 !important; color: #f8f3fb !important; border-color: rgba(212,166,255,.28) !important; }
+.cs-shell :is(input, textarea, select):focus { border-color: #d4a6ff !important; outline: 2px solid rgba(143,227,207,.18) !important; }
+
+/*
+ * LIVE APP SHELL
+ * App.tsx is the production UI currently mounted at caspa.ocrowley.com and uses
+ * extensive inline cream/gold styling. Target the actual mounted shell rather than
+ * the dormant redesign skin, so the colour change is visibly authoritative.
+ */
+#root > div:has(.caspa-sidebar) {
+  background: radial-gradient(circle at 82% 4%, rgba(212,166,255,.10), transparent 34rem), radial-gradient(circle at 24% 90%, rgba(143,227,207,.045), transparent 32rem), var(--live-bg) !important;
+  color: var(--live-text) !important;
 }
 
-.cs-shell .cs-topbar {
-  background: rgba(14, 9, 19, .82) !important;
-  border-color: rgba(212,166,255,.18) !important;
+#root .caspa-sidebar {
+  background: linear-gradient(180deg, #181020 0%, #0d0912 100%) !important;
+  color: var(--live-text) !important;
+  border-right-color: var(--live-border) !important;
+  box-shadow: 18px 0 55px rgba(0,0,0,.28) !important;
 }
 
-.cs-shell .cs-card,
-.cs-shell .cs-aside-panel,
-.cs-shell .cs-simple-screen {
-  background: linear-gradient(180deg, rgba(30,20,40,.94), rgba(16,11,23,.96)) !important;
-  border-color: rgba(212,166,255,.20) !important;
+#root .caspa-sidebar button {
+  border-color: transparent !important;
 }
 
-.cs-shell .cs-hero {
-  background:
-    linear-gradient(90deg, rgba(29,18,39,.97) 0%, rgba(23,15,32,.91) 58%, rgba(16,12,24,.88) 100%),
-    radial-gradient(circle at 76% 8%, rgba(143,227,207,.08), transparent 27%) !important;
+#root .caspa-sidebar button[style*="background"]:not([style*="transparent"]) {
+  background: linear-gradient(90deg, rgba(212,166,255,.18), rgba(143,227,207,.035)) !important;
+  color: var(--live-primary-soft) !important;
 }
 
-.cs-shell .cs-nav__item.is-active {
-  background: linear-gradient(90deg, rgba(212,166,255,.20), rgba(143,227,207,.035)) !important;
-  border-color: rgba(212,166,255,.44) !important;
-  box-shadow: inset 2px 0 0 #d4a6ff !important;
+#root .caspa-sidebar svg,
+#root .caspa-sidebar [style*="color: rgb(214, 168, 70)"],
+#root .caspa-sidebar [style*="color:#d6a846"],
+#root .caspa-sidebar [style*="color: #d6a846"] {
+  color: var(--live-primary) !important;
 }
 
-.cs-shell .cs-button--gold {
-  background: linear-gradient(180deg, #ead6ff, #c994f3) !important;
-  color: #1a1021 !important;
-  border-color: rgba(234,214,255,.38) !important;
+#root > div:has(.caspa-sidebar) main {
+  background: transparent !important;
+  color: var(--live-text) !important;
 }
 
-.cs-shell .cs-ring {
-  background: conic-gradient(#d4a6ff var(--progress), rgba(255,255,255,.08) 0deg) !important;
+#root > div:has(.caspa-sidebar) main > .custom-scrollbar {
+  background: transparent !important;
 }
 
-.cs-shell .cs-progress-bar span {
-  background: linear-gradient(90deg, #b77dea, #8fe3cf) !important;
+/* Top-level launchpad/page backgrounds: replace the unmistakable cream canvas. */
+#root > div:has(.caspa-sidebar) main > .custom-scrollbar > section,
+#root > div:has(.caspa-sidebar) main > .custom-scrollbar > div:not(.manuscript-page):not(.paper-preview) {
+  background-color: transparent;
 }
 
-.cs-shell .cs-health-orb {
-  background:
-    radial-gradient(circle, rgba(212,166,255,.16), transparent 62%),
-    conic-gradient(from 45deg, #d4a6ff, #8fe3cf, #b77dea, #d4a6ff) !important;
+#root [style*="radial-gradient(circle at top left"],
+#root [style*="#fff7e6"],
+#root [style*="rgb(255, 247, 230)"],
+#root [style*="#f5efe5"],
+#root [style*="rgb(245, 239, 229)"],
+#root [style*="#e9dfcf"],
+#root [style*="rgb(233, 223, 207)"] {
+  background: radial-gradient(circle at top left, #24162f 0, #15101d 42%, #0d0912 100%) !important;
+  color: var(--live-text) !important;
 }
 
-.cs-shell .cs-search,
-.cs-shell .cs-icon-button,
-.cs-shell .cs-quick-actions button,
-.cs-shell .cs-assistant-action,
-.cs-shell .cs-suggestion,
-.cs-shell .cs-character-card {
-  background-color: rgba(212,166,255,.035) !important;
-  border-color: rgba(212,166,255,.18) !important;
+/* Production App.tsx cards and panels. */
+#root [style*="#ffffff"],
+#root [style*="rgb(255, 255, 255)"],
+#root [style*="#fffaf2"],
+#root [style*="rgb(255, 250, 242)"],
+#root [style*="#fff3d5"],
+#root [style*="rgb(255, 243, 213)"] {
+  background-color: var(--live-card) !important;
+  color: var(--live-text) !important;
+  border-color: var(--live-border) !important;
 }
 
-.cs-shell :is(input, textarea, select) {
-  background: #120d18 !important;
-  color: #f8f3fb !important;
-  border-color: rgba(212,166,255,.28) !important;
+#root [style*="#17120c"],
+#root [style*="rgb(23, 18, 12)"],
+#root [style*="#21180f"],
+#root [style*="rgb(33, 24, 15)"],
+#root [style*="#2b2115"],
+#root [style*="rgb(43, 33, 21)"],
+#root [style*="#2f2415"],
+#root [style*="rgb(47, 36, 21)"] {
+  background-color: var(--live-card-2) !important;
+  border-color: var(--live-border) !important;
 }
 
-.cs-shell :is(input, textarea, select):focus {
-  border-color: #d4a6ff !important;
-  outline: 2px solid rgba(143,227,207,.18) !important;
+/* Old gold becomes unmistakable lilac throughout the live app. */
+#root [style*="#d6a846"],
+#root [style*="rgb(214, 168, 70)"],
+#root [style*="#8a6a28"],
+#root [style*="rgb(138, 106, 40)"],
+#root [style*="#7a5514"],
+#root [style*="rgb(122, 85, 20)"] {
+  border-color: var(--live-primary) !important;
 }
 
-/* Normalise old Quick Write / utility inline palettes that otherwise bypass theme variables. */
+#root [style*="color: rgb(214, 168, 70)"],
+#root [style*="color:#d6a846"],
+#root [style*="color: #d6a846"],
+#root [style*="color: rgb(138, 106, 40)"],
+#root [style*="color: #8a6a28"] {
+  color: var(--live-primary) !important;
+}
+
+#root [style*="background: rgb(214, 168, 70)"],
+#root [style*="background-color: rgb(214, 168, 70)"],
+#root [style*="background:#d6a846"],
+#root [style*="background: #d6a846"] {
+  background: var(--live-primary) !important;
+  color: #170e1d !important;
+}
+
+/* Replace old brown/cream body text with the new neutral hierarchy. */
+#root [style*="color: rgb(109, 98, 85)"],
+#root [style*="color: rgb(138, 125, 107)"],
+#root [style*="color: rgb(155, 145, 132)"],
+#root [style*="color: rgb(168, 149, 114)"],
+#root [style*="color: rgb(201, 184, 152)"],
+#root [style*="color: rgb(122, 109, 88)"],
+#root [style*="color: rgb(143, 128, 104)"],
+#root [style*="color: rgb(115, 105, 93)"] {
+  color: var(--live-muted) !important;
+}
+
+/* Quick Write / utility inline palettes. */
 #root [style*="background: rgb(21, 27, 41)"],
 #root [style*="background-color: rgb(21, 27, 41)"],
 #root [style*="background: rgb(13, 17, 27)"],
 #root [style*="background-color: rgb(13, 17, 27)"],
 #root [style*="background: rgb(32, 40, 58)"],
 #root [style*="background-color: rgb(32, 40, 58)"] {
-  background: #181120 !important;
-  border-color: rgba(212,166,255,.20) !important;
+  background: var(--live-card) !important;
+  border-color: var(--live-border) !important;
 }
 
 #root [style*="color: rgb(142, 167, 255)"],
-#root [style*="color: rgb(185, 199, 255)"] {
-  color: #d4a6ff !important;
-}
-
+#root [style*="color: rgb(185, 199, 255)"] { color: var(--live-primary) !important; }
 #root [style*="background: rgb(142, 167, 255)"],
-#root [style*="background-color: rgb(142, 167, 255)"] {
-  background: #d4a6ff !important;
-  color: #160f1f !important;
+#root [style*="background-color: rgb(142, 167, 255)"] { background: var(--live-primary) !important; color: #160f1f !important; }
+
+#root :is(input,textarea,select):not(.manuscript-page *) {
+  background: #120d18 !important;
+  color: var(--live-text) !important;
+  border-color: var(--live-border) !important;
 }
 
-::selection {
-  background: rgba(212,166,255,.38);
-  color: #fff;
+#root :is(input,textarea,select):focus:not(.manuscript-page *) {
+  border-color: var(--live-primary) !important;
+  outline: 2px solid rgba(143,227,207,.22) !important;
 }
+
+#root button:focus-visible,
+#root a:focus-visible,
+#root [role="button"]:focus-visible {
+  outline: 2px solid var(--live-accent) !important;
+  outline-offset: 2px !important;
+}
+
+/* Never recolour book/paper output itself. */
+.manuscript-page,
+.paper-preview,
+@media print {
+}
+
+::selection { background: rgba(212,166,255,.38); color: #fff; }
