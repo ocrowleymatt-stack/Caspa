@@ -187,7 +187,7 @@ async function callClaude(prompt: string, json = false, maxTokens?: number) {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model: "claude-sonnet-4-6",
         max_tokens: maxTokens || 4096,
         messages: [
           { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
