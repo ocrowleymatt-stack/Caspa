@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T15:34:00Z
-reason: allow Dropbox/iCloud/Drive files through source picker by removing MIME pre-filtering
+deploy requested 2026-08-09T16:33:04Z
+reason: restore cloud corpus ingestion, transcription, dedupe and semantic search

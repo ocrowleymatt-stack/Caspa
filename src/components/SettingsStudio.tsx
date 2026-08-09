@@ -4,6 +4,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Loader, RefreshCw, UploadCloud, Activity } from 'lucide-react';
+import KnowledgeCloudPanel from './KnowledgeCloudPanel';
 import {
   applyLocalSnapshot,
   collectLocalSnapshot,
@@ -244,6 +245,8 @@ export default function SettingsStudio({ userEmail, userId, onFastUpload }: Prop
             />
           </article>
         ) : null}
+
+        <KnowledgeCloudPanel />
 
         <article style={{ ...card, marginTop: 18 }}>
           <h2 style={sectionTitle}>Local-first backup</h2>

@@ -89,6 +89,7 @@ import { countWords, defaultTargetWordCount } from './services/wordCountService'
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
 import { clearShowBox, hasShowBoxContent } from './services/showBoxService';
+import { ingestKnowledgeText } from './services/knowledgeClient';
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
 declare const process: any;
@@ -741,6 +742,14 @@ function CaspaUI() {
 
     const useful = parsed.filter((item) => item.text.trim());
     if (!useful.length) throw new Error('The uploaded files contained no readable text.');
+
+    const knowledgeWrites = await Promise.allSettled(
+      useful.map((item) => ingestKnowledgeText(item.name, item.text, 'text/plain', `fast-upload:${item.name}`))
+    );
+    const knowledgeFailures = knowledgeWrites.filter((result) => result.status === 'rejected');
+    if (knowledgeFailures.length) {
+      console.warn(`[Fast Data Upload] ${knowledgeFailures.length} source(s) loaded into the project but could not be added to the shared knowledge index.`);
+    }
 
     const combined = useful.length === 1
       ? useful[0].text

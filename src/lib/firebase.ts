@@ -53,7 +53,7 @@ googleProvider.setCustomParameters({
 export const googleDriveProvider = new GoogleAuthProvider();
 googleDriveProvider.addScope('profile');
 googleDriveProvider.addScope('email');
-googleDriveProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleDriveProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
 googleDriveProvider.setCustomParameters({
   prompt: 'select_account consent',
   include_granted_scopes: 'true',
