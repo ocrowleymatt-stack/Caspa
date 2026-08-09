@@ -1,0 +1,56 @@
+name: Council Nine Seat Real Budget Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/council-nine-seat-real-budget-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run nine-seat production Council wave
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base = 'https://caspa.ocrowley.com';
+          const providers = ['grok', 'gemini', 'venice', 'grok', 'gemini', 'venice', 'grok', 'gemini', 'venice'];
+          const roles = ['structural', 'factual', 'vocal', 'sentence', 'agent', 'writer', 'thematic', 'publisher', 'reader'];
+          const passage = `The door opened. He knew immediately that the room had changed, but he could not say why. On the desk, the letter he had hidden beneath the ledger now lay face-up. Nobody mentioned it. Mara poured coffee with both hands and asked whether he had slept well.`;
+          const started = Date.now();
+          const jobs = providers.map(async (provider, i) => {
+            const response = await fetch(`${base}/api/ai/call`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              signal: AbortSignal.timeout(24000),
+              body: JSON.stringify({
+                prompt: `You are the ${roles[i]} critic on an editorial council. Critique this passage decisively. Return ONLY JSON with content, severity, and 3-5 suggestions. TEXT: ${passage}`,
+                json: true,
+                maxTokens: 900,
+                providerOverride: provider,
+                strictProvider: true,
+                intelligenceMode: 'balanced',
+                taskHint: 'council',
+                skipLocalFallback: true
+              })
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || !body.result) throw new Error(`${roles[i]}/${provider}: ${body.error || body.message || response.status}`);
+            return { role: roles[i], provider, model: body.model };
+          });
+          const settled = await Promise.allSettled(jobs);
+          const elapsed = Date.now() - started;
+          const fulfilled = settled.filter(r => r.status === 'fulfilled');
+          const rejected = settled.filter(r => r.status === 'rejected');
+          console.log(JSON.stringify({ elapsedMs: elapsed, successes: fulfilled.length, failures: rejected.length, fulfilled: fulfilled.map(r => r.value), rejected: rejected.map(r => String(r.reason?.message || r.reason)) }, null, 2));
+          if (fulfilled.length < 5) throw new Error(`Nine-seat Council missed quorum: ${fulfilled.length}/9`);
+          if (elapsed > 24000) throw new Error(`Nine-seat Council exceeded 24s: ${elapsed}ms`);
+          NODE
