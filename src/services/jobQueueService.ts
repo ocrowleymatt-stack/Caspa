@@ -35,7 +35,7 @@ export function createJob(type: CaspaJobRecord['type'], stage = 'queued'): Caspa
 
 export function updateJob(
   id: string,
-  patch: Partial<Pick<CaspaJobRecord, 'status' | 'progress' | 'stage' | 'error' | 'result'>>
+  patch: Partial<Pick<CaspaJobRecord, 'status' | 'progress' | 'stage' | 'error' | 'result' | 'input' | 'checkpoint'>>
 ): CaspaJobRecord | null {
   const jobs = store();
   const job = jobs.get(id);
