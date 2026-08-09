@@ -17,10 +17,13 @@ export class FetchTimeoutError extends Error {
 }
 
 /** Default client wait for short AI routes (seed, cut, single chapter). */
-export const AI_FETCH_TIMEOUT_MS = 180_000;
+export const AI_FETCH_TIMEOUT_MS = 300_000;
 
-/** Longer wait for whole-book / multi-pass polish loops. */
-export const AI_LONG_FETCH_TIMEOUT_MS = 300_000;
+/**
+ * Whole-book / multi-pass jobs can legitimately take many minutes.
+ * Keep the browser out of the way; server/proxy timeouts are aligned to this.
+ */
+export const AI_LONG_FETCH_TIMEOUT_MS = 1_800_000;
 
 export function isTimeoutError(err: unknown): boolean {
   if (!err) return false;
@@ -55,7 +58,23 @@ export async function fetchWithTimeout(
   upstream?.addEventListener('abort', onUpstreamAbort);
 
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const response = await fetch(input, { ...init, signal: controller.signal });
+
+    // Reverse proxies commonly return an HTML 502/504 page. Without this guard,
+    // callers doing response.json() surface the useless "Unexpected token <" error.
+    const ctype = (response.headers.get('content-type') || '').toLowerCase();
+    if (ctype.includes('text/html')) {
+      const body = await response.clone().text().catch(() => '');
+      const status = response.status || 0;
+      const gateway = status === 502 || status === 503 || status === 504;
+      throw new Error(
+        gateway
+          ? `The writing service was still working but the gateway closed the connection (${status}). Your completed sections are saved; continue the remaining section.`
+          : `The API returned HTML instead of JSON (${status}). ${body.replace(/\s+/g, ' ').slice(0, 100)}`
+      );
+    }
+
+    return response;
   } catch (err) {
     if (controller.signal.aborted && !upstream?.aborted) {
       throw new FetchTimeoutError(timeoutMs);
