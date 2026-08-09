@@ -133,6 +133,10 @@ function scopeLabel(scope: CommissionScope, chapterMax: number) {
   return `Chapters ${scope.chapterFrom ?? 1}–${scope.chapterTo ?? chapterMax}`;
 }
 
+function canReadAsText(file: File) {
+  return file.type.startsWith('text/') || /\.(txt|md|markdown|rtf|csv|json|xml|html?|css|js|jsx|ts|tsx|yaml|yml|log|ini|conf|tex|bib|srt|vtt)$/i.test(file.name);
+}
+
 export default function CommissionStudio({
   brief,
   draftPage,
@@ -247,9 +251,19 @@ export default function CommissionStudio({
   };
 
   const handleFiles = async (files: File[]) => {
-    const readable = files.filter((f) => /\.(txt|md|markdown|rtf|csv|json)$/i.test(f.name) || f.type.startsWith('text/'));
-    if (!readable.length) return;
-    const chunks = await Promise.all(readable.map(async (f) => `\n\n===== SOURCE: ${f.name} =====\n\n${await f.text()}`));
+    if (!files.length) return;
+    const chunks = await Promise.all(files.map(async (file) => {
+      const heading = `\n\n===== SOURCE: ${file.name} =====\n\n`;
+      if (canReadAsText(file)) {
+        try {
+          return `${heading}${await file.text()}`;
+        } catch {
+          return `${heading}[File selected but its text could not be read.]`;
+        }
+      }
+      const kind = file.type || 'unknown file type';
+      return `${heading}[Attached file: ${file.name} · ${kind} · ${file.size.toLocaleString()} bytes. Binary content is not converted to manuscript text in this browser step.]`;
+    }));
     setInboxText((prev) => `${prev.trim()}${chunks.join('')}`.trim());
   };
 
@@ -518,7 +532,7 @@ function InboxPanel({
     <div className="finish-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.45fr) minmax(280px,.7fr)', gap: 18 }}>
       <article style={card}>
         <h2 style={sectionTitle}>1. Add the manuscript</h2>
-        <p style={muted}>Paste it, replace it, or add several text documents. Caspa will identify the structure after you press Analyse.</p>
+        <p style={muted}>Paste it, replace it, or add any files. Text-based files are read directly; other formats are accepted and clearly listed instead of being silently rejected.</p>
         <textarea value={inboxText} onChange={(e) => setInboxText(e.target.value)} placeholder="Paste manuscript, plan or source material here…" style={manuscriptBox} />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 14 }}>
           <button type="button" onClick={onIngest} disabled={loading || !inboxText.trim()} style={primaryBtn}>
@@ -527,7 +541,7 @@ function InboxPanel({
           </button>
           <label style={{ ...ghostBtn, cursor: 'pointer' }}>
             <Upload size={16} /> Add files
-            <input type="file" multiple accept=".txt,.md,.markdown,.rtf,.csv,.json,text/*" style={{ display: 'none' }} onChange={(e) => e.target.files && onFiles(Array.from(e.target.files))} />
+            <input type="file" multiple style={{ display: 'none' }} onChange={(e) => e.target.files && onFiles(Array.from(e.target.files))} />
           </label>
           <span style={muted}>{words.toLocaleString()} words</span>
         </div>
