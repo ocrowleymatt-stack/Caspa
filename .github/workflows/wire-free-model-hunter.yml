@@ -1,0 +1,29 @@
+name: Wire Free Model Hunter
+
+on:
+  push:
+    paths:
+      - '.github/workflows/wire-free-model-hunter.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply model hunter wiring
+        run: python scripts/wire-free-model-hunter.py
+      - name: Validate production build
+        run: |
+          npm ci
+          npm run build
+          git diff --check
+      - name: Commit model hunter
+        run: |
+          git config user.name atlas-model-hunter
+          git config user.email actions@users.noreply.github.com
+          git add src/services/aiRouterPolicy.ts src/services/ai.ts server.ts
+          git commit -m "Let Atlas hunt discovered Open WebUI and Ollama models"
+          git push
