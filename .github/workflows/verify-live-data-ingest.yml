@@ -1,0 +1,42 @@
+name: Verify Live Data Ingest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-live-data-ingest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect live HTML and bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://caspa.ocrowley.com'
+          echo '--- HTML headers ---'
+          curl -sSI "$BASE/" | sed -n '1,25p'
+          HTML=$(curl -fsS "$BASE/?cachebust=$(date +%s)")
+          printf '%s' "$HTML" > /tmp/index.html
+          ASSET=$(grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' /tmp/index.html | head -1)
+          echo "ASSET=$ASSET"
+          test -n "$ASSET"
+          echo '--- asset headers ---'
+          curl -sSI "$BASE$ASSET" | sed -n '1,25p'
+          curl -fsS "$BASE$ASSET" -o /tmp/app.js
+          if grep -Fq 'Data Ingest' /tmp/app.js; then
+            echo 'LIVE_DATA_INGEST=present'
+          else
+            echo 'LIVE_DATA_INGEST=MISSING'
+            exit 1
+          fi
+          if grep -Fq "language\",\"en" /tmp/app.js || grep -Fq "language','en" /tmp/app.js || grep -Fq "language\",\"en\"" /tmp/app.js; then
+            echo 'LIVE_WHISPER_ENGLISH=present'
+          else
+            echo 'LIVE_WHISPER_ENGLISH=server-only-or-not-visible-in-browser-bundle'
+          fi
