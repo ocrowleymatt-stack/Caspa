@@ -1050,6 +1050,38 @@ function CaspaUI() {
 
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: '#f5efe5', color: '#172033' }}>
+      <button
+        type="button"
+        onClick={() => sidebarFastUploadRef.current?.click()}
+        disabled={sidebarFastUploading}
+        aria-label="Fast file upload"
+        title="High-speed multi-file upload · 3 files processed in parallel"
+        style={{
+          position: 'fixed',
+          top: 18,
+          right: 18,
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          border: '2px solid #17120c',
+          borderRadius: 14,
+          padding: '11px 15px',
+          background: '#ffd166',
+          color: '#17120c',
+          fontSize: 12,
+          fontWeight: 950,
+          letterSpacing: 0.5,
+          boxShadow: '0 8px 28px rgba(23,18,12,.24)',
+          cursor: sidebarFastUploading ? 'wait' : 'pointer',
+          opacity: sidebarFastUploading ? 0.82 : 1,
+        }}
+      >
+        {sidebarFastUploading ? <Loader size={17} className="spin" /> : <UploadCloud size={17} />}
+        <span>{sidebarFastUploading ? 'UPLOADING…' : 'FAST FILE UPLOAD'}</span>
+        {!sidebarFastUploading ? <small style={{ fontSize: 9, opacity: 0.72, fontWeight: 800 }}>MULTI</small> : null}
+      </button>
+
       <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mobile-menu" style={{ position: 'fixed', top: 16, left: 16, zIndex: 60, border: '1px solid #e0d3bf', background: '#fffaf2', borderRadius: 12, padding: 10 }}>
         {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
