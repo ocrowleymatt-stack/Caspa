@@ -13,17 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Council Mode patch
-        run: python scripts/fix-council-mode.py
+      - name: Update retired Council models
+        run: python scripts/update-live-council-models.py
       - name: Validate production build
         run: |
           npm ci
           npm run build
           git diff --check
-      - name: Commit repair
+      - name: Commit model migration
         run: |
           git config user.name atlas-council-fix
           git config user.email actions@users.noreply.github.com
-          git add src/services/ai.ts server.ts
-          git commit -m "Make Council Mode multi-provider and fail-soft"
+          git add server.ts
+          git commit -m "Migrate Council seats off retired Gemini and Claude models"
           git push
