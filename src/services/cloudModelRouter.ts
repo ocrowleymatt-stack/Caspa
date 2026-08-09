@@ -324,13 +324,13 @@ export async function callCloudProvider(provider: CloudProvider, prompt: string,
 export function providerOrder(primary: string, mode: IntelligenceMode, task: TaskKind, sensitive = false): string[] {
   let ordered: string[];
   if (mode === 'speed') {
-    ordered = ['grok', 'gemini', 'venice', 'openai', 'claude', 'ollama'];
+    ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
   } else if (mode === 'god') {
-    if (sensitive || task === 'creative') ordered = ['venice', 'grok', 'gemini', 'openai', 'claude', 'ollama'];
-    else if (['reasoning', 'legal', 'factual', 'synthesis', 'long'].includes(task)) ordered = ['grok', 'gemini', 'venice', 'openai', 'claude', 'ollama'];
-    else ordered = ['grok', 'venice', 'gemini', 'openai', 'claude', 'ollama'];
+    if (sensitive || task === 'creative') ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
+    else if (['reasoning', 'legal', 'factual', 'synthesis', 'long'].includes(task)) ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
+    else ordered = ['grok', 'venice', 'gemini', 'openai', 'claude'];
   } else {
-    ordered = ['grok', 'gemini', 'venice', 'openai', 'claude', 'ollama'];
+    ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
   }
   if (primary && ordered.includes(primary)) ordered = [primary, ...ordered.filter((p) => p !== primary)];
   if (sensitive && ordered.includes('venice')) ordered = ['venice', ...ordered.filter((p) => p !== 'venice')];

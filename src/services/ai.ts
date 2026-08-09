@@ -355,10 +355,10 @@ Based ONLY on the provided text and strictly following any structural plans foun
     type CouncilProvider = IntelligenceProvider | 'unified' | 'ollama';
     const intelligenceMode = (typeof window !== 'undefined' ? window.localStorage.getItem('caspa_intelligence_mode') : null) || 'balanced';
     const providerRotation: CouncilProvider[] = intelligenceMode === 'god'
-      ? ['grok', 'venice', 'gemini', 'grok', 'venice', 'gemini', 'ollama', 'openai', 'claude']
+      ? ['grok', 'venice', 'gemini', 'grok', 'venice', 'gemini', 'openai', 'claude']
       : intelligenceMode === 'speed'
         ? ['grok', 'gemini', 'venice', 'grok', 'gemini', 'venice']
-        : ['grok', 'gemini', 'venice', 'ollama', 'grok', 'gemini', 'openai', 'claude'];
+        : ['grok', 'gemini', 'venice', 'grok', 'gemini', 'venice', 'openai', 'claude'];
     const providerLabels: Record<CouncilProvider, string> = {
       ollama: 'Local Model Pool',
       unified: 'Open WebUI Pool',
