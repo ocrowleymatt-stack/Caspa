@@ -1,0 +1,63 @@
+name: Harden Finish Book Analysis
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/harden-finish-analysis.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch resilient analysis path
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/services/commissionService.ts')
+          s = p.read_text()
+
+          anchor = "const ACTIVE_JOB_PREFIX = 'caspa.commission.serverJob:';\n"
+          helper = """const ACTIVE_JOB_PREFIX = 'caspa.commission.serverJob:';\nconst ANALYSIS_DEADLINE_MS = 25_000;\n\nasync function withAnalysisDeadline<T>(work: Promise<T>, fallback: T): Promise<T> {\n  let timer: ReturnType<typeof setTimeout> | undefined;\n  try {\n    return await Promise.race([\n      work,\n      new Promise<T>((resolve) => {\n        timer = setTimeout(() => resolve(fallback), ANALYSIS_DEADLINE_MS);\n      }),\n    ]);\n  } catch {\n    return fallback;\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n"""
+          if 'ANALYSIS_DEADLINE_MS' not in s:
+              if anchor not in s: raise SystemExit('active job anchor missing')
+              s = s.replace(anchor, helper, 1)
+
+          old = """  const detected = await AIService.detectIngestionType(text);\n  const isPlan = detected === 'plan';\n"""
+          new = """  const heuristicPlan = /(^|\\n)\\s*(chapter|part|section|act|scene)\\s+\\d+/i.test(text) && countWords(text) < 12000;\n  const detected = await withAnalysisDeadline(\n    AIService.detectIngestionType(text),\n    heuristicPlan ? 'plan' : 'manuscript'\n  );\n  const isPlan = detected === 'plan';\n"""
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif 'heuristicPlan' not in s:
+              raise SystemExit('detect block missing')
+
+          old2 = """  const raw = await AIService.callAI({ prompt, json: true, model: 'gemini-2.0-flash', maxTokens: 4096 });\n  const parsed = safeParseJSON(raw, {});\n"""
+          new2 = """  const fallbackDiagnosis = {\n    verdict: `Caspa could not get a timely editorial-model response, so it has built a safe local finish plan instead. The manuscript has ${wordCount.toLocaleString()} words across ${chapters.length} chapter${chapters.length === 1 ? '' : 's'} and will still be handed to the persistent finish worker.`,\n    viabilityScore: wordCount > 0 ? 65 : 35,\n    suggestRebuild: inputType === 'plan' || chapters.length <= 1,\n    editorNotes: 'Editorial diagnosis timed out. Caspa is continuing with deterministic structure/length safeguards rather than aborting the finish flow.',\n    recommendations: [\n      { id: 'rec-structure', title: 'Complete the book structure', detail: 'Preserve useful source material, repair chapter architecture, and deliver every promised section before polishing prose.', severity: 'critical', defaultSelected: true, actionType: inputType === 'plan' ? 'rebuild' : 'restructure' },\n      { id: 'rec-length', title: 'Reach the requested finished length', detail: `Expand substantive coverage to the requested ${target.toLocaleString()}-word book target without padding or repetition.`, severity: 'critical', defaultSelected: true, actionType: 'rewrite' },\n      ...(isNonfictionBrief(brief) ? [{ id: 'rec-evidence', title: 'Strengthen guide quality and evidence', detail: 'Use clear explanatory hierarchy, examples, practical material, source-aware claims, citation flags, and useful tables/figures where warranted.', severity: 'major', defaultSelected: true, actionType: 'research' }] : []),\n    ],\n  };\n  const raw = await withAnalysisDeadline(\n    AIService.callAI({ prompt, json: true, model: 'gemini-2.0-flash', maxTokens: 4096 }),\n    JSON.stringify(fallbackDiagnosis)\n  );\n  const parsed = safeParseJSON(raw, fallbackDiagnosis);\n"""
+          if old2 in s:
+              s = s.replace(old2, new2, 1)
+          elif 'fallbackDiagnosis' not in s:
+              raise SystemExit('diagnosis AI block missing')
+
+          p.write_text(s)
+          PY
+      - name: Build
+        run: npm ci && npm run build
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name 'ocrowleymatt-stack'
+          git config user.email 'ocrowley.matt@gmail.com'
+          git add src/services/commissionService.ts
+          if git diff --cached --quiet; then
+            echo 'No code change required'
+          else
+            git commit -m 'Make finish-book analysis fail-safe instead of crashing'
+            git push origin HEAD:main
+          fi
