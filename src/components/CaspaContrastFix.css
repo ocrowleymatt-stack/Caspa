@@ -1,0 +1,170 @@
+/*
+ * Final contrast guard. Loaded after CaspaThemeOverride.css.
+ * Converts legacy light/cream inline surfaces to the live dark theme and prevents
+ * pale-on-pale / dark-on-dark text. Print/manuscript surfaces are deliberately exempt.
+ */
+
+:root {
+  --contrast-bg: #0d0912;
+  --contrast-card: #171020;
+  --contrast-card-2: #1e1528;
+  --contrast-text: #f8f3fb;
+  --contrast-muted: #d0c5d7;
+  --contrast-accent: #d4a6ff;
+  --contrast-border: rgba(212, 166, 255, .28);
+}
+
+/* Legacy paper/cream cards still present in inline React styles. */
+#root main :is(
+  [style*="#fff8ea"],
+  [style*="#fffdf8"],
+  [style*="#fffaf2"],
+  [style*="#fff7e6"],
+  [style*="#fff3d5"],
+  [style*="#fdf6e8"],
+  [style*="#f8f1e5"],
+  [style*="#f5efe5"],
+  [style*="#f4eadb"],
+  [style*="#efe4d4"],
+  [style*="rgb(255, 248, 234)"],
+  [style*="rgb(255, 253, 248)"],
+  [style*="rgb(255, 250, 242)"],
+  [style*="rgb(255, 247, 230)"],
+  [style*="rgb(255, 243, 213)"],
+  [style*="rgb(245, 239, 229)"],
+  [style*="rgba(255,255,255"],
+  [style*="rgba(255, 255, 255"],
+  [style*="rgba(255,248,234"],
+  [style*="rgba(255, 248, 234"]
+):not(.manuscript-page *):not(.book-page *):not(.print-page *) {
+  background: linear-gradient(180deg, var(--contrast-card-2), var(--contrast-card)) !important;
+  background-color: var(--contrast-card) !important;
+  color: var(--contrast-text) !important;
+  border-color: var(--contrast-border) !important;
+  box-shadow: none !important;
+}
+
+/* A converted legacy card must not retain old ink colours on its children. */
+#root main :is(
+  [style*="#fff8ea"],
+  [style*="#fffdf8"],
+  [style*="#fffaf2"],
+  [style*="#fff7e6"],
+  [style*="#fff3d5"],
+  [style*="#fdf6e8"],
+  [style*="#f8f1e5"],
+  [style*="#f5efe5"],
+  [style*="#f4eadb"],
+  [style*="#efe4d4"],
+  [style*="rgb(255, 248, 234)"],
+  [style*="rgb(255, 253, 248)"],
+  [style*="rgb(255, 250, 242)"],
+  [style*="rgb(255, 247, 230)"],
+  [style*="rgb(255, 243, 213)"],
+  [style*="rgb(245, 239, 229)"],
+  [style*="rgba(255,255,255"],
+  [style*="rgba(255, 255, 255"],
+  [style*="rgba(255,248,234"],
+  [style*="rgba(255, 248, 234"]
+):not(.manuscript-page *):not(.book-page *):not(.print-page *)
+:is(h1,h2,h3,h4,h5,h6,p,small,span,strong,b,em,label,li,dt,dd),
+#root main :is(
+  [style*="#fff8ea"],
+  [style*="#fffdf8"],
+  [style*="#fffaf2"],
+  [style*="#fff7e6"],
+  [style*="#fff3d5"],
+  [style*="#fdf6e8"],
+  [style*="#f8f1e5"],
+  [style*="#f5efe5"],
+  [style*="#f4eadb"],
+  [style*="#efe4d4"],
+  [style*="rgb(255, 248, 234)"],
+  [style*="rgb(255, 253, 248)"],
+  [style*="rgb(255, 250, 242)"],
+  [style*="rgb(255, 247, 230)"],
+  [style*="rgb(255, 243, 213)"],
+  [style*="rgb(245, 239, 229)"],
+  [style*="rgba(255,255,255"],
+  [style*="rgba(255, 255, 255"],
+  [style*="rgba(255,248,234"],
+  [style*="rgba(255, 248, 234"]
+):not(.manuscript-page *):not(.book-page *):not(.print-page *)
+:is(h1,h2,h3,h4,h5,h6,p,small,span,strong,b,em,label,li,dt,dd) * {
+  color: inherit !important;
+}
+
+/* Old inline ink colours — map them explicitly, regardless of their parent. */
+#root main :is(
+  [style*="color: #17120c"], [style*="color:#17120c"],
+  [style*="color: #1d1408"], [style*="color:#1d1408"],
+  [style*="color: #21180f"], [style*="color:#21180f"],
+  [style*="color: #2b2115"], [style*="color:#2b2115"],
+  [style*="color: #2f2415"], [style*="color:#2f2415"],
+  [style*="color: #3b3126"], [style*="color:#3b3126"],
+  [style*="color: #4a4035"], [style*="color:#4a4035"],
+  [style*="color: #5b4724"], [style*="color:#5b4724"],
+  [style*="color: #5c5146"], [style*="color:#5c5146"],
+  [style*="color: rgb(23, 18, 12)"],
+  [style*="color: rgb(29, 20, 8)"],
+  [style*="color: rgb(33, 24, 15)"],
+  [style*="color: rgb(43, 33, 21)"],
+  [style*="color: rgb(47, 36, 21)"],
+  [style*="color: rgb(59, 49, 38)"],
+  [style*="color: rgb(74, 64, 53)"],
+  [style*="color: rgb(91, 71, 36)"],
+  [style*="color: rgb(92, 81, 70)"]
+):not(.manuscript-page *):not(.book-page *):not(.print-page *) {
+  color: var(--contrast-text) !important;
+}
+
+#root main :is(
+  [style*="color: #6d6255"], [style*="color:#6d6255"],
+  [style*="color: #73695d"], [style*="color:#73695d"],
+  [style*="color: #7a6d58"], [style*="color:#7a6d58"],
+  [style*="color: #8a7a66"], [style*="color:#8a7a66"],
+  [style*="color: #8a7d6b"], [style*="color:#8a7d6b"],
+  [style*="color: #9b8c73"], [style*="color:#9b8c73"],
+  [style*="color: #9b9184"], [style*="color:#9b9184"],
+  [style*="color: #a89572"], [style*="color:#a89572"],
+  [style*="color: #c9b898"], [style*="color:#c9b898"],
+  [style*="color: rgb(109, 98, 85)"],
+  [style*="color: rgb(115, 105, 93)"],
+  [style*="color: rgb(122, 109, 88)"],
+  [style*="color: rgb(138, 122, 102)"],
+  [style*="color: rgb(138, 125, 107)"],
+  [style*="color: rgb(155, 145, 132)"],
+  [style*="color: rgb(168, 149, 114)"],
+  [style*="color: rgb(201, 184, 152)"]
+):not(.manuscript-page *):not(.book-page *):not(.print-page *) {
+  color: var(--contrast-muted) !important;
+}
+
+/* Summary/info cards should remain dark even where React serialises background-color instead of background. */
+#root main [style*="border-radius"][style*="padding"][style*="background-color: rgb(255"],
+#root main [style*="border-radius"][style*="padding"][style*="background: rgb(255"] {
+  background: linear-gradient(180deg, var(--contrast-card-2), var(--contrast-card)) !important;
+  color: var(--contrast-text) !important;
+  border-color: var(--contrast-border) !important;
+}
+
+/* Keep controls readable. */
+#root main :is(input,textarea,select) {
+  background: #120d18 !important;
+  color: var(--contrast-text) !important;
+  border-color: var(--contrast-border) !important;
+}
+#root main :is(input,textarea)::placeholder {
+  color: #b8acbf !important;
+  opacity: 1 !important;
+}
+
+/* Do not alter intended printed/paper rendering. */
+.manuscript-page,
+.manuscript-page *,
+.book-page,
+.book-page *,
+.print-page,
+.print-page * {
+  forced-color-adjust: none;
+}
