@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T02:31:00Z
-reason: deploy simplified Google Drive OAuth and Dropbox PKCE cloud connections
+deploy requested 2026-08-09T02:32:30Z
+reason: serve simplified cloud auth build and replace legacy caspa PM2 process
