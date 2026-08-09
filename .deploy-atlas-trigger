@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T12:59:10Z
-reason: deploy task-aware dynamic model router, progressive Council output, God Mode and billing-aware failover
+deploy requested 2026-08-09T13:08:30Z
+reason: keep CPU-bound local models available explicitly while removing them from automatic interactive and Council routing
