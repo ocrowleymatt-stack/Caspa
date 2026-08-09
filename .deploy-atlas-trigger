@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T16:36:10Z
-reason: deploy verified cloud corpus ingestion, transcription, dedupe and semantic search
+deploy requested 2026-08-09T16:46:09Z
+reason: enforce per-user Drive and Dropbox credential isolation

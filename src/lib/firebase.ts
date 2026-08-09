@@ -6,6 +6,10 @@ import {
   signOut,
   signInWithRedirect,
   getRedirectResult,
+  linkWithPopup,
+  linkWithRedirect,
+  reauthenticateWithPopup,
+  reauthenticateWithRedirect,
   signInAnonymously,
   browserLocalPersistence,
   setPersistence,
@@ -13,6 +17,11 @@ import {
 import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './firestoreUtils';
 import firebaseConfig from '../../firebase-applet-config.json';
+import {
+  getScopedCloudSessionItem,
+  removeScopedCloudSessionItem,
+  setScopedCloudSessionItem,
+} from '../services/cloudCredentialScope';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
@@ -103,35 +112,28 @@ function normaliseAuthError(error: any): Error {
 }
 
 const DRIVE_TOKEN_KEY = 'caspa_google_drive_access_token';
+const DRIVE_EXPECTED_UID_KEY = 'caspa_google_drive_expected_uid';
 const GOOGLE_REDIRECT_INTENT_KEY = 'caspa_google_redirect_intent';
 
 type GoogleRedirectIntent = 'login' | 'drive';
 
-// Keep the Google API token for the browser session. Firebase itself persists the user account;
-// the API token is deliberately not written to long-lived localStorage.
-let cachedAccessToken: string | null =
-  typeof window !== 'undefined' ? window.sessionStorage.getItem(DRIVE_TOKEN_KEY) : null;
-
+// Keep the Google API token only for the mounted Atlas user's browser session.
+// A different Atlas UID cannot inherit this token on a shared browser.
 export const setCachedAccessToken = (token: string | null) => {
-  cachedAccessToken = token;
-
   if (typeof window === 'undefined') return;
-
   if (token) {
-    window.sessionStorage.setItem(DRIVE_TOKEN_KEY, token);
-    // Kept only as a backwards-compatible UI hint for older components.
+    setScopedCloudSessionItem(DRIVE_TOKEN_KEY, token);
+    // This hint lives inside the mounted per-user workspace envelope.
     window.localStorage.setItem('ls_gdrive_connected', 'true');
   } else {
-    window.sessionStorage.removeItem(DRIVE_TOKEN_KEY);
+    removeScopedCloudSessionItem(DRIVE_TOKEN_KEY);
     window.localStorage.removeItem('ls_gdrive_connected');
   }
 };
 
 export const getCachedAccessToken = (): string | null => {
-  if (!cachedAccessToken && typeof window !== 'undefined') {
-    cachedAccessToken = window.sessionStorage.getItem(DRIVE_TOKEN_KEY);
-  }
-  return cachedAccessToken;
+  if (typeof window === 'undefined') return null;
+  return getScopedCloudSessionItem(DRIVE_TOKEN_KEY);
 };
 
 // Connection test as required by instructions
@@ -212,23 +214,40 @@ export async function loginWithGoogle() {
 }
 
 export async function connectGoogleDrive() {
-  console.log('Attempting Google Drive connection...');
+  console.log('Attempting Google Drive connection for the current Atlas user...');
   try {
     await authPersistenceReady;
     clearTenantId();
 
+    const atlasUser = auth.currentUser;
+    if (!atlasUser) {
+      throw new Error('Sign in to an Atlas account before connecting Google Drive.');
+    }
+    const expectedUid = atlasUser.uid;
+    setScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY, expectedUid);
+    const alreadyGoogleLinked = atlasUser.providerData.some((provider) => provider.providerId === 'google.com');
+
     if (isAppleWebKit()) {
-      return await startRedirect(googleDriveProvider, 'drive');
+      if (typeof window !== 'undefined') window.sessionStorage.setItem(GOOGLE_REDIRECT_INTENT_KEY, 'drive');
+      if (alreadyGoogleLinked) {
+        await reauthenticateWithRedirect(atlasUser, googleDriveProvider);
+      } else {
+        await linkWithRedirect(atlasUser, googleDriveProvider);
+      }
+      return null;
     }
 
     try {
-      const result = await signInWithPopup(auth, googleDriveProvider);
+      const result = alreadyGoogleLinked
+        ? await reauthenticateWithPopup(atlasUser, googleDriveProvider)
+        : await linkWithPopup(atlasUser, googleDriveProvider);
+      if (result.user.uid !== expectedUid) {
+        throw new Error('Google Drive authorisation returned a different Atlas identity. Connection refused.');
+      }
+      removeScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
       return await completeGoogleResult(result, true);
     } catch (popupError: any) {
-      if (popupError?.code === 'auth/popup-closed-by-user') {
-        throw popupError;
-      }
-
+      if (popupError?.code === 'auth/popup-closed-by-user') throw popupError;
       const fallbackCodes = new Set([
         'auth/popup-blocked',
         'auth/cancelled-popup-request',
@@ -236,15 +255,19 @@ export async function connectGoogleDrive() {
         'auth/redirect-cancelled-by-user',
         'auth/network-request-failed',
       ]);
-
       if (fallbackCodes.has(popupError.code)) {
-        console.log('Drive popup failed; falling back to redirect...', popupError.code);
-        return await startRedirect(googleDriveProvider, 'drive');
+        if (typeof window !== 'undefined') window.sessionStorage.setItem(GOOGLE_REDIRECT_INTENT_KEY, 'drive');
+        if (alreadyGoogleLinked) {
+          await reauthenticateWithRedirect(atlasUser, googleDriveProvider);
+        } else {
+          await linkWithRedirect(atlasUser, googleDriveProvider);
+        }
+        return null;
       }
-
       throw popupError;
     }
   } catch (error) {
+    removeScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
     const normalised = normaliseAuthError(error);
     console.error('Google Drive connection error:', normalised);
     throw normalised;
@@ -263,6 +286,14 @@ export async function handleRedirectLogin() {
 
     const result = await getRedirectResult(auth);
     if (result) {
+      if (intent === 'drive') {
+        const expectedUid = getScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
+        if (!expectedUid || result.user.uid !== expectedUid) {
+          removeScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
+          throw new Error('Google Drive authorisation did not return to the same Atlas user. Connection refused.');
+        }
+        removeScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
+      }
       const user = await completeGoogleResult(result, intent === 'drive');
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem(GOOGLE_REDIRECT_INTENT_KEY);

@@ -90,6 +90,7 @@ import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
 import { clearShowBox, hasShowBoxContent } from './services/showBoxService';
 import { ingestKnowledgeText } from './services/knowledgeClient';
+import { clearCloudCredentialsForScope } from './services/cloudCredentialScope';
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
 declare const process: any;
@@ -1812,6 +1813,7 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
+      clearCloudCredentialsForScope();
       persistActiveUserDatabase();
       deactivateUserDatabase(user?.uid);
     } catch (error) {

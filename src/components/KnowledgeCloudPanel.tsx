@@ -164,7 +164,7 @@ export default function KnowledgeCloudPanel() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12, marginTop: 18 }}>
         <div style={providerCard}>
           <strong style={providerTitle}><Cloud size={16} /> Google Drive</strong>
-          <span style={small}>{googleConnected ? 'Connected for this browser session' : 'Not connected'}</span>
+          <span style={small}>{googleConnected ? 'Connected to this Atlas user for this browser session' : 'Not connected'}</span>
           <button style={primaryBtn} disabled={Boolean(busy)} onClick={() => googleConnected ? syncProvider('gdrive') : connectGoogle()}>
             {busy === 'gdrive' || busy === 'connect-google' ? <Loader size={14} className="spin" /> : googleConnected ? <RefreshCw size={14} /> : <Link2 size={14} />}
             {googleConnected ? 'Scan & ingest next batch' : 'Connect Google Drive'}
@@ -178,7 +178,7 @@ export default function KnowledgeCloudPanel() {
 
         <div style={providerCard}>
           <strong style={providerTitle}><Cloud size={16} /> Dropbox</strong>
-          <span style={small}>{dropboxConnected ? 'Connected for this browser session' : 'Not connected'}</span>
+          <span style={small}>{dropboxConnected ? 'Connected to this Atlas user for this browser session' : 'Not connected'}</span>
           <button style={primaryBtn} disabled={Boolean(busy)} onClick={() => dropboxConnected ? syncProvider('dropbox') : connectDropboxAccount()}>
             {busy === 'dropbox' || busy === 'connect-dropbox' ? <Loader size={14} className="spin" /> : dropboxConnected ? <RefreshCw size={14} /> : <Link2 size={14} />}
             {dropboxConnected ? 'Scan & ingest next batch' : 'Connect Dropbox'}
@@ -233,7 +233,7 @@ export default function KnowledgeCloudPanel() {
 
       {message && <p style={{ margin: '14px 0 0', color: '#5c5146', lineHeight: 1.5, fontSize: 13 }}>{message}</p>}
       <p style={{ margin: '10px 0 0', color: '#8a7a66', lineHeight: 1.5, fontSize: 11 }}>
-        Exact duplicates across providers are linked to one canonical index entry. Large archives and unsupported binaries are skipped rather than copied. Current cloud tokens are session-only; unattended refresh-token syncing belongs on the server, not in browser storage.
+        Cloud access tokens are session-only, namespaced to the mounted Atlas user and destroyed on Atlas sign-out. Exact duplicates across providers are linked to one canonical index entry. Large archives and unsupported binaries are skipped rather than copied. Unattended refresh-token syncing belongs in encrypted server-side per-user storage, not browser storage.
       </p>
     </article>
   );

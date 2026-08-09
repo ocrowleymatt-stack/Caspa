@@ -1,4 +1,9 @@
 import type { BackupPayload } from './googleDrive';
+import {
+  getScopedCloudSessionItem,
+  removeScopedCloudSessionItem,
+  setScopedCloudSessionItem,
+} from '../services/cloudCredentialScope';
 
 const DROPBOX_ACCESS_TOKEN_KEY = 'caspa_dropbox_access_token';
 const DROPBOX_ACCESS_TOKEN_EXPIRES_KEY = 'caspa_dropbox_access_token_expires';
@@ -82,8 +87,8 @@ async function createCodeChallenge(verifier: string): Promise<string> {
 export function getDropboxAccessToken(): string | null {
   if (!storageAvailable()) return null;
 
-  const token = window.sessionStorage.getItem(DROPBOX_ACCESS_TOKEN_KEY);
-  const expiresAt = Number(window.sessionStorage.getItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY) || '0');
+  const token = getScopedCloudSessionItem(DROPBOX_ACCESS_TOKEN_KEY);
+  const expiresAt = Number(getScopedCloudSessionItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY) || '0');
 
   if (!token) return null;
   if (expiresAt && Date.now() >= expiresAt) {
@@ -96,20 +101,20 @@ export function getDropboxAccessToken(): string | null {
 
 function cacheDropboxAccessToken(token: string, expiresInSeconds?: number) {
   if (!storageAvailable()) return;
-  window.sessionStorage.setItem(DROPBOX_ACCESS_TOKEN_KEY, token);
+  setScopedCloudSessionItem(DROPBOX_ACCESS_TOKEN_KEY, token);
   if (expiresInSeconds) {
     // Renew a little early so a backup is not started with a token about to expire.
     const expiresAt = Date.now() + Math.max(30, expiresInSeconds - 60) * 1000;
-    window.sessionStorage.setItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY, String(expiresAt));
+    setScopedCloudSessionItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY, String(expiresAt));
   } else {
-    window.sessionStorage.removeItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY);
+    removeScopedCloudSessionItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY);
   }
 }
 
 export function disconnectDropbox() {
   if (!storageAvailable()) return;
-  window.sessionStorage.removeItem(DROPBOX_ACCESS_TOKEN_KEY);
-  window.sessionStorage.removeItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY);
+  removeScopedCloudSessionItem(DROPBOX_ACCESS_TOKEN_KEY);
+  removeScopedCloudSessionItem(DROPBOX_ACCESS_TOKEN_EXPIRES_KEY);
 }
 
 export async function connectDropbox(): Promise<void> {
@@ -121,9 +126,9 @@ export async function connectDropbox(): Promise<void> {
   const challenge = await createCodeChallenge(verifier);
   const state = `caspa_dropbox_${randomUrlSafeString(24)}`;
 
-  window.sessionStorage.setItem(DROPBOX_PKCE_VERIFIER_KEY, verifier);
-  window.sessionStorage.setItem(DROPBOX_OAUTH_STATE_KEY, state);
-  window.sessionStorage.setItem(DROPBOX_REDIRECT_URI_KEY, redirectUri);
+  setScopedCloudSessionItem(DROPBOX_PKCE_VERIFIER_KEY, verifier);
+  setScopedCloudSessionItem(DROPBOX_OAUTH_STATE_KEY, state);
+  setScopedCloudSessionItem(DROPBOX_REDIRECT_URI_KEY, redirectUri);
 
   const authUrl = new URL('https://www.dropbox.com/oauth2/authorize');
   authUrl.searchParams.set('client_id', appKey);
@@ -149,7 +154,7 @@ export async function handleDropboxOAuthRedirect(): Promise<boolean> {
 
   const url = new URL(window.location.href);
   const returnedState = url.searchParams.get('state');
-  const expectedState = window.sessionStorage.getItem(DROPBOX_OAUTH_STATE_KEY);
+  const expectedState = getScopedCloudSessionItem(DROPBOX_OAUTH_STATE_KEY);
 
   // Ignore unrelated OAuth callbacks.
   if (!returnedState || !expectedState || returnedState !== expectedState) {
@@ -164,8 +169,8 @@ export async function handleDropboxOAuthRedirect(): Promise<boolean> {
   }
 
   const code = url.searchParams.get('code');
-  const verifier = window.sessionStorage.getItem(DROPBOX_PKCE_VERIFIER_KEY);
-  const redirectUri = window.sessionStorage.getItem(DROPBOX_REDIRECT_URI_KEY) || getRedirectUri();
+  const verifier = getScopedCloudSessionItem(DROPBOX_PKCE_VERIFIER_KEY);
+  const redirectUri = getScopedCloudSessionItem(DROPBOX_REDIRECT_URI_KEY) || getRedirectUri();
   const appKey = getConfiguredAppKey();
 
   if (!code || !verifier || !appKey) {
@@ -196,9 +201,9 @@ export async function handleDropboxOAuthRedirect(): Promise<boolean> {
   }
 
   cacheDropboxAccessToken(payload.access_token, Number(payload.expires_in || 0));
-  window.sessionStorage.removeItem(DROPBOX_PKCE_VERIFIER_KEY);
-  window.sessionStorage.removeItem(DROPBOX_OAUTH_STATE_KEY);
-  window.sessionStorage.removeItem(DROPBOX_REDIRECT_URI_KEY);
+  removeScopedCloudSessionItem(DROPBOX_PKCE_VERIFIER_KEY);
+  removeScopedCloudSessionItem(DROPBOX_OAUTH_STATE_KEY);
+  removeScopedCloudSessionItem(DROPBOX_REDIRECT_URI_KEY);
   cleanDropboxCallbackParams();
   return true;
 }
