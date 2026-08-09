@@ -120,13 +120,16 @@ export interface CaspaJobRecord {
     | 'prize-pass'
     | 'cover-generate'
     | 'picture-illustrate'
-    | 'picture-book-pipeline';
+    | 'picture-book-pipeline'
+    | 'commission';
   status: 'queued' | 'running' | 'complete' | 'failed';
   createdAt: string;
   updatedAt: string;
   progress: number;
   stage?: string;
   error?: string;
+  input?: Record<string, unknown>;
+  checkpoint?: Record<string, unknown>;
   result?: {
     finalText?: string;
     overallScore?: number;
