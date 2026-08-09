@@ -9,31 +9,46 @@ if [ ! -f "$SITE" ]; then
   exit 0
 fi
 
-if grep -q 'proxy_read_timeout 300s' "$SITE"; then
-  echo "OK: $SITE already has long proxy timeouts"
-  exit 0
-fi
+TARGET="1800s"
 
-python3 - "$SITE" <<'PY'
+python3 - "$SITE" "$TARGET" <<'PY'
 from pathlib import Path
+import re
 import sys
+
 path = Path(sys.argv[1])
+target = sys.argv[2]
 text = path.read_text()
 needle = "        proxy_cache_bypass $http_upgrade;"
-block = """        proxy_cache_bypass $http_upgrade;
+block = f"""        proxy_cache_bypass $http_upgrade;
         proxy_connect_timeout 60s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-        send_timeout 300s;"""
-if needle not in text:
-    raise SystemExit(f"Could not find insertion point in {path}")
-if "proxy_read_timeout 300s" in text:
-    print("already patched")
+        proxy_send_timeout {target};
+        proxy_read_timeout {target};
+        send_timeout {target};"""
+
+# Upgrade any previous Caspa timeout block in place.
+pattern = re.compile(
+    r"        proxy_cache_bypass \$http_upgrade;\n"
+    r"        proxy_connect_timeout \S+;\n"
+    r"        proxy_send_timeout \S+;\n"
+    r"        proxy_read_timeout \S+;\n"
+    r"        send_timeout \S+;"
+)
+
+if pattern.search(text):
+    new = pattern.sub(block, text, count=1)
+elif needle in text:
+    new = text.replace(needle, block, 1)
 else:
-    path.write_text(text.replace(needle, block, 1))
-    print(f"patched {path}")
+    raise SystemExit(f"Could not find insertion point in {path}")
+
+if new == text:
+    print(f"OK: {path} already has {target} proxy timeouts")
+else:
+    path.write_text(new)
+    print(f"patched {path} to {target}")
 PY
 
 nginx -t
 systemctl reload nginx
-echo "OK: nginx reloaded with Caspa AI timeouts"
+echo "OK: nginx reloaded with Caspa long-job timeouts"
