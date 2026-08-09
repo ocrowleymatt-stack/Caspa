@@ -5,7 +5,7 @@
 import express from 'express';
 import { GOLD_PASSES, runGoldPipeline } from '../services/goldPipelineService';
 import { createJob, getJob, getJobAudit, listRecentJobs, updateJob } from '../services/jobQueueService';
-import { queueServerCommission, resumePersistedCommissionJobs } from '../services/serverCommissionJobService';
+import { queueServerCommission, resumePersistedCommissionJobs, runServerCommission } from '../services/serverCommissionJobService';
 import type { GoldPipelineProgressEvent } from '../types/gold';
 
 const router = express.Router();
@@ -33,6 +33,20 @@ router.get('/jobs/:jobId', (req, res) => {
   const job = getJob(req.params.jobId);
   if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
   res.json({ success: true, data: job });
+});
+
+router.post('/jobs/:jobId/retry', (req, res) => {
+  const job = getJob(req.params.jobId);
+  if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+  if (job.type !== 'commission' || !job.input) {
+    return res.status(400).json({ success: false, message: 'Only persisted Commission jobs can be resumed here.' });
+  }
+  if (job.status === 'complete') {
+    return res.json({ success: true, data: job });
+  }
+  updateJob(job.id, { status: 'queued', error: undefined, stage: 'retry-queued' });
+  setTimeout(() => void runServerCommission(job.id), 0);
+  return res.status(202).json({ success: true, data: { jobId: job.id, status: 'queued' } });
 });
 
 router.post('/commission', (req, res) => {
