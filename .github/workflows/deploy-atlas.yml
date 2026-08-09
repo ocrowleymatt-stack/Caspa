@@ -100,13 +100,11 @@ jobs:
              npm run build
              test -f dist/server.cjs
              test -f dist/index.html
-             # A legacy PM2 app named 'caspa' was still owning port 3000, so deleting
-             # only caspa-server could leave the old build serving traffic indefinitely.
              pm2 delete caspa caspa-server || true
              pm2 start ecosystem.config.cjs --update-env
              pm2 save
-             if [ -x scripts/atlas-nginx-timeouts.sh ]; then
-               bash scripts/atlas-nginx-timeouts.sh || true
+             if [ -f scripts/atlas-nginx-timeouts.sh ]; then
+               bash scripts/atlas-nginx-timeouts.sh
              fi
              sleep 3
              curl -fsS http://127.0.0.1:3000/health
