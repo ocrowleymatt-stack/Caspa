@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T02:10:00Z
-reason: deploy long-job timeout hardening, HTML gateway guard, and current main
+deploy requested 2026-08-09T02:31:00Z
+reason: deploy simplified Google Drive OAuth and Dropbox PKCE cloud connections
