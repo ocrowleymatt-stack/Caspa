@@ -1,0 +1,14 @@
+name: User DB Isolation Smoke
+
+on:
+  push:
+    paths:
+      - '.github/workflows/user-db-isolation-smoke.yml'
+
+jobs:
+  isolate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove cross-user backup isolation
+        run: node scripts/user-db-isolation-smoke.mjs
