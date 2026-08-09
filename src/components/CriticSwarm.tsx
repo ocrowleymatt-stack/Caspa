@@ -19,6 +19,7 @@ interface Props {
 export default function CriticSwarm({ projectType, maturity, chapters, sourceMaterials, existingCritiques = {}, updateProject, updateChapters, setView, onError }: Props) {
   const [selectedChapId, setSelectedChapId] = useState<string | null>(chapters[0]?.id || 'all');
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
   
   // Use local state but initialize from existingCritiques for the selected chapter or 'all'
   const [localCritiques, setLocalCritiques] = useState<Critique[]>([]);
@@ -107,11 +108,23 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
       if (projectType === 'academic') roles.push('academic');
       if (projectType === 'experimental' || projectType === 'screenplay') roles.push('comedy');
       
-      const results = await AIService.getSwarmCritique(textToAnalyze, projectType, maturity, sourceMaterials, roles);
+      const baseline = [...localCritiques];
+      setProgress({ done: 0, total: roles.length });
+      const results = await AIService.getSwarmCritique(
+        textToAnalyze,
+        projectType,
+        maturity,
+        sourceMaterials,
+        roles,
+        (partial, done, total) => {
+          setProgress({ done, total });
+          setLocalCritiques([...partial, ...baseline].slice(0, 30));
+        }
+      );
       
       // Accumulate!
       const cid = selectedChapId || 'all';
-      const updated = [...results, ...localCritiques].slice(0, 30);
+      const updated = [...results, ...baseline].slice(0, 30);
       setLocalCritiques(updated);
       
       updateProject({
@@ -125,6 +138,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
       onError?.(err.message || 'Critic Swarm failed to analyze.');
     } finally {
       setLoading(false);
+      setProgress({ done: 0, total: 0 });
     }
   };
 
@@ -163,7 +177,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
             {loading ? (
                <Activity size={16} className="animate-spin" />
             ) : <Zap size={16} className="fill-white group-hover/btn:animate-pulse" />}
-            {loading ? 'Analyzing...' : 'Trigger Swarm'}
+            {loading ? (progress.total ? `Council ${progress.done}/${progress.total}` : 'Starting Council...') : 'Trigger Swarm'}
           </button>
         </div>
       </header>

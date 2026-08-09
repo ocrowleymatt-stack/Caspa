@@ -34,6 +34,15 @@ import {
   callUnifiedModelHunt,
   discoverFreeModelPool,
 } from './src/services/freeModelPool';
+import {
+  callCloudProvider,
+  classifyTask,
+  isBillingFailure,
+  normaliseMode,
+  providerOrder,
+  routerSnapshot,
+  type CloudProvider,
+} from './src/services/cloudModelRouter';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -311,130 +320,137 @@ app.get("/api/health", (req, res) => {
 // Safe catalogue of models Atlas can discover without asking the user for new credentials.
 app.get("/api/ai/models", async (_req, res) => {
   try {
-    const models = await discoverFreeModelPool(process.env, true);
+    const [models, cloud] = await Promise.all([
+      discoverFreeModelPool(process.env, true),
+      routerSnapshot(),
+    ]);
     return res.json({
       count: models.length,
       freeCount: models.filter((model) => model.likelyFree).length,
       models,
+      cloud,
     });
   } catch (error: any) {
-    return res.status(503).json({ count: 0, freeCount: 0, models: [], error: error?.message || 'Model discovery failed' });
+    return res.status(503).json({ count: 0, freeCount: 0, models: [], cloud: {}, error: error?.message || 'Model discovery failed' });
   }
+});
+
+app.get("/api/ai/router", async (_req, res) => {
+  const cloud = await routerSnapshot().catch(() => ({}));
+  const free = await discoverFreeModelPool(process.env).catch(() => []);
+  return res.json({
+    status: 'ok',
+    modes: ['speed', 'balanced', 'god'],
+    cloud,
+    local: free.map((model) => ({ id: model.id, source: model.source, score: model.score, parameterSize: model.parameterSize })),
+  });
 });
 
 // API endpoint for AI queries
 app.post("/api/ai/call", async (req, res) => {
-  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride, strictProvider = false, useSearch, primaryProvider = "grok" } = req.body;
+  const {
+    prompt,
+    model,
+    json = false,
+    maxTokens,
+    providerOverride,
+    strictProvider = false,
+    useSearch = false,
+    useWebSearch = false,
+    primaryProvider = "grok",
+    intelligenceMode = 'balanced',
+    taskHint,
+  } = req.body;
 
-  // Let's analyze sensitivity check on the server
-  const isSensitive = /chem\s*sex|chemsex|slamming|crystal\s*meth|methamphetamine|gbl|ghb|tina|harm\s*reduction|overdose|substance|drug|rehab|addiction|recovery\s*guide|survival\s*guide|unfiltered|explicit/i.test(prompt);
-
-  const providers: string[] = [];
-  const veniceKey = process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY;
-
-  if (strictProvider && providerOverride) {
-    // Council Mode: pin this seat to exactly one provider. Recovery is handled
-    // deliberately by the caller instead of cascading every parallel request.
-    providers.push(providerOverride);
-  } else {
-    // Host Unified Router (OpenAI-compatible) wins when UNIFIED_ROUTER_URL is set.
-    if (isProviderConfigured('unified')) {
-      providers.push('unified');
-    }
-
-    if (isSensitive && veniceKey) {
-      if (!providers.includes('venice')) providers.push('venice');
-      if (primaryProvider !== 'venice' && !providers.includes(primaryProvider)) providers.push(primaryProvider);
-    } else if (!providers.includes(primaryProvider)) {
-      providers.push(primaryProvider);
-    }
-
-    if (providerOverride && !providers.includes(providerOverride)) {
-      providers.unshift(providerOverride);
-    }
-
-    AI_PROVIDERS.forEach(p => {
-      if (!providers.includes(p)) {
-        providers.push(p);
-      }
-    });
+  if (!prompt || typeof prompt !== 'string') {
+    return res.status(400).json({ message: 'Prompt is required.' });
   }
 
-  // Skip providers with no key, and skip any currently in circuit-breaker cooldown
-  // (unless every configured provider is cooling down — then try them anyway).
+  const mode = normaliseMode(intelligenceMode);
+  const searchEnabled = Boolean(useSearch || useWebSearch);
+  const task = taskHint || classifyTask(prompt, { json, maxTokens, useSearch: searchEnabled });
+  const isSensitive = /chem\s*sex|chemsex|slamming|crystal\s*meth|methamphetamine|gbl|ghb|tina|harm\s*reduction|overdose|substance|drug|rehab|addiction|recovery\s*guide|survival\s*guide|unfiltered|explicit|transgressive|hardcore/i.test(prompt);
+
+  const providers: string[] = [];
+  if (strictProvider && providerOverride) {
+    providers.push(providerOverride);
+  } else {
+    if (isProviderConfigured('unified')) providers.push('unified');
+    providers.push(...providerOrder(primaryProvider, mode, task, isSensitive));
+    if (providerOverride) providers.unshift(providerOverride);
+  }
+
+  const ordered = [...new Set(providers)];
   const { attempt, anyConfigured } = selectAttemptOrder(
-    providers,
-    (p) => isProviderConfigured(p),
-    (p) => aiBreaker.isOpen(p),
+    ordered,
+    (provider) => isProviderConfigured(provider),
+    (provider) => aiBreaker.isOpen(provider),
   );
 
   if (!anyConfigured) {
     return res.status(503).json({
-      message: "No AI provider configured on the server. Set UNIFIED_ROUTER_URL, a GROK/OPENAI/ANTHROPIC/GEMINI/VENICE API key, or run Ollama.",
+      message: "No AI provider configured on the server. Configure a cloud provider or run Ollama.",
     });
   }
 
-  let lastError = null;
+  let lastError: any = null;
   for (const provider of attempt) {
     try {
       let result: string | null = null;
-      console.log(`[Express Backend] Trying provider: ${provider} for prompt`);
+      let selectedModel = '';
+      console.log(`[Express Backend] ${mode}/${task}: trying ${provider}`);
 
-      switch (provider) {
-        case 'unified': {
-          const hunted = await callUnifiedModelHunt(prompt, {
-            json,
-            maxTokens,
-            timeoutMs: aiCallTimeoutMs(maxTokens),
-            maxAttempts: 4,
-          });
-          result = hunted.text;
-          console.log(`[Express Backend] Unified model selected: ${hunted.model}`);
-          break;
-        }
-        case 'ollama': {
-          const hunted = await callOllamaModelHunt(prompt, {
-            json,
-            maxTokens,
-            maxAttempts: 3,
-          });
-          result = hunted.text;
-          console.log(`[Express Backend] Ollama model selected: ${hunted.model}`);
-          break;
-        }
-        case 'gemini':
-          result = await callGeminiOnServer({ prompt, model, json, maxTokens, useSearch });
-          break;
-        case 'claude':
-          result = await callClaude(prompt, json, maxTokens);
-          break;
-        case 'openai':
-          result = await callOpenAI(prompt, json, maxTokens);
-          break;
-        case 'grok':
-          result = await callXAI(prompt, json, maxTokens);
-          break;
-        case 'venice':
-          result = await callVeniceOnServer(prompt, json, maxTokens);
-          break;
+      if (provider === 'unified') {
+        const hunted = await callUnifiedModelHunt(prompt, {
+          json,
+          maxTokens,
+          timeoutMs: aiCallTimeoutMs(maxTokens),
+          maxAttempts: 3,
+        });
+        result = hunted.text;
+        selectedModel = hunted.model;
+      } else if (provider === 'ollama') {
+        const hunted = await callOllamaModelHunt(prompt, {
+          json,
+          maxTokens,
+          maxAttempts: mode === 'speed' ? 1 : 2,
+          mode,
+        });
+        result = hunted.text;
+        selectedModel = hunted.model;
+      } else if (['grok', 'gemini', 'openai', 'claude', 'venice'].includes(provider)) {
+        const routed = await callCloudProvider(provider as CloudProvider, prompt, {
+          json,
+          maxTokens,
+          useSearch: searchEnabled,
+          mode,
+          task,
+          requestedModel: model,
+        });
+        result = routed.text;
+        selectedModel = routed.model;
       }
 
       if (result) {
         aiBreaker.recordSuccess(provider);
-        console.log(`[Express Backend] Provider ${provider} succeeded.`);
-        return res.json({ result, provider });
+        console.log(`[Express Backend] ${provider}/${selectedModel || 'default'} succeeded.`);
+        return res.json({ result, provider, model: selectedModel || null, mode, task });
       }
     } catch (error: any) {
-      aiBreaker.recordFailure(provider);
-      console.warn(`[Express Backend] Provider ${provider} failed:`, error.message || error);
       lastError = error;
-      // Continue loop for fallbacks
+      const billing = isBillingFailure(error);
+      // Credit/billing failures cannot recover by retrying another model on the
+      // same provider. Park that provider for six hours to remove repeat latency.
+      aiBreaker.recordFailure(provider, billing ? 6 * 60 * 60_000 : undefined);
+      console.warn(`[Express Backend] ${provider} failed${billing ? ' (billing cooldown)' : ''}:`, error?.message || error);
     }
   }
 
-  res.status(502).json({
-    message: "AI Fallback Failure: All available AI providers failed on the server side.",
-    error: lastError ? lastError.message : "Empty response"
+  return res.status(502).json({
+    message: "AI Fallback Failure: all currently healthy providers failed.",
+    error: lastError ? lastError.message : "Empty response",
+    mode,
+    task,
   });
 });
 

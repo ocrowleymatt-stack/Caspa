@@ -24,7 +24,7 @@ import {
   RefreshCw,
   FolderOpen
 } from 'lucide-react';
-import { Project, ProjectType, MaturityLevel } from '../types';
+import { Project, ProjectType, MaturityLevel, IntelligenceMode } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { GENRES, TONES, MATURITY_LEVELS, PROJECT_TYPES } from '../constants';
 import { listDriveBackups, uploadDriveBackup, downloadDriveBackup, DriveBackupFile, BackupPayload } from '../lib/googleDrive';
@@ -62,6 +62,10 @@ export default function SettingsView({
 }: Props) {
   const [localTitle, setLocalTitle] = useState(project.title);
   const [localPremise, setLocalPremise] = useState(project.premise);
+  const [intelligenceMode, setIntelligenceMode] = useState<IntelligenceMode>(() => {
+    const stored = localStorage.getItem('caspa_intelligence_mode') as IntelligenceMode | null;
+    return project.intelligenceMode || stored || 'balanced';
+  });
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
@@ -198,6 +202,16 @@ export default function SettingsView({
     }, 500);
     return () => clearTimeout(handler);
   }, [localPremise, project.premise]);
+
+  const handleIntelligenceMode = (mode: IntelligenceMode) => {
+    setIntelligenceMode(mode);
+    localStorage.setItem('caspa_intelligence_mode', mode);
+    updateProject({ intelligenceMode: mode });
+    onNotify?.(
+      mode === 'god' ? 'God Mode armed: maximum-capability routing enabled.' : mode === 'speed' ? 'Speed Mode armed: low-latency routing enabled.' : 'Balanced routing restored.',
+      'info'
+    );
+  };
 
   const handleStyleUpdate = (updates: Partial<NonNullable<Project['styleDNA']>>) => {
     updateProject({
@@ -488,13 +502,34 @@ export default function SettingsView({
             </div>
           </div>
 
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {([
+              { id: 'speed', label: 'Speed', brief: 'Fastest healthy route', icon: Zap },
+              { id: 'balanced', label: 'Balanced', brief: 'Quality + latency', icon: Shield },
+              { id: 'god', label: 'God Mode', brief: 'Maximum capability / raw', icon: Flame },
+            ] as const).map((mode) => {
+              const ModeIcon = mode.icon;
+              const active = intelligenceMode === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => handleIntelligenceMode(mode.id)}
+                  className={`p-3 rounded border transition-all text-left ${active ? 'bg-brand-primary border-brand-primary text-white shadow-xl shadow-brand-primary/20' : 'ethereal-panel border-border-subtle text-text-secondary hover:border-brand-primary/40'}`}
+                >
+                  <div className="flex items-center gap-2 mb-1"><ModeIcon size={14} /><span className="text-[11px] font-semibold uppercase tracking-widest">{mode.label}</span></div>
+                  <div className="text-[10px] uppercase tracking-widest opacity-50">{mode.brief}</div>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 pb-8">
             {[
-              { id: 'gemini', label: 'Gemini', brief: 'Deep Prose' },
-              { id: 'claude', label: 'Claude', brief: 'Logic/Structure' },
-              { id: 'openai', label: 'GPT-4o', brief: 'Synthesis' },
-              { id: 'grok', label: 'Grok-3', brief: 'Raw/Agency' },
-              { id: 'venice', label: 'Venice', brief: 'Private' }
+              { id: 'gemini', label: 'Gemini 3.x', brief: 'Flash / Pro pool' },
+              { id: 'claude', label: 'Claude 5', brief: 'Sonnet / Opus pool' },
+              { id: 'openai', label: 'GPT 5.x', brief: 'Dynamic model pool' },
+              { id: 'grok', label: 'Grok 4.x', brief: 'Fast / Reasoning' },
+              { id: 'venice', label: 'Venice Pool', brief: 'Private / raw' }
             ].map((provider) => (
               <button
                 key={provider.id}

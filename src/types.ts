@@ -116,6 +116,7 @@ export interface PrizeAssessment {
 }
 
 export type IntelligenceProvider = 'gemini' | 'claude' | 'openai' | 'grok' | 'venice';
+export type IntelligenceMode = 'speed' | 'balanced' | 'god';
 
 export interface PublishingConfig {
   trimSize: '5x8' | '5.5x8.5' | '6x9' | '8.27x11.69' | '8x8' | '8.5x8.5' | '10x8' | '8x10' | '9x7'; // Trade + picture-book sizes
@@ -169,7 +170,8 @@ export interface Project {
   lastModified: number;
   createdAt: number;
   updatedAt?: any;
-  primaryProvider?: IntelligenceProvider; 
+  primaryProvider?: IntelligenceProvider;
+  intelligenceMode?: IntelligenceMode;
   publishing?: PublishingConfig;
   // Optional merged data for UI views
   characters?: Character[];

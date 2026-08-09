@@ -4,7 +4,7 @@
  */
 
 import { Type } from "@google/genai";
-import { IntelligenceProvider, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
+import { IntelligenceProvider, IntelligenceMode, Project, Character, PlotNode, ResearchNote, Chapter, Critique, ProjectType, PrizeAssessment, ExternalReview, SourceMaterial } from "../types";
 import { callCheapTask } from "./llmRouter";
 import { readApiJson } from "./apiJson";
 import { AI_LONG_FETCH_TIMEOUT_MS, fetchWithTimeout, friendlyFetchError } from "../lib/fetchWithTimeout";
@@ -73,8 +73,15 @@ async function callAI(options: {
   providerOverride?: IntelligenceProvider | 'unified' | 'ollama';
   strictProvider?: boolean;
   useWebSearch?: boolean;
+  intelligenceMode?: IntelligenceMode;
+  taskHint?: string;
 }) {
   try {
+    const storedMode = options.intelligenceMode || (
+      typeof window !== 'undefined'
+        ? (window.localStorage.getItem('caspa_intelligence_mode') as IntelligenceMode | null)
+        : null
+    ) || 'balanced';
     const response = await fetchWithTimeout(
       "/api/ai/call",
       {
@@ -84,6 +91,7 @@ async function callAI(options: {
         },
         body: JSON.stringify({
           ...options,
+          intelligenceMode: storedMode,
           primaryProvider: globalPrimaryProvider
         })
       },
@@ -337,7 +345,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
     return nodes;
   },
 
-  async getSwarmCritique(text: string, type: ProjectType, maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], customRoles?: string[]): Promise<Critique[]> {
+  async getSwarmCritique(text: string, type: ProjectType, maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], customRoles?: string[], onProgress?: (partial: Critique[], completed: number, total: number) => void): Promise<Critique[]> {
     const defaultRoles: (keyof typeof AGENT_PERSONAS)[] = ['vocal', 'structural', 'factual', 'agent', 'sentence', 'thematic', 'writer', 'repetition'];
     if (type === 'legal') defaultRoles.push('legal');
     if (type === 'academic') defaultRoles.push('academic');
@@ -345,7 +353,12 @@ Based ONLY on the provided text and strictly following any structural plans foun
 
     const roles = customRoles || defaultRoles;
     type CouncilProvider = IntelligenceProvider | 'unified' | 'ollama';
-    const providerRotation: CouncilProvider[] = ['ollama', 'grok', 'gemini', 'unified', 'openai', 'venice', 'claude'];
+    const intelligenceMode = (typeof window !== 'undefined' ? window.localStorage.getItem('caspa_intelligence_mode') : null) || 'balanced';
+    const providerRotation: CouncilProvider[] = intelligenceMode === 'god'
+      ? ['grok', 'venice', 'gemini', 'grok', 'venice', 'gemini', 'ollama', 'openai', 'claude']
+      : intelligenceMode === 'speed'
+        ? ['grok', 'gemini', 'venice', 'grok', 'gemini', 'venice']
+        : ['grok', 'gemini', 'venice', 'ollama', 'grok', 'gemini', 'openai', 'claude'];
     const providerLabels: Record<CouncilProvider, string> = {
       ollama: 'Local Model Pool',
       unified: 'Open WebUI Pool',
@@ -418,7 +431,8 @@ Based ONLY on the provided text and strictly following any structural plans foun
         model: 'gemini-2.0-flash',
         maxTokens: 1600,
         providerOverride: provider,
-        strictProvider: strict
+        strictProvider: strict,
+        taskHint: 'council'
       });
       const data = safeParseJSON(responseText || '{}');
       const suggestions = Array.isArray(data.suggestions)
@@ -438,7 +452,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
 
     const critiques: Critique[] = [];
     const failedSeats: { role: string; index: number; error: any }[] = [];
-    const concurrency = 3;
+    const concurrency = intelligenceMode === 'god' || intelligenceMode === 'speed' ? 4 : 3;
 
     for (let offset = 0; offset < roles.length; offset += concurrency) {
       const batch = roles.slice(offset, offset + concurrency);
@@ -456,12 +470,14 @@ Based ONLY on the provided text and strictly following any structural plans foun
           failedSeats.push({ role, index, error: result.reason });
         }
       });
+      onProgress?.([...critiques], Math.min(offset + batch.length, roles.length), roles.length);
     }
 
     for (const failed of failedSeats) {
       try {
         const recovered = await runSeat(failed.role, failed.index, false);
         critiques.push(recovered);
+        onProgress?.([...critiques], Math.min(critiques.length, roles.length), roles.length);
       } catch (error) {
         console.warn(`[Council] Seat ${failed.role} remained unavailable after recovery:`, error);
       }
