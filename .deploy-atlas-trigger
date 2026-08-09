@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T21:54:10Z
-reason: parallel direct file ingest, immediate lexical registration, deferred vector enrichment, bounded working source and nonblocking media processing
+deploy requested 2026-08-09T22:53:00Z
+reason: make high-speed multi-file upload globally visible outside the sidebar
