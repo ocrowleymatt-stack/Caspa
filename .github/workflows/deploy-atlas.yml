@@ -1,11 +1,18 @@
 name: Deploy Atlas
 
-# Manual production deploy to Hetzner Atlas (caspa.ocrowley.com).
+# Production deploy to Hetzner Atlas (caspa.ocrowley.com).
+# Manual dispatch requires confirm=deploy. A change to .deploy-atlas-trigger on main
+# is also an explicit deployment request, allowing trusted repository automation to deploy.
 # Requires a repository secret with the Atlas SSH private key.
 # Preferred secret name: HETZNER_SSH_KEY
 # Also accepted: ATLAS_SSH_PRIVATE_KEY, SSH_PRIVATE_KEY, DEPLOY_SSH_KEY, SERVER_SSH_KEY
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.deploy-atlas-trigger'
   workflow_dispatch:
     inputs:
       confirm:
@@ -30,9 +37,12 @@ jobs:
       - name: Require confirmation
         shell: bash
         run: |
-          if [ "${{ inputs.confirm }}" != "deploy" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.confirm }}" != "deploy" ]; then
             echo "Refusing: set confirm=deploy to run the Atlas deploy."
             exit 1
+          fi
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Deploy authorised by .deploy-atlas-trigger change on main."
           fi
 
       - name: Select SSH key
