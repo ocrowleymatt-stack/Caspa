@@ -57,7 +57,16 @@ AUTHOR'S EMOTIONAL INTENT:
 
 ${manuscriptSample ? `MANUSCRIPT SAMPLE:\n${manuscriptSample.slice(0, 8000)}` : ''}
 
-Design a psychological journey for this work. Use real techniques (e.g. tragic irony, earned catharsis, delayed hope, grief-with-grace, reversal, subtextual wound).
+Design a psychologically credible journey for this work. Use real craft techniques (e.g. tragic irony, earned catharsis, delayed hope, grief-with-grace, reversal, subtextual wound), but do not turn psychology into a sequence of labelled emotions.
+
+HUMAN RESPONSE RULES
+- Emotional response may be delayed, displaced or contradictory. Shock can look practical; fear can narrow attention; grief can arrive through routine or irritation; shame can produce concealment; attachment can produce approach and avoidance at once.
+- Silence, refusal, unfinished speech, indirect answers and changed routine can carry more truth than explicit emotional declaration.
+- Memory is reconstructive, selective and state-dependent. A character may retain a sensory shard while losing sequence, misremember emphasis, become falsely certain, or revise meaning later. Treat uncertainty as character truth, never as permission for authorial continuity errors.
+- Do not make every character process the same event at the same speed or in the same vocabulary.
+- Protect private interiority. Some states should remain partly unformulated even to the person experiencing them.
+- Allow negative space: an omitted scene, an object left behind, an unanswered message, a changed habit, a delayed reaction. Causality must remain legible even when explanation is withheld.
+- Let tension and catharsis arise from accumulated causal pressure, not arbitrary mood swings.
 
 Return JSON only:
 {
@@ -73,7 +82,7 @@ Return JSON only:
       "techniques": ["technique1", "technique2"],
       "chapterFrom": 1,
       "chapterTo": 5,
-      "notes": "what the reader should feel and why"
+      "notes": "what changes psychologically, what may remain unspoken, and why"
     }
   ]
 }`;
@@ -130,6 +139,7 @@ export function formatPsychologyForChapter(blueprint: PsychologyBlueprint, chapt
   const directives: string[] = [];
 
   directives.push(`PSYCHOLOGY ENGINE — Journey: ${blueprint.journeySummary}`);
+  directives.push('Psychology must appear through behaviour, omission, attention, latency, contradiction and consequence before explicit explanation. Silence is allowed; memory may be uncertain without breaking factual continuity.');
 
   if (blueprint.hiddenMeaning) {
     directives.push(`Thread hidden meaning without stating it: ${blueprint.hiddenMeaning}`);
