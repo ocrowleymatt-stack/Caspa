@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T19:05:30Z
-reason: fix nonfiction output quality, enforce target word count, add final QA and mobile-resumable commission checkpoints
+deploy requested 2026-08-09T19:14:00Z
+reason: move Workshop finish runs to persistent Atlas server jobs with restart recovery, checkpoints and short browser polling
