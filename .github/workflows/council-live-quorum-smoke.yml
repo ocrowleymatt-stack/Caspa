@@ -1,0 +1,74 @@
+name: Council Live Quorum Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/council-live-quorum-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Exercise production Council fast path
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base = 'https://caspa.ocrowley.com';
+          const routerResponse = await fetch(`${base}/api/ai/router`, { signal: AbortSignal.timeout(12000) });
+          if (!routerResponse.ok) throw new Error(`router ${routerResponse.status}`);
+          const router = await routerResponse.json();
+          const preferred = ['grok', 'gemini', 'venice', 'openai', 'claude'];
+          const configured = preferred.filter((p) => router?.cloud?.[p]?.configured);
+          if (!configured.length) throw new Error('No configured cloud providers reported');
+
+          const seatCount = configured.length === 1 ? 3 : 6;
+          const providers = Array.from({ length: seatCount }, (_, i) => configured[i % configured.length]);
+          const started = Date.now();
+          const jobs = providers.map(async (provider, i) => {
+            const response = await fetch(`${base}/api/ai/call`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              signal: AbortSignal.timeout(24000),
+              body: JSON.stringify({
+                prompt: `Council live smoke seat ${i + 1}. Return JSON with content, severity, suggestions.`,
+                json: true,
+                maxTokens: 220,
+                providerOverride: provider,
+                strictProvider: true,
+                intelligenceMode: 'balanced',
+                taskHint: 'council',
+                skipLocalFallback: true
+              })
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || !body.result) throw new Error(`${provider}: ${response.status} ${body.message || body.error || ''}`);
+            return { provider, model: body.model };
+          });
+
+          const settled = await Promise.allSettled(jobs);
+          const elapsed = Date.now() - started;
+          const successes = settled.filter((r) => r.status === 'fulfilled');
+          const failures = settled.filter((r) => r.status === 'rejected');
+          const summary = {
+            elapsedMs: elapsed,
+            configured,
+            seats: seatCount,
+            successes: successes.length,
+            failures: failures.length,
+            fulfilled: successes.map((r) => r.value),
+            rejected: failures.map((r) => String(r.reason?.message || r.reason))
+          };
+          console.log(JSON.stringify(summary, null, 2));
+
+          const quorum = Math.max(2, Math.ceil(seatCount / 2));
+          if (successes.length < quorum) throw new Error(`Council live quorum failed: ${successes.length}/${seatCount}, need ${quorum}`);
+          if (elapsed > 26000) throw new Error(`Council live wave exceeded 26s: ${elapsed}ms`);
+          NODE
