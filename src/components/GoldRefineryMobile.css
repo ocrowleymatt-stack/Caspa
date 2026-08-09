@@ -1,0 +1,151 @@
+.gold-refinery {
+  background: radial-gradient(circle at 80% 0%, rgba(212,166,255,.10), transparent 28rem), var(--live-bg, #0d0912) !important;
+  color: var(--live-text, #f8f3fb) !important;
+}
+
+.gold-refinery__card,
+.gold-refinery__pass {
+  background: var(--live-card, #1d1526) !important;
+  border-color: var(--live-border, rgba(212,166,255,.24)) !important;
+  color: var(--live-text, #f8f3fb) !important;
+  box-shadow: none !important;
+}
+
+.gold-refinery__intro p,
+.gold-refinery__card p,
+.gold-refinery__card small,
+.gold-refinery__card span,
+.gold-refinery__status {
+  color: var(--live-muted, #b9aec2) !important;
+}
+
+.gold-refinery__intro > div:first-child {
+  color: var(--live-primary, #d4a6ff) !important;
+}
+
+.gold-refinery__textarea {
+  background: #120d18 !important;
+  color: var(--live-text, #f8f3fb) !important;
+  border-color: var(--live-border, rgba(212,166,255,.24)) !important;
+}
+
+.gold-refinery__actions button:first-child {
+  background: var(--live-primary, #d4a6ff) !important;
+  color: #170e1d !important;
+}
+
+.gold-refinery__actions button:last-child {
+  background: var(--live-card-2, #261b31) !important;
+  color: var(--live-text, #f8f3fb) !important;
+  border-color: var(--live-border, rgba(212,166,255,.24)) !important;
+}
+
+@media (max-width: 860px) {
+  .gold-refinery {
+    min-height: 100% !important;
+    padding: 22px 14px 110px !important;
+  }
+
+  .gold-refinery__inner {
+    width: 100%;
+    max-width: none !important;
+  }
+
+  .gold-refinery__intro {
+    margin-bottom: 18px !important;
+    padding: 0 4px;
+  }
+
+  .gold-refinery__intro h1 {
+    font-size: clamp(34px, 12vw, 48px) !important;
+    line-height: .95 !important;
+    letter-spacing: -1.5px !important;
+  }
+
+  .gold-refinery__intro p {
+    font-size: 15px !important;
+  }
+
+  .gold-refinery__grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    min-width: 0 !important;
+  }
+
+  .gold-refinery__card {
+    width: 100%;
+    min-width: 0 !important;
+    padding: 16px !important;
+    border-radius: 18px !important;
+    overflow: hidden;
+  }
+
+  .gold-refinery__manuscript-head {
+    align-items: flex-start !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .gold-refinery__manuscript-head h2 {
+    margin-bottom: 0 !important;
+  }
+
+  .gold-refinery__textarea {
+    min-height: 52vh !important;
+    max-height: 68vh !important;
+    font-size: 16px !important;
+    line-height: 1.55 !important;
+    padding: 13px !important;
+    resize: vertical;
+  }
+
+  .gold-refinery__actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .gold-refinery__actions button {
+    width: 100% !important;
+    min-height: 48px !important;
+    padding: 12px 14px !important;
+    white-space: normal !important;
+  }
+
+  .gold-refinery__side {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+  }
+
+  .gold-refinery__pass {
+    padding: 11px !important;
+    border-radius: 12px !important;
+  }
+
+  .gold-refinery__pass b,
+  .gold-refinery__pass small,
+  .gold-refinery__pass p,
+  .gold-refinery__card p {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .gold-refinery {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .gold-refinery__card {
+    padding: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .gold-refinery__intro h1 {
+    font-size: 36px !important;
+  }
+}
