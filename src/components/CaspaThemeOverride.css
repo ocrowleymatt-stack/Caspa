@@ -47,12 +47,6 @@
 .cs-shell :is(input, textarea, select) { background: #120d18 !important; color: #f8f3fb !important; border-color: rgba(212,166,255,.28) !important; }
 .cs-shell :is(input, textarea, select):focus { border-color: #d4a6ff !important; outline: 2px solid rgba(143,227,207,.18) !important; }
 
-/*
- * LIVE APP SHELL
- * App.tsx is the production UI currently mounted at caspa.ocrowley.com and uses
- * extensive inline cream/gold styling. Target the actual mounted shell rather than
- * the dormant redesign skin, so the colour change is visibly authoritative.
- */
 #root > div:has(.caspa-sidebar) {
   background: radial-gradient(circle at 82% 4%, rgba(212,166,255,.10), transparent 34rem), radial-gradient(circle at 24% 90%, rgba(143,227,207,.045), transparent 32rem), var(--live-bg) !important;
   color: var(--live-text) !important;
@@ -65,36 +59,18 @@
   box-shadow: 18px 0 55px rgba(0,0,0,.28) !important;
 }
 
-#root .caspa-sidebar button {
-  border-color: transparent !important;
-}
-
+#root .caspa-sidebar button { border-color: transparent !important; }
 #root .caspa-sidebar button[style*="background"]:not([style*="transparent"]) {
   background: linear-gradient(90deg, rgba(212,166,255,.18), rgba(143,227,207,.035)) !important;
   color: var(--live-primary-soft) !important;
 }
-
 #root .caspa-sidebar svg,
 #root .caspa-sidebar [style*="color: rgb(214, 168, 70)"],
 #root .caspa-sidebar [style*="color:#d6a846"],
-#root .caspa-sidebar [style*="color: #d6a846"] {
-  color: var(--live-primary) !important;
-}
+#root .caspa-sidebar [style*="color: #d6a846"] { color: var(--live-primary) !important; }
 
-#root > div:has(.caspa-sidebar) main {
-  background: transparent !important;
-  color: var(--live-text) !important;
-}
-
-#root > div:has(.caspa-sidebar) main > .custom-scrollbar {
-  background: transparent !important;
-}
-
-/* Top-level launchpad/page backgrounds: replace the unmistakable cream canvas. */
-#root > div:has(.caspa-sidebar) main > .custom-scrollbar > section,
-#root > div:has(.caspa-sidebar) main > .custom-scrollbar > div:not(.manuscript-page):not(.paper-preview) {
-  background-color: transparent;
-}
+#root > div:has(.caspa-sidebar) main { background: transparent !important; color: var(--live-text) !important; }
+#root > div:has(.caspa-sidebar) main > .custom-scrollbar { background: transparent !important; }
 
 #root [style*="radial-gradient(circle at top left"],
 #root [style*="#fff7e6"],
@@ -107,7 +83,6 @@
   color: var(--live-text) !important;
 }
 
-/* Production App.tsx cards and panels. */
 #root [style*="#ffffff"],
 #root [style*="rgb(255, 255, 255)"],
 #root [style*="#fffaf2"],
@@ -131,23 +106,18 @@
   border-color: var(--live-border) !important;
 }
 
-/* Old gold becomes unmistakable lilac throughout the live app. */
 #root [style*="#d6a846"],
 #root [style*="rgb(214, 168, 70)"],
 #root [style*="#8a6a28"],
 #root [style*="rgb(138, 106, 40)"],
 #root [style*="#7a5514"],
-#root [style*="rgb(122, 85, 20)"] {
-  border-color: var(--live-primary) !important;
-}
+#root [style*="rgb(122, 85, 20)"] { border-color: var(--live-primary) !important; }
 
 #root [style*="color: rgb(214, 168, 70)"],
 #root [style*="color:#d6a846"],
 #root [style*="color: #d6a846"],
 #root [style*="color: rgb(138, 106, 40)"],
-#root [style*="color: #8a6a28"] {
-  color: var(--live-primary) !important;
-}
+#root [style*="color: #8a6a28"] { color: var(--live-primary) !important; }
 
 #root [style*="background: rgb(214, 168, 70)"],
 #root [style*="background-color: rgb(214, 168, 70)"],
@@ -157,7 +127,6 @@
   color: #170e1d !important;
 }
 
-/* Replace old brown/cream body text with the new neutral hierarchy. */
 #root [style*="color: rgb(109, 98, 85)"],
 #root [style*="color: rgb(138, 125, 107)"],
 #root [style*="color: rgb(155, 145, 132)"],
@@ -165,11 +134,8 @@
 #root [style*="color: rgb(201, 184, 152)"],
 #root [style*="color: rgb(122, 109, 88)"],
 #root [style*="color: rgb(143, 128, 104)"],
-#root [style*="color: rgb(115, 105, 93)"] {
-  color: var(--live-muted) !important;
-}
+#root [style*="color: rgb(115, 105, 93)"] { color: var(--live-muted) !important; }
 
-/* Quick Write / utility inline palettes. */
 #root [style*="background: rgb(21, 27, 41)"],
 #root [style*="background-color: rgb(21, 27, 41)"],
 #root [style*="background: rgb(13, 17, 27)"],
@@ -190,23 +156,15 @@
   color: var(--live-text) !important;
   border-color: var(--live-border) !important;
 }
-
 #root :is(input,textarea,select):focus:not(.manuscript-page *) {
   border-color: var(--live-primary) !important;
   outline: 2px solid rgba(143,227,207,.22) !important;
 }
-
 #root button:focus-visible,
 #root a:focus-visible,
 #root [role="button"]:focus-visible {
   outline: 2px solid var(--live-accent) !important;
   outline-offset: 2px !important;
-}
-
-/* Never recolour book/paper output itself. */
-.manuscript-page,
-.paper-preview,
-@media print {
 }
 
 ::selection { background: rgba(212,166,255,.38); color: #fff; }
