@@ -1,16 +1,14 @@
 /**
- * Client-side Caspa localStorage snapshot helpers
+ * Client-side Caspa active-user snapshot helpers.
  */
 
-const CASPA_PREFIX = 'caspa.';
+import { isWorkspaceDataKey } from './userDatabaseService';
 
 export function collectLocalSnapshot(): Record<string, string> {
   const snapshot: Record<string, string> = {};
-  for (let i = 0; i < localStorage.length; i++) {
+  for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i);
-    if (key?.startsWith(CASPA_PREFIX)) {
-      snapshot[key] = localStorage.getItem(key) || '';
-    }
+    if (key && isWorkspaceDataKey(key)) snapshot[key] = localStorage.getItem(key) || '';
   }
   return snapshot;
 }
@@ -18,7 +16,7 @@ export function collectLocalSnapshot(): Record<string, string> {
 export function applyLocalSnapshot(entries: Record<string, string>): number {
   let applied = 0;
   for (const [key, value] of Object.entries(entries)) {
-    if (!key.startsWith(CASPA_PREFIX)) continue;
+    if (!isWorkspaceDataKey(key)) continue;
     localStorage.setItem(key, value);
     applied += 1;
   }
