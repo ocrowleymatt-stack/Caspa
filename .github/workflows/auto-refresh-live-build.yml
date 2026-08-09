@@ -20,7 +20,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
       - run: npm ci
       - name: Add stale-session build watcher
         shell: bash
@@ -35,35 +34,37 @@ jobs:
           needle = "  const reloadFromStorage = () => {\n"
           if needle not in s:
               raise SystemExit('Could not find CaspaUI reloadFromStorage insertion point')
-          insert = r'''  useEffect(() => {
-    let cancelled = false;
-    const key = 'atlas.runtime.gitSha';
-    const checkBuild = async () => {
-      try {
-        const response = await fetch('/api/doctor', { cache: 'no-store' });
-        const data = await response.json();
-        const sha = data?.data?.gitSha || data?.data?.deployment?.gitSha || '';
-        if (!sha || cancelled) return;
-        const previous = sessionStorage.getItem(key);
-        if (previous && previous !== sha) {
-          sessionStorage.setItem(key, sha);
-          window.location.reload();
-          return;
-        }
-        sessionStorage.setItem(key, sha);
-      } catch {
-        /* update checking is fail-soft */
-      }
-    };
-    void checkBuild();
-    const timer = window.setInterval(checkBuild, 60_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-'''
+          lines = [
+              "  useEffect(() => {",
+              "    let cancelled = false;",
+              "    const key = 'atlas.runtime.gitSha';",
+              "    const checkBuild = async () => {",
+              "      try {",
+              "        const response = await fetch('/api/doctor', { cache: 'no-store' });",
+              "        const data = await response.json();",
+              "        const sha = data?.data?.gitSha || data?.data?.deployment?.gitSha || '';",
+              "        if (!sha || cancelled) return;",
+              "        const previous = sessionStorage.getItem(key);",
+              "        if (previous && previous !== sha) {",
+              "          sessionStorage.setItem(key, sha);",
+              "          window.location.reload();",
+              "          return;",
+              "        }",
+              "        sessionStorage.setItem(key, sha);",
+              "      } catch {",
+              "        /* update checking is fail-soft */",
+              "      }",
+              "    };",
+              "    void checkBuild();",
+              "    const timer = window.setInterval(checkBuild, 60_000);",
+              "    return () => {",
+              "      cancelled = true;",
+              "      window.clearInterval(timer);",
+              "    };",
+              "  }, []);",
+              "",
+          ]
+          insert = "\n".join(lines) + "\n"
           p.write_text(s.replace(needle, insert + needle, 1))
           PY
       - run: npm test
