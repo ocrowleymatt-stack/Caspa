@@ -1,0 +1,38 @@
+name: Commission Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/commission-diagnostics.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_atlas
+          chmod 600 ~/.ssh/id_atlas
+          ssh-keyscan -H "$ATLAS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Inspect Commission worker safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_atlas -o IdentitiesOnly=yes "$ATLAS_USER@$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '--- health ---'
+          curl -fsS http://127.0.0.1:3000/health | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); console.log(JSON.stringify({status:j.status,gitSha:j.gitSha,uptime:j.uptime}))})"
+          echo '--- recent commission jobs (metadata only) ---'
+          curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); const xs=(j.data?.jobs||[]).filter(x=>x.type==='commission').slice(0,8).map(x=>({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,updatedAt:x.updatedAt})); console.log(JSON.stringify(xs,null,2))})"
+          echo '--- pm2 tail filtered ---'
+          pm2 logs caspa --nostream --lines 250 2>&1 | grep -Ei 'commission|504|timeout|fallback failure|longform|writing:' | tail -120 || true
+          REMOTE
