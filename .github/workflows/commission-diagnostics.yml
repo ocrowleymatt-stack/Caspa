@@ -23,7 +23,7 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_atlas
           chmod 600 ~/.ssh/id_atlas
           ssh-keyscan -H "$ATLAS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Inspect finish-book flow safely
+      - name: Inspect completed finish job payload
         shell: bash
         run: |
           set -euo pipefail
@@ -31,19 +31,12 @@ jobs:
           set -euo pipefail
           echo '--- health ---'
           curl -fsS http://127.0.0.1:3000/health | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); console.log(JSON.stringify({status:j.status,gitSha:j.gitSha,uptime:j.uptime}))})"
-          echo '--- public doctor ---'
-          curl -fsS https://caspa.ocrowley.com/api/doctor | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); console.log(JSON.stringify({service:j.service,gitSha:j.gitSha}))})"
-          echo '--- commission route probe ---'
-          code=$(curl -sS -o /tmp/commission-probe.json -w '%{http_code}' -H 'content-type: application/json' -d '{}' http://127.0.0.1:3000/api/caspa/gold/commission || true)
-          echo "HTTP $code"; cat /tmp/commission-probe.json; echo
-          echo '--- recent commission jobs ---'
-          curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); const xs=(j.data?.jobs||[]).filter(x=>x.type==='commission').slice(0,12).map(x=>({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,updatedAt:x.updatedAt})); console.log(JSON.stringify(xs,null,2))})"
-          echo '--- recent relevant access log ---'
-          tail -1200 /var/log/nginx/access.log 2>/dev/null | grep -E '/api/caspa/gold/(commission|jobs)|/api/ai/call' | tail -120 || true
-          echo '--- recent relevant error log ---'
-          tail -600 /var/log/nginx/error.log 2>/dev/null | grep -Ei 'commission|gold/jobs|upstream timed out|504' | tail -80 || true
-          echo '--- pm2 relevant tail ---'
-          pm2 logs caspa --nostream --lines 500 2>&1 | grep -Ei 'commission|server commission|longform|AI Fallback Failure|writing:' | tail -180 || true
-          echo '--- nginx timeout ---'
-          nginx -T 2>/dev/null | grep -E 'server_name caspa\.ocrowley\.com|proxy_read_timeout|proxy_send_timeout|send_timeout' | tail -30 || true
+          echo '--- recent commission jobs incl result metadata ---'
+          curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); const xs=(j.data?.jobs||[]).filter(x=>x.type==='commission').slice(0,8).map(x=>({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,updatedAt:x.updatedAt,result:{hasArtefact:!!(x.result?.artefact||x.result?.finalText),chars:(x.result?.artefact||x.result?.finalText||'').length,chapters:Array.isArray(x.result?.chapters)?x.result.chapters.length:0,words:x.result?.words,targetWords:x.result?.targetWords}})); console.log(JSON.stringify(xs,null,2))})"
+          echo '--- exact completed job summary ---'
+          curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs/eb0c32fe-be58-42f5-81c4-c3ce499787ff | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const x=JSON.parse(s).data||{}; console.log(JSON.stringify({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,result:{hasArtefact:!!(x.result?.artefact||x.result?.finalText),chars:(x.result?.artefact||x.result?.finalText||'').length,chapters:Array.isArray(x.result?.chapters)?x.result.chapters.length:0,words:x.result?.words,targetWords:x.result?.targetWords}},null,2))})"
+          echo '--- recent finish endpoint traffic ---'
+          tail -2000 /var/log/nginx/access.log 2>/dev/null | grep -E '/api/caspa/gold/(commission|jobs)' | tail -120 || true
+          echo '--- recent browser AI traffic ---'
+          tail -2000 /var/log/nginx/access.log 2>/dev/null | grep '/api/ai/call' | tail -40 || true
           REMOTE
