@@ -38,6 +38,7 @@ import {
   suggestResearchTopics,
 } from '../services/researchLibraryService';
 import { extractPromises, openPromiseWarnings, savePromises } from '../services/promiseRegistryService';
+import { ingestKnowledgeFile } from '../services/knowledgeClient';
 
 export interface ProjectBriefLike {
   title: string;
@@ -252,19 +253,19 @@ export default function CommissionStudio({
 
   const handleFiles = async (files: File[]) => {
     if (!files.length) return;
-    const chunks = await Promise.all(files.map(async (file) => {
-      const heading = `\n\n===== SOURCE: ${file.name} =====\n\n`;
-      if (canReadAsText(file)) {
-        try {
-          return `${heading}${await file.text()}`;
-        } catch {
-          return `${heading}[File selected but its text could not be read.]`;
-        }
-      }
-      const kind = file.type || 'unknown file type';
-      return `${heading}[Attached file: ${file.name} · ${kind} · ${file.size.toLocaleString()} bytes. Binary content is not converted to manuscript text in this browser step.]`;
-    }));
-    setInboxText((prev) => `${prev.trim()}${chunks.join('')}`.trim());
+    setStatusLine(`Ingesting ${files.length} file${files.length === 1 ? '' : 's'}…`);
+    try {
+      const chunks = await Promise.all(files.map(async (file, index) => {
+        const heading = `\n\n===== SOURCE: ${file.name} =====\n\n`;
+        const data = await ingestKnowledgeFile(file, `workshop:${Date.now()}:${index}:${file.name}`);
+        const extracted = String(data?.extractedText || '').trim();
+        const warning = String(data?.extractionWarning || '').trim();
+        return `${heading}${extracted || `[File accepted: ${file.name} · ${file.type || 'unknown type'} · ${file.size.toLocaleString()} bytes${warning ? ` · extraction warning: ${warning}` : ''}]`}`;
+      }));
+      setInboxText((prev) => `${prev.trim()}${chunks.join('')}`.trim());
+    } finally {
+      setStatusLine('');
+    }
   };
 
   const handleSuggestIdea = async () => {
@@ -532,7 +533,7 @@ function InboxPanel({
     <div className="finish-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.45fr) minmax(280px,.7fr)', gap: 18 }}>
       <article style={card}>
         <h2 style={sectionTitle}>1. Add the manuscript</h2>
-        <p style={muted}>Paste it, replace it, or add any files. Text-based files are read directly; other formats are accepted and clearly listed instead of being silently rejected.</p>
+        <p style={muted}>Paste it, replace it, or add any files. Any file type is accepted. Text/documents are extracted, audio/video is transcribed, and other binary formats are registered rather than rejected.</p>
         <textarea value={inboxText} onChange={(e) => setInboxText(e.target.value)} placeholder="Paste manuscript, plan or source material here…" style={manuscriptBox} />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 14 }}>
           <button type="button" onClick={onIngest} disabled={loading || !inboxText.trim()} style={primaryBtn}>

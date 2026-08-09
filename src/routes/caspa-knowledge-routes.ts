@@ -2,6 +2,9 @@
  * User-scoped Atlas knowledge/corpus routes.
  */
 import express, { type Request } from 'express';
+import multer from 'multer';
+import os from 'os';
+import fsp from 'fs/promises';
 import { createHash, randomUUID } from 'crypto';
 import { verifyFirebaseIdToken } from '../services/firebaseTokenVerifier';
 import {
@@ -11,7 +14,7 @@ import {
   searchKnowledge,
   type KnowledgeAlias,
 } from '../services/knowledgeIndexService';
-import { syncCloudKnowledge } from '../services/cloudKnowledgeIngestionService';
+import { ingestUploadedKnowledgeFile, syncCloudKnowledge } from '../services/cloudKnowledgeIngestionService';
 import {
   beginCloudOAuth,
   completeCloudOAuth,
@@ -22,6 +25,10 @@ import {
 } from '../services/cloudKnowledgeAutopilotService';
 
 const router = express.Router();
+const knowledgeFileUpload = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: Math.max(5 * 1024 * 1024, Number(process.env.KNOWLEDGE_MAX_FILE_BYTES || 350 * 1024 * 1024)) },
+});
 
 function validLocalScope(value: string): boolean {
   return /^[a-zA-Z0-9._-]{12,180}$/.test(value);
@@ -100,6 +107,25 @@ router.post('/reindex', (req, res) => withScope(req, res, async (scope) => {
   const data = await reindexMissingEmbeddings(scope, maxChunks);
   res.json({ success: true, data: { ...data, status: getKnowledgeStatus(scope) } });
 }));
+
+
+router.post('/ingest/file', knowledgeFileUpload.single('file'), async (req, res) => {
+  try {
+    return await withScope(req, res, async (scope) => {
+      if (!req.file) return res.status(400).json({ success: false, message: 'file is required' });
+      const data = await ingestUploadedKnowledgeFile(
+        scope,
+        req.file.path,
+        req.file.originalname || 'Uploaded file',
+        req.file.mimetype || 'application/octet-stream',
+        String(req.body?.fileId || '') || undefined,
+      );
+      return res.json({ success: true, data });
+    });
+  } finally {
+    if (req.file?.path) await fsp.rm(req.file.path, { force: true }).catch(() => {});
+  }
+});
 
 router.post('/ingest/text', (req, res) => withScope(req, res, async (scope) => {
   const text = String(req.body?.text || '');

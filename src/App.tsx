@@ -89,7 +89,7 @@ import { countWords, defaultTargetWordCount } from './services/wordCountService'
 import { getProjectKey } from './services/researchLibraryService';
 import { clearPlotHold } from './services/plotHoldService';
 import { clearShowBox, hasShowBoxContent } from './services/showBoxService';
-import { ingestKnowledgeText } from './services/knowledgeClient';
+import { ingestKnowledgeFile, ingestKnowledgeText } from './services/knowledgeClient';
 import { clearCloudCredentialsForScope } from './services/cloudCredentialScope';
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
@@ -749,38 +749,20 @@ function CaspaUI() {
     if (!files.length) return;
     saveCurrentProjectState();
 
+    const selected = files.slice(0, 20);
     const parsed: Array<{ name: string; text: string }> = [];
-    for (const file of files.slice(0, 20)) {
-      if (file.size > 100 * 1024 * 1024) throw new Error(`${file.name} is over the 100MB fast-upload limit.`);
-
-      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-        const form = new FormData();
-        form.append('pdf', file);
-        const response = await fetch('/api/pdf-upload/upload', { method: 'POST', body: form });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data?.content?.text) {
-          throw new Error(data?.details || data?.error || `Could not parse ${file.name}`);
-        }
-        parsed.push({ name: file.name, text: String(data.content.text) });
-        continue;
-      }
-
-      if (!/\.(txt|md|markdown|rtf|html?|json|ya?ml|csv|log)$/i.test(file.name) && !file.type.startsWith('text/')) {
-        throw new Error(`${file.name} is not yet supported by Fast Data Upload. Use PDF, text, Markdown, RTF, HTML, JSON, YAML or CSV.`);
-      }
-      parsed.push({ name: file.name, text: await file.text() });
+    for (const [index, file] of selected.entries()) {
+      const data = await ingestKnowledgeFile(file, `data-ingest:${Date.now()}:${index}:${file.name}`);
+      const extracted = String(data?.extractedText || '').trim();
+      const warning = String(data?.extractionWarning || '').trim();
+      parsed.push({
+        name: file.name,
+        text: extracted || `[File accepted: ${file.name} · ${file.type || 'unknown type'} · ${file.size.toLocaleString()} bytes${warning ? ` · extraction warning: ${warning}` : ''}]`,
+      });
     }
 
     const useful = parsed.filter((item) => item.text.trim());
-    if (!useful.length) throw new Error('The uploaded files contained no readable text.');
-
-    const knowledgeWrites = await Promise.allSettled(
-      useful.map((item) => ingestKnowledgeText(item.name, item.text, 'text/plain', `fast-upload:${item.name}`))
-    );
-    const knowledgeFailures = knowledgeWrites.filter((result) => result.status === 'rejected');
-    if (knowledgeFailures.length) {
-      console.warn(`[Fast Data Upload] ${knowledgeFailures.length} source(s) loaded into the project but could not be added to the shared knowledge index.`);
-    }
+    if (!useful.length) throw new Error('The selected files could not be registered for ingestion.');
 
     const combined = useful.length === 1
       ? useful[0].text
@@ -792,7 +774,7 @@ function CaspaUI() {
     const nextBrief: ProjectBrief = {
       title,
       mode: 'adaptation',
-      idea: useful.length === 1 ? `Fast data upload: ${useful[0].name}` : `Fast data upload: ${useful.length} source files`,
+      idea: useful.length === 1 ? `Data ingest: ${useful[0].name}` : `Data ingest: ${useful.length} source files`,
       tone: 'Preserve the source voice and evidential boundaries. Structure before embellishment.',
       output: 'Analyse, organise and turn the uploaded material into the strongest appropriate finished form.',
       audience: 'Determine from the source material and project intent.',
@@ -1063,12 +1045,11 @@ function CaspaUI() {
             ref={sidebarFastUploadRef}
             type="file"
             multiple
-            accept=".pdf,.txt,.md,.markdown,.rtf,.html,.htm,.json,.yaml,.yml,.csv,.log,text/*,application/pdf"
             style={{ display: 'none' }}
             onChange={(event) => runSidebarFastUpload(event.target.files)}
           />
           <div style={{ color: '#8f8068', fontSize: 10, lineHeight: 1.35, marginTop: 6, padding: '0 4px', textAlign: 'center' }}>
-            PDF · text · data packs → project + shared search index
+            Any file type → extract/transcribe/index where possible
           </div>
         </div>
 
@@ -1334,7 +1315,6 @@ function LaunchpadView({ onStart, onFastUpload }: {
               ref={fastUploadRef}
               type="file"
               multiple
-              accept=".pdf,.txt,.md,.markdown,.rtf,.html,.htm,.json,.yaml,.yml,.csv,.log,text/*,application/pdf"
               style={{ display: 'none' }}
               onChange={(event) => runFastUpload(event.target.files)}
             />

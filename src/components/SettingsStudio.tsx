@@ -229,7 +229,7 @@ export default function SettingsStudio({ userEmail, userId, onFastUpload }: Prop
           <article style={{ ...card, marginTop: 18, borderColor: '#d6a846' }}>
             <h2 style={sectionTitle}>Fast Data Upload</h2>
             <p style={{ margin: '0 0 14px', color: '#73695d', lineHeight: 1.6 }}>
-              Drop a manuscript or evidence/data pack straight into a fresh project. PDF, text, Markdown, RTF, HTML, JSON, YAML and CSV are accepted; multiple files are combined with filenames preserved.
+              Drop a manuscript or evidence/data pack straight into a fresh project. Any file type is accepted. Atlas extracts/transcribes supported formats and still registers unsupported binary formats without rejecting them; multiple files keep their filenames and provenance.
             </p>
             <button type="button" onClick={() => fastUploadRef.current?.click()} disabled={fastUploading} style={primaryBtn}>
               {fastUploading ? <Loader size={16} className="spin" /> : <UploadCloud size={16} />}
@@ -239,7 +239,6 @@ export default function SettingsStudio({ userEmail, userId, onFastUpload }: Prop
               ref={fastUploadRef}
               type="file"
               multiple
-              accept=".pdf,.txt,.md,.markdown,.rtf,.html,.htm,.json,.yaml,.yml,.csv,.log,text/*,application/pdf"
               style={{ display: 'none' }}
               onChange={(event) => runFastUpload(event.target.files)}
             />

@@ -27,7 +27,7 @@ import {
 } from './knowledgeIndexService';
 
 interface CloudFile {
-  provider: 'dropbox' | 'gdrive';
+  provider: KnowledgeProvider;
   fileId: string;
   name: string;
   path?: string;
@@ -402,6 +402,85 @@ async function extractContent(file: CloudFile, filePath: string, tempDir: string
   if (file.mimeType === 'text/html' || ['.html', '.htm'].includes(extension)) text = cleanHtml(text);
   if (file.mimeType === 'application/rtf' || extension === '.rtf') text = cleanRtf(text);
   return { kind: 'text', units: [{ text }] };
+}
+
+
+export async function ingestUploadedKnowledgeFile(
+  scope: string,
+  filePath: string,
+  originalName: string,
+  mimeType = 'application/octet-stream',
+  fileId?: string,
+): Promise<any> {
+  const stat = await fsp.stat(filePath);
+  if (stat.size > MAX_FILE_BYTES) {
+    throw new Error(`${originalName} is over the ${Math.round(MAX_FILE_BYTES / 1024 / 1024)}MB ingest limit.`);
+  }
+  const sha = await sha256File(filePath);
+  const alias: KnowledgeAlias = {
+    provider: 'upload',
+    fileId: fileId || `upload-${sha.slice(0, 24)}`,
+    revision: sha,
+    name: originalName,
+    mimeType: mimeType || guessMime(originalName),
+    size: stat.size,
+    modifiedTime: new Date().toISOString(),
+  };
+
+  if (hasKnowledgeSha(scope, sha) && linkKnowledgeDuplicate(scope, sha, alias)) {
+    return { accepted: true, duplicate: true, kind: 'duplicate', extractedText: '', alias };
+  }
+
+  const pseudoFile: CloudFile = {
+    provider: 'upload',
+    fileId: alias.fileId,
+    name: originalName,
+    mimeType: alias.mimeType || guessMime(originalName),
+    size: stat.size,
+    revision: sha,
+  };
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'atlas-upload-extract-'));
+  let extracted: ExtractedContent;
+  let extractionWarning = '';
+  try {
+    if (isSupported(pseudoFile)) {
+      try {
+        extracted = await extractContent(pseudoFile, filePath, tempDir);
+      } catch (error) {
+        extractionWarning = error instanceof Error ? error.message : String(error);
+        recordKnowledgeFailure(scope, alias, extractionWarning);
+        extracted = {
+          kind: 'document',
+          units: [{ text: `[File accepted; automatic extraction needs attention]\nName: ${originalName}\nMIME: ${pseudoFile.mimeType}\nSize: ${stat.size} bytes\nExtraction: ${extractionWarning}` }],
+        };
+      }
+    } else {
+      extracted = {
+        kind: 'document',
+        units: [{ text: `[File accepted]\nName: ${originalName}\nMIME: ${pseudoFile.mimeType}\nSize: ${stat.size} bytes\nThis format is retained as an indexed source record even though Atlas does not yet extract its binary contents.` }],
+      };
+    }
+
+    const ingested = await ingestKnowledgeSource(scope, {
+      sha256: sha,
+      alias,
+      mimeType: pseudoFile.mimeType,
+      size: stat.size,
+      kind: extracted.kind,
+      units: extracted.units,
+    });
+    const extractedText = extracted.units.map((unit) => unit.text || '').filter(Boolean).join('\n\n');
+    return {
+      ...ingested,
+      accepted: true,
+      kind: extracted.kind,
+      extractionWarning: extractionWarning || undefined,
+      extractedText: extractedText.slice(0, 2_000_000),
+      alias,
+    };
+  } finally {
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 export async function syncCloudKnowledge(

@@ -139,3 +139,16 @@ export async function ingestKnowledgeText(name: string, text: string, mimeType =
   });
   return readJson(response);
 }
+
+
+export async function ingestKnowledgeFile(file: File, fileId?: string): Promise<any> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  if (fileId) form.append('fileId', fileId);
+  const response = await fetch('/api/caspa/knowledge/ingest/file', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: form,
+  });
+  return readJson(response);
+}
