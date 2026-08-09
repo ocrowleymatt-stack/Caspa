@@ -52,7 +52,7 @@ function installBodyFastUploadControl(): void {
   button.setAttribute('aria-label', 'Fast multi-file upload');
   button.title = 'High-speed Atlas file upload — select multiple files';
 
-  const style: Record<string, string> = {
+  Object.assign(button.style, {
     position: 'fixed',
     right: '18px',
     bottom: '18px',
@@ -77,8 +77,17 @@ function installBodyFastUploadControl(): void {
     cursor: 'pointer',
     pointerEvents: 'auto',
     transform: 'none',
-  };
-  Object.entries(style).forEach(([name, value]) => button.style.setProperty(name, value, 'important'));
+  });
+  // Critical visibility rules use CSS syntax and !important so even aggressive
+  // application/theme styles cannot bury this emergency control.
+  button.style.setProperty('position', 'fixed', 'important');
+  button.style.setProperty('right', '18px', 'important');
+  button.style.setProperty('bottom', '18px', 'important');
+  button.style.setProperty('z-index', '2147483647', 'important');
+  button.style.setProperty('display', 'block', 'important');
+  button.style.setProperty('visibility', 'visible', 'important');
+  button.style.setProperty('opacity', '1', 'important');
+  button.style.setProperty('pointer-events', 'auto', 'important');
 
   button.addEventListener('click', () => picker.click());
   picker.addEventListener('change', () => {
