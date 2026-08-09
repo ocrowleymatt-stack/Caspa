@@ -1,0 +1,125 @@
+name: Council Major Surgery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/council-major-surgery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  surgery-test-deploy-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Apply Council 2.0 surgery
+        run: python3 scripts/council-major-surgery.py
+
+      - name: Verify surgery invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "const limit = task === 'council' ? 1 : 4" src/services/cloudModelRouter.ts
+          grep -Fq "return 14_000" src/services/cloudModelRouter.ts
+          grep -Fq "const maxSeats = intelligenceMode === 'speed' ? 6 : intelligenceMode === 'god' ? 12 : 9" src/services/ai.ts
+          grep -Fq "await Promise.allSettled(seatPromises)" src/services/ai.ts
+          grep -Fq "Promise.any(recoveryCalls)" src/services/ai.ts
+          if grep -Fq "for (let offset = 0; offset < roles.length; offset += concurrency)" src/services/ai.ts; then
+            echo 'Old serial Council batching still present' >&2
+            exit 1
+          fi
+
+      - name: Test
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Commit verified surgery and deploy trigger
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add src/services/ai.ts src/services/cloudModelRouter.ts .deploy-atlas-trigger
+          git commit -m 'Rebuild Council around parallel quorum deadlines'
+          NEW_SHA=$(git rev-parse HEAD)
+          echo "sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+          git push origin HEAD:main
+
+      - name: Wait for production to serve surgery build
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            BODY=$(curl -fsS --max-time 8 'https://caspa.ocrowley.com/health' || true)
+            LIVE_SHA=$(printf '%s' "$BODY" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).gitSha||'')}catch{console.log('')}})" )
+            if [ "$LIVE_SHA" = "$EXPECTED_SHA" ]; then
+              echo "Production is serving $LIVE_SHA"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Production did not reach expected SHA $EXPECTED_SHA" >&2
+          exit 1
+
+      - name: Live parallel Council smoke
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base = 'https://caspa.ocrowley.com';
+          const routerResponse = await fetch(`${base}/api/ai/router`, { signal: AbortSignal.timeout(12000) });
+          if (!routerResponse.ok) throw new Error(`router ${routerResponse.status}`);
+          const router = await routerResponse.json();
+          const preferred = ['grok', 'gemini', 'venice', 'openai', 'claude'];
+          const configured = preferred.filter((p) => router?.cloud?.[p]?.configured);
+          if (!configured.length) throw new Error('No configured cloud providers reported');
+
+          const seatCount = configured.length === 1 ? 3 : 6;
+          const providers = Array.from({ length: seatCount }, (_, i) => configured[i % configured.length]);
+          const started = Date.now();
+          const jobs = providers.map(async (provider, i) => {
+            const response = await fetch(`${base}/api/ai/call`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              signal: AbortSignal.timeout(24000),
+              body: JSON.stringify({
+                prompt: `Council smoke seat ${i + 1}. Return JSON with content, severity, suggestions.`,
+                json: true,
+                maxTokens: 220,
+                providerOverride: provider,
+                strictProvider: true,
+                intelligenceMode: 'balanced',
+                taskHint: 'council',
+                skipLocalFallback: true,
+              }),
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || !body.result) throw new Error(`${provider}: ${response.status} ${body.message || body.error || ''}`);
+            return { provider, model: body.model };
+          });
+
+          const settled = await Promise.allSettled(jobs);
+          const elapsed = Date.now() - started;
+          const successes = settled.filter((r) => r.status === 'fulfilled');
+          const failures = settled.filter((r) => r.status === 'rejected');
+          console.log(JSON.stringify({ elapsedMs: elapsed, configured, seats: seatCount, successes: successes.length, failures: failures.length, results: settled }, null, 2));
+
+          const quorum = Math.max(2, Math.ceil(seatCount / 2));
+          if (successes.length < quorum) throw new Error(`Council live quorum failed: ${successes.length}/${seatCount}, need ${quorum}`);
+          if (elapsed > 26000) throw new Error(`Council live wave exceeded 26s: ${elapsed}ms`);
+          NODE
