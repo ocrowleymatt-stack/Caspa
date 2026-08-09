@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T23:22:01Z
-reason: verified production smoke bug fixes (TypeScript + nginx target selection)
+deploy requested 2026-08-09T23:23:00Z
+reason: deploy verified production smoke bug fixes after CI passed
