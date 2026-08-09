@@ -6,13 +6,14 @@
  */
 
 /** Prefer the host Unified Router when UNIFIED_ROUTER_URL is set. */
-export const AI_PROVIDERS = ['unified', 'grok', 'openai', 'claude', 'gemini', 'venice'] as const;
+export const AI_PROVIDERS = ['unified', 'ollama', 'grok', 'openai', 'claude', 'gemini', 'venice'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
 /** Env var names (server + Vite aliases) that configure each provider. */
 export const AI_PROVIDER_ENV_KEYS: Record<string, string[]> = {
   // URL presence configures the unified router (optional bearer via UNIFIED_ROUTER_API_KEY).
   unified: ['UNIFIED_ROUTER_URL'],
+  ollama: ['OLLAMA_URL'],
   grok: ['GROK_API_KEY', 'XAI_API_KEY', 'VITE_GROK_API_KEY'],
   openai: ['OPENAI_API_KEY', 'VITE_OPENAI_API_KEY'],
   claude: ['ANTHROPIC_API_KEY', 'VITE_ANTHROPIC_API_KEY'],
@@ -25,6 +26,11 @@ export function isProviderConfigured(
   provider: string,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
+  if (provider === 'ollama') {
+    // Ollama defaults to localhost, so it can be usable with no explicit env var.
+    // Runtime reachability is handled by the provider call + circuit breaker.
+    return String(env.OLLAMA_DISABLED || '').toLowerCase() !== 'true' && env.OLLAMA_DISABLED !== '1';
+  }
   const names = AI_PROVIDER_ENV_KEYS[provider] || [];
   return names.some((name) => Boolean(env[name] && String(env[name]).trim()));
 }

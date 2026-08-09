@@ -70,7 +70,7 @@ async function callAI(options: {
   json?: boolean; 
   schema?: any;
   maxTokens?: number;
-  providerOverride?: IntelligenceProvider;
+  providerOverride?: IntelligenceProvider | 'unified' | 'ollama';
   strictProvider?: boolean;
   useWebSearch?: boolean;
 }) {
@@ -344,8 +344,11 @@ Based ONLY on the provided text and strictly following any structural plans foun
     if (type === 'experimental' || type === 'screenplay') defaultRoles.push('comedy');
 
     const roles = customRoles || defaultRoles;
-    const providerRotation: IntelligenceProvider[] = ['grok', 'gemini', 'claude', 'openai', 'venice'];
-    const providerLabels: Record<IntelligenceProvider, string> = {
+    type CouncilProvider = IntelligenceProvider | 'unified' | 'ollama';
+    const providerRotation: CouncilProvider[] = ['ollama', 'grok', 'gemini', 'unified', 'openai', 'venice', 'claude'];
+    const providerLabels: Record<CouncilProvider, string> = {
+      ollama: 'Local Model Pool',
+      unified: 'Open WebUI Pool',
       grok: 'Grok',
       gemini: 'Gemini',
       claude: 'Claude',

@@ -29,6 +29,11 @@ import {
   sharedCircuitBreaker as aiBreaker,
 } from './src/services/aiRouterPolicy';
 import { callUnifiedRouterChat } from './src/services/unifiedRouter';
+import {
+  callOllamaModelHunt,
+  callUnifiedModelHunt,
+  discoverFreeModelPool,
+} from './src/services/freeModelPool';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -303,6 +308,20 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Safe catalogue of models Atlas can discover without asking the user for new credentials.
+app.get("/api/ai/models", async (_req, res) => {
+  try {
+    const models = await discoverFreeModelPool(process.env, true);
+    return res.json({
+      count: models.length,
+      freeCount: models.filter((model) => model.likelyFree).length,
+      models,
+    });
+  } catch (error: any) {
+    return res.status(503).json({ count: 0, freeCount: 0, models: [], error: error?.message || 'Model discovery failed' });
+  }
+});
+
 // API endpoint for AI queries
 app.post("/api/ai/call", async (req, res) => {
   const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride, strictProvider = false, useSearch, primaryProvider = "grok" } = req.body;
@@ -362,13 +381,27 @@ app.post("/api/ai/call", async (req, res) => {
       console.log(`[Express Backend] Trying provider: ${provider} for prompt`);
 
       switch (provider) {
-        case 'unified':
-          result = await callUnifiedRouterChat(prompt, {
+        case 'unified': {
+          const hunted = await callUnifiedModelHunt(prompt, {
             json,
             maxTokens,
             timeoutMs: aiCallTimeoutMs(maxTokens),
+            maxAttempts: 4,
           });
+          result = hunted.text;
+          console.log(`[Express Backend] Unified model selected: ${hunted.model}`);
           break;
+        }
+        case 'ollama': {
+          const hunted = await callOllamaModelHunt(prompt, {
+            json,
+            maxTokens,
+            maxAttempts: 3,
+          });
+          result = hunted.text;
+          console.log(`[Express Backend] Ollama model selected: ${hunted.model}`);
+          break;
+        }
         case 'gemini':
           result = await callGeminiOnServer({ prompt, model, json, maxTokens, useSearch });
           break;
