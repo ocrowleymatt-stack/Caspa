@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T02:32:30Z
-reason: serve simplified cloud auth build and replace legacy caspa PM2 process
+deploy requested 2026-08-09T02:46:30Z
+reason: deploy resilient multi-provider Council Mode with pinned seats and fail-soft recovery
