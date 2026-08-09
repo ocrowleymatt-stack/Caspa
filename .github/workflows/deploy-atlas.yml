@@ -86,6 +86,17 @@ jobs:
              npm ci
              export NODE_ENV=production
              export CASPA_DATA_DIR=/root/Caspa/data
+             if grep -q '^CLOUD_TOKEN_ENCRYPTION_KEY=$' .env 2>/dev/null; then
+               CLOUD_KEY=\$(openssl rand -hex 32)
+               sed -i \"s|^CLOUD_TOKEN_ENCRYPTION_KEY=$|CLOUD_TOKEN_ENCRYPTION_KEY=\${CLOUD_KEY}|\" .env
+             elif ! grep -q '^CLOUD_TOKEN_ENCRYPTION_KEY=' .env 2>/dev/null; then
+               umask 077
+               printf '\\nCLOUD_TOKEN_ENCRYPTION_KEY=%s\\n' \"\$(openssl rand -hex 32)\" >> .env
+             fi
+             grep -q '^ATLAS_PUBLIC_URL=' .env 2>/dev/null || printf 'ATLAS_PUBLIC_URL=https://caspa.ocrowley.com\\n' >> .env
+             chmod 600 .env
+             if grep -Eq '^(DROPBOX_APP_KEY|VITE_DROPBOX_APP_KEY)=.+' .env 2>/dev/null; then echo 'Dropbox offline OAuth: configured'; else echo 'Dropbox offline OAuth: NOT CONFIGURED'; fi
+             if grep -Eq '^(GOOGLE_DRIVE_CLIENT_ID|GOOGLE_OAUTH_CLIENT_ID|GOOGLE_CLIENT_ID|VITE_GOOGLE_CLIENT_ID)=.+' .env 2>/dev/null && grep -Eq '^(GOOGLE_DRIVE_CLIENT_SECRET|GOOGLE_OAUTH_CLIENT_SECRET|GOOGLE_CLIENT_SECRET)=.+' .env 2>/dev/null; then echo 'Google Drive offline OAuth: configured'; else echo 'Google Drive offline OAuth: NOT CONFIGURED'; fi
              npm run build
              test -f dist/server.cjs
              test -f dist/index.html
