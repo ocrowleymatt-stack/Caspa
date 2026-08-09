@@ -140,17 +140,16 @@ export default function ChapterSourceDock() {
                 <label style={uploadBox}>
                   <Upload size={22} />
                   <strong>{busy ? 'Reading…' : 'Add inspiration / reference documents'}</strong>
-                  <span style={{ color: '#aaa0b3', fontSize: 12 }}>Choose several at once · PDF, DOCX, TXT, Markdown, RTF, HTML, JSON, CSV</span>
+                  <span style={{ color: '#aaa0b3', fontSize: 12 }}>Dropbox, iCloud, Drive or local files · choose several at once · Caspa validates format after selection</span>
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.docx,.txt,.md,.markdown,.rtf,.html,.htm,.json,.csv,text/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     disabled={busy}
                     onChange={(e) => void uploadSources(e.target.files)}
                     style={{ display: 'none' }}
                   />
                 </label>
-                <p style={helper}>These are a source pack, not automatically part of the manuscript. Just Write and the long-form writing routes receive a bounded copy as inspiration/reference material.</p>
+                <p style={helper}>Cloud providers often expose files as generic MIME types, so Caspa no longer filters them out in the operating-system picker. Supported readable formats include PDF, DOCX, TXT, Markdown, RTF, HTML, JSON and CSV.</p>
                 {sources.map((source) => (
                   <div key={source.id} style={rowCard}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
