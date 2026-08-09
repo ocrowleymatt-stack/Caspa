@@ -1,0 +1,30 @@
+name: Upgrade Router and God Mode
+
+on:
+  push:
+    paths:
+      - '.github/workflows/upgrade-router-god-mode.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply router and God Mode patch
+        run: python scripts/patch-router-god-mode.py
+      - name: Validate production build
+        run: |
+          npm ci
+          npm run build
+          git diff --check
+      - name: Commit upgrade
+        run: |
+          git config user.name atlas-router-upgrade
+          git config user.email actions@users.noreply.github.com
+          git add server.ts src/types.ts src/services/ai.ts src/components/CriticSwarm.tsx src/components/SettingsView.tsx
+          git commit -m "Upgrade Atlas router and add God Mode"
+          git pull --rebase origin main
+          git push
