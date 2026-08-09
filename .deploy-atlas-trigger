@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T17:56:00Z
-reason: force Whisper corpus transcription language to English
+deploy requested 2026-08-09T17:59:00Z
+reason: persistent sidebar Data Ingest control plus English-only Whisper
