@@ -615,6 +615,8 @@ function CaspaUI() {
   const [draftPage, setDraftPage] = useState(() => localStorage.getItem('caspa.whitePage') || '');
   const [manuscriptSource, setManuscriptSource] = useState(() => localStorage.getItem('caspa.manuscriptSource') || '');
   const [projectStatus, setProjectStatus] = useState<'active' | 'complete'>(() => loadProjectStatus(loadBrief()));
+  const [sidebarFastUploading, setSidebarFastUploading] = useState(false);
+  const sidebarFastUploadRef = useRef<HTMLInputElement | null>(null);
 
   const reloadFromStorage = () => {
     const nextBrief = loadBrief();
@@ -784,6 +786,18 @@ function CaspaUI() {
     recordProjectSnapshot(nextBrief);
     persistActiveUserDatabase();
     goTo('workshop');
+  };
+
+  const runSidebarFastUpload = async (list: FileList | null) => {
+    const files = Array.from(list || []);
+    if (!files.length) return;
+    setSidebarFastUploading(true);
+    try {
+      await handleFastDataUpload(files);
+    } finally {
+      setSidebarFastUploading(false);
+      if (sidebarFastUploadRef.current) sidebarFastUploadRef.current.value = '';
+    }
   };
 
   const patchBrief = (patch: Partial<ProjectBrief>) => {
@@ -1005,6 +1019,29 @@ function CaspaUI() {
 
         <div style={{ marginBottom: 20, padding: '0 8px', fontSize: 12, color: '#a89572', lineHeight: 1.5 }}>
           One step at a time. Advanced rooms stay tucked away until you need them.
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <button
+            type="button"
+            onClick={() => sidebarFastUploadRef.current?.click()}
+            disabled={sidebarFastUploading}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, border: '1px solid #d6a846', borderRadius: 14, padding: '12px 14px', background: '#d6a846', color: '#1d1408', fontWeight: 900, cursor: 'pointer' }}
+          >
+            {sidebarFastUploading ? <Loader size={17} className="spin" /> : <UploadCloud size={17} />}
+            {sidebarFastUploading ? 'Ingesting…' : 'Data Ingest'}
+          </button>
+          <input
+            ref={sidebarFastUploadRef}
+            type="file"
+            multiple
+            accept=".pdf,.txt,.md,.markdown,.rtf,.html,.htm,.json,.yaml,.yml,.csv,.log,text/*,application/pdf"
+            style={{ display: 'none' }}
+            onChange={(event) => runSidebarFastUpload(event.target.files)}
+          />
+          <div style={{ color: '#8f8068', fontSize: 10, lineHeight: 1.35, marginTop: 6, padding: '0 4px', textAlign: 'center' }}>
+            PDF · text · data packs → project + shared search index
+          </div>
         </div>
 
         <div style={{ marginBottom: 12 }}>
