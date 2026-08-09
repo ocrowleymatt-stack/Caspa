@@ -40,14 +40,23 @@ function totalWords(chapters: Chapter[]): number {
 }
 
 function targetWords(brief: ServerCommissionBrief): number {
-  if (typeof brief.targetWordCount === 'number' && brief.targetWordCount > 0) return brief.targetWordCount;
-  if (brief.mode === 'essay') return 3000;
-  if (brief.mode === 'poetry') return 800;
-  if (brief.mode === 'nonfiction') return 50000;
-  if (brief.mode === 'script') return 20000;
-  if (brief.mode === 'musical') return 25000;
-  if (brief.mode === 'picture') return 500;
-  return 80000;
+  const supplied = typeof brief.targetWordCount === 'number' && Number.isFinite(brief.targetWordCount) && brief.targetWordCount > 0
+    ? Math.round(brief.targetWordCount)
+    : 0;
+  const mode = (brief.mode || '').toLowerCase();
+
+  // Workshop means FINISH THE BOOK. Tiny values commonly leak in from a previous
+  // picture/section/quick-write brief; treating 700 words as a nonfiction book
+  // silently produces a pamphlet and incorrectly calls it complete. Short-form
+  // work remains available through essay/poetry/picture modes.
+  if (mode === 'nonfiction') return supplied >= 5000 ? supplied : 50000;
+  if (mode === 'novel' || mode === 'adaptation' || mode === 'chaos') return supplied >= 10000 ? supplied : 80000;
+  if (mode === 'script') return supplied >= 5000 ? supplied : 20000;
+  if (mode === 'musical') return supplied >= 8000 ? supplied : 25000;
+  if (mode === 'essay') return supplied || 3000;
+  if (mode === 'poetry') return supplied || 800;
+  if (mode === 'picture') return supplied || 500;
+  return supplied >= 10000 ? supplied : 80000;
 }
 
 function isNonfiction(brief: ServerCommissionBrief): boolean {

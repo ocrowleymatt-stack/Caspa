@@ -51,8 +51,8 @@ router.post('/jobs/:jobId/retry', (req, res) => {
 
 router.post('/commission', (req, res) => {
   const { brief, chapters, diagnosis, selectedRecommendationIds, scope } = req.body || {};
-  if (!brief || !Array.isArray(chapters) || !chapters.length || !diagnosis || !Array.isArray(selectedRecommendationIds) || !selectedRecommendationIds.length || !scope) {
-    return res.status(400).json({ success: false, message: 'brief, chapters, diagnosis, selectedRecommendationIds and scope are required' });
+  if (!brief || !Array.isArray(chapters) || !chapters.length || !diagnosis || !Array.isArray(selectedRecommendationIds) || !scope) {
+    return res.status(400).json({ success: false, message: 'brief, chapters, diagnosis, selectedRecommendationIds array and scope are required' });
   }
 
   const jobId = queueServerCommission({

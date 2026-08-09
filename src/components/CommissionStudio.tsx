@@ -322,13 +322,17 @@ export default function CommissionStudio({
   };
 
   const runCommission = async (ids: string[], scope: CommissionScope) => {
-    if (!state.diagnosis || state.chapters.length === 0 || ids.length === 0) return;
+    if (!state.diagnosis || state.chapters.length === 0) {
+      update({ phase: 'error', error: 'Add and analyse a manuscript before finishing the book.' });
+      return;
+    }
+    const effectiveIds = ids.length ? ids : (recommendedIds(state.diagnosis).length ? recommendedIds(state.diagnosis) : ['rec-complete-book']);
     const nextIdea = directedIdea.trim() || brief.idea;
     const writeBrief = { ...brief, idea: nextIdea };
     if (ideaDirty && nextIdea) applyDirectedIdea(nextIdea);
 
     update({
-      selectedRecommendationIds: ids,
+      selectedRecommendationIds: effectiveIds,
       scope,
       phase: 'executing',
       progress: { phase: 'start', message: 'Plan accepted. Finishing the book…', percent: 5 },
@@ -341,7 +345,7 @@ export default function CommissionStudio({
         writeBrief,
         state.chapters,
         state.diagnosis,
-        ids,
+        effectiveIds,
         scope,
         (p) => update({ progress: p }),
         { autoResearch, promises: state.promises }
@@ -684,11 +688,11 @@ function FinishPlan({
             <span><strong style={{ display: 'block' }}>Fill research gaps automatically</strong><small style={muted}>Use the research layer before drafting where needed.</small></span>
           </label>
 
-          <button type="button" onClick={onFinish} disabled={executing || selectedIds.length === 0} style={{ ...primaryBtn, width: '100%', minHeight: 54, fontSize: 16 }}>
+          <button type="button" onClick={onFinish} disabled={executing} style={{ ...primaryBtn, width: '100%', minHeight: 54, fontSize: 16 }}>
             {executing ? <Loader size={19} className="spin" /> : <Wand2 size={19} />}
-            {executing ? 'Finishing…' : `Finish book with ${selectedIds.length} fix${selectedIds.length === 1 ? '' : 'es'}`}
+            {executing ? 'Finishing…' : selectedIds.length ? `Finish book with ${selectedIds.length} fix${selectedIds.length === 1 ? '' : 'es'}` : 'Finish book'}
           </button>
-          {selectedIds.length === 0 && <p style={{ color: '#ffcf8f', fontSize: 13, margin: 0 }}>Select at least one fix, or use “Accept plan & finish book”.</p>}
+          {selectedIds.length === 0 && <p style={{ color: '#d6cbdc', fontSize: 13, margin: 0 }}>No fixes selected — Caspa will still complete the book to the agreed brief.</p>}
         </aside>
       </div>
 
