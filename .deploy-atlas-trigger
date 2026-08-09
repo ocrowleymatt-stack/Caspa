@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T18:00:18Z
-reason: allow all file types in Workshop upload picker and stop silently rejecting unsupported files
+deploy requested 2026-08-09T18:43:00Z
+reason: accept all file types across Atlas Data Ingest and Caspa Workshop using shared extraction/transcription/indexing
