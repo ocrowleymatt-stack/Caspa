@@ -27,7 +27,8 @@ for (const provider of providers) {
       status: response.status,
       routedProvider: data.provider || null,
       durationMs: Date.now() - started,
-      error: response.ok ? null : (data.message || data.error || data.raw || 'unknown error'),
+      error: response.ok ? null : (data.message || data.raw || 'unknown error'),
+      errorDetail: response.ok ? null : (data.error || null),
       sample: response.ok ? String(data.result || '').slice(0, 160) : null,
     });
   } catch (error) {
@@ -38,6 +39,7 @@ for (const provider of providers) {
       routedProvider: null,
       durationMs: Date.now() - started,
       error: error?.message || String(error),
+      errorDetail: null,
       sample: null,
     });
   }
@@ -45,7 +47,6 @@ for (const provider of providers) {
 
 console.log('COUNCIL_PROVIDER_SMOKE=' + JSON.stringify(results));
 
-// Also prove that normal recovery routing can still produce a response.
 try {
   const response = await fetch(endpoint, {
     method: 'POST',
