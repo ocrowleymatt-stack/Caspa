@@ -618,6 +618,34 @@ function CaspaUI() {
   const [sidebarFastUploading, setSidebarFastUploading] = useState(false);
   const sidebarFastUploadRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    const key = 'atlas.runtime.gitSha';
+    const checkBuild = async () => {
+      try {
+        const response = await fetch('/api/doctor', { cache: 'no-store' });
+        const data = await response.json();
+        const sha = data?.data?.gitSha || data?.data?.deployment?.gitSha || '';
+        if (!sha || cancelled) return;
+        const previous = sessionStorage.getItem(key);
+        if (previous && previous !== sha) {
+          sessionStorage.setItem(key, sha);
+          window.location.reload();
+          return;
+        }
+        sessionStorage.setItem(key, sha);
+      } catch {
+        /* update checking is fail-soft */
+      }
+    };
+    void checkBuild();
+    const timer = window.setInterval(checkBuild, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const reloadFromStorage = () => {
     const nextBrief = loadBrief();
     setBrief(nextBrief);
