@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T18:43:00Z
-reason: accept all file types across Atlas Data Ingest and Caspa Workshop using shared extraction/transcription/indexing
+deploy requested 2026-08-09T19:05:30Z
+reason: fix nonfiction output quality, enforce target word count, add final QA and mobile-resumable commission checkpoints
