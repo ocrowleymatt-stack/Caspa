@@ -14,128 +14,76 @@
   --contrast-button-disabled-bg: #d8d1dc;
 }
 
-/* Force ordinary interface copy to known high-contrast colours. */
-#root :is(main,aside,.caspa-sidebar,.cs-shell,.gold-refinery)
-  :is(h1,h2,h3,h4,h5,h6,p,li,dt,dd,blockquote,label,strong,b,em)
-  :not(button *):not(a *):not(.manuscript-page *):not(.book-page *):not(.print-page *):not([data-paper-preview] *) {
-  color: var(--contrast-body) !important;
+#root :is(main,aside,.caspa-sidebar,.cs-shell,.gold-refinery) :is(h1,h2,h3,h4,h5,h6,p,li,dt,dd,blockquote,label,strong,b,em):not(button *):not(a *):not(.manuscript-page *):not(.book-page *):not(.print-page *):not([data-paper-preview] *) { color: var(--contrast-body) !important; }
+#root :is(main,aside,.caspa-sidebar,.cs-shell,.gold-refinery) :is(small,.muted,.secondary-text,.text-text-secondary,.text-slate-400,.text-slate-500,.text-gray-400,.text-gray-500):not(button *):not(a *):not(.manuscript-page *):not(.book-page *):not(.print-page *):not([data-paper-preview] *) { color: var(--contrast-muted) !important; }
+
+#root [style*="color: #17120c"], #root [style*="color:#17120c"], #root [style*="color: #1d1408"], #root [style*="color:#1d1408"], #root [style*="color: #21180f"], #root [style*="color:#21180f"], #root [style*="color: #2b2115"], #root [style*="color:#2b2115"], #root [style*="color: #2f2415"], #root [style*="color:#2f2415"], #root [style*="color: #3b3126"], #root [style*="color:#3b3126"], #root [style*="color: #4a4035"], #root [style*="color:#4a4035"], #root [style*="color: #5b4724"], #root [style*="color:#5b4724"], #root [style*="color: #5c5146"], #root [style*="color:#5c5146"], #root [style*="color: #6d6255"], #root [style*="color:#6d6255"], #root [style*="color: #73695d"], #root [style*="color:#73695d"], #root [style*="color: #7a6d58"], #root [style*="color:#7a6d58"], #root [style*="color: #8a7a66"], #root [style*="color:#8a7a66"], #root [style*="color: #8a7d6b"], #root [style*="color:#8a7d6b"], #root [style*="color: #9b9184"], #root [style*="color:#9b9184"] { color: var(--contrast-body) !important; }
+#root [style*="color: #9b6d16"], #root [style*="color:#9b6d16"], #root [style*="color: #8a6a28"], #root [style*="color:#8a6a28"], #root [style*="color: #7a5514"], #root [style*="color:#7a5514"], #root [style*="color: #d6a846"], #root [style*="color:#d6a846"] { color: var(--contrast-accent) !important; }
+
+#root :is(input,textarea,select) { color: var(--contrast-body) !important; }
+#root :is(input,textarea)::placeholder { color: #b8adbf !important; opacity: 1 !important; }
+
+#root button { text-shadow: none !important; }
+#root button:not([disabled]):not([aria-disabled="true"]) { color: var(--contrast-button-text) !important; }
+#root button:not([disabled]):not([aria-disabled="true"])[style*="background: rgb(212, 166, 255)"], #root button:not([disabled]):not([aria-disabled="true"])[style*="background-color: rgb(212, 166, 255)"], #root button:not([disabled]):not([aria-disabled="true"])[style*="background:#d4a6ff"], #root button:not([disabled]):not([aria-disabled="true"])[style*="background: #d4a6ff"], #root button:not([disabled]):not([aria-disabled="true"])[style*="background: rgb(201, 148, 243)"], #root button:not([disabled]):not([aria-disabled="true"])[style*="background-color: rgb(201, 148, 243)"] { color: #170e1d !important; }
+#root button[disabled], #root button[aria-disabled="true"] { color: var(--contrast-button-disabled-text) !important; background: var(--contrast-button-disabled-bg) !important; border-color: #b8aebe !important; opacity: 1 !important; cursor: not-allowed !important; }
+#root button[disabled] *, #root button[aria-disabled="true"] * { color: inherit !important; opacity: 1 !important; }
+#root button:not([disabled]) *, #root button:not([aria-disabled="true"]) * { color: inherit !important; }
+
+/* WORKSHOP SELECTION CONTRACT.
+   CommissionStudio still carries its original cream/gold inline state colours. After the
+   dark migration those colours were being visually normalised, so clicks worked but looked
+   as if nothing had happened. Preserve the state semantics explicitly: selected recommendation
+   rows and selected scope cards become unmistakably purple; unselected cards remain dark. */
+#root [style*="background: rgb(255, 248, 234)"],
+#root [style*="background-color: rgb(255, 248, 234)"],
+#root [style*="background: #fff8ea"],
+#root [style*="background:#fff8ea"] {
+  background: linear-gradient(135deg, rgba(174, 105, 255, .30), rgba(121, 70, 176, .22)) !important;
+  border-color: #d29cff !important;
+  box-shadow: inset 0 0 0 1px rgba(210,156,255,.42), 0 0 0 1px rgba(210,156,255,.10) !important;
+}
+#root [style*="background: rgb(255, 248, 234)"] :is(strong,small,p,span),
+#root [style*="background-color: rgb(255, 248, 234)"] :is(strong,small,p,span),
+#root [style*="background: #fff8ea"] :is(strong,small,p,span),
+#root [style*="background:#fff8ea"] :is(strong,small,p,span) {
+  color: #fff !important;
+}
+#root [style*="background: rgb(255, 253, 248)"],
+#root [style*="background-color: rgb(255, 253, 248)"],
+#root button[style*="background: #fffdf8"],
+#root button[style*="background:#fffdf8"] {
+  background: rgba(18, 11, 25, .72) !important;
+  border-color: #5c436d !important;
+}
+#root button[style*="background: rgb(255, 253, 248)"]:hover,
+#root button[style*="background-color: rgb(255, 253, 248)"]:hover,
+#root button[style*="background: #fffdf8"]:hover,
+#root button[style*="background:#fffdf8"]:hover {
+  border-color: #bd82ef !important;
+  background: rgba(73, 39, 96, .62) !important;
 }
 
-#root :is(main,aside,.caspa-sidebar,.cs-shell,.gold-refinery)
-  :is(small,.muted,.secondary-text,.text-text-secondary,.text-slate-400,.text-slate-500,.text-gray-400,.text-gray-500)
-  :not(button *):not(a *):not(.manuscript-page *):not(.book-page *):not(.print-page *):not([data-paper-preview] *) {
-  color: var(--contrast-muted) !important;
+/* The tiny recommendation tick itself must read as a positive state, not merely decoration. */
+#root button[aria-label="Deselect recommendation"] {
+  background: #c786ff !important;
+  border-color: #e2b8ff !important;
+  box-shadow: 0 0 0 3px rgba(199,134,255,.16) !important;
+}
+#root button[aria-label="Select recommendation"] {
+  background: transparent !important;
+  border-color: #816394 !important;
 }
 
-/* Catch common legacy brown/charcoal inline colours directly. */
-#root [style*="color: #17120c"], #root [style*="color:#17120c"],
-#root [style*="color: #1d1408"], #root [style*="color:#1d1408"],
-#root [style*="color: #21180f"], #root [style*="color:#21180f"],
-#root [style*="color: #2b2115"], #root [style*="color:#2b2115"],
-#root [style*="color: #2f2415"], #root [style*="color:#2f2415"],
-#root [style*="color: #3b3126"], #root [style*="color:#3b3126"],
-#root [style*="color: #4a4035"], #root [style*="color:#4a4035"],
-#root [style*="color: #5b4724"], #root [style*="color:#5b4724"],
-#root [style*="color: #5c5146"], #root [style*="color:#5c5146"],
-#root [style*="color: #6d6255"], #root [style*="color:#6d6255"],
-#root [style*="color: #73695d"], #root [style*="color:#73695d"],
-#root [style*="color: #7a6d58"], #root [style*="color:#7a6d58"],
-#root [style*="color: #8a7a66"], #root [style*="color:#8a7a66"],
-#root [style*="color: #8a7d6b"], #root [style*="color:#8a7d6b"],
-#root [style*="color: #9b9184"], #root [style*="color:#9b9184"] {
-  color: var(--contrast-body) !important;
-}
+#root [style*="position: sticky"][style*="bottom"], #root [style*="position: fixed"][style*="bottom"] { --contrast-footer-text: #2b1836; }
+#root [style*="position: sticky"][style*="bottom"] :is(span,p,small,strong,b), #root [style*="position: fixed"][style*="bottom"] :is(span,p,small,strong,b) { color: var(--contrast-footer-text) !important; }
+#root [style*="position: sticky"][style*="bottom"] button, #root [style*="position: fixed"][style*="bottom"] button { color: #ffffff !important; }
+#root a:not(.manuscript-page *):not(.book-page *):not(.print-page *) { color: var(--contrast-link) !important; }
+#root :is(.ethereal-panel,.gold-refinery__card,.gold-refinery__pass,.cs-card,.cs-aside-panel,.cs-simple-screen) :is(h1,h2,h3,h4,h5,h6,p,li,label,strong,b,em,small):not(button *):not(a *):not(.manuscript-page *) { color: var(--contrast-body) !important; }
 
-/* Known old accent browns become the new lilac accent. */
-#root [style*="color: #9b6d16"], #root [style*="color:#9b6d16"],
-#root [style*="color: #8a6a28"], #root [style*="color:#8a6a28"],
-#root [style*="color: #7a5514"], #root [style*="color:#7a5514"],
-#root [style*="color: #d6a846"], #root [style*="color:#d6a846"] {
-  color: var(--contrast-accent) !important;
-}
-
-/* Controls get explicit colours rather than inheriting unpredictable legacy values. */
-#root :is(input,textarea,select) {
-  color: var(--contrast-body) !important;
-}
-#root :is(input,textarea)::placeholder {
-  color: #b8adbf !important;
-  opacity: 1 !important;
-}
-
-/* BUTTON ACCESSIBILITY CONTRACT — sitewide.
-   Enabled dark/outline buttons use white text; bright lilac buttons use deep ink;
-   disabled controls use deliberately high-contrast dark text on a light neutral surface. */
-#root button {
-  text-shadow: none !important;
-}
-#root button:not([disabled]):not([aria-disabled="true"]) {
-  color: var(--contrast-button-text) !important;
-}
-#root button:not([disabled]):not([aria-disabled="true"])[style*="background: rgb(212, 166, 255)"],
-#root button:not([disabled]):not([aria-disabled="true"])[style*="background-color: rgb(212, 166, 255)"],
-#root button:not([disabled]):not([aria-disabled="true"])[style*="background:#d4a6ff"],
-#root button:not([disabled]):not([aria-disabled="true"])[style*="background: #d4a6ff"],
-#root button:not([disabled]):not([aria-disabled="true"])[style*="background: rgb(201, 148, 243)"],
-#root button:not([disabled]):not([aria-disabled="true"])[style*="background-color: rgb(201, 148, 243)"] {
-  color: #170e1d !important;
-}
-#root button[disabled],
-#root button[aria-disabled="true"] {
-  color: var(--contrast-button-disabled-text) !important;
-  background: var(--contrast-button-disabled-bg) !important;
-  border-color: #b8aebe !important;
-  opacity: 1 !important;
-  cursor: not-allowed !important;
-}
-#root button[disabled] *,
-#root button[aria-disabled="true"] * {
-  color: inherit !important;
-  opacity: 1 !important;
-}
-#root button:not([disabled]) *,
-#root button:not([aria-disabled="true"]) * {
-  color: inherit !important;
-}
-
-/* Footer/breadcrumb workflow copy must never fade into the cream footer. */
-#root [style*="position: sticky"][style*="bottom"],
-#root [style*="position: fixed"][style*="bottom"] {
-  --contrast-footer-text: #2b1836;
-}
-#root [style*="position: sticky"][style*="bottom"] :is(span,p,small,strong,b),
-#root [style*="position: fixed"][style*="bottom"] :is(span,p,small,strong,b) {
-  color: var(--contrast-footer-text) !important;
-}
-#root [style*="position: sticky"][style*="bottom"] button,
-#root [style*="position: fixed"][style*="bottom"] button {
-  color: #ffffff !important;
-}
-
-#root a:not(.manuscript-page *):not(.book-page *):not(.print-page *) {
-  color: var(--contrast-link) !important;
-}
-
-/* Ensure cards that were recoloured dark cannot retain dark inherited copy. */
-#root :is(.ethereal-panel,.gold-refinery__card,.gold-refinery__pass,.cs-card,.cs-aside-panel,.cs-simple-screen)
-  :is(h1,h2,h3,h4,h5,h6,p,li,label,strong,b,em,small)
-  :not(button *):not(a *):not(.manuscript-page *) {
-  color: var(--contrast-body) !important;
-}
-
-/* Paper/manuscript surfaces retain conventional dark-on-light typography. */
-#root :is(.manuscript-page,.book-page,.print-page,[data-paper-preview]) {
-  color: #191919 !important;
-}
-#root :is(.manuscript-page,.book-page,.print-page,[data-paper-preview]) :is(h1,h2,h3,h4,h5,h6,p,span,small,label,li,strong,b,em) {
-  color: inherit !important;
-}
+#root :is(.manuscript-page,.book-page,.print-page,[data-paper-preview]) { color: #191919 !important; }
+#root :is(.manuscript-page,.book-page,.print-page,[data-paper-preview]) :is(h1,h2,h3,h4,h5,h6,p,span,small,label,li,strong,b,em) { color: inherit !important; }
 
 @media (prefers-contrast: more) {
-  :root {
-    --contrast-body: #ffffff;
-    --contrast-muted: #eee8f2;
-    --contrast-accent: #f2e6ff;
-    --contrast-link: #d6fff5;
-  }
+  :root { --contrast-body: #ffffff; --contrast-muted: #eee8f2; --contrast-accent: #f2e6ff; --contrast-link: #d6fff5; }
 }
