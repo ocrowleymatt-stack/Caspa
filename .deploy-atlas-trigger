@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T23:18:30Z
-reason: deploy robust nginx timeout auto-detection and rerun production acceptance checks
+deploy requested 2026-08-09T23:22:01Z
+reason: verified production smoke bug fixes (TypeScript + nginx target selection)

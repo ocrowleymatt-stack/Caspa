@@ -24,7 +24,7 @@ import {
   UploadCloud,
   Wand2,
 } from 'lucide-react';
-import { Project, ViewType, ProjectType, Chapter, Character, PlotNode } from '../types';
+import { Project, ViewType, ProjectType, Chapter, Character, PlotNode } from '../../types';
 
 interface Props {
   project: Project;

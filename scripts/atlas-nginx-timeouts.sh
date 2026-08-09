@@ -11,7 +11,8 @@ if [ -z "$SITE" ]; then
     /etc/nginx/sites-enabled/caspa.ocrowley.com \
     /etc/nginx/sites-available/caspa.ocrowley.com \
     /etc/nginx/conf.d/caspa.ocrowley.com.conf \
-    /etc/nginx/conf.d/caspa.conf; do
+    /etc/nginx/conf.d/caspa.conf \
+    /etc/nginx/conf.d/auth-gateway.conf; do
     if [ -f "$candidate" ] && grep -q 'server_name[[:space:]].*caspa\.ocrowley\.com' "$candidate"; then
       SITE="$candidate"
       break
@@ -20,7 +21,7 @@ if [ -z "$SITE" ]; then
 fi
 
 if [ -z "$SITE" ]; then
-  SITE=$(grep -RIl --include='*.conf' --include='*caspa*' 'server_name[[:space:]].*caspa\.ocrowley\.com' /etc/nginx 2>/dev/null | head -n 1 || true)
+  SITE=$(grep -RIl --include='*.conf' 'server_name[[:space:]].*caspa\.ocrowley\.com' /etc/nginx 2>/dev/null | grep -v 'pre-caspa-timeout' | head -n 1 || true)
 fi
 
 if [ -z "$SITE" ] || [ ! -f "$SITE" ]; then
