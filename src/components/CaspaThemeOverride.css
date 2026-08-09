@@ -1,0 +1,124 @@
+/* Final sitewide colour authority. Imported after all application modules. */
+
+.cs-shell {
+  --cs-obsidian: #09070d;
+  --cs-bg: #0d0912;
+  --cs-slate: #181120;
+  --cs-panel: rgba(24, 17, 32, 0.94);
+  --cs-panel-soft: rgba(35, 25, 46, 0.78);
+  --cs-line: rgba(212, 166, 255, 0.22);
+  --cs-line-strong: rgba(212, 166, 255, 0.46);
+  --cs-gold: #d4a6ff;
+  --cs-gold-soft: #ead6ff;
+  --cs-ivory: #f8f3fb;
+  --cs-muted: #b9aec2;
+  --cs-grey: #aaa0b3;
+  --cs-violet: #b77dea;
+  --cs-indigo: #6d5fa8;
+  --cs-green: #8fe3cf;
+  --cs-red: #e98d98;
+
+  background:
+    radial-gradient(circle at 82% 8%, rgba(212,166,255,.13), transparent 31%),
+    radial-gradient(circle at 68% 58%, rgba(143,227,207,.07), transparent 28%),
+    linear-gradient(135deg, #09070d 0%, #100a17 46%, #0b0d14 100%) !important;
+  color: #f8f3fb !important;
+}
+
+.cs-shell .cs-sidebar {
+  background:
+    linear-gradient(180deg, rgba(20,13,27,.98), rgba(10,7,14,.99)),
+    radial-gradient(circle at 50% 5%, rgba(212,166,255,.11), transparent 38%) !important;
+}
+
+.cs-shell .cs-topbar {
+  background: rgba(14, 9, 19, .82) !important;
+  border-color: rgba(212,166,255,.18) !important;
+}
+
+.cs-shell .cs-card,
+.cs-shell .cs-aside-panel,
+.cs-shell .cs-simple-screen {
+  background: linear-gradient(180deg, rgba(30,20,40,.94), rgba(16,11,23,.96)) !important;
+  border-color: rgba(212,166,255,.20) !important;
+}
+
+.cs-shell .cs-hero {
+  background:
+    linear-gradient(90deg, rgba(29,18,39,.97) 0%, rgba(23,15,32,.91) 58%, rgba(16,12,24,.88) 100%),
+    radial-gradient(circle at 76% 8%, rgba(143,227,207,.08), transparent 27%) !important;
+}
+
+.cs-shell .cs-nav__item.is-active {
+  background: linear-gradient(90deg, rgba(212,166,255,.20), rgba(143,227,207,.035)) !important;
+  border-color: rgba(212,166,255,.44) !important;
+  box-shadow: inset 2px 0 0 #d4a6ff !important;
+}
+
+.cs-shell .cs-button--gold {
+  background: linear-gradient(180deg, #ead6ff, #c994f3) !important;
+  color: #1a1021 !important;
+  border-color: rgba(234,214,255,.38) !important;
+}
+
+.cs-shell .cs-ring {
+  background: conic-gradient(#d4a6ff var(--progress), rgba(255,255,255,.08) 0deg) !important;
+}
+
+.cs-shell .cs-progress-bar span {
+  background: linear-gradient(90deg, #b77dea, #8fe3cf) !important;
+}
+
+.cs-shell .cs-health-orb {
+  background:
+    radial-gradient(circle, rgba(212,166,255,.16), transparent 62%),
+    conic-gradient(from 45deg, #d4a6ff, #8fe3cf, #b77dea, #d4a6ff) !important;
+}
+
+.cs-shell .cs-search,
+.cs-shell .cs-icon-button,
+.cs-shell .cs-quick-actions button,
+.cs-shell .cs-assistant-action,
+.cs-shell .cs-suggestion,
+.cs-shell .cs-character-card {
+  background-color: rgba(212,166,255,.035) !important;
+  border-color: rgba(212,166,255,.18) !important;
+}
+
+.cs-shell :is(input, textarea, select) {
+  background: #120d18 !important;
+  color: #f8f3fb !important;
+  border-color: rgba(212,166,255,.28) !important;
+}
+
+.cs-shell :is(input, textarea, select):focus {
+  border-color: #d4a6ff !important;
+  outline: 2px solid rgba(143,227,207,.18) !important;
+}
+
+/* Normalise old Quick Write / utility inline palettes that otherwise bypass theme variables. */
+#root [style*="background: rgb(21, 27, 41)"],
+#root [style*="background-color: rgb(21, 27, 41)"],
+#root [style*="background: rgb(13, 17, 27)"],
+#root [style*="background-color: rgb(13, 17, 27)"],
+#root [style*="background: rgb(32, 40, 58)"],
+#root [style*="background-color: rgb(32, 40, 58)"] {
+  background: #181120 !important;
+  border-color: rgba(212,166,255,.20) !important;
+}
+
+#root [style*="color: rgb(142, 167, 255)"],
+#root [style*="color: rgb(185, 199, 255)"] {
+  color: #d4a6ff !important;
+}
+
+#root [style*="background: rgb(142, 167, 255)"],
+#root [style*="background-color: rgb(142, 167, 255)"] {
+  background: #d4a6ff !important;
+  color: #160f1f !important;
+}
+
+::selection {
+  background: rgba(212,166,255,.38);
+  color: #fff;
+}
