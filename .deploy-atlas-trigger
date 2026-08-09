@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T01:27:32Z
-reason: retry Atlas production deploy using newly configured private key2
+deploy requested 2026-08-09T01:32:00Z
+reason: deploy with PRIVATEKEY2 and whole-book focus-beat fix
