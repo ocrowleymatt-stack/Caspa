@@ -5,11 +5,12 @@ on:
     paths:
       - '.github/workflows/council-live-smoke.yml'
 
-# Claude diagnostics marker: 2026-08-09T02:56Z
+# Council degraded-retry verification marker: 2026-08-09T17:40Z
 jobs:
   probe:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Probe live Council providers
+      - name: Probe live Council degraded recovery
         run: node scripts/council-live-smoke.mjs
