@@ -1,0 +1,73 @@
+name: Probe Optimized Model Calls
+
+on:
+  push:
+    paths:
+      - '.github/workflows/probe-optimized-model-calls.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Test selected current models
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -a; . /root/Caspa/.env; set +a
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+
+          def post(url, payload, headers, timeout=35):
+              started=time.time()
+              req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json',**headers})
+              try:
+                  with urllib.request.urlopen(req,timeout=timeout) as r:
+                      body=r.read().decode('utf-8','replace')
+                      return r.status,round((time.time()-started)*1000),body
+              except urllib.error.HTTPError as e:
+                  return e.code,round((time.time()-started)*1000),e.read().decode('utf-8','replace')
+              except Exception as e:
+                  return 0,round((time.time()-started)*1000),type(e).__name__
+
+          tests=[]
+          ok=os.getenv('OPENAI_API_KEY','')
+          if ok:
+              for model in ['gpt-5.6-sol','gpt-5.4-mini']:
+                  s,ms,b=post('https://api.openai.com/v1/chat/completions',{'model':model,'messages':[{'role':'user','content':'Reply only OK'}],'max_completion_tokens':16}, {'Authorization':'Bearer '+ok})
+                  tests.append(('openai',model,s,ms,b[:180]))
+          xk=os.getenv('GROK_API_KEY','')
+          if xk:
+              for model in ['grok-4.20-0309-reasoning','grok-4.20-0309-non-reasoning','grok-4.20-multi-agent-0309']:
+                  s,ms,b=post('https://api.x.ai/v1/chat/completions',{'model':model,'messages':[{'role':'user','content':'Reply only OK'}],'max_tokens':16}, {'Authorization':'Bearer '+xk})
+                  tests.append(('grok',model,s,ms,b[:180]))
+          vk=os.getenv('VENICE_API_KEY','')
+          if vk:
+              for model in ['deepseek-v4-flash','qwen3-6-27b','openai-gpt-oss-120b']:
+                  s,ms,b=post('https://api.venice.ai/api/v1/chat/completions',{'model':model,'messages':[{'role':'user','content':'Reply only OK'}],'max_tokens':16}, {'Authorization':'Bearer '+vk})
+                  tests.append(('venice',model,s,ms,b[:180]))
+          for p,m,s,ms,b in tests:
+              sample=b.replace('\n',' ')[:120]
+              print(json.dumps({'provider':p,'model':m,'status':s,'ms':ms,'sample':sample}))
+          PY
+          REMOTE
