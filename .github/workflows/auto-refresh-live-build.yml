@@ -1,0 +1,82 @@
+name: Auto Refresh Live Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/auto-refresh-live-build.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Add stale-session build watcher
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/App.tsx')
+          s = p.read_text()
+          if 'atlas.runtime.gitSha' in s:
+              print('Build watcher already present')
+              raise SystemExit(0)
+          needle = "  const reloadFromStorage = () => {\n"
+          if needle not in s:
+              raise SystemExit('Could not find CaspaUI reloadFromStorage insertion point')
+          insert = r'''  useEffect(() => {
+    let cancelled = false;
+    const key = 'atlas.runtime.gitSha';
+    const checkBuild = async () => {
+      try {
+        const response = await fetch('/api/doctor', { cache: 'no-store' });
+        const data = await response.json();
+        const sha = data?.data?.gitSha || data?.data?.deployment?.gitSha || '';
+        if (!sha || cancelled) return;
+        const previous = sessionStorage.getItem(key);
+        if (previous && previous !== sha) {
+          sessionStorage.setItem(key, sha);
+          window.location.reload();
+          return;
+        }
+        sessionStorage.setItem(key, sha);
+      } catch {
+        /* update checking is fail-soft */
+      }
+    };
+    void checkBuild();
+    const timer = window.setInterval(checkBuild, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+'''
+          p.write_text(s.replace(needle, insert + needle, 1))
+          PY
+      - run: npm test
+      - run: npm run build
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No source change required.'
+            exit 0
+          fi
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add src/App.tsx
+          git commit -m 'Auto-refresh Atlas when production build changes'
+          git push origin HEAD:main
