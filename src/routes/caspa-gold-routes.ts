@@ -5,9 +5,13 @@
 import express from 'express';
 import { GOLD_PASSES, runGoldPipeline } from '../services/goldPipelineService';
 import { createJob, getJob, getJobAudit, listRecentJobs, updateJob } from '../services/jobQueueService';
+import { queueServerCommission, resumePersistedCommissionJobs } from '../services/serverCommissionJobService';
 import type { GoldPipelineProgressEvent } from '../types/gold';
 
 const router = express.Router();
+
+// Recover any long Commission runs that were queued/running when Atlas restarted.
+setTimeout(() => resumePersistedCommissionJobs(), 250);
 
 function writeSse(res: express.Response, payload: GoldPipelineProgressEvent): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -29,6 +33,32 @@ router.get('/jobs/:jobId', (req, res) => {
   const job = getJob(req.params.jobId);
   if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
   res.json({ success: true, data: job });
+});
+
+router.post('/commission', (req, res) => {
+  const { brief, chapters, diagnosis, selectedRecommendationIds, scope } = req.body || {};
+  if (!brief || !Array.isArray(chapters) || !chapters.length || !diagnosis || !Array.isArray(selectedRecommendationIds) || !selectedRecommendationIds.length || !scope) {
+    return res.status(400).json({ success: false, message: 'brief, chapters, diagnosis, selectedRecommendationIds and scope are required' });
+  }
+
+  const jobId = queueServerCommission({
+    brief,
+    chapters,
+    diagnosis,
+    selectedRecommendationIds,
+    scope,
+    autoResearch: req.body?.autoResearch !== false,
+    promises: Array.isArray(req.body?.promises) ? req.body.promises : [],
+  });
+
+  return res.status(202).json({
+    success: true,
+    data: {
+      jobId,
+      status: 'queued',
+      message: 'Commission accepted by Atlas. The job continues if the browser disconnects.',
+    },
+  });
 });
 
 router.post('/pipeline', async (req, res) => {
@@ -138,7 +168,7 @@ router.post('/pipeline', async (req, res) => {
       });
     }
   })
-    .then(() => updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' }))
+    .then(({ finalText }) => updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete', result: { finalText } }))
     .catch((err) =>
       updateJob(job.id, {
         status: 'failed',
