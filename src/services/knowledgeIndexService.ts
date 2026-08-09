@@ -84,6 +84,7 @@ export interface IngestKnowledgeInput {
   size: number;
   kind: KnowledgeSource['kind'];
   units: KnowledgeUnit[];
+  deferEmbeddings?: boolean;
 }
 
 const EMPTY: KnowledgeManifest = { version: 1, sources: {}, pointers: {}, failures: {} };
@@ -319,7 +320,10 @@ export async function ingestKnowledgeSource(scope: string, input: IngestKnowledg
 
   const chunks = buildChunks(input.units.filter((unit) => unit.text?.trim()));
   if (!chunks.length) throw new Error('No searchable text extracted from source');
-  const vectorChunkCount = await attachEmbeddings(chunks);
+  // Direct uploads are latency-sensitive. Commit their lexical/chunk index first
+  // and enrich vectors in the background. Search remains fully functional via
+  // lexical scoring while embeddings catch up.
+  const vectorChunkCount = input.deferEmbeddings ? 0 : await attachEmbeddings(chunks);
   const fullText = input.units.map((unit) => unit.text).filter(Boolean).join('\n\n');
 
   fs.writeFileSync(chunksPath(scope, sha), JSON.stringify(chunks), 'utf8');
@@ -454,15 +458,21 @@ export function getKnowledgeStatus(scope: string): any {
 }
 
 export async function reindexMissingEmbeddings(scope: string, maxChunks = 500): Promise<{ updated: number; remaining: number }> {
-  const manifest = readManifest(scope);
+  // Never hold a stale manifest object across an async embedding call. Direct
+  // uploads may register another source while Ollama is working; merge each
+  // vector-count update into a freshly-read manifest so no source is clobbered.
+  const sourceIds = Object.values(readManifest(scope).sources)
+    .filter((source) => source.active)
+    .map((source) => source.id);
   let updated = 0;
   let remaining = 0;
 
-  for (const source of Object.values(manifest.sources)) {
-    if (!source.active) continue;
+  for (const sourceId of sourceIds) {
+    const current = readManifest(scope).sources[sourceId];
+    if (!current?.active) continue;
     let chunks: KnowledgeChunk[];
     try {
-      chunks = JSON.parse(fs.readFileSync(chunksPath(scope, source.id), 'utf8')) as KnowledgeChunk[];
+      chunks = JSON.parse(fs.readFileSync(chunksPath(scope, sourceId), 'utf8')) as KnowledgeChunk[];
     } catch {
       continue;
     }
@@ -476,15 +486,63 @@ export async function reindexMissingEmbeddings(scope: string, maxChunks = 500): 
     const target = missing.slice(0, budget);
     const count = await attachEmbeddings(target);
     if (count) {
-      fs.writeFileSync(chunksPath(scope, source.id), JSON.stringify(chunks), 'utf8');
-      source.vectorChunkCount = chunks.filter((chunk) => chunk.embedding?.length).length;
-      source.updatedAt = new Date().toISOString();
+      fs.writeFileSync(chunksPath(scope, sourceId), JSON.stringify(chunks), 'utf8');
+      const fresh = readManifest(scope);
+      const freshSource = fresh.sources[sourceId];
+      if (freshSource) {
+        freshSource.vectorChunkCount = chunks.filter((chunk) => chunk.embedding?.length).length;
+        freshSource.updatedAt = new Date().toISOString();
+        writeManifest(scope, fresh);
+      }
       updated += count;
     }
     remaining += Math.max(0, missing.length - count);
   }
-  writeManifest(scope, manifest);
   return { updated, remaining };
+}
+
+interface BackgroundEmbeddingQueueState {
+  timer?: ReturnType<typeof setTimeout>;
+  running: boolean;
+  rerun: boolean;
+}
+
+const backgroundEmbeddingQueues = new Map<string, BackgroundEmbeddingQueueState>();
+
+/** Coalesce direct-upload vector work per user and run it after the response. */
+export function queueMissingEmbeddings(scope: string, maxChunks = 1200): void {
+  let state = backgroundEmbeddingQueues.get(scope);
+  if (!state) {
+    state = { running: false, rerun: false };
+    backgroundEmbeddingQueues.set(scope, state);
+  }
+  state.rerun = true;
+  if (state.running || state.timer) return;
+
+  state.timer = setTimeout(() => {
+    state!.timer = undefined;
+    state!.running = true;
+    void (async () => {
+      try {
+        do {
+          state!.rerun = false;
+          let passes = 0;
+          while (passes < 8) {
+            const result = await reindexMissingEmbeddings(scope, maxChunks);
+            passes += 1;
+            if (!result.remaining || !result.updated) break;
+          }
+        } while (state!.rerun);
+      } catch (error) {
+        console.warn('[knowledge] background embedding enrichment failed:', error);
+      } finally {
+        state!.running = false;
+        const rerun = state!.rerun;
+        backgroundEmbeddingQueues.delete(scope);
+        if (rerun) queueMissingEmbeddings(scope, maxChunks);
+      }
+    })();
+  }, 1200);
 }
 
 export function sha256File(filePath: string): Promise<string> {

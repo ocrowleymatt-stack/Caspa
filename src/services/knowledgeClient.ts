@@ -131,20 +131,21 @@ export async function reindexKnowledge(maxChunks = 500): Promise<any> {
   return readJson(response);
 }
 
-export async function ingestKnowledgeText(name: string, text: string, mimeType = 'text/plain', fileId?: string): Promise<any> {
+export async function ingestKnowledgeText(name: string, text: string, mimeType = 'text/plain', fileId?: string, deferEmbeddings = false): Promise<any> {
   const response = await fetch('/api/caspa/knowledge/ingest/text', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify({ name, text, mimeType, fileId }),
+    body: JSON.stringify({ name, text, mimeType, fileId, deferEmbeddings }),
   });
   return readJson(response);
 }
 
 
-export async function ingestKnowledgeFile(file: File, fileId?: string): Promise<any> {
+export async function ingestKnowledgeFile(file: File, fileId?: string, deferEmbeddings = false): Promise<any> {
   const form = new FormData();
   form.append('file', file, file.name);
   if (fileId) form.append('fileId', fileId);
+  if (deferEmbeddings) form.append('deferEmbeddings', '1');
   const response = await fetch('/api/caspa/knowledge/ingest/file', {
     method: 'POST',
     headers: await authHeaders(),

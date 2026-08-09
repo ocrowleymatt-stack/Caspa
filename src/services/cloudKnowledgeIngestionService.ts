@@ -11,7 +11,7 @@ import os from 'os';
 import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import JSZip from 'jszip';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import {
@@ -63,6 +63,7 @@ export interface CloudSyncResult {
 const MAX_INVENTORY = Math.max(100, Number(process.env.KNOWLEDGE_INVENTORY_LIMIT || 25000));
 const MAX_FILE_BYTES = Math.max(5 * 1024 * 1024, Number(process.env.KNOWLEDGE_MAX_FILE_BYTES || 350 * 1024 * 1024));
 const TRANSCRIBE_DIRECT_LIMIT = 21 * 1024 * 1024;
+const TRANSCRIBE_CONCURRENCY = Math.max(1, Math.min(4, Number(process.env.KNOWLEDGE_TRANSCRIBE_CONCURRENCY || 2)));
 
 function ext(name: string): string {
   return path.extname(name).toLowerCase();
@@ -368,20 +369,33 @@ async function transcribeMedia(filePath: string, tempDir: string): Promise<Knowl
   const segmentDir = path.join(tempDir, 'audio-segments');
   await fsp.mkdir(segmentDir, { recursive: true });
   const outputPattern = path.join(segmentDir, 'segment-%04d.mp3');
-  const result = spawnSync('ffmpeg', [
-    '-hide_banner', '-loglevel', 'error', '-y', '-i', filePath,
-    '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k',
-    '-f', 'segment', '-segment_time', '1200', '-reset_timestamps', '1', outputPattern,
-  ], { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
-  if (result.status !== 0) throw new Error(`ffmpeg extraction failed: ${(result.stderr || '').slice(0, 800)}`);
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error', '-y', '-i', filePath,
+      '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k',
+      '-f', 'segment', '-segment_time', '1200', '-reset_timestamps', '1', outputPattern,
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr?.on('data', (chunk) => {
+      if (stderr.length < 10000) stderr += String(chunk);
+    });
+    child.once('error', reject);
+    child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg extraction failed: ${stderr.slice(0, 800)}`)));
+  });
 
   const segments = (await fsp.readdir(segmentDir)).filter((name) => name.endsWith('.mp3')).sort();
   if (!segments.length) throw new Error('ffmpeg produced no audio segments');
-  const units: KnowledgeUnit[] = [];
-  for (let i = 0; i < segments.length; i += 1) {
-    units.push(...await transcribeOne(path.join(segmentDir, segments[i]), i * 1200 * 1000));
-  }
-  return units;
+  const results: KnowledgeUnit[][] = new Array(segments.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(TRANSCRIBE_CONCURRENCY, segments.length) }, async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= segments.length) return;
+      results[index] = await transcribeOne(path.join(segmentDir, segments[index]), index * 1200 * 1000);
+    }
+  });
+  await Promise.all(workers);
+  return results.flat();
 }
 
 async function extractContent(file: CloudFile, filePath: string, tempDir: string): Promise<ExtractedContent> {
@@ -411,6 +425,7 @@ export async function ingestUploadedKnowledgeFile(
   originalName: string,
   mimeType = 'application/octet-stream',
   fileId?: string,
+  deferEmbeddings = false,
 ): Promise<any> {
   const stat = await fsp.stat(filePath);
   if (stat.size > MAX_FILE_BYTES) {
@@ -468,6 +483,7 @@ export async function ingestUploadedKnowledgeFile(
       size: stat.size,
       kind: extracted.kind,
       units: extracted.units,
+      deferEmbeddings,
     });
     const extractedText = extracted.units.map((unit) => unit.text || '').filter(Boolean).join('\n\n');
     return {

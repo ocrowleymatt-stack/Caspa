@@ -11,6 +11,7 @@ import {
   getKnowledgeStatus,
   ingestKnowledgeSource,
   reindexMissingEmbeddings,
+  queueMissingEmbeddings,
   searchKnowledge,
   type KnowledgeAlias,
 } from '../services/knowledgeIndexService';
@@ -113,14 +114,18 @@ router.post('/ingest/file', knowledgeFileUpload.single('file'), async (req, res)
   try {
     return await withScope(req, res, async (scope) => {
       if (!req.file) return res.status(400).json({ success: false, message: 'file is required' });
+      const deferEmbeddings = /^(1|true|yes)$/i.test(String(req.body?.deferEmbeddings || ''));
       const data = await ingestUploadedKnowledgeFile(
         scope,
         req.file.path,
         req.file.originalname || 'Uploaded file',
         req.file.mimetype || 'application/octet-stream',
         String(req.body?.fileId || '') || undefined,
+        deferEmbeddings,
       );
-      return res.json({ success: true, data });
+      res.json({ success: true, data });
+      if (deferEmbeddings) queueMissingEmbeddings(scope);
+      return;
     });
   } finally {
     if (req.file?.path) await fsp.rm(req.file.path, { force: true }).catch(() => {});
@@ -142,6 +147,7 @@ router.post('/ingest/text', (req, res) => withScope(req, res, async (scope) => {
     size: Buffer.byteLength(text),
     modifiedTime: new Date().toISOString(),
   };
+  const deferEmbeddings = Boolean(req.body?.deferEmbeddings);
   const data = await ingestKnowledgeSource(scope, {
     sha256,
     alias,
@@ -149,8 +155,10 @@ router.post('/ingest/text', (req, res) => withScope(req, res, async (scope) => {
     size: alias.size || Buffer.byteLength(text),
     kind: 'text',
     units: [{ text }],
+    deferEmbeddings,
   });
   res.json({ success: true, data });
+  if (deferEmbeddings) queueMissingEmbeddings(scope);
 }));
 
 // ── Durable per-user cloud autopilot ──────────────────────────────────────────

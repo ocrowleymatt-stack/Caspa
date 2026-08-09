@@ -750,23 +750,56 @@ function CaspaUI() {
     saveCurrentProjectState();
 
     const selected = files.slice(0, 20);
-    const parsed: Array<{ name: string; text: string }> = [];
-    for (const [index, file] of selected.entries()) {
-      const data = await ingestKnowledgeFile(file, `data-ingest:${Date.now()}:${index}:${file.name}`);
-      const extracted = String(data?.extractedText || '').trim();
-      const warning = String(data?.extractionWarning || '').trim();
-      parsed.push({
-        name: file.name,
-        text: extracted || `[File accepted: ${file.name} · ${file.type || 'unknown type'} · ${file.size.toLocaleString()} bytes${warning ? ` · extraction warning: ${warning}` : ''}]`,
-      });
-    }
+    const parsed: Array<{ name: string; text: string; failed?: boolean }> = new Array(selected.length);
+    let cursor = 0;
+    const uploadConcurrency = Math.min(3, selected.length);
+    const workers = Array.from({ length: uploadConcurrency }, async () => {
+      while (true) {
+        const index = cursor++;
+        if (index >= selected.length) return;
+        const file = selected[index];
+        try {
+          // Fast ingest returns as soon as extraction + lexical/chunk registration
+          // are complete. Vector embeddings are enriched server-side afterwards.
+          const data = await ingestKnowledgeFile(
+            file,
+            `data-ingest:${Date.now()}:${index}:${file.name}`,
+            true,
+          );
+          const extracted = String(data?.extractedText || '').trim();
+          const warning = String(data?.extractionWarning || '').trim();
+          parsed[index] = {
+            name: file.name,
+            text: extracted || `[File accepted: ${file.name} · ${file.type || 'unknown type'} · ${file.size.toLocaleString()} bytes${warning ? ` · extraction warning: ${warning}` : ''}]`,
+          };
+        } catch (error) {
+          parsed[index] = {
+            name: file.name,
+            text: `[Ingest failed for ${file.name}: ${error instanceof Error ? error.message : String(error)}]`,
+            failed: true,
+          };
+        }
+      }
+    });
+    await Promise.all(workers);
 
-    const useful = parsed.filter((item) => item.text.trim());
+    const useful = parsed.filter((item) => item && !item.failed && item.text.trim());
     if (!useful.length) throw new Error('The selected files could not be registered for ingestion.');
 
-    const combined = useful.length === 1
-      ? useful[0].text
-      : useful.map((item) => `===== ${item.name} =====\n\n${item.text}`).join('\n\n');
+    // The complete extracted source stays in the server corpus. The active project
+    // only needs a representative working set; keeping it bounded prevents huge
+    // synchronous localStorage writes and makes Workshop open immediately.
+    const WORKING_SOURCE_MAX_CHARS = 3_000_000;
+    const perFileBudget = Math.max(75_000, Math.floor(WORKING_SOURCE_MAX_CHARS / useful.length));
+    const working = useful.map((item) => ({
+      ...item,
+      text: item.text.length > perFileBudget
+        ? `${item.text.slice(0, perFileBudget)}\n\n[Working excerpt clipped here; the complete source remains in the Atlas knowledge index.]`
+        : item.text,
+    }));
+    const combined = working.length === 1
+      ? working[0].text
+      : working.map((item) => `===== ${item.name} =====\n\n${item.text}`).join('\n\n');
     const title = useful.length === 1
       ? useful[0].name.replace(/\.[^.]+$/, '') || 'Uploaded material'
       : `Data pack — ${new Date().toLocaleDateString('en-GB')}`;
@@ -793,9 +826,12 @@ function CaspaUI() {
     localStorage.removeItem('caspa.commission.tab');
     clearShowBox();
     clearPlotHold();
-    recordProjectSnapshot(nextBrief);
-    persistActiveUserDatabase();
     goTo('workshop');
+    // Let React paint Workshop before doing non-critical persistence work.
+    window.setTimeout(() => {
+      recordProjectSnapshot(nextBrief);
+      void persistActiveUserDatabase();
+    }, 0);
   };
 
   const runSidebarFastUpload = async (list: FileList | null) => {
