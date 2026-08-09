@@ -41,8 +41,7 @@ clearTenantId();
 //   console.log(`Firebase Tenant ID set to: ${tenantId}`);
 // }
 
-// Plain Google login provider: keep sign-in simple and reliable.
-// Do not request Drive here. Extra OAuth scopes can break login when the OAuth consent screen/origins are not fully configured.
+// Plain Google login provider: keep ordinary account sign-in lightweight.
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
@@ -50,13 +49,14 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// Separate Drive provider for a future explicit "Connect Google Drive" action.
+// Drive permissions are requested only when the user explicitly connects Drive.
 export const googleDriveProvider = new GoogleAuthProvider();
 googleDriveProvider.addScope('profile');
 googleDriveProvider.addScope('email');
 googleDriveProvider.addScope('https://www.googleapis.com/auth/drive.file');
 googleDriveProvider.setCustomParameters({
   prompt: 'select_account consent',
+  include_granted_scopes: 'true',
 });
 
 const isAppleWebKit = () => {
@@ -80,7 +80,7 @@ function normaliseAuthError(error: any): Error {
   }
 
   if (code === 'auth/popup-blocked') {
-    return new Error('The browser blocked the Google sign-in popup. Caspa is switching to redirect sign-in.');
+    return new Error('The browser blocked the Google sign-in popup. Atlas will use redirect sign-in instead.');
   }
 
   if (code === 'auth/popup-closed-by-user') {
@@ -102,19 +102,35 @@ function normaliseAuthError(error: any): Error {
   return new Error(code ? `${code}: ${rawMessage}` : rawMessage);
 }
 
-// In-memory access token cache for Google APIs as required by Workspace Integration skill
-let cachedAccessToken: string | null = null;
+const DRIVE_TOKEN_KEY = 'caspa_google_drive_access_token';
+const GOOGLE_REDIRECT_INTENT_KEY = 'caspa_google_redirect_intent';
+
+type GoogleRedirectIntent = 'login' | 'drive';
+
+// Keep the Google API token for the browser session. Firebase itself persists the user account;
+// the API token is deliberately not written to long-lived localStorage.
+let cachedAccessToken: string | null =
+  typeof window !== 'undefined' ? window.sessionStorage.getItem(DRIVE_TOKEN_KEY) : null;
 
 export const setCachedAccessToken = (token: string | null) => {
   cachedAccessToken = token;
+
+  if (typeof window === 'undefined') return;
+
   if (token) {
-    localStorage.setItem('ls_gdrive_connected', 'true');
+    window.sessionStorage.setItem(DRIVE_TOKEN_KEY, token);
+    // Kept only as a backwards-compatible UI hint for older components.
+    window.localStorage.setItem('ls_gdrive_connected', 'true');
   } else {
-    localStorage.removeItem('ls_gdrive_connected');
+    window.sessionStorage.removeItem(DRIVE_TOKEN_KEY);
+    window.localStorage.removeItem('ls_gdrive_connected');
   }
 };
 
 export const getCachedAccessToken = (): string | null => {
+  if (!cachedAccessToken && typeof window !== 'undefined') {
+    cachedAccessToken = window.sessionStorage.getItem(DRIVE_TOKEN_KEY);
+  }
   return cachedAccessToken;
 };
 
@@ -138,14 +154,17 @@ async function completeGoogleResult(result: any, cacheDriveToken = false) {
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (cacheDriveToken && credential?.accessToken) {
     setCachedAccessToken(credential.accessToken);
-    console.log('Google Drive access token successfully retrieved and cached.');
+    console.log('Google Drive access token successfully retrieved and cached for this browser session.');
   }
   return await handleUserSync(result.user);
 }
 
-async function startRedirect(provider: GoogleAuthProvider) {
+async function startRedirect(provider: GoogleAuthProvider, intent: GoogleRedirectIntent) {
   await authPersistenceReady;
   clearTenantId();
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem(GOOGLE_REDIRECT_INTENT_KEY, intent);
+  }
   await signInWithRedirect(auth, provider);
   return null;
 }
@@ -156,10 +175,10 @@ export async function loginWithGoogle() {
     await authPersistenceReady;
     clearTenantId();
 
-    // Safari/iOS are much less reliable with popup auth. Use redirect there first.
+    // Safari/iOS are less reliable with popup auth, so use redirect there.
     if (isAppleWebKit()) {
       console.log('Apple WebKit browser detected; using redirect sign-in.');
-      return await startRedirect(googleProvider);
+      return await startRedirect(googleProvider, 'login');
     }
 
     try {
@@ -167,7 +186,6 @@ export async function loginWithGoogle() {
       return await completeGoogleResult(result, false);
     } catch (popupError: any) {
       if (popupError?.code === 'auth/popup-closed-by-user') {
-        // User intentionally closed the popup: do not force redirect fallback.
         throw popupError;
       }
 
@@ -181,7 +199,7 @@ export async function loginWithGoogle() {
 
       if (fallbackCodes.has(popupError.code)) {
         console.log('Popup failed due to browser constraints; falling back to redirect...', popupError.code);
-        return await startRedirect(googleProvider);
+        return await startRedirect(googleProvider, 'login');
       }
 
       throw popupError;
@@ -200,11 +218,32 @@ export async function connectGoogleDrive() {
     clearTenantId();
 
     if (isAppleWebKit()) {
-      return await startRedirect(googleDriveProvider);
+      return await startRedirect(googleDriveProvider, 'drive');
     }
 
-    const result = await signInWithPopup(auth, googleDriveProvider);
-    return await completeGoogleResult(result, true);
+    try {
+      const result = await signInWithPopup(auth, googleDriveProvider);
+      return await completeGoogleResult(result, true);
+    } catch (popupError: any) {
+      if (popupError?.code === 'auth/popup-closed-by-user') {
+        throw popupError;
+      }
+
+      const fallbackCodes = new Set([
+        'auth/popup-blocked',
+        'auth/cancelled-popup-request',
+        'auth/cancelled-interactive-request',
+        'auth/redirect-cancelled-by-user',
+        'auth/network-request-failed',
+      ]);
+
+      if (fallbackCodes.has(popupError.code)) {
+        console.log('Drive popup failed; falling back to redirect...', popupError.code);
+        return await startRedirect(googleDriveProvider, 'drive');
+      }
+
+      throw popupError;
+    }
   } catch (error) {
     const normalised = normaliseAuthError(error);
     console.error('Google Drive connection error:', normalised);
@@ -216,13 +255,30 @@ export async function handleRedirectLogin() {
   try {
     await authPersistenceReady;
     clearTenantId();
+
+    const intent =
+      typeof window !== 'undefined'
+        ? (window.sessionStorage.getItem(GOOGLE_REDIRECT_INTENT_KEY) as GoogleRedirectIntent | null)
+        : null;
+
     const result = await getRedirectResult(auth);
     if (result) {
-      // Login redirects use simple auth scopes. Drive connection can be re-run explicitly if needed.
-      return await completeGoogleResult(result, false);
+      const user = await completeGoogleResult(result, intent === 'drive');
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(GOOGLE_REDIRECT_INTENT_KEY);
+      }
+      return user;
+    }
+
+    // No redirect result means there is no OAuth result left to consume.
+    if (typeof window !== 'undefined' && intent) {
+      window.sessionStorage.removeItem(GOOGLE_REDIRECT_INTENT_KEY);
     }
     return null;
   } catch (error) {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(GOOGLE_REDIRECT_INTENT_KEY);
+    }
     const normalised = normaliseAuthError(error);
     console.error('Redirect result error:', normalised);
     throw normalised;
@@ -264,6 +320,7 @@ async function handleUserSync(user: any) {
 }
 
 export async function logout() {
+  setCachedAccessToken(null);
   await signOut(auth);
 }
 
