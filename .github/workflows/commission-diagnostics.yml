@@ -23,7 +23,7 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_atlas
           chmod 600 ~/.ssh/id_atlas
           ssh-keyscan -H "$ATLAS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Inspect Commission worker safely
+      - name: Inspect writing failures safely
         shell: bash
         run: |
           set -euo pipefail
@@ -33,6 +33,11 @@ jobs:
           curl -fsS http://127.0.0.1:3000/health | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); console.log(JSON.stringify({status:j.status,gitSha:j.gitSha,uptime:j.uptime}))})"
           echo '--- recent commission jobs (metadata only) ---'
           curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); const xs=(j.data?.jobs||[]).filter(x=>x.type==='commission').slice(0,8).map(x=>({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,updatedAt:x.updatedAt})); console.log(JSON.stringify(xs,null,2))})"
+          echo '--- nginx timeout config ---'
+          nginx -T 2>/dev/null | grep -E 'server_name caspa\.ocrowley\.com|proxy_(connect|send|read)_timeout|send_timeout' | tail -60 || true
+          echo '--- recent nginx 504s / upstream timeouts ---'
+          (tail -400 /var/log/nginx/access.log 2>/dev/null | grep ' 504 ' | tail -40) || true
+          (tail -400 /var/log/nginx/error.log 2>/dev/null | grep -Ei 'upstream timed out|504|timed out' | tail -60) || true
           echo '--- pm2 tail filtered ---'
-          pm2 logs caspa --nostream --lines 250 2>&1 | grep -Ei 'commission|504|timeout|fallback failure|longform|writing:' | tail -120 || true
+          pm2 logs caspa --nostream --lines 350 2>&1 | grep -Ei 'commission|504|timeout|fallback failure|longform|writing:|/api/caspa/write|/api/ai/call' | tail -160 || true
           REMOTE
