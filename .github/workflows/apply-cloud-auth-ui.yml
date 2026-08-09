@@ -49,7 +49,7 @@ jobs:
           onNotify={onNotify}
         />
 
-"""
+          """
           text = before + panel + end_marker + after
           path.write_text(text)
           PY
