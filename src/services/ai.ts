@@ -71,6 +71,7 @@ async function callAI(options: {
   schema?: any;
   maxTokens?: number;
   providerOverride?: IntelligenceProvider;
+  strictProvider?: boolean;
   useWebSearch?: boolean;
 }) {
   try {
@@ -343,79 +344,142 @@ Based ONLY on the provided text and strictly following any structural plans foun
     if (type === 'experimental' || type === 'screenplay') defaultRoles.push('comedy');
 
     const roles = customRoles || defaultRoles;
+    const providerRotation: IntelligenceProvider[] = ['grok', 'gemini', 'claude', 'openai', 'venice'];
+    const providerLabels: Record<IntelligenceProvider, string> = {
+      grok: 'Grok',
+      gemini: 'Gemini',
+      claude: 'Claude',
+      openai: 'OpenAI',
+      venice: 'Venice'
+    };
 
     const sourceContext = sourceMaterials.length > 0
       ? `\nSOURCE MATERIALS FOR REFERENCE:\n${sourceMaterials.map(s => `[SOURCE: ${s.name}]\n${s.content.slice(0, 3000)}`).join('\n\n')}`
-      : "";
+      : '';
 
     const schema = {
       type: Type.OBJECT,
       properties: {
         content: { type: Type.STRING },
-        severity: { type: Type.STRING, enum: ["low", "medium", "high", "critical"] },
+        severity: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
         suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
       },
-      required: ["content", "severity", "suggestions"]
+      required: ['content', 'severity', 'suggestions']
     };
 
-    const critiquePromises = roles.map(async (role) => {
-      const personaNames: Record<string, string> = {
-        agent: "Literary Agent",
-        publisher: "Acquisitions Editor",
-        market: "Book Marketeer",
-        buyer: "Retail Buyer",
-        reader: "Critical Beta Reader",
-        vocal: "Vocal Architect",
-        structural: "Structural Architect",
-        factual: "Fact Checker",
-        legal: "Legal Specialist",
-        academic: "Peer Reviewer",
-        comedy: "Comedy Doctor",
-        sentence: "Sentence Stylist",
-        thematic: "Thematic Analyst",
-        writer: "Seasoned Author",
-        medical: "General Practitioner",
-        historical: "Historian",
-        sensitivity: "Sensitivity Panel"
-      };
+    const personaNames: Record<string, string> = {
+      agent: 'Literary Agent',
+      publisher: 'Acquisitions Editor',
+      market: 'Book Marketeer',
+      buyer: 'Retail Buyer',
+      reader: 'Critical Beta Reader',
+      vocal: 'Vocal Architect',
+      structural: 'Structural Architect',
+      factual: 'Fact Checker',
+      legal: 'Legal Specialist',
+      academic: 'Peer Reviewer',
+      comedy: 'Comedy Doctor',
+      sentence: 'Sentence Stylist',
+      thematic: 'Thematic Analyst',
+      writer: 'Seasoned Author',
+      medical: 'General Practitioner',
+      historical: 'Historian',
+      sensitivity: 'Sensitivity Panel',
+      repetition: 'Repetition Detective'
+    };
 
-      const prompt = `
-        ${AGENT_PERSONAS[role as keyof typeof AGENT_PERSONAS]} 
-        
-        TASK: Perform a high-fidelity, brutal critique of this ${type} draft.
-        ${getMaturityDirectives(maturity)} 
-        ${sourceContext} 
-        
-        TEXT TO ANALYZE:
-        "${text.slice(0, 10000)}"
-        
-        CRITERIA:
-        1. Identify exactly where the prose loses momentum or character voice falters.
-        2. Rank severity objectively (low, medium, high, critical).
-        3. Provide 3-5 specific, actionable suggestions for improvement.
-        
-        Return ONLY valid JSON according to the requested schema.
-      `;
+    const makeSeatPrompt = (role: string) => `
+      ${AGENT_PERSONAS[role as keyof typeof AGENT_PERSONAS]}
 
-      const responseText = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
-      const data = safeParseJSON(responseText || "{}");
-      
-      const suggestions = Array.isArray(data.suggestions) 
+      TASK: Perform a high-fidelity, brutal critique of this ${type} draft.
+      ${getMaturityDirectives(maturity)}
+      ${sourceContext}
+
+      TEXT TO ANALYZE:
+      "${text.slice(0, 10000)}"
+
+      CRITERIA:
+      1. Identify exactly where the prose loses momentum or character voice falters.
+      2. Rank severity objectively (low, medium, high, critical).
+      3. Provide 3-5 specific, actionable suggestions for improvement.
+
+      Return ONLY valid JSON according to the requested schema.
+    `;
+
+    const runSeat = async (role: string, index: number, strict: boolean): Promise<Critique> => {
+      const provider = providerRotation[index % providerRotation.length];
+      const responseText = await callAI({
+        prompt: makeSeatPrompt(role),
+        json: true,
+        schema,
+        model: 'gemini-2.0-flash',
+        maxTokens: 1600,
+        providerOverride: provider,
+        strictProvider: strict
+      });
+      const data = safeParseJSON(responseText || '{}');
+      const suggestions = Array.isArray(data.suggestions)
         ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s)
         : [];
 
       return {
         id: crypto.randomUUID(),
-        agentName: personaNames[role] || `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`,
+        agentName: `${personaNames[role] || `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`} · ${providerLabels[provider]}`,
         role: role as any,
-        content: data.content || "No major issues identified.",
-        severity: data.severity || "low",
+        content: data.content || 'No major issues identified.',
+        severity: data.severity || 'low',
         suggestions,
-        timestamp: Date.now() // Add timestamp for versioning
+        timestamp: Date.now()
       } as Critique;
-    });
+    };
 
-    return Promise.all(critiquePromises);
+    const critiques: Critique[] = [];
+    const failedSeats: { role: string; index: number; error: any }[] = [];
+    const concurrency = 3;
+
+    for (let offset = 0; offset < roles.length; offset += concurrency) {
+      const batch = roles.slice(offset, offset + concurrency);
+      const settled = await Promise.allSettled(
+        batch.map((role, batchIndex) => runSeat(role, offset + batchIndex, true))
+      );
+
+      settled.forEach((result, batchIndex) => {
+        const role = batch[batchIndex];
+        const index = offset + batchIndex;
+        if (result.status === 'fulfilled') {
+          critiques.push(result.value);
+        } else {
+          console.warn(`[Council] Seat ${role} failed on pinned provider ${providerRotation[index % providerRotation.length]}:`, result.reason);
+          failedSeats.push({ role, index, error: result.reason });
+        }
+      });
+    }
+
+    for (const failed of failedSeats) {
+      try {
+        const recovered = await runSeat(failed.role, failed.index, false);
+        critiques.push(recovered);
+      } catch (error) {
+        console.warn(`[Council] Seat ${failed.role} remained unavailable after recovery:`, error);
+      }
+    }
+
+    if (critiques.length === 0) {
+      const recoveryPrompt = `You are the emergency chair of a literary editorial council. Review this ${type} draft from structural, voice, factual, sentence-level, thematic, commercial and repetition perspectives. Return JSON with content, severity and 3-5 suggestions.\n\nTEXT:\n${text.slice(0, 10000)}`;
+      const recoveryText = await callAI({ prompt: recoveryPrompt, json: true, schema, maxTokens: 1800 });
+      const data = safeParseJSON(recoveryText || '{}');
+      critiques.push({
+        id: crypto.randomUUID(),
+        agentName: 'Council Recovery Chair',
+        role: 'structural' as any,
+        content: data.content || 'Council recovery completed.',
+        severity: data.severity || 'medium',
+        suggestions: Array.isArray(data.suggestions) ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s) : [],
+        timestamp: Date.now()
+      } as Critique);
+    }
+
+    return critiques;
   },
 
   async writeDraft(title: string, summary: string, context: string, type: ProjectType, activeNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], directives: string[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = [], draftStage?: 1 | 2 | 3 | 4, chapterCount?: number, cutMode?: boolean): Promise<string> {

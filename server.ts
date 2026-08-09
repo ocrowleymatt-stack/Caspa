@@ -305,7 +305,7 @@ app.get("/api/health", (req, res) => {
 
 // API endpoint for AI queries
 app.post("/api/ai/call", async (req, res) => {
-  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride, useSearch, primaryProvider = "grok" } = req.body;
+  const { prompt, model = "gemini-2.0-flash", json = false, schema, maxTokens, providerOverride, strictProvider = false, useSearch, primaryProvider = "grok" } = req.body;
 
   // Let's analyze sensitivity check on the server
   const isSensitive = /chem\s*sex|chemsex|slamming|crystal\s*meth|methamphetamine|gbl|ghb|tina|harm\s*reduction|overdose|substance|drug|rehab|addiction|recovery\s*guide|survival\s*guide|unfiltered|explicit/i.test(prompt);
@@ -313,28 +313,33 @@ app.post("/api/ai/call", async (req, res) => {
   const providers: string[] = [];
   const veniceKey = process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY;
 
-  // Host Unified Router (OpenAI-compatible) wins when UNIFIED_ROUTER_URL is set.
-  if (isProviderConfigured('unified')) {
-    providers.push('unified');
-  }
-
-  if (isSensitive && veniceKey) {
-    // If Venice is present, put it at the very top of fallbacks for sensitive prompts
-    if (!providers.includes('venice')) providers.push('venice');
-    if (primaryProvider !== 'venice' && !providers.includes(primaryProvider)) providers.push(primaryProvider);
-  } else if (!providers.includes(primaryProvider)) {
-    providers.push(primaryProvider);
-  }
-
-  if (providerOverride && !providers.includes(providerOverride)) {
-    providers.unshift(providerOverride);
-  }
-
-  AI_PROVIDERS.forEach(p => {
-    if (!providers.includes(p)) {
-      providers.push(p);
+  if (strictProvider && providerOverride) {
+    // Council Mode: pin this seat to exactly one provider. Recovery is handled
+    // deliberately by the caller instead of cascading every parallel request.
+    providers.push(providerOverride);
+  } else {
+    // Host Unified Router (OpenAI-compatible) wins when UNIFIED_ROUTER_URL is set.
+    if (isProviderConfigured('unified')) {
+      providers.push('unified');
     }
-  });
+
+    if (isSensitive && veniceKey) {
+      if (!providers.includes('venice')) providers.push('venice');
+      if (primaryProvider !== 'venice' && !providers.includes(primaryProvider)) providers.push(primaryProvider);
+    } else if (!providers.includes(primaryProvider)) {
+      providers.push(primaryProvider);
+    }
+
+    if (providerOverride && !providers.includes(providerOverride)) {
+      providers.unshift(providerOverride);
+    }
+
+    AI_PROVIDERS.forEach(p => {
+      if (!providers.includes(p)) {
+        providers.push(p);
+      }
+    });
+  }
 
   // Skip providers with no key, and skip any currently in circuit-breaker cooldown
   // (unless every configured provider is cooling down — then try them anyway).
