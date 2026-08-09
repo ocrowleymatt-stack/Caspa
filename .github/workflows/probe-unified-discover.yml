@@ -1,0 +1,47 @@
+name: Probe Unified Router Discover
+
+on:
+  push:
+    paths:
+      - '.github/workflows/probe-unified-discover.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Read discovery contract
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== /discover ==='
+          curl -fsS --max-time 5 http://127.0.0.1:9999/discover || true
+          echo
+          echo '=== router discovery source ==='
+          sed -n '95,122p' /root/unified-router/router.js 2>/dev/null | sed -E 's/(password|secret|token|key)[[:space:]]*:[[:space:]]*[^,}]+/\1:[redacted]/Ig' || true
+          echo '=== Ollama process/memory ==='
+          command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu --format=csv,noheader || echo 'gpu=none'
+          free -h | head -3
+          ollama ps 2>/dev/null || true
+          REMOTE
