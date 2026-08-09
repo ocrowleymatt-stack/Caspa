@@ -92,13 +92,13 @@ GOOGLE_DRIVE_CLIENT_ID=
 GOOGLE_DRIVE_CLIENT_SECRET=
 """
 if 'CLOUD_TOKEN_ENCRYPTION_KEY=' not in text:
-    p.write_text(text.rstrip() + block + '\n')
+    p.write_text(text.rstrip() + block.rstrip() + '\n')
 
 # ── Deploy: ensure token encryption exists on the host without storing the key in GitHub.
 replace_once(
     '.github/workflows/deploy-atlas.yml',
     "             export CASPA_DATA_DIR=/root/Caspa/data\n             npm run build",
-    "             export CASPA_DATA_DIR=/root/Caspa/data\n             if ! grep -q '^CLOUD_TOKEN_ENCRYPTION_KEY=' .env 2>/dev/null; then\n               umask 077\n               printf '\\nCLOUD_TOKEN_ENCRYPTION_KEY=%s\\n' \"\$(openssl rand -hex 32)\" >> .env\n             fi\n             grep -q '^ATLAS_PUBLIC_URL=' .env 2>/dev/null || printf 'ATLAS_PUBLIC_URL=https://caspa.ocrowley.com\\n' >> .env\n             npm run build",
+    "             export CASPA_DATA_DIR=/root/Caspa/data\n             if ! grep -q '^CLOUD_TOKEN_ENCRYPTION_KEY=' .env 2>/dev/null; then\n               umask 077\n               printf '\\nCLOUD_TOKEN_ENCRYPTION_KEY=%s\\n' \"\\$(openssl rand -hex 32)\" >> .env\n             fi\n             grep -q '^ATLAS_PUBLIC_URL=' .env 2>/dev/null || printf 'ATLAS_PUBLIC_URL=https://caspa.ocrowley.com\\n' >> .env\n             npm run build",
 )
 
 # Trigger is changed by the verified integration workflow, then explicitly again by caller.
