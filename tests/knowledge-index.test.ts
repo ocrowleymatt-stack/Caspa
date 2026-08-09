@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
@@ -58,6 +58,6 @@ test('deduplicates the same content across providers and keeps it searchable', a
   assert.equal(results[0].aliases.length, 2);
 });
 
-test.after(() => {
+after(() => {
   fs.rmSync(temp, { recursive: true, force: true });
 });
