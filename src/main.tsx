@@ -5,6 +5,7 @@ import ChapterSourceDock from './components/ChapterSourceDock.tsx';
 import { installInspirationFetchBridge } from './services/sourcePackService.ts';
 import './index.css';
 import './components/CaspaThemeOverride.css';
+import './components/GoldRefineryMobile.css';
 
 // Safely patch crypto.randomUUID to prevent runtime crashes in non-secure contexts or certain webviews
 if (typeof window !== 'undefined') {
