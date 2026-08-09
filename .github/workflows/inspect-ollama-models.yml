@@ -1,0 +1,59 @@
+name: Inspect Ollama Models
+
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-ollama-models.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect model metadata and custom recipes
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== LIST ==='
+          ollama list || true
+          for model in \
+            'richardyoung/qwen3.6-27b-abliterated:latest' \
+            'huihui_ai/Qwen3.6-abliterated:27b' \
+            'huihui_ai/qwen3.5-abliterated:9b' \
+            'mistral:latest' \
+            'matt-correspondence:latest' \
+            'matt-claims:latest' \
+            'matt-synthesizer:latest'; do
+            echo "=== MODEL $model ==="
+            ollama show "$model" 2>/dev/null | head -80 || true
+            echo '--- PARAMETERS ---'
+            ollama show "$model" --parameters 2>/dev/null | head -80 || true
+            echo '--- MODELFILE ---'
+            ollama show "$model" --modelfile 2>/dev/null | head -160 || true
+          done
+          echo '=== CASPA ENV NAMES ==='
+          if [ -f /root/Caspa/.env ]; then
+            sed -E 's/=.*//' /root/Caspa/.env | grep -v '^#' | grep -v '^$' | sort
+          fi
+          REMOTE
