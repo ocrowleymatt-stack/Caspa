@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T19:14:00Z
-reason: move Workshop finish runs to persistent Atlas server jobs with restart recovery, checkpoints and short browser polling
+deploy requested 2026-08-09T19:48:00Z
+reason: Council 2.0 parallel quorum and hard-deadline surgery

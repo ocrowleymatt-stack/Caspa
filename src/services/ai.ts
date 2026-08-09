@@ -76,8 +76,10 @@ async function callAI(options: {
   intelligenceMode?: IntelligenceMode;
   taskHint?: string;
   skipLocalFallback?: boolean;
+  clientTimeoutMs?: number;
 }) {
   try {
+    const { clientTimeoutMs, ...requestOptions } = options;
     const storedMode = options.intelligenceMode || (
       typeof window !== 'undefined'
         ? (window.localStorage.getItem('caspa_intelligence_mode') as IntelligenceMode | null)
@@ -91,12 +93,12 @@ async function callAI(options: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          ...options,
+          ...requestOptions,
           intelligenceMode: storedMode,
           primaryProvider: globalPrimaryProvider
         })
       },
-      AI_LONG_FETCH_TIMEOUT_MS
+      clientTimeoutMs || AI_LONG_FETCH_TIMEOUT_MS
     );
 
     const data = await readApiJson<{ result?: string; message?: string }>(response);
@@ -348,21 +350,35 @@ Based ONLY on the provided text and strictly following any structural plans foun
 
   async getSwarmCritique(text: string, type: ProjectType, maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], customRoles?: string[], onProgress?: (partial: Critique[], completed: number, total: number) => void): Promise<Critique[]> {
     const defaultRoles: (keyof typeof AGENT_PERSONAS)[] = ['vocal', 'structural', 'factual', 'agent', 'sentence', 'thematic', 'writer', 'repetition'];
-    if (type === 'legal') defaultRoles.push('legal');
-    if (type === 'academic') defaultRoles.push('academic');
+    if (type === 'legal') defaultRoles.unshift('legal');
+    if (type === 'academic') defaultRoles.unshift('academic');
     if (type === 'experimental' || type === 'screenplay') defaultRoles.push('comedy');
 
-    const roles = customRoles || defaultRoles;
-    type CouncilProvider = IntelligenceProvider | 'unified' | 'ollama';
-    const intelligenceMode = (typeof window !== 'undefined' ? window.localStorage.getItem('caspa_intelligence_mode') : null) || 'balanced';
+    const intelligenceMode = ((typeof window !== 'undefined' ? window.localStorage.getItem('caspa_intelligence_mode') : null) || 'balanced') as IntelligenceMode;
+    type CouncilProvider = 'grok' | 'gemini' | 'venice' | 'openai' | 'claude';
+
+    // Council 2.0: cap the number of seats by mode. The old UI could request 14-17
+    // critics, which multiplied identical 10k-token prompts and made one review behave
+    // like a batch job. Keep the strongest, most relevant perspectives instead.
+    const requestedRoles = [...new Set((customRoles?.length ? customRoles : defaultRoles) as string[])];
+    const domainFirst = type === 'legal' ? ['legal'] : type === 'academic' ? ['academic'] : [];
+    const priority = [
+      ...domainFirst,
+      'structural', 'factual', 'vocal', 'sentence', 'agent', 'writer', 'thematic',
+      'publisher', 'reader', 'market', 'repetition', 'historical', 'medical',
+      'sensitivity', 'buyer', 'comedy', 'legal', 'academic'
+    ];
+    const rank = (role: string) => {
+      const index = priority.indexOf(role);
+      return index === -1 ? priority.length + requestedRoles.indexOf(role) : index;
+    };
+    const maxSeats = intelligenceMode === 'speed' ? 6 : intelligenceMode === 'god' ? 12 : 9;
+    const roles = [...requestedRoles].sort((a, b) => rank(a) - rank(b)).slice(0, maxSeats);
+
     const providerRotation: CouncilProvider[] = intelligenceMode === 'god'
-      ? ['grok', 'venice', 'gemini', 'grok', 'venice', 'gemini', 'openai', 'claude']
-      : intelligenceMode === 'speed'
-        ? ['grok', 'gemini', 'venice', 'grok', 'gemini', 'venice']
-        : ['grok', 'gemini', 'venice', 'grok', 'gemini', 'venice', 'openai', 'claude'];
+      ? ['grok', 'gemini', 'venice', 'openai', 'claude']
+      : ['grok', 'gemini', 'venice'];
     const providerLabels: Record<CouncilProvider, string> = {
-      ollama: 'Local Model Pool',
-      unified: 'Open WebUI Pool',
       grok: 'Grok',
       gemini: 'Gemini',
       claude: 'Claude',
@@ -370,8 +386,15 @@ Based ONLY on the provided text and strictly following any structural plans foun
       venice: 'Venice'
     };
 
+    // Repeating a large evidence pack for every seat was a major hidden cost. Give
+    // each critic enough source context to challenge the manuscript without cloning
+    // an entire project into nine simultaneous requests.
     const sourceContext = sourceMaterials.length > 0
-      ? `\nSOURCE MATERIALS FOR REFERENCE:\n${sourceMaterials.map(s => `[SOURCE: ${s.name}]\n${s.content.slice(0, 3000)}`).join('\n\n')}`
+      ? `\nSOURCE MATERIALS FOR REFERENCE:\n${sourceMaterials
+          .slice(0, 6)
+          .map(s => `[SOURCE: ${s.name}]\n${s.content.slice(0, 1200)}`)
+          .join('\n\n')
+          .slice(0, 6000)}`
       : '';
 
     const schema = {
@@ -405,36 +428,40 @@ Based ONLY on the provided text and strictly following any structural plans foun
       repetition: 'Repetition Detective'
     };
 
+    const manuscriptSample = text.slice(0, intelligenceMode === 'god' ? 10000 : 8000);
     const makeSeatPrompt = (role: string) => `
-      ${AGENT_PERSONAS[role as keyof typeof AGENT_PERSONAS]}
+      ${AGENT_PERSONAS[role as keyof typeof AGENT_PERSONAS] || `You are the ${role} specialist on an editorial council.`}
 
-      TASK: Perform a high-fidelity, brutal critique of this ${type} draft.
+      TASK: Perform a high-fidelity, decisive critique of this ${type} draft.
       ${getMaturityDirectives(maturity)}
       ${sourceContext}
 
       TEXT TO ANALYZE:
-      "${text.slice(0, 10000)}"
+      "${manuscriptSample}"
 
       CRITERIA:
-      1. Identify exactly where the prose loses momentum or character voice falters.
+      1. Identify exactly where the work loses force, clarity, credibility or voice.
       2. Rank severity objectively (low, medium, high, critical).
-      3. Provide 3-5 specific, actionable suggestions for improvement.
+      3. Provide 3-5 specific, actionable corrections. Do not pad the answer.
 
       Return ONLY valid JSON according to the requested schema.
     `;
 
-    const runSeat = async (role: string, index: number, strict: boolean): Promise<Critique> => {
+    const seatClientTimeout = intelligenceMode === 'speed' ? 16_000 : intelligenceMode === 'god' ? 30_000 : 22_000;
+    const seatTokens = intelligenceMode === 'god' ? 1100 : 900;
+
+    const runSeat = async (role: string, index: number): Promise<Critique> => {
       const provider = providerRotation[index % providerRotation.length];
       const responseText = await callAI({
         prompt: makeSeatPrompt(role),
         json: true,
         schema,
-        model: 'gemini-2.0-flash',
-        maxTokens: 1600,
+        maxTokens: seatTokens,
         providerOverride: provider,
-        strictProvider: strict,
+        strictProvider: true,
         taskHint: 'council',
-        skipLocalFallback: !strict
+        skipLocalFallback: true,
+        clientTimeoutMs: seatClientTimeout,
       });
       const data = safeParseJSON(responseText || '{}');
       const suggestions = Array.isArray(data.suggestions)
@@ -453,74 +480,72 @@ Based ONLY on the provided text and strictly following any structural plans foun
     };
 
     const critiques: Critique[] = [];
-    const failedSeats: { role: string; index: number; error: any }[] = [];
-    const concurrency = intelligenceMode === 'god' || intelligenceMode === 'speed' ? 4 : 3;
-
     let settledCount = 0;
-    for (let offset = 0; offset < roles.length; offset += concurrency) {
-      const batch = roles.slice(offset, offset + concurrency);
-      const seatPromises = batch.map((role, batchIndex) => {
-        const index = offset + batchIndex;
-        return runSeat(role, index, true)
-          .then((critique) => {
-            critiques.push(critique);
-            settledCount += 1;
-            // Crucially, do not wait for the slowest member of the batch before
-            // showing useful work. The UI receives each completed chair at once.
-            onProgress?.([...critiques], settledCount, roles.length);
-            return critique;
-          })
-          .catch((error) => {
-            settledCount += 1;
-            onProgress?.([...critiques], settledCount, roles.length);
-            throw error;
-          });
-      });
 
-      const settled = await Promise.allSettled(seatPromises);
-      settled.forEach((result, batchIndex) => {
-        if (result.status === 'rejected') {
-          const role = batch[batchIndex];
-          const index = offset + batchIndex;
-          console.warn(`[Council] Seat ${role} failed on pinned provider ${providerRotation[index % providerRotation.length]}:`, result.reason);
-          failedSeats.push({ role, index, error: result.reason });
-        }
-      });
-    }
+    // Launch the full bounded Council simultaneously. No serial batches and no
+    // seat-by-seat retries: the ensemble is the redundancy mechanism.
+    const seatPromises = roles.map((role, index) =>
+      runSeat(role, index)
+        .then((critique) => {
+          critiques.push(critique);
+          return critique;
+        })
+        .catch((error) => {
+          console.warn(`[Council] ${role} seat failed fast:`, error);
+          throw error;
+        })
+        .finally(() => {
+          settledCount += 1;
+          onProgress?.([...critiques], settledCount, roles.length);
+        })
+    );
 
-    for (const failed of failedSeats) {
-      try {
-        const recovered = await runSeat(failed.role, failed.index, false);
-        critiques.push(recovered);
-        onProgress?.([...critiques], Math.min(critiques.length, roles.length), roles.length);
-      } catch (error) {
-        console.warn(`[Council] Seat ${failed.role} remained unavailable after recovery:`, error);
-      }
-    }
+    await Promise.allSettled(seatPromises);
 
-    if (critiques.length === 0) {
-      const recoveryPrompt = `You are the emergency chair of a literary editorial council. Review this ${type} draft from structural, voice, factual, sentence-level, thematic, commercial and repetition perspectives. Return JSON with content, severity and 3-5 suggestions.\n\nTEXT:\n${text.slice(0, 10000)}`;
-      const recoveryText = await callAI({
+    const quorum = Math.min(roles.length, Math.max(3, Math.ceil(roles.length / 2)));
+    if (critiques.length >= quorum) return critiques;
+
+    // Extreme degradation: race three independent emergency chairs. This is one
+    // bounded recovery wave, never a sequential fallback chain.
+    const recoveryPrompt = `You are the emergency chair of an editorial council. Review this ${type} draft from structural, voice, factual, sentence-level, thematic and commercial perspectives. Return JSON with content, severity and 3-5 concrete suggestions.\n\nTEXT:\n${manuscriptSample}`;
+    const recoveryProviders: CouncilProvider[] = ['grok', 'gemini', 'venice'];
+    const recoveryCalls = recoveryProviders.map(async (provider) => {
+      const responseText = await callAI({
         prompt: recoveryPrompt,
         json: true,
         schema,
-        maxTokens: 1400,
+        maxTokens: 1000,
+        providerOverride: provider,
+        strictProvider: true,
         taskHint: 'council',
         skipLocalFallback: true,
+        clientTimeoutMs: seatClientTimeout,
       });
-      const data = safeParseJSON(recoveryText || '{}');
-      critiques.push({
+      const data = safeParseJSON(responseText || '{}');
+      return {
         id: crypto.randomUUID(),
-        agentName: 'Council Recovery Chair',
+        agentName: `Council Recovery Chair · ${providerLabels[provider]}`,
         role: 'structural' as any,
         content: data.content || 'Council recovery completed.',
         severity: data.severity || 'medium',
-        suggestions: Array.isArray(data.suggestions) ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s) : [],
+        suggestions: Array.isArray(data.suggestions)
+          ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s)
+          : [],
         timestamp: Date.now()
-      } as Critique);
+      } as Critique;
+    });
+
+    try {
+      const recovery = await Promise.any(recoveryCalls);
+      critiques.push(recovery);
+    } catch (error) {
+      console.warn('[Council] Emergency recovery wave failed:', error);
     }
 
-    return critiques;
+    // Partial Council is still useful and must not be discarded because a provider
+    // was down. Only surface a hard failure when literally no independent critic spoke.
+    if (critiques.length > 0) return critiques;
+    throw new Error('Council could not reach any configured cloud critic within the hard deadline.');
   },
 
   async writeDraft(title: string, summary: string, context: string, type: ProjectType, activeNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], directives: string[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = [], draftStage?: 1 | 2 | 3 | 4, chapterCount?: number, cutMode?: boolean): Promise<string> {

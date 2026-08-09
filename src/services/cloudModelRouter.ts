@@ -31,6 +31,31 @@ function timeoutMs(maxTokens?: number, mode: IntelligenceMode = 'balanced'): num
   return maxTokens && maxTokens >= 4000 ? 180_000 : maxTokens && maxTokens >= 1500 ? 120_000 : 90_000;
 }
 
+// Council is an ensemble workload: diversity comes from parallel providers, not from
+// letting one chair burn minutes cycling models. Keep every seat tightly bounded.
+function routedTimeoutMs(opts: RoutedCallOptions, mode: IntelligenceMode): number {
+  if (opts.task === 'council') {
+    if (mode === 'speed') return 10_000;
+    if (mode === 'god') return 20_000;
+    return 14_000;
+  }
+  return timeoutMs(opts.maxTokens, mode);
+}
+
+async function withHardDeadline<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} after ${Math.round(ms / 1000)}s`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function classifyTask(prompt: string, opts: { json?: boolean; maxTokens?: number; useSearch?: boolean } = {}): TaskKind {
   const p = prompt.toLowerCase();
   if (/\b(council|critic|critique|peer review|editorial board|swarm)\b/.test(p)) return 'council';
@@ -159,9 +184,12 @@ export async function modelCandidates(provider: CloudProvider, mode: Intelligenc
   const preferred = [...taskAdjustments(provider, task, mode), ...MODEL_PREFERENCES[provider][mode]];
   if (requestedModel && !/gemini-2\.0|gemini-1\.5|gpt-4o|grok-3|claude-3/.test(requestedModel)) preferred.unshift(requestedModel);
   const unique = [...new Set(preferred)];
-  if (!available.length) return unique.slice(0, 4);
+  // One fast model per Council provider. If it is unhealthy, that seat fails fast
+  // and the other providers still form a quorum; model-by-model retry chains are forbidden.
+  const limit = task === 'council' ? 1 : 4;
+  if (!available.length) return unique.slice(0, limit);
   const filtered = unique.filter((id) => available.includes(id));
-  return (filtered.length ? filtered : unique).slice(0, 4);
+  return (filtered.length ? filtered : unique).slice(0, limit);
 }
 
 function requireValidJson(text: string): string {
@@ -228,7 +256,13 @@ async function callOpenAI(prompt: string, model: string, opts: RoutedCallOptions
   if (!key) throw new Error('OpenAI key unavailable');
   const mode = normaliseMode(opts.mode);
   const task = opts.task || classifyTask(prompt, opts);
-  const effort = mode === 'god' ? (['reasoning', 'legal', 'synthesis', 'long'].includes(task) ? 'xhigh' : 'high') : mode === 'speed' ? 'none' : 'low';
+  // Council seats are critics, not long-form solvers. Expensive hidden reasoning on
+  // every seat destroys ensemble latency without improving diversity.
+  const effort = task === 'council'
+    ? 'none'
+    : mode === 'god'
+      ? (['reasoning', 'legal', 'synthesis', 'long'].includes(task) ? 'xhigh' : 'high')
+      : mode === 'speed' ? 'none' : 'low';
   const data = await providerPost('https://api.openai.com/v1/chat/completions', {
     model,
     messages: [
@@ -238,7 +272,7 @@ async function callOpenAI(prompt: string, model: string, opts: RoutedCallOptions
     max_completion_tokens: opts.maxTokens || 4096,
     reasoning_effort: effort,
     ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-  }, { Authorization: `Bearer ${key}` }, timeoutMs(opts.maxTokens, mode));
+  }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
   return String(data?.choices?.[0]?.message?.content || '').trim();
 }
 
@@ -255,7 +289,7 @@ async function callGrok(prompt: string, model: string, opts: RoutedCallOptions):
     ],
     max_tokens: opts.maxTokens || 4096,
     ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
-  }, { Authorization: `Bearer ${key}` }, timeoutMs(opts.maxTokens, mode));
+  }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
   return String(data?.choices?.[0]?.message?.content || '').trim();
 }
 
@@ -290,7 +324,7 @@ async function callVenice(prompt: string, model: string, opts: RoutedCallOptions
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
     max_tokens: opts.maxTokens || 4096,
-  }, { Authorization: `Bearer ${key}` }, timeoutMs(opts.maxTokens, mode));
+  }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
   return String(data?.choices?.[0]?.message?.content || '').trim();
 }
 
@@ -303,7 +337,7 @@ async function callClaude(prompt: string, model: string, opts: RoutedCallOptions
     max_tokens: opts.maxTokens || 4096,
     system: SYSTEM_BASE + (mode === 'god' ? GOD_DIRECTIVE : ''),
     messages: [{ role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt }],
-  }, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, timeoutMs(opts.maxTokens, mode));
+  }, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, routedTimeoutMs(opts, mode));
   return String(data?.content?.find((part: any) => part?.type === 'text')?.text || '').trim();
 }
 
@@ -312,16 +346,21 @@ async function callGemini(prompt: string, model: string, opts: RoutedCallOptions
   if (!key) throw new Error('Gemini key unavailable');
   const mode = normaliseMode(opts.mode);
   const client = new GoogleGenAI({ apiKey: key, httpOptions: { headers: { 'User-Agent': 'atlas-model-router' } } });
-  const response = await client.models.generateContent({
-    model,
-    contents: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt,
-    config: {
-      systemInstruction: SYSTEM_BASE + (mode === 'god' ? GOD_DIRECTIVE : ''),
-      ...(opts.json && !opts.useSearch ? { responseMimeType: 'application/json' } : {}),
-      ...(opts.maxTokens ? { maxOutputTokens: opts.maxTokens } : {}),
-      ...(opts.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
-    },
-  });
+  const deadline = routedTimeoutMs(opts, mode);
+  const response = await withHardDeadline(
+    client.models.generateContent({
+      model,
+      contents: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt,
+      config: {
+        systemInstruction: SYSTEM_BASE + (mode === 'god' ? GOD_DIRECTIVE : ''),
+        ...(opts.json && !opts.useSearch ? { responseMimeType: 'application/json' } : {}),
+        ...(opts.maxTokens ? { maxOutputTokens: opts.maxTokens } : {}),
+        ...(opts.useSearch ? { tools: [{ googleSearch: {} }] } : {}),
+      },
+    }),
+    deadline,
+    `Gemini/${model} deadline`,
+  );
   return String(response.text || '').trim();
 }
 
