@@ -1,0 +1,30 @@
+name: Restore Fast Upload and User DB
+
+on:
+  push:
+    paths:
+      - '.github/workflows/restore-fast-upload-user-db.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wire fast upload and user database isolation
+        run: python scripts/restore-fast-upload-and-user-db.py
+      - name: Validate production build
+        run: |
+          npm ci
+          npm run build
+          git diff --check
+      - name: Commit integration
+        run: |
+          git config user.name atlas-user-db-upgrade
+          git config user.email actions@users.noreply.github.com
+          git add src/App.tsx src/components/SettingsStudio.tsx
+          git commit -m "Restore Fast Data Upload and isolate user workspaces"
+          git pull --rebase origin main
+          git push
