@@ -5,13 +5,12 @@
  * what order" decision is testable without booting the Express server.
  */
 
-/** Prefer the host Unified Router when UNIFIED_ROUTER_URL is set. */
+/** Prefer host/local routes when configured, then direct cloud providers. */
 export const AI_PROVIDERS = ['unified', 'ollama', 'grok', 'openai', 'claude', 'gemini', 'venice'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
 /** Env var names (server + Vite aliases) that configure each provider. */
 export const AI_PROVIDER_ENV_KEYS: Record<string, string[]> = {
-  // URL presence configures the unified router (optional bearer via UNIFIED_ROUTER_API_KEY).
   unified: ['UNIFIED_ROUTER_URL'],
   ollama: ['OLLAMA_URL'],
   grok: ['GROK_API_KEY', 'XAI_API_KEY', 'VITE_GROK_API_KEY'],
@@ -27,8 +26,6 @@ export function isProviderConfigured(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   if (provider === 'ollama') {
-    // Ollama defaults to localhost, so it can be usable with no explicit env var.
-    // Runtime reachability is handled by the provider call + circuit breaker.
     return String(env.OLLAMA_DISABLED || '').toLowerCase() !== 'true' && env.OLLAMA_DISABLED !== '1';
   }
   const names = AI_PROVIDER_ENV_KEYS[provider] || [];
@@ -38,9 +35,9 @@ export function isProviderConfigured(
 /**
  * Decide the attempt order from an already-prioritised provider list.
  * - Drops providers with no API key (never worth attempting).
- * - Prefers providers not currently in cooldown (circuit breaker "open").
+ * - Prefers providers not currently in cooldown.
  * - If every configured provider is cooling down, attempts them anyway rather
- *   than hard-failing (a transient blip must not lock the whole router out).
+ *   than hard-failing; this keeps recovery possible after transient faults.
  */
 export function selectAttemptOrder(
   ordered: string[],
@@ -55,16 +52,15 @@ export function selectAttemptOrder(
 }
 
 export interface CircuitBreaker {
-  /** True while the provider is in its post-failure cooldown window. */
   isOpen(provider: string): boolean;
-  recordFailure(provider: string): void;
+  recordFailure(provider: string, cooldownOverrideMs?: number): void;
   recordSuccess(provider: string): void;
 }
 
 /**
- * In-memory per-provider circuit breaker. After a failure, a provider is
- * skipped for `cooldownMs`; a success clears its cooldown immediately.
- * `now` is injectable for deterministic tests.
+ * In-memory per-provider circuit breaker. Billing/credit failures can request a
+ * much longer cooldown so the router does not waste time repeatedly calling a
+ * provider that cannot possibly succeed until the account state changes.
  */
 export function createCircuitBreaker(
   cooldownMs = 30_000,
@@ -73,8 +69,8 @@ export function createCircuitBreaker(
   const openUntil: Record<string, number> = {};
   return {
     isOpen: (provider) => now() < (openUntil[provider] || 0),
-    recordFailure: (provider) => {
-      openUntil[provider] = now() + cooldownMs;
+    recordFailure: (provider, cooldownOverrideMs) => {
+      openUntil[provider] = now() + (cooldownOverrideMs || cooldownMs);
     },
     recordSuccess: (provider) => {
       delete openUntil[provider];
@@ -82,10 +78,6 @@ export function createCircuitBreaker(
   };
 }
 
-/**
- * Process-wide circuit breaker shared by every server-side AI router
- * (/api/ai/call and serverAiHelper) so provider health is tracked once.
- */
 export const sharedCircuitBreaker: CircuitBreaker = createCircuitBreaker(
   Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 30_000,
 );
