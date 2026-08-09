@@ -28,7 +28,9 @@ export interface DiscoveredModel {
 }
 
 const DISCOVERY_CACHE_MS = 60_000;
+const LOCAL_TIMEOUT_COOLDOWN_MS = 10 * 60_000;
 let discoveryCache: { at: number; models: DiscoveredModel[] } | null = null;
+const localModelCooldownUntil = new Map<string, number>();
 
 function ollamaBase(env: NodeJS.ProcessEnv = process.env): string {
   const raw = (env.OLLAMA_URL || 'http://127.0.0.1:11434/api').trim().replace(/\/$/, '');
@@ -204,6 +206,7 @@ export async function callOllamaModelHunt(
   const candidates = discovered
     .map((model) => ({ ...model, runScore: model.score + specialistBoost(model.id, prompt) }))
     .filter((model) => !/(27b|26\.9b|27\.8b)/i.test(`${model.id} ${model.parameterSize || ''}`))
+    .filter((model) => (localModelCooldownUntil.get(model.id) || 0) <= Date.now())
     .sort((a, b) => b.runScore - a.runScore)
     .slice(0, Math.max(1, opts.maxAttempts || 2));
 
@@ -242,6 +245,10 @@ export async function callOllamaModelHunt(
       return { text, model: data.model || candidate.id };
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError' || /timeout/i.test(String(error?.message || error))) {
+        localModelCooldownUntil.set(candidate.id, Date.now() + LOCAL_TIMEOUT_COOLDOWN_MS);
+        console.warn(`[Ollama] ${candidate.id} timed out; cooling it down for 10 minutes.`);
+      }
     }
   }
   throw lastError || new Error('Interactive local model pool exhausted');

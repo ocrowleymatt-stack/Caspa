@@ -75,6 +75,7 @@ async function callAI(options: {
   useWebSearch?: boolean;
   intelligenceMode?: IntelligenceMode;
   taskHint?: string;
+  skipLocalFallback?: boolean;
 }) {
   try {
     const storedMode = options.intelligenceMode || (
@@ -432,7 +433,8 @@ Based ONLY on the provided text and strictly following any structural plans foun
         maxTokens: 1600,
         providerOverride: provider,
         strictProvider: strict,
-        taskHint: 'council'
+        taskHint: 'council',
+        skipLocalFallback: !strict
       });
       const data = safeParseJSON(responseText || '{}');
       const suggestions = Array.isArray(data.suggestions)
@@ -498,7 +500,14 @@ Based ONLY on the provided text and strictly following any structural plans foun
 
     if (critiques.length === 0) {
       const recoveryPrompt = `You are the emergency chair of a literary editorial council. Review this ${type} draft from structural, voice, factual, sentence-level, thematic, commercial and repetition perspectives. Return JSON with content, severity and 3-5 suggestions.\n\nTEXT:\n${text.slice(0, 10000)}`;
-      const recoveryText = await callAI({ prompt: recoveryPrompt, json: true, schema, maxTokens: 1800 });
+      const recoveryText = await callAI({
+        prompt: recoveryPrompt,
+        json: true,
+        schema,
+        maxTokens: 1400,
+        taskHint: 'council',
+        skipLocalFallback: true,
+      });
       const data = safeParseJSON(recoveryText || '{}');
       critiques.push({
         id: crypto.randomUUID(),

@@ -23,6 +23,7 @@ import caspaWriteRoutes from './src/routes/caspa-write-routes';
 import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 import { getBuildInfo } from './src/services/buildInfoService';
+import { startCloudKnowledgeAutopilot } from './src/services/cloudKnowledgeAutopilotService';
 import {
   AI_PROVIDERS,
   isProviderConfigured,
@@ -361,6 +362,7 @@ app.post("/api/ai/call", async (req, res) => {
     primaryProvider = "grok",
     intelligenceMode = 'balanced',
     taskHint,
+    skipLocalFallback = false,
   } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
@@ -373,15 +375,20 @@ app.post("/api/ai/call", async (req, res) => {
   const isSensitive = /chem\s*sex|chemsex|slamming|crystal\s*meth|methamphetamine|gbl|ghb|tina|harm\s*reduction|overdose|substance|drug|rehab|addiction|recovery\s*guide|survival\s*guide|unfiltered|explicit|transgressive|hardcore/i.test(prompt);
 
   const providers: string[] = [];
+  // Council recovery is latency-sensitive. A local/unified timeout must never
+  // consume another 30-120 seconds before healthy cloud providers are tried.
+  const avoidLocalFallback = Boolean(skipLocalFallback) || task === 'council';
   if (strictProvider && providerOverride) {
     providers.push(providerOverride);
   } else {
-    if (isProviderConfigured('unified')) providers.push('unified');
+    if (!avoidLocalFallback && isProviderConfigured('unified')) providers.push('unified');
     providers.push(...providerOrder(primaryProvider, mode, task, isSensitive));
     if (providerOverride) providers.unshift(providerOverride);
   }
 
-  const ordered = [...new Set(providers)];
+  const ordered = [...new Set(providers)].filter((provider) =>
+    !avoidLocalFallback || (provider !== 'unified' && provider !== 'ollama')
+  );
   const { attempt, anyConfigured } = selectAttemptOrder(
     ordered,
     (provider) => isProviderConfigured(provider),
@@ -1414,6 +1421,10 @@ async function run() {
     });
   }
 
+
+  // Durable provider-refresh credentials and cursors live under CASPA_DATA_DIR.
+  // The worker is restart-safe and no-op when no users have connected a cloud.
+  startCloudKnowledgeAutopilot();
 
   // Listen — long AI/research calls need node HTTP timeouts > nginx default.
   const httpServer = app.listen(PORT, "0.0.0.0", () => {
