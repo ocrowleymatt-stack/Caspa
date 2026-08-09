@@ -1,0 +1,71 @@
+name: Body Fast Upload Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/main.tsx'
+      - '.github/workflows/body-fast-upload-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Start static production preview
+        run: |
+          nohup npx vite preview --host 127.0.0.1 --port 4173 >/tmp/atlas-preview.log 2>&1 &
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/atlas-preview.log
+          exit 1
+      - name: Render and assert body upload control
+        run: |
+          node --input-type=module <<'NODE'
+          import puppeteer from 'puppeteer';
+          const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+          try {
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1365, height: 768 });
+            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle0', timeout: 30000 });
+            await page.waitForSelector('#atlas-body-fast-upload', { visible: true, timeout: 10000 });
+            const result = await page.$eval('#atlas-body-fast-upload', (el) => {
+              const r = el.getBoundingClientRect();
+              const s = getComputedStyle(el);
+              return {
+                text: (el.textContent || '').trim(),
+                display: s.display,
+                visibility: s.visibility,
+                opacity: s.opacity,
+                zIndex: s.zIndex,
+                rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+                viewport: { width: innerWidth, height: innerHeight },
+              };
+            });
+            console.log(JSON.stringify(result, null, 2));
+            if (!result.text.includes('FAST FILE UPLOAD')) throw new Error('Fast upload label missing');
+            if (result.display === 'none' || result.visibility === 'hidden' || Number(result.opacity) <= 0) throw new Error('Fast upload is hidden');
+            if (result.rect.width < 180 || result.rect.height < 40) throw new Error('Fast upload control is too small');
+            if (result.rect.x < 0 || result.rect.y < 0 || result.rect.x + result.rect.width > result.viewport.width || result.rect.y + result.rect.height > result.viewport.height) throw new Error('Fast upload is outside viewport');
+            if (Number(result.zIndex) < 1000000) throw new Error('Fast upload z-index is unexpectedly low');
+            await page.screenshot({ path: '/tmp/atlas-fast-upload.png', fullPage: false });
+          } finally {
+            await browser.close();
+          }
+          NODE
