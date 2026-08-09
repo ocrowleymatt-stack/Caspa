@@ -1,0 +1,42 @@
+name: Probe God Grok
+on:
+  push:
+    paths:
+      - '.github/workflows/probe-god-grok.yml'
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Probe multi-agent response
+        run: |
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -a; . /root/Caspa/.env; set +a
+          python3 - <<'PY'
+          import json,os,time,urllib.request,urllib.error
+          payload={'model':'grok-4.20-multi-agent-0309','reasoning':{'effort':'low'},'input':[{'role':'user','content':'Reply with exactly: GOD MODE READY'}],'max_output_tokens':64}
+          req=urllib.request.Request('https://api.x.ai/v1/responses',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+os.environ['GROK_API_KEY']})
+          started=time.time()
+          try:
+            with urllib.request.urlopen(req,timeout=45) as r:
+              body=json.load(r)
+            texts=[]
+            for item in body.get('output',[]):
+              for c in item.get('content',[]) if isinstance(item,dict) else []:
+                if isinstance(c,dict) and c.get('type')=='output_text': texts.append(c.get('text',''))
+            print(json.dumps({'status':200,'ms':round((time.time()-started)*1000),'text':' '.join(texts)[:160]}))
+          except urllib.error.HTTPError as e:
+            print(json.dumps({'status':e.code,'ms':round((time.time()-started)*1000),'error':e.read().decode()[:240]}))
+          except Exception as e:
+            print(json.dumps({'status':0,'ms':round((time.time()-started)*1000),'error':type(e).__name__}))
+          PY
+          REMOTE
