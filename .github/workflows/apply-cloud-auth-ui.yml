@@ -1,0 +1,73 @@
+name: Apply cloud auth UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-cloud-auth-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-settings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Replace legacy cloud settings with OAuth panel
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/SettingsView.tsx')
+          text = path.read_text()
+
+          old_import = "import { loginWithGoogle, getCachedAccessToken } from '../lib/firebase';\n"
+          new_import = old_import + "import CloudBackupPanel from './CloudBackupPanel';\n"
+          if "import CloudBackupPanel from './CloudBackupPanel';" not in text:
+              if old_import not in text:
+                  raise SystemExit('Could not find SettingsView Firebase import anchor')
+              text = text.replace(old_import, new_import, 1)
+
+          start_marker = "        {/* Google Drive & Resilient Backups */}"
+          end_marker = "        {/* Maturity Control */}"
+          if start_marker not in text or end_marker not in text:
+              raise SystemExit('Could not find legacy cloud section anchors')
+
+          before, remainder = text.split(start_marker, 1)
+          _, after = remainder.split(end_marker, 1)
+          panel = """        <CloudBackupPanel
+          project={project}
+          chapters={chapters}
+          characters={characters}
+          plotNodes={plotNodes}
+          research={research}
+          sourceMaterials={sourceMaterials}
+          externalReviews={externalReviews}
+          onRestoreBackup={onRestoreBackup}
+          onNotify={onNotify}
+        />
+
+"""
+          text = before + panel + end_marker + after
+          path.write_text(text)
+          PY
+
+      - name: Validate patch
+        run: |
+          git diff --check
+          grep -q "CloudBackupPanel" src/components/SettingsView.tsx
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "atlas-cloud-auth-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/components/SettingsView.tsx
+          if git diff --cached --quiet; then
+            echo "No SettingsView change required"
+            exit 0
+          fi
+          git commit -m "Use one-click cloud auth panel in Atlas settings"
+          git push
