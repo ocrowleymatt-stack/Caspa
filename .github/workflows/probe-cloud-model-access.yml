@@ -1,0 +1,97 @@
+name: Probe Cloud Model Access
+
+on:
+  push:
+    paths:
+      - '.github/workflows/probe-cloud-model-access.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Inventory provider models without exposing keys
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -a
+          . /root/Caspa/.env
+          set +a
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+
+          def req(url, headers=None, timeout=15):
+              try:
+                  r=urllib.request.Request(url,headers=headers or {})
+                  with urllib.request.urlopen(r,timeout=timeout) as x:
+                      return x.status,x.read().decode('utf-8','replace')
+              except urllib.error.HTTPError as e:
+                  return e.code,e.read().decode('utf-8','replace')
+              except Exception as e:
+                  return 0,type(e).__name__
+
+          def ids(body):
+              try:
+                  d=json.loads(body)
+                  rows=d.get('data',d.get('models',[])) if isinstance(d,dict) else d
+                  out=[]
+                  for x in rows if isinstance(rows,list) else []:
+                      if isinstance(x,dict):
+                          v=x.get('id') or x.get('name') or x.get('baseModelId')
+                          if v: out.append(str(v).replace('models/',''))
+                  return out
+              except Exception: return []
+
+          providers=[]
+          key=os.getenv('OPENAI_API_KEY','')
+          if key:
+              s,b=req('https://api.openai.com/v1/models',{'Authorization':'Bearer '+key})
+              m=[x for x in ids(b) if any(t in x.lower() for t in ['gpt-5','gpt-4.1','gpt-4o']) and not any(t in x.lower() for t in ['audio','realtime','transcrib','tts','image','search'])]
+              print('OPENAI status=%s models=%s' % (s,json.dumps(sorted(m,reverse=True)[:30])))
+
+          key=os.getenv('GROK_API_KEY') or os.getenv('XAI_API_KEY','')
+          if key:
+              s,b=req('https://api.x.ai/v1/models',{'Authorization':'Bearer '+key})
+              m=[x for x in ids(b) if x.lower().startswith('grok') and not any(t in x.lower() for t in ['image','video','voice'])]
+              print('GROK status=%s models=%s' % (s,json.dumps(sorted(m,reverse=True)[:30])))
+
+          key=os.getenv('ANTHROPIC_API_KEY','')
+          if key:
+              s,b=req('https://api.anthropic.com/v1/models',{'x-api-key':key,'anthropic-version':'2023-06-01'})
+              m=[x for x in ids(b) if 'claude' in x.lower()]
+              print('ANTHROPIC status=%s models=%s' % (s,json.dumps(m[:30])))
+
+          key=os.getenv('GEMINI_API_KEY','')
+          if key:
+              s,b=req('https://generativelanguage.googleapis.com/v1beta/models?key='+key)
+              m=[x for x in ids(b) if 'gemini' in x.lower() and not any(t in x.lower() for t in ['embed','image','tts','audio','robotics'])]
+              print('GEMINI status=%s models=%s' % (s,json.dumps(m[:40])))
+
+          key=os.getenv('VENICE_API_KEY','')
+          if key:
+              s,b=req('https://api.venice.ai/api/v1/models',{'Authorization':'Bearer '+key})
+              m=ids(b)
+              preferred=[x for x in m if any(t in x.lower() for t in ['deepseek-v4-flash','qwen3-6-27b','llama-3.3-70b','mistral-small','gpt-oss','minimax-m27'])]
+              print('VENICE status=%s preferred=%s total=%s' % (s,json.dumps(preferred[:40]),len(m)))
+          PY
+          REMOTE
