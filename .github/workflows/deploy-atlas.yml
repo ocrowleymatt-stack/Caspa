@@ -82,7 +82,6 @@ jobs:
              export CASPA_GIT_SHA=\$(git rev-parse HEAD)
              export CASPA_GIT_BRANCH=\$(git rev-parse --abbrev-ref HEAD || echo main)
              export CASPA_BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
-             # npm ci must install devDependencies (vite/esbuild). Do not leave NODE_ENV=production set.
              unset NODE_ENV || true
              npm ci
              export NODE_ENV=production
@@ -90,14 +89,15 @@ jobs:
              npm run build
              test -f dist/server.cjs
              test -f dist/index.html
-             pm2 delete caspa-server || true
+             # A legacy PM2 app named 'caspa' was still owning port 3000, so deleting
+             # only caspa-server could leave the old build serving traffic indefinitely.
+             pm2 delete caspa caspa-server || true
              pm2 start ecosystem.config.cjs --update-env
              pm2 save
-             # Long AI / research calls need nginx proxy timeouts > default 60s.
              if [ -x scripts/atlas-nginx-timeouts.sh ]; then
                bash scripts/atlas-nginx-timeouts.sh || true
              fi
-             sleep 2
+             sleep 3
              curl -fsS http://127.0.0.1:3000/health
              echo
              curl -fsS http://127.0.0.1:3000/api/doctor
@@ -109,13 +109,14 @@ jobs:
           sleep 2
           DOCTOR=$(curl -fsS "https://caspa.ocrowley.com/api/doctor")
           echo "$DOCTOR" | grep -q '"service":"Caspa"' || {
-            echo "::error::Public /api/doctor is not serving current Caspa (expected service Caspa)."
+            echo "::error::Public /api/doctor is not serving Caspa."
             echo "$DOCTOR" | head -c 800
             exit 1
           }
-          echo "$DOCTOR" | grep -q '"gitSha"' || {
-            echo "::error::Public /api/doctor missing gitSha fingerprint."
+          echo "$DOCTOR" | grep -Fq "\"gitSha\":\"${GITHUB_SHA}\"" || {
+            echo "::error::Public Atlas is not serving the commit just deployed. Expected ${GITHUB_SHA}."
+            echo "$DOCTOR" | head -c 1200
             exit 1
           }
-          echo "Public doctor OK:"
+          echo "Public Atlas is serving expected commit ${GITHUB_SHA}:"
           echo "$DOCTOR" | head -c 1200
