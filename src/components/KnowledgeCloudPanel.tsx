@@ -1,37 +1,33 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Cloud, Database, Link2, Loader, RefreshCw, Search, Unplug, Waves } from 'lucide-react';
 import {
-  connectGoogleDrive,
-  getCachedAccessToken,
-  handleRedirectLogin,
-  setCachedAccessToken,
-} from '../lib/firebase';
-import {
-  connectDropbox,
-  disconnectDropbox,
-  getDropboxAccessToken,
-  handleDropboxOAuthRedirect,
-} from '../lib/dropbox';
-import {
+  disconnectCloudAutopilotClient,
+  getCloudAutopilotStatusClient,
   getKnowledgeStatus,
   reindexKnowledge,
+  runCloudAutopilotNow,
   searchKnowledgeClient,
-  syncCloudKnowledgeClient,
+  startCloudAutopilotOAuth,
+  type CloudAutopilotStatus,
   type KnowledgeStatus,
 } from '../services/knowledgeClient';
 
 export default function KnowledgeCloudPanel() {
   const [status, setStatus] = useState<KnowledgeStatus | null>(null);
+  const [cloud, setCloud] = useState<CloudAutopilotStatus[]>([]);
   const [busy, setBusy] = useState<string>('');
   const [message, setMessage] = useState('');
-  const [googleConnected, setGoogleConnected] = useState(() => Boolean(getCachedAccessToken()));
-  const [dropboxConnected, setDropboxConnected] = useState(() => Boolean(getDropboxAccessToken()));
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await getKnowledgeStatus());
+      const [knowledge, connections] = await Promise.all([
+        getKnowledgeStatus(),
+        getCloudAutopilotStatusClient(),
+      ]);
+      setStatus(knowledge);
+      setCloud(connections);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not read knowledge index status.');
     }
@@ -39,74 +35,82 @@ export default function KnowledgeCloudPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        await handleRedirectLogin();
-        const dropboxDone = await handleDropboxOAuthRedirect();
-        if (dropboxDone && !cancelled) setMessage('Dropbox connected. Ready to scan and ingest.');
-      } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : 'Cloud sign-in could not be completed.');
-      }
-      if (cancelled) return;
-      setGoogleConnected(Boolean(getCachedAccessToken()));
-      setDropboxConnected(Boolean(getDropboxAccessToken()));
-      await refresh();
-    })();
-    return () => { cancelled = true; };
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get('cloud_connected');
+    const provider = url.searchParams.get('cloud');
+    const cloudError = url.searchParams.get('cloud_error');
+    if (connected === '1') {
+      setMessage(`${provider === 'gdrive' ? 'Google Drive' : 'Dropbox'} connected. Background ingestion has started.`);
+    } else if (cloudError) {
+      setMessage(`Cloud connection failed: ${cloudError}`);
+    }
+    if (connected || cloudError || provider) {
+      ['cloud_connected', 'cloud_error', 'cloud'].forEach((key) => url.searchParams.delete(key));
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    void refresh();
+    const timer = window.setInterval(() => { if (!cancelled) void refresh(); }, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [refresh]);
 
-  const connectGoogle = async () => {
-    setBusy('connect-google');
-    setMessage('Opening Google Drive authorisation…');
-    try {
-      await connectGoogleDrive();
-      setGoogleConnected(Boolean(getCachedAccessToken()));
-      if (getCachedAccessToken()) setMessage('Google Drive connected. Ready to scan and ingest.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Google Drive connection failed.');
-    } finally {
-      setBusy('');
-    }
-  };
+  const byProvider = useMemo(() => ({
+    gdrive: cloud.find((row) => row.provider === 'gdrive'),
+    dropbox: cloud.find((row) => row.provider === 'dropbox'),
+  }), [cloud]);
 
-  const connectDropboxAccount = async () => {
-    setBusy('connect-dropbox');
-    setMessage('Opening Dropbox authorisation…');
+  const connect = async (provider: 'dropbox' | 'gdrive') => {
+    setBusy(`connect-${provider}`);
+    setMessage(`Opening ${provider === 'dropbox' ? 'Dropbox' : 'Google Drive'} authorisation…`);
     try {
-      await connectDropbox();
+      const authorizationUrl = await startCloudAutopilotOAuth(provider);
+      window.location.assign(authorizationUrl);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Dropbox connection failed.');
+      setMessage(error instanceof Error ? error.message : 'Cloud connection failed.');
       setBusy('');
     }
   };
 
   const syncProvider = async (provider: 'dropbox' | 'gdrive') => {
-    const token = provider === 'dropbox' ? getDropboxAccessToken() : getCachedAccessToken();
-    if (!token) {
-      if (provider === 'dropbox') await connectDropboxAccount();
-      else await connectGoogle();
-      return;
-    }
     setBusy(provider);
-    setMessage(`Scanning ${provider === 'dropbox' ? 'Dropbox' : 'Google Drive'} and ingesting the next changed batch…`);
+    setMessage(`Checking ${provider === 'dropbox' ? 'Dropbox' : 'Google Drive'} for changes now…`);
     try {
-      const data = await syncCloudKnowledgeClient(provider, token, 8);
-      setStatus(data.status || null);
-      const parts = [
-        `${data.discovered} discovered`,
-        `${data.indexed} newly indexed`,
-        `${data.duplicates} duplicate${data.duplicates === 1 ? '' : 's'} linked`,
-        `${data.transcribed} media transcribed`,
-        `${data.unchanged} unchanged`,
-      ];
-      if (data.remaining) parts.push(`${data.remaining} changed files remain for the next batch`);
-      if (data.failed) parts.push(`${data.failed} failed`);
-      setMessage(parts.join(' · '));
+      const data = await runCloudAutopilotNow(provider);
+      if (data.status) setStatus(data.status);
+      if (data.connections) setCloud(data.connections);
+      const result = data.result || {};
+      if (result.unchangedProvider) {
+        setMessage('Cloud cursor is caught up — no provider changes detected.');
+      } else {
+        const parts = [
+          `${result.indexed || 0} newly indexed`,
+          `${result.duplicates || 0} duplicate${result.duplicates === 1 ? '' : 's'} linked`,
+          `${result.transcribed || 0} media transcribed`,
+        ];
+        if (result.remaining) parts.push(`${result.remaining} changed files remain in the background backlog`);
+        if (result.failed) parts.push(`${result.failed} failed`);
+        setMessage(parts.join(' · '));
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Cloud corpus sync failed.');
     } finally {
       setBusy('');
       await refresh();
+    }
+  };
+
+  const disconnect = async (provider: 'dropbox' | 'gdrive') => {
+    setBusy(`disconnect-${provider}`);
+    try {
+      setCloud(await disconnectCloudAutopilotClient(provider));
+      setMessage(`${provider === 'dropbox' ? 'Dropbox' : 'Google Drive'} disconnected and its stored refresh credential destroyed.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Cloud disconnect failed.');
+    } finally {
+      setBusy('');
     }
   };
 
@@ -144,14 +148,49 @@ export default function KnowledgeCloudPanel() {
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   };
 
+  const providerStatus = (provider: 'dropbox' | 'gdrive') => {
+    const row = byProvider[provider];
+    if (!row?.configured) return 'Server OAuth setup required';
+    if (!row.connected) return 'Not connected';
+    if (row.lastError) return `Background sync needs attention · ${row.lastError.slice(0, 90)}`;
+    if (row.remaining) return `Background ingestion active · ${row.remaining} changed files queued`;
+    if (row.initialComplete && row.cursorReady) return 'Background sync on · caught up';
+    return 'Connected · initial ingestion running';
+  };
+
+  const providerCardView = (provider: 'gdrive' | 'dropbox', label: string) => {
+    const row = byProvider[provider];
+    const connected = Boolean(row?.connected);
+    return (
+      <div style={providerCard}>
+        <strong style={providerTitle}><Cloud size={16} /> {label}</strong>
+        <span style={small}>{providerStatus(provider)}</span>
+        <button
+          style={primaryBtn}
+          disabled={Boolean(busy) || row?.configured === false}
+          onClick={() => connected ? syncProvider(provider) : connect(provider)}
+        >
+          {busy === provider || busy === `connect-${provider}` ? <Loader size={14} className="spin" /> : connected ? <RefreshCw size={14} /> : <Link2 size={14} />}
+          {connected ? 'Check & ingest now' : `Connect ${label}`}
+        </button>
+        {connected && (
+          <button style={linkBtn} disabled={Boolean(busy)} onClick={() => disconnect(provider)}>
+            <Unplug size={12} /> Disconnect & destroy credential
+          </button>
+        )}
+        {row?.lastSuccessAt && <span style={tiny}>Last caught up: {new Date(row.lastSuccessAt).toLocaleString()}</span>}
+      </div>
+    );
+  };
+
   return (
     <article style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div>
           <h2 style={title}><Database size={20} /> Cloud corpus & evidence search</h2>
           <p style={copy}>
-            Dropbox and Drive remain the source of truth for originals. Atlas temporarily reads changed files, transcribes audio/video,
-            extracts documents, deduplicates by exact content hash, then stores only derived text, semantic chunks, vectors and citations in your private index.
+            Dropbox and Drive remain the source of truth for originals. Atlas automatically detects provider changes, temporarily reads changed files,
+            transcribes audio/video, extracts documents, deduplicates by exact content hash, then stores only derived text, semantic chunks, vectors and citations in your private index.
           </p>
         </div>
         {status && (
@@ -162,40 +201,15 @@ export default function KnowledgeCloudPanel() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12, marginTop: 18 }}>
-        <div style={providerCard}>
-          <strong style={providerTitle}><Cloud size={16} /> Google Drive</strong>
-          <span style={small}>{googleConnected ? 'Connected to this Atlas user for this browser session' : 'Not connected'}</span>
-          <button style={primaryBtn} disabled={Boolean(busy)} onClick={() => googleConnected ? syncProvider('gdrive') : connectGoogle()}>
-            {busy === 'gdrive' || busy === 'connect-google' ? <Loader size={14} className="spin" /> : googleConnected ? <RefreshCw size={14} /> : <Link2 size={14} />}
-            {googleConnected ? 'Scan & ingest next batch' : 'Connect Google Drive'}
-          </button>
-          {googleConnected && (
-            <button style={linkBtn} onClick={() => { setCachedAccessToken(null); setGoogleConnected(false); setMessage('Google Drive disconnected.'); }}>
-              <Unplug size={12} /> Disconnect token
-            </button>
-          )}
-        </div>
-
-        <div style={providerCard}>
-          <strong style={providerTitle}><Cloud size={16} /> Dropbox</strong>
-          <span style={small}>{dropboxConnected ? 'Connected to this Atlas user for this browser session' : 'Not connected'}</span>
-          <button style={primaryBtn} disabled={Boolean(busy)} onClick={() => dropboxConnected ? syncProvider('dropbox') : connectDropboxAccount()}>
-            {busy === 'dropbox' || busy === 'connect-dropbox' ? <Loader size={14} className="spin" /> : dropboxConnected ? <RefreshCw size={14} /> : <Link2 size={14} />}
-            {dropboxConnected ? 'Scan & ingest next batch' : 'Connect Dropbox'}
-          </button>
-          {dropboxConnected && (
-            <button style={linkBtn} onClick={() => { disconnectDropbox(); setDropboxConnected(false); setMessage('Dropbox disconnected.'); }}>
-              <Unplug size={12} /> Disconnect token
-            </button>
-          )}
-        </div>
+        {providerCardView('gdrive', 'Google Drive')}
+        {providerCardView('dropbox', 'Dropbox')}
       </div>
 
       <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={ghostBtn} disabled={Boolean(busy)} onClick={reindex}>
           {busy === 'reindex' ? <Loader size={14} className="spin" /> : <Waves size={14} />} Vectorise missing chunks
         </button>
-        <button style={ghostBtn} disabled={Boolean(busy)} onClick={refresh}><RefreshCw size={14} /> Refresh index status</button>
+        <button style={ghostBtn} disabled={Boolean(busy)} onClick={refresh}><RefreshCw size={14} /> Refresh status</button>
       </div>
 
       <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid #eadfce' }}>
@@ -233,7 +247,7 @@ export default function KnowledgeCloudPanel() {
 
       {message && <p style={{ margin: '14px 0 0', color: '#5c5146', lineHeight: 1.5, fontSize: 13 }}>{message}</p>}
       <p style={{ margin: '10px 0 0', color: '#8a7a66', lineHeight: 1.5, fontSize: 11 }}>
-        Cloud access tokens are session-only, namespaced to the mounted Atlas user and destroyed on Atlas sign-out. Exact duplicates across providers are linked to one canonical index entry. Large archives and unsupported binaries are skipped rather than copied. Unattended refresh-token syncing belongs in encrypted server-side per-user storage, not browser storage.
+        Offline refresh credentials are encrypted server-side per Atlas user and never returned to browser JavaScript. Provider cursors avoid rescanning an unchanged cloud library. Exact duplicates across Drive and Dropbox resolve to one canonical corpus source; originals remain with the provider.
       </p>
     </article>
   );
@@ -248,6 +262,7 @@ const copy: React.CSSProperties = { margin: 0, color: '#5c5146', lineHeight: 1.6
 const providerCard: React.CSSProperties = { border: '1px solid #eadfce', borderRadius: 18, padding: 16, background: '#fffaf2', display: 'grid', gap: 10 };
 const providerTitle: React.CSSProperties = { display: 'flex', gap: 7, alignItems: 'center' };
 const small: React.CSSProperties = { fontSize: 11, color: '#8a7a66' };
+const tiny: React.CSSProperties = { fontSize: 10, color: '#9a8d7d' };
 const pill: React.CSSProperties = { border: '1px solid #d8c9b4', borderRadius: 999, padding: '7px 11px', background: '#fffaf2', fontSize: 11, color: '#5c5146', fontWeight: 700 };
 const primaryBtn: React.CSSProperties = { display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: 7, border: 'none', borderRadius: 12, padding: '10px 13px', background: '#d6a846', color: '#1d1408', fontWeight: 800, cursor: 'pointer' };
 const ghostBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #d8c9b4', borderRadius: 12, padding: '9px 12px', background: '#fffaf2', color: '#3d3428', fontWeight: 700, cursor: 'pointer' };
