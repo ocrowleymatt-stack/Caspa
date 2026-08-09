@@ -1,0 +1,30 @@
+name: Polish Council Latency
+
+on:
+  push:
+    paths:
+      - '.github/workflows/polish-council-latency.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Council polish
+        run: python scripts/polish-council-latency.py
+      - name: Validate production build
+        run: |
+          npm ci
+          npm run build
+          git diff --check
+      - name: Commit Council polish
+        run: |
+          git config user.name atlas-council-polish
+          git config user.email actions@users.noreply.github.com
+          git add src/services/cloudModelRouter.ts src/services/ai.ts
+          git commit -m "Stream Council seats and enforce JSON quality"
+          git pull --rebase origin main
+          git push
