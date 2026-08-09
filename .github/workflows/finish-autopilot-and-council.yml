@@ -40,11 +40,11 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Browser production build
-        run: npm run build
-
-      - name: Server production build
-        run: npm run build:server
+      - name: Production browser and server build
+        run: |
+          npm run build
+          test -f dist/index.html
+          test -f dist/server.cjs
 
       - name: Commit verified integration
         shell: bash
