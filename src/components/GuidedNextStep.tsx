@@ -97,10 +97,10 @@ export function WorkflowChecklist({
   return (
     <article style={card}>
       <h2 style={sectionTitle}>Full path</h2>
-      <p style={{ margin: '0 0 16px', color: '#73695d', fontSize: 14, lineHeight: 1.5 }}>
+      <p style={{ margin: '0 0 16px', color: '#f1e9f7', fontSize: 14, lineHeight: 1.55 }}>
         Every step is selectable — Diagnose → Recommendations; Commission → Write it; Review artefact stays in Workshop before White Page.
       </p>
-      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
+      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 9 }}>
         {steps.map((s) => (
           <li key={s.id}>
             <button
@@ -112,26 +112,29 @@ export function WorkflowChecklist({
                 alignItems: 'flex-start',
                 gap: 12,
                 textAlign: 'left',
-                border: `1px solid ${s.done ? '#c6e7d4' : '#eadfce'}`,
+                border: `1px solid ${s.done ? 'rgba(83, 209, 139, .55)' : 'rgba(212, 166, 255, .28)'}`,
                 borderRadius: 14,
                 padding: '12px 14px',
-                background: s.done ? '#f0fdf4' : '#fffdf8',
+                background: s.done ? 'rgba(25, 59, 45, .42)' : 'rgba(255,255,255,.025)',
+                color: '#f8f3fb',
                 cursor: 'pointer',
               }}
             >
               {s.done ? (
-                <CheckCircle2 size={18} color="#15803d" style={{ flexShrink: 0, marginTop: 2 }} />
+                <CheckCircle2 size={18} color="#58d68d" style={{ flexShrink: 0, marginTop: 2 }} />
               ) : (
-                <Circle size={18} color="#9b8c73" style={{ flexShrink: 0, marginTop: 2 }} />
+                <Circle size={18} color="#d4a6ff" style={{ flexShrink: 0, marginTop: 2 }} />
               )}
-              <span>
-                <strong style={{ display: 'block', fontSize: 14, color: '#21180f' }}>
+              <span style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', fontSize: 14, color: '#ffffff', lineHeight: 1.35 }}>
                   {s.title}
                   {s.optional ? ' (optional)' : ''}
                 </strong>
-                <small style={{ color: '#73695d', lineHeight: 1.4 }}>{s.why}</small>
+                <small style={{ display: 'block', color: s.done ? '#93e7b6' : '#d9b8f3', lineHeight: 1.45, marginTop: 3 }}>
+                  {s.why}
+                </small>
                 {s.workshopTab && (
-                  <small style={{ display: 'block', marginTop: 4, color: '#9b6d16', fontWeight: 600 }}>
+                  <small style={{ display: 'block', marginTop: 5, color: '#d4a6ff', fontWeight: 700 }}>
                     Opens Workshop →{' '}
                     {s.workshopTab === 'recommendations'
                       ? 'Recommendations'
@@ -170,13 +173,15 @@ const primaryBtn: React.CSSProperties = {
 const card: React.CSSProperties = {
   borderRadius: 26,
   padding: 24,
-  background: 'rgba(255,255,255,0.72)',
-  border: '1px solid #eadfce',
-  boxShadow: '0 18px 50px rgba(40, 29, 12, 0.06)',
+  background: 'linear-gradient(180deg, rgba(29,21,38,.98), rgba(18,13,24,.98))',
+  border: '1px solid rgba(212,166,255,.28)',
+  boxShadow: '0 18px 50px rgba(0, 0, 0, 0.24)',
+  color: '#f8f3fb',
 };
 
 const sectionTitle: React.CSSProperties = {
   margin: '0 0 14px',
   fontSize: 20,
   letterSpacing: -0.3,
+  color: '#ffffff',
 };
