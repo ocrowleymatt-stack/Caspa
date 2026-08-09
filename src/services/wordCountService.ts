@@ -24,7 +24,7 @@ export type SectionWordBudget = {
 
 /**
  * Split remaining aspire-to length across remaining beats so the manuscript
- * can actually land near the book target (instead of a fixed 1500–2500).
+ * lands close to the requested book target rather than treating it as decorative.
  */
 export function sectionWordBudget(opts: {
   targetWordCount: number;
@@ -41,7 +41,6 @@ export function sectionWordBudget(opts: {
 
   let sectionTarget = Math.round(remainingWords / remainingBeats);
 
-  // Mode floors / ceilings so short forms and long novels both work.
   const mode = opts.mode || 'novel';
   let floor = 1200;
   let ceiling = 10000;
@@ -62,20 +61,21 @@ export function sectionWordBudget(opts: {
     ceiling = 9000;
   }
 
-  // If we still have a lot of book left, don't under-ask the model.
   if (remainingWords > 0) {
     sectionTarget = Math.max(floor, Math.min(ceiling, sectionTarget || floor));
   } else {
     sectionTarget = Math.min(ceiling, Math.max(Math.round(floor * 0.6), 200));
   }
 
-  // Single-beat short forms: aim at the whole book target.
   if (totalBeats === 1 && (mode === 'essay' || mode === 'poetry' || mode === 'picture')) {
     sectionTarget = Math.max(floor, Math.min(ceiling, bookTarget));
   }
 
-  const minWords = Math.max(Math.round(sectionTarget * 0.9), Math.min(floor, sectionTarget));
-  const maxWords = Math.round(sectionTarget * 1.12);
+  // 90% was too permissive across a whole book: 11 chapters at the floor can
+  // collectively miss the requested manuscript length by thousands of words.
+  // Keep a small tolerance for natural prose variation, but make the target real.
+  const minWords = Math.max(Math.round(sectionTarget * 0.97), Math.min(floor, sectionTarget));
+  const maxWords = Math.round(sectionTarget * 1.08);
 
   return {
     bookTarget,
@@ -95,7 +95,8 @@ export function sectionOutputInstruction(budget: SectionWordBudget, kind: 'chapt
     `(acceptable ${budget.minWords.toLocaleString()}–${budget.maxWords.toLocaleString()}). ` +
     `Book aspire-to ${budget.bookTarget.toLocaleString()} words; manuscript so far ${budget.currentWords.toLocaleString()}; ` +
     `${budget.remainingBeats} beat(s) remaining including this one. ` +
-    `Do not stop early. Do not restart the book or repeat prior ${kind}s.`
+    `The book target is a delivery requirement, not a suggestion. Do not stop early. ` +
+    `Do not restart the book or repeat prior ${kind}s.`
   );
 }
 
@@ -113,12 +114,13 @@ export function buildExpandSectionPrompt(opts: {
     opts.focusBeat ? `FOCUS BEAT: ${opts.focusBeat}` : '',
     `You have written ~${opts.currentSectionWords.toLocaleString()} words. Write ~${need.toLocaleString()} more words to reach ~${opts.sectionTarget.toLocaleString()}.`,
     nonfiction
-      ? 'Add concrete evidence, turns of argument, and scene/setting specificity — not filler.'
-      : 'Deepen scene turns, concrete behaviour, dialogue conflict, and place — not filler or summary.',
+      ? 'Add concrete evidence, examples, counterargument, practical detail, source-aware caveats, and turns of argument — never padding.'
+      : 'Deepen scene turns, concrete behaviour, dialogue conflict, causality, interior pressure, and place — never padding or summary.',
+    'Resolve material already promised by the section before inventing anything new.',
     'Return ONLY the continuation prose to append.',
     '',
     'EXISTING SECTION (tail):',
-    opts.excerpt.slice(-6000),
+    opts.excerpt.slice(-7000),
   ]
     .filter(Boolean)
     .join('\n');
@@ -127,32 +129,24 @@ export function buildExpandSectionPrompt(opts: {
 /** Token budget for a section target (words → tokens with headroom). */
 export function tokensForWordTarget(sectionTarget: number, json = false): number {
   if (json) return 4096;
-  const estimated = Math.round(sectionTarget * 1.6) + 800;
-  return Math.max(4096, Math.min(24000, estimated));
+  const estimated = Math.round(sectionTarget * 1.65) + 1000;
+  return Math.max(4096, Math.min(28000, estimated));
 }
 
 export function defaultTargetWordCount(mode: string): number {
   switch (mode) {
-    case 'essay':
-      return 3000;
-    case 'poetry':
-      return 800;
-    case 'picture':
-      return 500;
-    case 'script':
-      return 20000;
-    case 'musical':
-      return 25000;
-    case 'nonfiction':
-      return 50000;
+    case 'essay': return 3000;
+    case 'poetry': return 800;
+    case 'picture': return 500;
+    case 'script': return 20000;
+    case 'musical': return 25000;
+    case 'nonfiction': return 50000;
     case 'gold':
-    case 'polish':
-      return 80000;
+    case 'polish': return 80000;
     case 'adaptation':
     case 'chaos':
     case 'novel':
-    default:
-      return 80000;
+    default: return 80000;
   }
 }
 
@@ -161,7 +155,6 @@ export type CutPlan = {
   targetWords: number | null;
   overTarget: boolean;
   suggestedAfterWords: number;
-  /** Soft guide for the model — not a hard quota. */
   suggestedReduction: number;
   needsCut: boolean;
   reasons: string[];
@@ -173,26 +166,34 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-/**
- * Decide whether / how much to cut based on target length and quality issues.
- * Never defaults to an arbitrary 30–40% trim.
- */
 export function planQualityCut(
   content: string,
   opts: { mode?: NovelWriteProMode | string; targetWordCount?: number | null } = {}
 ): CutPlan {
   const mode = (opts.mode || 'novel') as NovelWriteProMode;
   const beforeWords = countWords(content);
-  const targetWords =
-    typeof opts.targetWordCount === 'number' && opts.targetWordCount > 0
-      ? Math.round(opts.targetWordCount)
-      : null;
+  const targetWords = typeof opts.targetWordCount === 'number' && opts.targetWordCount > 0
+    ? Math.round(opts.targetWordCount)
+    : null;
 
   const findings = runQualityGates(content, mode);
   const { overallScore } = aggregateQuality(findings);
   const reasons: string[] = [];
 
-  // Too short to cut — length problems need expansion, not a scalpel.
+  if (targetWords && beforeWords < Math.round(targetWords * 0.95)) {
+    return {
+      beforeWords,
+      targetWords,
+      overTarget: false,
+      suggestedAfterWords: beforeWords,
+      suggestedReduction: 0,
+      needsCut: false,
+      reasons: [`Draft is short by ${(targetWords - beforeWords).toLocaleString()} words — finish and deepen before cutting.`],
+      qualityScore: overallScore,
+      cutBrief: 'Draft is materially under target. Do not cut it. Finish the manuscript first.',
+    };
+  }
+
   if (beforeWords < 200 && !(targetWords && beforeWords > Math.round(targetWords * 1.02))) {
     return {
       beforeWords,
@@ -203,10 +204,9 @@ export function planQualityCut(
       needsCut: false,
       reasons: ['Draft is still short — expand before cutting.'],
       qualityScore: overallScore,
-      cutBrief:
-        mode === 'nonfiction' || mode === 'essay'
-          ? 'Draft is short. Do not force cuts. Only remove obvious false profundity if present; otherwise return nearly unchanged.'
-          : 'Draft is short. Do not force cuts. Only remove obvious sludge if present; otherwise return nearly unchanged.',
+      cutBrief: mode === 'nonfiction' || mode === 'essay'
+        ? 'Draft is short. Do not force cuts. Only remove obvious false profundity if present; otherwise return nearly unchanged.'
+        : 'Draft is short. Do not force cuts. Only remove obvious sludge if present; otherwise return nearly unchanged.',
     };
   }
 
@@ -216,24 +216,19 @@ export function planQualityCut(
 
   if (targetWords && beforeWords > Math.round(targetWords * 1.02)) {
     overTarget = true;
-    // Aim just under target so the aspire-to length is real, not decorative.
     const aim = Math.max(40, Math.round(targetWords * 0.98));
     suggestedAfterWords = Math.min(beforeWords, aim);
     suggestedReduction = clamp(1 - suggestedAfterWords / beforeWords, 0.04, 0.45);
-    reasons.push(
-      `Over target: ${beforeWords.toLocaleString()} words vs aspire-to ${targetWords.toLocaleString()}.`
-    );
+    reasons.push(`Over target: ${beforeWords.toLocaleString()} words vs aspire-to ${targetWords.toLocaleString()}.`);
   }
 
-  // Quality pressure — only add cut when gates actually flag sludge.
   const filler = findings.find((f) => f.gate === 'Filler & hedge words');
   const specificity = findings.find((f) => f.gate === 'Concrete specificity');
   const rhythm = findings.find((f) => f.gate === 'Rhythm & pacing');
 
   let qualityReduction = 0;
   if (filler && filler.score < 75) {
-    const bump = clamp((75 - filler.score) / 200, 0.04, 0.18);
-    qualityReduction += bump;
+    qualityReduction += clamp((75 - filler.score) / 200, 0.04, 0.18);
     reasons.push(...(filler.issues.length ? filler.issues : ['Filler / hedge density is high.']));
   }
   if (specificity && specificity.score < 70) {
@@ -246,14 +241,12 @@ export function planQualityCut(
   }
 
   if (!overTarget && qualityReduction > 0) {
-    // Already under / near aspire-to: surgical only — never gut a short draft to chase "percentage".
     const underTarget = targetWords ? beforeWords < targetWords * 0.95 : false;
     suggestedReduction = underTarget
       ? clamp(qualityReduction, 0.03, 0.12)
       : clamp(qualityReduction, 0.04, 0.28);
     suggestedAfterWords = Math.max(40, Math.round(beforeWords * (1 - suggestedReduction)));
   } else if (overTarget && qualityReduction > 0) {
-    // When both apply, take the stronger lean — still capped.
     suggestedReduction = clamp(Math.max(suggestedReduction, qualityReduction), 0.04, 0.45);
     suggestedAfterWords = Math.max(
       targetWords ? Math.round(targetWords * 0.95) : 40,
@@ -275,12 +268,11 @@ export function planQualityCut(
     reasons.push('Tighten toward the best product: remove repetition and ornamental explanation.');
   }
 
-  const modeHint =
-    mode === 'nonfiction' || mode === 'essay'
-      ? 'Prefer claim precision and evidence density over invented drama. Never invent fiction beats.'
-      : mode === 'poetry'
-        ? 'Prefer compression and image pressure over explanation.'
-        : 'Prefer scene turns, concrete behaviour, and voice over decorative abstraction.';
+  const modeHint = mode === 'nonfiction' || mode === 'essay'
+    ? 'Prefer claim precision and evidence density over invented drama. Never invent fiction beats.'
+    : mode === 'poetry'
+      ? 'Prefer compression and image pressure over explanation.'
+      : 'Prefer scene turns, concrete behaviour, and voice over decorative abstraction.';
 
   const cutBrief = needsCut
     ? [
@@ -297,9 +289,7 @@ export function planQualityCut(
         'Do not force a percentage reduction. If the text is already lean, return it nearly unchanged.',
         targetWords ? `Aspire-to length: ~${targetWords.toLocaleString()} words.` : '',
         modeHint,
-      ]
-        .filter(Boolean)
-        .join(' ');
+      ].filter(Boolean).join(' ');
 
   return {
     beforeWords,
