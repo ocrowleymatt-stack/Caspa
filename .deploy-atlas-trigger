@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T15:03:06Z
-reason: make recommendation acceptance and commission scope selection visually explicit so users can finish books without ambiguous workflow state
+deploy requested 2026-08-09T15:10:58Z
+reason: simplify Workshop into manuscript -> approve plan -> finish book -> review, with one-click recommended finish route
