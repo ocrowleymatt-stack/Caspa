@@ -1,0 +1,14 @@
+name: Council Live Smoke
+
+on:
+  push:
+    paths:
+      - '.github/workflows/council-live-smoke.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe live Council providers
+        run: node scripts/council-live-smoke.mjs
