@@ -7,17 +7,33 @@
   --font-serif: "Cormorant Garamond", "Charter", "Bitstream Charter", "Georgia", serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Deep Ink Editorial — calm workspace, crisp hierarchy, restrained colour */
-  --color-brand-primary: #8ea7ff; /* Periwinkle ink */
-  --color-brand-accent: #b9c7ff; /* Pale editorial highlight */
-  --color-brand-dark: #27366d; /* Deep ink shadow */
+  /* Midnight Plum Editorial — sitewide */
+  --color-brand-primary: #d4a6ff;
+  --color-brand-accent: #8fe3cf;
+  --color-brand-dark: #5d3e7a;
 
-  --color-surface-bg: #0d111b; /* Midnight ink */
-  --color-surface-card: #151b29; /* Raised editorial surface */
-  --color-surface-muted: #20283a; /* Controls / secondary panels */
-  --color-border-subtle: rgba(142, 167, 255, 0.14);
-  --color-text-primary: #f4f1e9; /* Warm paper */
-  --color-text-secondary: #aeb7ca; /* Quiet blue-grey */
+  --color-surface-bg: #0b0d14;
+  --color-surface-card: #15131f;
+  --color-surface-muted: #211d2e;
+  --color-border-subtle: rgba(212, 166, 255, 0.18);
+  --color-text-primary: #f6f1fa;
+  --color-text-secondary: #bdb4c8;
+}
+
+:root {
+  color-scheme: dark;
+  --caspa-bg: #0b0d14;
+  --caspa-surface: #15131f;
+  --caspa-surface-2: #211d2e;
+  --caspa-surface-3: #2b2440;
+  --caspa-primary: #d4a6ff;
+  --caspa-primary-strong: #b77dea;
+  --caspa-accent: #8fe3cf;
+  --caspa-text: #f6f1fa;
+  --caspa-muted: #bdb4c8;
+  --caspa-border: rgba(212, 166, 255, 0.20);
+  --caspa-danger: #ff9d9d;
+  --caspa-success: #8fe3cf;
 }
 
 @layer base {
@@ -30,6 +46,7 @@
     overflow-y: auto;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    background: var(--caspa-bg);
   }
   body {
     min-height: 100dvh;
@@ -43,7 +60,8 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     @apply bg-surface-bg text-text-primary antialiased;
-    background-color: var(--color-surface-bg);
+    background-color: var(--caspa-bg);
+    color: var(--caspa-text);
   }
   #root {
     min-height: 100dvh;
@@ -53,6 +71,11 @@
     overflow: visible;
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+    background:
+      radial-gradient(circle at 8% 0%, rgba(212,166,255,.08), transparent 32rem),
+      radial-gradient(circle at 92% 10%, rgba(143,227,207,.045), transparent 28rem),
+      var(--caspa-bg);
+    color: var(--caspa-text);
   }
   * {
     -webkit-tap-highlight-color: transparent;
@@ -77,7 +100,9 @@
 
 @layer components {
   .btn-nexus-primary {
-    @apply relative inline-flex justify-center items-center font-semibold transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs text-surface-bg bg-brand-primary tracking-wide;
+    @apply relative inline-flex justify-center items-center font-semibold transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs tracking-wide;
+    color: #160f1f;
+    background: var(--caspa-primary);
   }
 
   .btn-nexus-primary:-moz-focusring,
@@ -86,13 +111,14 @@
   }
 
   .btn-nexus-primary:hover:not(:disabled) {
-    @apply bg-brand-accent transform -translate-y-[0.5px];
-    box-shadow: 0 3px 12px rgba(142, 167, 255, 0.22);
+    background: #e4c7ff;
+    transform: translateY(-0.5px);
+    box-shadow: 0 3px 16px rgba(212, 166, 255, 0.25);
   }
 
   .btn-nexus-primary:focus-visible,
   .btn-nexus-glass:focus-visible {
-    outline: 2px solid rgba(185, 199, 255, 0.8);
+    outline: 2px solid var(--caspa-accent);
     outline-offset: 2px;
   }
 
@@ -101,11 +127,15 @@
   }
 
   .btn-nexus-glass {
-    @apply relative inline-flex justify-center items-center font-medium text-text-primary transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs bg-transparent border border-border-subtle tracking-wide;
+    @apply relative inline-flex justify-center items-center font-medium transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs bg-transparent tracking-wide;
+    color: var(--caspa-text);
+    border: 1px solid var(--caspa-border);
   }
 
   .btn-nexus-glass:hover:not(:disabled) {
-    @apply bg-surface-muted border-white/20 text-brand-accent;
+    background: var(--caspa-surface-2);
+    border-color: rgba(143,227,207,.34);
+    color: var(--caspa-accent);
   }
 
   .btn-nexus-danger {
@@ -117,8 +147,109 @@
   }
 
   .ethereal-panel {
-    @apply bg-surface-card border border-border-subtle rounded-xl;
-    box-shadow: 0 8px 24px -14px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+    background: var(--caspa-surface);
+    border: 1px solid var(--caspa-border);
+    @apply rounded-xl;
+    box-shadow: 0 10px 28px -16px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  }
+}
+
+/*
+ * SITEWIDE UI NORMALISATION
+ * Legacy studios contain their own inline light palettes. These selectors deliberately
+ * override UI chrome so every tool reads as one product. Paper/manuscript previews are
+ * excluded so exported work remains paper-like.
+ */
+@layer base {
+  #root :where(h1,h2,h3,h4,h5,h6):not(.manuscript-page *):not(.prose *) {
+    color: var(--caspa-text) !important;
+  }
+
+  #root :where(p,small,label,legend):not(.manuscript-page *):not(.prose *) {
+    border-color: var(--caspa-border);
+  }
+
+  #root :where(input,textarea,select):not(.manuscript-page *) {
+    background: #100f19 !important;
+    color: var(--caspa-text) !important;
+    border-color: rgba(212,166,255,.26) !important;
+    box-shadow: none !important;
+  }
+
+  #root :where(input,textarea,select):focus:not(.manuscript-page *) {
+    border-color: var(--caspa-primary) !important;
+    outline: 2px solid rgba(212,166,255,.16) !important;
+    outline-offset: 1px;
+  }
+
+  #root :where(input,textarea)::placeholder {
+    color: #83798f !important;
+  }
+
+  #root button:not(.manuscript-page *) {
+    border-color: var(--caspa-border) !important;
+  }
+
+  #root button:focus-visible,
+  #root a:focus-visible,
+  #root [role="button"]:focus-visible {
+    outline: 2px solid var(--caspa-accent) !important;
+    outline-offset: 2px !important;
+  }
+
+  #root :where(header,nav,aside):not(.manuscript-page *) {
+    border-color: var(--caspa-border) !important;
+  }
+
+  /* React serialises inline #fff/#ffffff backgrounds as rgb(255,255,255). */
+  #root [style*="background: rgb(255, 255, 255)"]:not(.manuscript-page):not(.paper-preview),
+  #root [style*="background-color: rgb(255, 255, 255)"]:not(.manuscript-page):not(.paper-preview) {
+    background: var(--caspa-surface) !important;
+    color: var(--caspa-text) !important;
+    border-color: var(--caspa-border) !important;
+  }
+
+  /* Common old pale-blue/cream UI surfaces. */
+  #root [style*="background: rgb(238, 241, 247)"],
+  #root [style*="background: rgb(232, 236, 255)"],
+  #root [style*="background: rgb(237, 240, 255)"],
+  #root [style*="background: rgb(247, 248, 250)"],
+  #root [style*="background: rgb(250, 250, 250)"] {
+    background: var(--caspa-surface-2) !important;
+    color: var(--caspa-text) !important;
+    border-color: var(--caspa-border) !important;
+  }
+
+  /* Old navy body copy on light cards becomes legible on the new dark system. */
+  #root [style*="color: rgb(24, 32, 51)"],
+  #root [style*="color: rgb(39, 54, 109)"],
+  #root [style*="color: rgb(100, 112, 138)"] {
+    color: var(--caspa-text) !important;
+  }
+
+  #root [style*="color: rgb(174, 183, 202)"],
+  #root [style*="color: rgb(143, 155, 184)"] {
+    color: var(--caspa-muted) !important;
+  }
+
+  /* Keep status/error surfaces dark and readable instead of reverting to pastel cards. */
+  #root [style*="background: rgb(255, 240, 239)"],
+  #root [style*="background: rgb(237, 240, 255)"] {
+    background: #241821 !important;
+    color: #ffd0d0 !important;
+  }
+
+  #root a:not(.manuscript-page *) {
+    color: var(--caspa-primary);
+  }
+
+  #root a:hover:not(.manuscript-page *) {
+    color: var(--caspa-accent);
+  }
+
+  ::selection {
+    background: rgba(212,166,255,.35);
+    color: #fff;
   }
 }
 
@@ -132,20 +263,27 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-slate-400/50 rounded-full border-4 border-transparent bg-clip-padding hover:bg-slate-400/80;
+    background: rgba(212,166,255,.28);
+    border-radius: 999px;
+    border: 4px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(143,227,207,.44);
   }
 
   .custom-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(142, 167, 255, 0.28) transparent;
+    scrollbar-color: rgba(212, 166, 255, 0.30) transparent;
   }
 
   .shadow-soft {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.18), 0 1px 2px -1px rgb(0 0 0 / 0.16);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.28), 0 1px 2px -1px rgb(0 0 0 / 0.24);
   }
 
   .shadow-brand {
-    box-shadow: 0 10px 24px -8px rgba(142, 167, 255, 0.24);
+    box-shadow: 0 10px 26px -8px rgba(212, 166, 255, 0.26);
   }
 
   .no-scrollbar::-webkit-scrollbar {
@@ -163,7 +301,9 @@
   }
 
   .app-header {
-    @apply shrink-0 bg-surface-card border-b border-border-subtle z-50;
+    @apply shrink-0 border-b z-50;
+    background: var(--caspa-surface);
+    border-color: var(--caspa-border);
   }
 
   .studio-header {
@@ -181,14 +321,6 @@
 
   .custom-scrollbar::-webkit-scrollbar {
     @apply w-1.5 h-1.5;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-white/10 rounded-full hover:bg-brand-primary/40 transition-colors cursor-pointer;
   }
 
   @media (max-width: 1440px) {
@@ -274,6 +406,6 @@
 }
 
 select option {
-  background-color: var(--color-surface-card) !important;
-  color: var(--color-text-primary) !important;
+  background-color: var(--caspa-surface) !important;
+  color: var(--caspa-text) !important;
 }
