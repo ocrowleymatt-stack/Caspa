@@ -1,0 +1,59 @@
+name: Identify Existing AI Services
+
+on:
+  push:
+    paths:
+      - '.github/workflows/identify-existing-ai-services.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Identify local AI services
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== CONTAINERS ==='
+          if command -v docker >/dev/null 2>&1; then
+            docker ps --format 'name={{.Names}} image={{.Image}} ports={{.Ports}}' | sed -E 's/(token|key|secret)=[^ ,]+/\1=[redacted]/Ig' || true
+          fi
+          echo '=== PORT 9999 ==='
+          for path in /health / /v1/models /models /api/models; do
+            code=$(curl -sS -o /tmp/p9999 -w '%{http_code}' --max-time 5 "http://127.0.0.1:9999${path}" 2>/dev/null || true)
+            echo "path=${path} http=${code}"
+            head -c 300 /tmp/p9999 2>/dev/null | tr '\n' ' '; echo
+          done
+          echo '=== 9999 CHAT TEST ==='
+          for model in llama3.2 mistral qwen3.5:9b qwen3.5; do
+            payload=$(printf '{"model":"%s","messages":[{"role":"user","content":"Reply only OK"}],"max_tokens":4,"temperature":0}' "$model")
+            code=$(curl -sS -o /tmp/chat9999 -w '%{http_code}' --max-time 15 -H 'Content-Type: application/json' -d "$payload" http://127.0.0.1:9999/api/chat/completions 2>/dev/null || true)
+            echo "model=${model} http=${code}"
+            head -c 500 /tmp/chat9999 2>/dev/null | tr '\n' ' '; echo
+            if [ "$code" = "200" ]; then break; fi
+          done
+          echo '=== PORT PROCESS OWNERS ==='
+          ss -ltnp 2>/dev/null | grep -E ':(8080|8000|3001|8888|9999|11434)[[:space:]]' || true
+          REMOTE
