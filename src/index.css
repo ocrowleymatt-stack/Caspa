@@ -7,16 +7,17 @@
   --font-serif: "Cormorant Garamond", "Charter", "Bitstream Charter", "Georgia", serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-brand-primary: #d4af37; /* Soft Gold */
-  --color-brand-accent: #e2c057; /* Light Gold */
-  --color-brand-dark: #27210e; /* Deep Gold Shadow */
-  
-  --color-surface-bg: #141618; /* Warm Charcoal */
-  --color-surface-card: #1c1f24; /* Muted Graphite */
-  --color-surface-muted: #252a30; /* Medium Graphite */
-  --color-border-subtle: rgba(212, 175, 55, 0.08); /* Soft Gold Border Whisper */
-  --color-text-primary: #f3f0e8; /* Ivory Text */
-  --color-text-secondary: #a0a4ab; /* Muted Graphite/Ivory mix */
+  /* Deep Ink Editorial — calm workspace, crisp hierarchy, restrained colour */
+  --color-brand-primary: #8ea7ff; /* Periwinkle ink */
+  --color-brand-accent: #b9c7ff; /* Pale editorial highlight */
+  --color-brand-dark: #27366d; /* Deep ink shadow */
+
+  --color-surface-bg: #0d111b; /* Midnight ink */
+  --color-surface-card: #151b29; /* Raised editorial surface */
+  --color-surface-muted: #20283a; /* Controls / secondary panels */
+  --color-border-subtle: rgba(142, 167, 255, 0.14);
+  --color-text-primary: #f4f1e9; /* Warm paper */
+  --color-text-secondary: #aeb7ca; /* Quiet blue-grey */
 }
 
 @layer base {
@@ -50,27 +51,23 @@
     display: flex;
     flex-direction: column;
     overflow: visible;
-    /* Maintain safe area horizontally to prevent content running into screen corners */
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
-  * { 
-    -webkit-tap-highlight-color: transparent; 
+  * {
+    -webkit-tap-highlight-color: transparent;
   }
-  
-  /* Prevent iOS Safari from auto-zooming on focus of fields with font-size < 16px */
+
   @media screen and (max-width: 768px) {
     input, textarea, select, [contenteditable="true"] {
       font-size: 16px !important;
     }
   }
 
-  /* Buttery kinetic momentum scrolling on scroll containers on Safari */
   .overflow-y-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll, .custom-scrollbar {
     -webkit-overflow-scrolling: touch !important;
   }
 
-  /* Standard touch target responsiveness and text selection prevention on interactive items */
   button, select, a, [role="button"] {
     touch-action: manipulation;
     user-select: none;
@@ -79,11 +76,10 @@
 }
 
 @layer components {
-  /* Caspa Buttons */
   .btn-nexus-primary {
     @apply relative inline-flex justify-center items-center font-semibold transition-all overflow-hidden rounded-md px-2.5 py-1 text-xs text-surface-bg bg-brand-primary tracking-wide;
   }
-  
+
   .btn-nexus-primary:-moz-focusring,
   .btn-nexus-primary:focus {
     outline: none;
@@ -91,9 +87,15 @@
 
   .btn-nexus-primary:hover:not(:disabled) {
     @apply bg-brand-accent transform -translate-y-[0.5px];
-    box-shadow: 0 2px 8px rgba(45, 212, 191, 0.15);
+    box-shadow: 0 3px 12px rgba(142, 167, 255, 0.22);
   }
-  
+
+  .btn-nexus-primary:focus-visible,
+  .btn-nexus-glass:focus-visible {
+    outline: 2px solid rgba(185, 199, 255, 0.8);
+    outline-offset: 2px;
+  }
+
   .btn-nexus-primary:disabled {
     @apply opacity-50 cursor-not-allowed;
   }
@@ -103,7 +105,7 @@
   }
 
   .btn-nexus-glass:hover:not(:disabled) {
-    @apply bg-surface-muted border-white/20 text-brand-primary;
+    @apply bg-surface-muted border-white/20 text-brand-accent;
   }
 
   .btn-nexus-danger {
@@ -114,10 +116,9 @@
     @apply bg-red-600;
   }
 
-  /* Clean Solid Panels */
   .ethereal-panel {
     @apply bg-surface-card border border-border-subtle rounded-xl;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 8px 24px -14px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.025) inset;
   }
 }
 
@@ -136,15 +137,15 @@
 
   .custom-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+    scrollbar-color: rgba(142, 167, 255, 0.28) transparent;
   }
 
   .shadow-soft {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.18), 0 1px 2px -1px rgb(0 0 0 / 0.16);
   }
 
   .shadow-brand {
-    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
+    box-shadow: 0 10px 24px -8px rgba(142, 167, 255, 0.24);
   }
 
   .no-scrollbar::-webkit-scrollbar {
@@ -164,7 +165,7 @@
   .app-header {
     @apply shrink-0 bg-surface-card border-b border-border-subtle z-50;
   }
-  
+
   .studio-header {
     @apply shrink-0 sticky top-0 z-50;
   }
@@ -197,7 +198,6 @@
   }
 }
 
-/* Animations */
 @keyframes pulse-soft {
   0%, 100% { opacity: 0.2; }
   50% { opacity: 0.5; }
@@ -209,12 +209,10 @@
 
 @layer base {
   @media print {
-    /* Hide non-printable elements */
     nav, button, .no-print, header, footer:not(.print-footer), aside, [role="navigation"], [role="banner"] {
       display: none !important;
     }
 
-    /* Force all flex parents to expand and overflow to show */
     html, body, #root, [class*="flex-"], main, [class*="overflow-"] {
       height: auto !important;
       min-height: 0 !important;
@@ -224,7 +222,6 @@
       position: static !important;
     }
 
-    /* Reset background and layout for print */
     body {
       background: white !important;
       padding: 0 !important;
@@ -238,13 +235,11 @@
        width: 100% !important;
     }
 
-    /* Format pages for a book feel - standard trade size */
     @page {
       size: 8.5in 11in;
       margin: 1.25in;
     }
 
-    /* Print-specific overrides for the manuscript preview */
     .lg\:col-span-12 {
       display: block !important;
       width: 100% !important;
@@ -278,9 +273,7 @@
   }
 }
 
-/* Force legibility and consistent theme coloring on option tags in drop-down menus web-wide */
 select option {
   background-color: var(--color-surface-card) !important;
   color: var(--color-text-primary) !important;
 }
-
