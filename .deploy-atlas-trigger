@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T23:50:20Z
-reason: deploy browser-verified body-level high-speed multi-file upload control outside React shell
+deploy requested 2026-08-09T23:57:10Z
+reason: prevent finish-book analysis crashes by timing out direct AI analysis and falling back to deterministic finish plans
