@@ -63,7 +63,7 @@ jobs:
             if (result.display === 'none' || result.visibility === 'hidden' || Number(result.opacity) <= 0) throw new Error('Fast upload is hidden');
             if (result.rect.width < 180 || result.rect.height < 40) throw new Error('Fast upload control is too small');
             if (result.rect.x < 0 || result.rect.y < 0 || result.rect.x + result.rect.width > result.viewport.width || result.rect.y + result.rect.height > result.viewport.height) throw new Error('Fast upload is outside viewport');
-            if (Number(result.zIndex) < 1000000) throw new Error('Fast upload z-index is unexpectedly low');
+            if (!/^\d+$/.test(result.zIndex) || Number(result.zIndex) < 1000000) throw new Error(`Fast upload z-index invalid: ${result.zIndex}`);
             await page.screenshot({ path: '/tmp/atlas-fast-upload.png', fullPage: false });
           } finally {
             await browser.close();
