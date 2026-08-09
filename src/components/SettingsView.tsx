@@ -29,6 +29,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { GENRES, TONES, MATURITY_LEVELS, PROJECT_TYPES } from '../constants';
 import { listDriveBackups, uploadDriveBackup, downloadDriveBackup, DriveBackupFile, BackupPayload } from '../lib/googleDrive';
 import { loginWithGoogle, getCachedAccessToken } from '../lib/firebase';
+import CloudBackupPanel from './CloudBackupPanel';
 
 interface Props {
   project: Project;
@@ -661,150 +662,17 @@ export default function SettingsView({
           </div>
         </section>
 
-        {/* Google Drive & Resilient Backups */}
-        <section className="space-y-3">
-          <div className="flex items-center gap-1.5 text-brand-primary mb-3 px-2 justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
-              <span className="text-xs font-semibold uppercase tracking-widest">Google Workspace Backup & Recovery</span>
-            </div>
-            {isGDriveConnected ? (
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-[#34A853] bg-[#34A853]/10 border border-[#34A853]/20 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                <div className="w-1 h-1 rounded-full bg-[#34A853]" /> GDrive Active
-              </span>
-            ) : (
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-text-secondary opacity-40">Offline Mode</span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <div className="p-4 ethereal-panel border border-border-subtle rounded space-y-2 shadow-xl relative overflow-hidden flex flex-col justify-between">
-              <div className="space-y-3">
-                <h4 className="text-xs font-semibold text-brand-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                  <UploadCloud size={16} /> Cloud Vaulting
-                </h4>
-                <p className="text-xs text-text-secondary leading-relaxed opacity-60">
-                  Establish a secure redundant snapshot of the current active workspace directly onto your Google Drive account, fully encompassing chapters, structural plots, and intelligence indexes.
-                </p>
-              </div>
-
-              <div className="pt-2">
-                {isGDriveConnected ? (
-                  <button
-                    onClick={handleGDriveBackup}
-                    disabled={isBackingUp}
-                    className="w-full py-2 bg-brand-primary text-white hover:brightness-110 active:scale-95 text-xs font-semibold uppercase tracking-wider rounded transition-all shadow-lg hover:shadow-brand-primary/20 flex items-center justify-center gap-2"
-                  >
-                    {isBackingUp ? (
-                      <>
-                        <RefreshCw className="animate-spin" size={12} />
-                        Compressing & Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <UploadCloud size={12} />
-                        Push Workspace Backup
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleConnectGDrive}
-                    className="w-full py-2 bg-brand-primary text-white hover:brightness-110 active:scale-95 text-xs font-semibold uppercase tracking-[0.2em] rounded transition-all shadow-md flex items-center justify-center gap-2"
-                  >
-                    Connect Google Drive
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="p-4 ethereal-panel border border-border-subtle rounded space-y-2 shadow-xl relative overflow-hidden flex flex-col justify-between">
-              <div className="space-y-3">
-                <h4 className="text-xs font-semibold text-brand-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                  <FolderOpen size={16} /> Restore Manifest
-                </h4>
-                <p className="text-xs text-text-secondary leading-relaxed opacity-60">
-                  Recover previously secured snapshots and load them directly into your workstation. All active drafting spaces will be fully synchronized with the selected recovery state.
-                </p>
-              </div>
-
-              <div className="pt-2 min-h-[50px] flex flex-col justify-end">
-                {!isGDriveConnected ? (
-                  <div className="text-xs font-medium text-text-secondary opacity-40 italic text-center py-2 h-full flex items-center justify-center">
-                    Establish Drive link to list backups.
-                  </div>
-                ) : isLoadingDriveBackups ? (
-                  <div className="flex items-center justify-center gap-2 text-xs font-mono font-medium text-text-secondary opacity-60 py-2">
-                    <RefreshCw className="animate-spin" size={12} /> Scanning Drive cloud records...
-                  </div>
-                ) : driveBackups.length === 0 ? (
-                  <div className="text-xs font-medium text-brand-primary/60 opacity-60 italic text-center py-2 border border-dashed border-border-subtle/40 rounded">
-                    No active Caspa backups found on Drive. Create one using the Push tool!
-                  </div>
-                ) : (
-                  <div className="max-h-[120px] overflow-y-auto space-y-2 custom-scrollbar pr-1">
-                    {driveBackups.map((file) => (
-                      <button
-                        key={file.id}
-                        onClick={() => handleRestoreFromDrive(file.id, file.name)}
-                        className="w-full p-3 bg-white/5 border border-white/5 hover:border-brand-primary/30 text-left rounded transition-all group flex items-center justify-between"
-                      >
-                         <div className="space-y-1">
-                           <div className="text-xs font-semibold text-text-primary group-hover:text-brand-primary transition-colors truncate max-w-[200px]">
-                             {file.name.replace('Caspa_Restore_', '').replace('.json', '')}
-                           </div>
-                           <div className="text-[10px] font-mono text-text-secondary/60">
-                             Modified: {new Date(file.modifiedTime).toLocaleString()}
-                           </div>
-                         </div>
-                         <span className="text-[10px] font-semibold bg-brand-primary/10 text-brand-primary px-2.5 py-1 rounded-md uppercase tracking-widest group-hover:bg-brand-primary group-hover:text-white transition-all">Reload</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Dropbox & iCloud Companion Desk */}
-        <section className="space-y-3">
-          <div className="flex items-center gap-1.5 text-brand-primary mb-3 px-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
-            <span className="text-xs font-semibold uppercase tracking-widest">External Ingestion & iCloud Companion Desk</span>
-          </div>
-
-          <div className="p-4 ethereal-panel border border-border-subtle rounded space-y-2 shadow-xl relative overflow-hidden">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-white/5 pb-6">
-              <div className="space-y-1.5">
-                <h4 className="text-xs font-semibold text-brand-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                  Dropbox & iCloud Bypass
-                </h4>
-                <p className="text-xs text-text-secondary max-w-xl opacity-60 leading-relaxed">
-                  Due to strict sandboxed filesystem boundaries on iOS devices, direct automated background scraping of the iCloud Drive or Dropbox folders is blocked by system-level Apple security regulations. 
-                </p>
-              </div>
-              <div className="text-xs font-semibold bg-[#fb0] text-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-yellow-500/20 shadow-inner">
-                Bypass Mode
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs leading-relaxed text-text-secondary opacity-80">
-              <div className="space-y-3">
-                <h5 className="font-semibold text-text-primary uppercase tracking-widest text-[10px] text-brand-primary/80">Option A: The Local Files Drop (No Setup Needed)</h5>
-                <p>
-                  You can place your iCloud or Dropbox manuscripts inside the iOS <strong className="text-text-primary">Files</strong> app (or your Mac Finder). When updating, simply tap <strong className="text-text-primary">"Ingestion Desk"</strong> inside the Manuscript Architect to drag-and-drop or select the entire directory pack. Caspa will run instant delta scans to pull the latest changes of all chapters automatically!
-                </p>
-              </div>
-              <div className="space-y-3">
-                <h5 className="font-semibold text-text-primary uppercase tracking-widest text-[10px] text-brand-primary/80">Option B: Dropbox Manual Sync Target</h5>
-                <p>
-                  If you prefer syncing files via Dropbox: click the <strong className="text-text-primary">"Neural Archive Export"</strong> button on the right to download your complete encrypted database blueprint JSON, and copy it straight safely into your shared Dropbox catalog. You can restore it cleanly on any device anytime!
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        <CloudBackupPanel
+          project={project}
+          chapters={chapters}
+          characters={characters}
+          plotNodes={plotNodes}
+          research={research}
+          sourceMaterials={sourceMaterials}
+          externalReviews={externalReviews}
+          onRestoreBackup={onRestoreBackup}
+          onNotify={onNotify}
+        />
 
         {/* Maturity Control */}
         <section className="space-y-3">
