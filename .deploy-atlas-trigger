@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T13:24:30Z
-reason: make Full path workflow panel legible in the dark plum theme with high-contrast text and state colours
+deploy requested 2026-08-09T13:27:10Z
+reason: restore Fast Data Upload, isolate browser workspaces per user, and scope server backups by verified Firebase UID or local device
