@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/final-router-smoke.yml'
 
+# Final Council polish validation: 2026-08-09T13:14Z
 jobs:
   smoke:
     runs-on: ubuntu-latest
