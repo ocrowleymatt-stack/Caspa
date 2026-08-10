@@ -117,8 +117,8 @@ jobs:
         run: |
           sleep 2
           DOCTOR=$(curl -fsS "https://caspa.ocrowley.com/api/doctor")
-          echo "$DOCTOR" | grep -q '"service":"Caspa"' || {
-            echo "::error::Public /api/doctor is not serving Caspa."
+          echo "$DOCTOR" | grep -q '"service":"Atlas"' || {
+            echo "::error::Public /api/doctor is not serving Atlas."
             echo "$DOCTOR" | head -c 800
             exit 1
           }
