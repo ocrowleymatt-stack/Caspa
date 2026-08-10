@@ -22,7 +22,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Tighten repair-script duplicate check
+      - name: Tighten repair-script duplicate checks
         shell: bash
         run: |
           python3 - <<'PY'
@@ -33,6 +33,26 @@ jobs:
           new = "if 'fastUploadRef' in s or 'onFastUpload=' in s:\n    raise SystemExit('Launchpad upload wiring still present in App.tsx after repair')"
           if old in s:
               s = s.replace(old, new, 1)
+
+          marker = "# Atlas brand kicker on launch screen."
+          if 'old_footer_upload = ' not in s:
+              footer_patch = r'''# Remove the second launchpad upload entry point from the sticky footer too.
+          old_footer_upload = ''' + "'''" + r'''            <button
+              type="button"
+              onClick={() => fastUploadRef.current?.click()}
+              disabled={fastUploading}
+              style={{ ...ghostButton, color: '#ffe2a5', borderColor: '#6b5430', background: '#21180f' }}
+            >
+              <UploadCloud size={17} /> Fast Data Upload
+            </button>
+''' + "'''" + r'''
+          if old_footer_upload in s:
+              s = s.replace(old_footer_upload, '', 1)
+
+          '''
+              if marker not in s:
+                  raise SystemExit('Atlas launch brand marker not found in repair script')
+              s = s.replace(marker, footer_patch + marker, 1)
           p.write_text(s)
           PY
       - name: Apply Atlas shell identity repair
