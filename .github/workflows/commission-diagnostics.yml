@@ -9,7 +9,7 @@ on:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       ATLAS_HOST: 116.202.24.63
@@ -23,18 +23,23 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_atlas
           chmod 600 ~/.ssh/id_atlas
           ssh-keyscan -H "$ATLAS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Inspect current finish-book job — live recheck
+
+      - name: Retry retained checkpoint and verify recovery starts
         shell: bash
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/id_atlas -o IdentitiesOnly=yes "$ATLAS_USER@$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          echo '--- health ---'
+          JOB='0420dfe9-2899-491f-80ca-399369daddac'
+          echo '--- build ---'
           curl -fsS http://127.0.0.1:3000/health
-          echo '\n--- commission jobs ---'
-          curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); const xs=(j.data?.jobs||[]).filter(x=>x.type==='commission').slice(0,20).map(x=>({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,createdAt:x.createdAt,updatedAt:x.updatedAt,result:{hasArtefact:!!(x.result?.artefact||x.result?.finalText),chars:(x.result?.artefact||x.result?.finalText||'').length,chapters:Array.isArray(x.result?.chapters)?x.result.chapters.length:0,words:x.result?.words,targetWords:x.result?.targetWords}})); console.log(JSON.stringify(xs,null,2))})"
-          echo '--- recent upstream failures ---'
-          tail -2000 /var/log/nginx/error.log 2>/dev/null | grep -Ei 'upstream timed out|504|commission|gold/jobs|ai/call' | tail -160 || true
-          echo '--- pm2 recent ---'
-          pm2 logs caspa --nostream --lines 1200 2>&1 | grep -Ei 'commission|writing:|length-audit|final-qa|failed|targetWords|server job|gemini|timeout|abort' | tail -300 || true
+          echo
+          echo '--- before ---'
+          curl -fsS "http://127.0.0.1:3000/api/caspa/gold/jobs/$JOB" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s).data; console.log(JSON.stringify({id:j.id,status:j.status,stage:j.stage,progress:j.progress,error:j.error,updatedAt:j.updatedAt},null,2))})"
+          echo '--- retry ---'
+          curl -fsS -X POST "http://127.0.0.1:3000/api/caspa/gold/jobs/$JOB/retry"
+          echo
+          sleep 5
+          echo '--- after ---'
+          curl -fsS "http://127.0.0.1:3000/api/caspa/gold/jobs/$JOB" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s).data; console.log(JSON.stringify({id:j.id,status:j.status,stage:j.stage,progress:j.progress,error:j.error,updatedAt:j.updatedAt},null,2))})"
           REMOTE
