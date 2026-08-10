@@ -1,0 +1,41 @@
+name: Inspect Live Commission
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-live-commission.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Inspect live Commission jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'python3 - <<"PY"
+import json, pathlib
+p=pathlib.Path("/root/Caspa/data/caspa-jobs.json")
+obj=json.loads(p.read_text())
+jobs=obj.get("jobs",[])
+rep=[]
+for j in jobs:
+    inp=j.get("input") or {}
+    if inp.get("repairOnly") or inp.get("repairSourceJobId"):
+        rep.append(j)
+for j in sorted(rep,key=lambda x:x.get("updatedAt", ""), reverse=True)[:5]:
+    print(json.dumps({
+      "id":j.get("id"),"status":j.get("status"),"progress":j.get("progress"),"stage":j.get("stage"),"updatedAt":j.get("updatedAt"),"createdAt":j.get("createdAt"),"error":j.get("error"),
+      "resultWords":((j.get("result") or {}).get("words")),"targetWords":((j.get("result") or {}).get("targetWords"))
+    }))
+PY'
