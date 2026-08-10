@@ -23,20 +23,20 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_atlas
           chmod 600 ~/.ssh/id_atlas
           ssh-keyscan -H "$ATLAS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Inspect repeated finish-book failure
+      - name: Inspect current finish-book job
         shell: bash
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/id_atlas -o IdentitiesOnly=yes "$ATLAS_USER@$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           echo '--- health ---'
-          curl -fsS http://127.0.0.1:3000/health | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); console.log(JSON.stringify({status:j.status,gitSha:j.gitSha,uptime:j.uptime}))})"
-          echo '--- recent commission jobs incl payload metadata ---'
-          curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); const xs=(j.data?.jobs||[]).filter(x=>x.type==='commission').slice(0,15).map(x=>({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,createdAt:x.createdAt,updatedAt:x.updatedAt,brief:{mode:x.payload?.brief?.mode,targetWordCount:x.payload?.brief?.targetWordCount,title:x.payload?.brief?.title},scope:x.payload?.scope,selectedCount:Array.isArray(x.payload?.selectedRecommendationIds)?x.payload.selectedRecommendationIds.length:null,result:{hasArtefact:!!(x.result?.artefact||x.result?.finalText),chars:(x.result?.artefact||x.result?.finalText||'').length,chapters:Array.isArray(x.result?.chapters)?x.result.chapters.length:0,words:x.result?.words,targetWords:x.result?.targetWords}})); console.log(JSON.stringify(xs,null,2))})"
-          echo '--- recent finish endpoint traffic ---'
-          tail -3000 /var/log/nginx/access.log 2>/dev/null | grep -E '/api/caspa/gold/(commission|jobs)' | tail -160 || true
-          echo '--- recent 504 / upstream failures ---'
-          tail -1000 /var/log/nginx/error.log 2>/dev/null | grep -Ei 'upstream timed out|504|commission|gold/jobs' | tail -120 || true
-          echo '--- pm2 finish tail ---'
-          pm2 logs caspa --nostream --lines 800 2>&1 | grep -Ei 'commission|writing:|length-audit|final-qa|failed|targetWords|target word|server job' | tail -220 || true
+          curl -fsS http://127.0.0.1:3000/health
+          echo '\n--- commission jobs ---'
+          curl -fsS http://127.0.0.1:3000/api/caspa/gold/jobs | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s); const xs=(j.data?.jobs||[]).filter(x=>x.type==='commission').slice(0,20).map(x=>({id:x.id,status:x.status,stage:x.stage,progress:x.progress,error:x.error,createdAt:x.createdAt,updatedAt:x.updatedAt,brief:{mode:x.payload?.brief?.mode,targetWordCount:x.payload?.brief?.targetWordCount,title:x.payload?.brief?.title},scope:x.payload?.scope,result:{hasArtefact:!!(x.result?.artefact||x.result?.finalText),chars:(x.result?.artefact||x.result?.finalText||'').length,chapters:Array.isArray(x.result?.chapters)?x.result.chapters.length:0,words:x.result?.words,targetWords:x.result?.targetWords}})); console.log(JSON.stringify(xs,null,2))})"
+          echo '--- recent finish traffic ---'
+          tail -5000 /var/log/nginx/access.log 2>/dev/null | grep -E '/api/caspa/gold/(commission|jobs)' | tail -200 || true
+          echo '--- recent upstream failures ---'
+          tail -2000 /var/log/nginx/error.log 2>/dev/null | grep -Ei 'upstream timed out|504|commission|gold/jobs|ai/call' | tail -160 || true
+          echo '--- pm2 recent ---'
+          pm2 logs caspa --nostream --lines 1200 2>&1 | grep -Ei 'commission|writing:|length-audit|final-qa|failed|targetWords|server job|gemini|timeout|abort' | tail -300 || true
           REMOTE
