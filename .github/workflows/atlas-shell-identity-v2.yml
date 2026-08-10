@@ -23,7 +23,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply deterministic Atlas repair
-        run: python3 scripts/atlas-shell-identity-v2.py
+        run: python3 scripts/run-atlas-shell-identity-v2.py
       - name: Test
         run: npm test
       - name: Production build
@@ -36,7 +36,8 @@ jobs:
           grep -q '/atlas-logo.svg' src/App.tsx
           test "$(grep -c 'className="atlas-mobile-upload"' src/App.tsx)" -eq 1
           ! grep -q 'fastUploadRef' src/App.tsx
-          ! grep -q 'onFastUpload=' src/App.tsx
+          ! grep -Fq '<LaunchpadView onStart={startProject} onFastUpload=' src/App.tsx
+          ! grep -Fq 'function LaunchpadView({ onStart, onFastUpload' src/App.tsx
           grep -q '>ATLAS</div>' src/App.tsx
           grep -q '/api/atlas/knowledge' src/services/knowledgeClient.ts
           grep -q 'X-Atlas-Local-Scope' src/services/knowledgeClient.ts
@@ -53,6 +54,6 @@ jobs:
           fi
           git config user.name atlas-automation
           git config user.email atlas-automation@users.noreply.github.com
-          git add src/App.tsx src/main.tsx index.html src/services/knowledgeClient.ts src/routes/caspa-knowledge-routes.ts server.ts src/services/doctorService.ts
+          git add scripts/atlas-shell-identity-v2.py src/App.tsx src/main.tsx index.html src/services/knowledgeClient.ts src/routes/caspa-knowledge-routes.ts server.ts src/services/doctorService.ts
           git commit -m 'Restore Atlas identity and one mobile upload control'
           git push origin HEAD:main
