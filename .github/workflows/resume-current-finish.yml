@@ -1,0 +1,43 @@
+name: Resume Current Finish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/resume-current-finish.yml'
+
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Resume retained finish job and wait
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOB='0420dfe9-2899-491f-80ca-399369daddac'
+          BASE='https://caspa.ocrowley.com/api/caspa/gold/jobs'
+          echo 'Current state:'
+          curl -fsS "$BASE/$JOB"
+          echo
+          echo 'Retrying retained checkpoint:'
+          curl -fsS -X POST "$BASE/$JOB/retry"
+          echo
+          for i in $(seq 1 240); do
+            BODY=$(curl -fsS "$BASE/$JOB")
+            STATUS=$(printf '%s' "$BODY" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s).data; process.stdout.write(String(j.status||''))})")
+            STAGE=$(printf '%s' "$BODY" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s).data; process.stdout.write(String(j.stage||''))})")
+            PROGRESS=$(printf '%s' "$BODY" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s).data; process.stdout.write(String(j.progress||0))})")
+            echo "[$i] status=$STATUS progress=$PROGRESS stage=$STAGE"
+            if [ "$STATUS" = 'complete' ]; then
+              printf '%s' "$BODY" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s).data; console.log(JSON.stringify({id:j.id,status:j.status,stage:j.stage,progress:j.progress,words:j.result?.words,targetWords:j.result?.targetWords,updatedAt:j.updatedAt},null,2))})"
+              exit 0
+            fi
+            if [ "$STATUS" = 'failed' ]; then
+              printf '%s' "$BODY" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{let j=JSON.parse(s).data; console.error(JSON.stringify({id:j.id,status:j.status,stage:j.stage,progress:j.progress,error:j.error,updatedAt:j.updatedAt},null,2))})"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo 'Timed out waiting for finish job'
+          exit 2
