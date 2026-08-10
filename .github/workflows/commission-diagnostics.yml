@@ -23,7 +23,7 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_atlas
           chmod 600 ~/.ssh/id_atlas
           ssh-keyscan -H "$ATLAS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-      - name: Inspect current finish-book job — speed recheck
+      - name: Inspect current finish-book job — intervention check
         shell: bash
         run: |
           set -euo pipefail
