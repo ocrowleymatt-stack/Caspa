@@ -1,0 +1,127 @@
+name: Recover Finish Checkpoint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-finish-checkpoint.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-deploy-recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Patch failed-job resume and recovery UX
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/services/commissionService.ts')
+          s = p.read_text()
+          old = """      if (existing?.status === 'failed') {
+        // Failed jobs retain their checkpoint server-side, but a fresh job is
+        // deliberately submitted from the latest client state on explicit retry.
+        forgetActiveJobId(brief);
+      }
+"""
+          new = """      if (existing?.status === 'failed') {
+        // Resume the SAME persisted job. Its checkpoint contains the completed
+        // manuscript, so retry must fill the remaining deficit rather than
+        // throwing away 40k+ words and commissioning a fresh book.
+        onProgress({ phase: 'resume', message: 'Resuming from the saved Atlas checkpoint…', percent: Math.max(2, Number(existing.progress || 2)) });
+        const retryResponse = await fetch(`/api/caspa/gold/jobs/${encodeURIComponent(remembered)}/retry`, { method: 'POST' });
+        const retryJson = await retryResponse.json().catch(() => ({}));
+        if (!retryResponse.ok || !retryJson?.success) {
+          throw new Error(retryJson?.message || 'Atlas could not resume the saved finish checkpoint.');
+        }
+        return await pollServerJob(brief, remembered, onProgress, fallbackPromises);
+      }
+"""
+          if old not in s:
+              raise SystemExit('commissionService failed-job block not found')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('src/components/CommissionStudio.tsx')
+          s = p.read_text()
+          old = """            onRetry={() => setTab('recommendations')}
+"""
+          new = """            onRetry={() => {
+              if (state.error && state.diagnosis) {
+                void runCommission(state.selectedRecommendationIds, state.scope);
+              } else {
+                setTab('recommendations');
+              }
+            }}
+"""
+          if old not in s:
+              raise SystemExit('CommissionStudio onRetry block not found')
+          s = s.replace(old, new, 1)
+          old = """    return <article style={card}><h2 style={sectionTitle}>The finish run stopped</h2><p style={{ color: '#ffb4b4' }}>{error}</p><button type=\"button\" onClick={onRetry} style={primaryBtn}>Return to finish plan</button></article>;
+"""
+          new = """    return <article style={card}><h2 style={sectionTitle}>The finish run stopped</h2><p style={{ color: '#ffb4b4' }}>{error}</p><p style={muted}>Your server checkpoint is retained. Resume continues from the saved manuscript rather than starting again.</p><button type=\"button\" onClick={onRetry} style={primaryBtn}><Wand2 size={17} /> Resume & complete book</button></article>;
+"""
+          if old not in s:
+              raise SystemExit('CommissionStudio stopped-state button not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Validate
+        run: |
+          npm ci
+          npm test
+          npm run build
+          test -f dist/index.html
+          test -f dist/server.cjs
+          git diff --check
+
+      - name: Commit fix and request production deploy
+        id: commit
+        shell: bash
+        run: |
+          git config user.name 'atlas-automation'
+          git config user.email 'atlas-automation@users.noreply.github.com'
+          printf 'finish checkpoint recovery %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          git add src/services/commissionService.ts src/components/CommissionStudio.tsx .deploy-atlas-trigger
+          git commit -m 'Resume failed finish jobs from server checkpoint'
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for production deployment
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          for i in $(seq 1 90); do
+            BODY=$(curl -fsS https://caspa.ocrowley.com/health 2>/dev/null || true)
+            if printf '%s' "$BODY" | grep -Fq "\"gitSha\":\"$EXPECTED_SHA\""; then
+              echo "Production is serving $EXPECTED_SHA"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Timed out waiting for production deploy'
+          exit 1
+
+      - name: Resume retained 42,893-word checkpoint
+        shell: bash
+        run: |
+          JOB='0420dfe9-2899-491f-80ca-399369daddac'
+          BEFORE=$(curl -fsS "https://caspa.ocrowley.com/api/caspa/gold/jobs/$JOB")
+          echo "$BEFORE" | grep -q '"status":"failed"' || echo 'Job is no longer failed; checking current state before retry.'
+          RESPONSE=$(curl -fsS -X POST "https://caspa.ocrowley.com/api/caspa/gold/jobs/$JOB/retry")
+          echo "$RESPONSE"
+          sleep 3
+          curl -fsS "https://caspa.ocrowley.com/api/caspa/gold/jobs/$JOB" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s).data; console.log(JSON.stringify({id:j.id,status:j.status,stage:j.stage,progress:j.progress,error:j.error,updatedAt:j.updatedAt},null,2))})"
