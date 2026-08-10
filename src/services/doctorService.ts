@@ -132,7 +132,7 @@ export async function getDoctorSnapshot() {
 
   return {
     status: readiness.ready ? ('ok' as const) : ('degraded' as const),
-    service: 'Caspa',
+    service: 'Atlas',
     version: build.version,
     gitSha: build.gitSha,
     gitShaShort: build.gitShaShort,

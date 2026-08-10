@@ -58,7 +58,7 @@ app.get("/health", (req, res) => {
   const build = getBuildInfo();
   res.json({
     status: "ok",
-    service: "Caspa",
+    service: "Atlas",
     version: build.version,
     gitSha: build.gitSha,
     gitShaShort: build.gitShaShort,
@@ -1004,6 +1004,7 @@ app.use("/api/caspa/export", caspaExportRoutes);
 app.use("/api/caspa/gold", caspaGoldRoutes);
 app.use("/api/caspa/novel-write-pro", caspaQualityRoutes);
 app.use("/api/caspa/storage", caspaStorageRoutes);
+app.use("/api/atlas/knowledge", caspaKnowledgeRoutes);
 app.use("/api/caspa/knowledge", caspaKnowledgeRoutes);
 app.use("/api/caspa/rewire", caspaRewireRoutes);
 app.use("/api/caspa/write", caspaWriteRoutes);
@@ -1428,7 +1429,7 @@ async function run() {
 
   // Listen — long AI/research calls need node HTTP timeouts > nginx default.
   const httpServer = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n📚 Caspa Studio running at http://0.0.0.0:${PORT}`);
+    console.log(`\n🧭 Atlas running at http://0.0.0.0:${PORT}`);
     console.log(`Environment: ${IS_DEVELOPMENT ? 'DEVELOPMENT' : 'PRODUCTION'}`);
     console.log(`Dist path: ${path.join(process.cwd(), 'dist')}\n`);
   });

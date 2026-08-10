@@ -176,7 +176,7 @@ new_css = """        .mobile-menu { display: none; }
         }"""
 s = replace_required(s, old_css, new_css, 'Atlas responsive shell CSS')
 
-if 'fastUploadRef' in s or 'onFastUpload=' in s:
+if 'fastUploadRef' in s or '<LaunchpadView onStart={startProject} onFastUpload=' in s or 'function LaunchpadView({ onStart, onFastUpload' in s:
     raise SystemExit('Duplicate Launchpad upload wiring remains')
 if s.count('className="atlas-mobile-upload"') != 1:
     raise SystemExit('Expected exactly one Atlas mobile upload control')

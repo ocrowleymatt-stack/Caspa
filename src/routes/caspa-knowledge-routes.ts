@@ -41,7 +41,7 @@ async function resolveScope(req: Request): Promise<string> {
     const verified = await verifyFirebaseIdToken(auth.slice(7).trim());
     return `firebase:${verified.uid}`;
   }
-  const local = String(req.headers['x-caspa-local-scope'] || '').trim();
+  const local = String(req.headers['x-atlas-local-scope'] || req.headers['x-caspa-local-scope'] || '').trim();
   if (validLocalScope(local)) return `local:${local}`;
   throw new Error('Authenticated Firebase token or local device scope required');
 }

@@ -47,7 +47,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
         <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#0d0912', color: '#f8f3fb', textAlign: 'center' }}>
           <div style={{ maxWidth: 480 }}>
             <div style={{ width: 64, height: 64, borderRadius: 18, margin: '0 auto 18px', display: 'grid', placeItems: 'center', background: '#d4a6ff', color: '#1a1021', fontSize: 28, fontWeight: 800 }}>!</div>
-            <h1 style={{ margin: '0 0 10px', fontSize: 28, letterSpacing: -1 }}>Caspa hit a snag</h1>
+            <h1 style={{ margin: '0 0 10px', fontSize: 28, letterSpacing: -1 }}>ATLAS hit a snag</h1>
             <p style={{ margin: '0 0 18px', color: '#b9aec2', lineHeight: 1.5 }}>
               Something broke in the studio. Your local drafts are usually still in this browser — reload and continue.
             </p>
@@ -59,7 +59,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
               onClick={() => window.location.reload()}
               style={{ marginTop: 18, border: 'none', borderRadius: 14, padding: '12px 18px', background: '#d4a6ff', color: '#1a1021', fontWeight: 800, cursor: 'pointer' }}
             >
-              Reload Caspa
+              Reload ATLAS
             </button>
           </div>
         </div>

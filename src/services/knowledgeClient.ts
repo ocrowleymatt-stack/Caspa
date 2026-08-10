@@ -34,7 +34,7 @@ async function authHeaders(): Promise<Record<string, string>> {
     if (!current) throw new Error('Your signed-in Atlas session is unavailable. Sign in again.');
     return { Authorization: `Bearer ${await current.getIdToken()}` };
   }
-  return { 'X-Caspa-Local-Scope': getDeviceBackupScope() };
+  return { 'X-Atlas-Local-Scope': getDeviceBackupScope() };
 }
 
 async function readJson(response: Response): Promise<any> {
@@ -46,18 +46,18 @@ async function readJson(response: Response): Promise<any> {
 }
 
 export async function getKnowledgeStatus(): Promise<KnowledgeStatus> {
-  const response = await fetch('/api/caspa/knowledge/status', { headers: await authHeaders() });
+  const response = await fetch('/api/atlas/knowledge/status', { headers: await authHeaders() });
   return readJson(response);
 }
 
 export async function getCloudAutopilotStatusClient(): Promise<CloudAutopilotStatus[]> {
-  const response = await fetch('/api/caspa/knowledge/cloud/status', { headers: await authHeaders() });
+  const response = await fetch('/api/atlas/knowledge/cloud/status', { headers: await authHeaders() });
   const data = await readJson(response);
   return data.connections || [];
 }
 
 export async function startCloudAutopilotOAuth(provider: 'dropbox' | 'gdrive'): Promise<string> {
-  const response = await fetch('/api/caspa/knowledge/cloud/oauth/start', {
+  const response = await fetch('/api/atlas/knowledge/cloud/oauth/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ provider }),
@@ -68,7 +68,7 @@ export async function startCloudAutopilotOAuth(provider: 'dropbox' | 'gdrive'): 
 }
 
 export async function runCloudAutopilotNow(provider: 'dropbox' | 'gdrive'): Promise<any> {
-  const response = await fetch('/api/caspa/knowledge/cloud/run', {
+  const response = await fetch('/api/atlas/knowledge/cloud/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ provider }),
@@ -77,7 +77,7 @@ export async function runCloudAutopilotNow(provider: 'dropbox' | 'gdrive'): Prom
 }
 
 export async function disconnectCloudAutopilotClient(provider: 'dropbox' | 'gdrive'): Promise<CloudAutopilotStatus[]> {
-  const response = await fetch(`/api/caspa/knowledge/cloud/${provider}`, {
+  const response = await fetch(`/api/atlas/knowledge/cloud/${provider}`, {
     method: 'DELETE',
     headers: await authHeaders(),
   });
@@ -91,7 +91,7 @@ export async function syncCloudKnowledgeClient(
   accessToken: string,
   maxFiles = 8,
 ): Promise<any> {
-  const response = await fetch('/api/caspa/knowledge/cloud/sync', {
+  const response = await fetch('/api/atlas/knowledge/cloud/sync', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -104,7 +104,7 @@ export async function syncCloudKnowledgeClient(
 }
 
 export async function searchKnowledgeClient(query: string, topK = 12): Promise<any[]> {
-  const response = await fetch('/api/caspa/knowledge/search', {
+  const response = await fetch('/api/atlas/knowledge/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ query, topK }),
@@ -114,7 +114,7 @@ export async function searchKnowledgeClient(query: string, topK = 12): Promise<a
 }
 
 export async function getKnowledgeContext(query: string, maxChars = 12000): Promise<any> {
-  const response = await fetch('/api/caspa/knowledge/context', {
+  const response = await fetch('/api/atlas/knowledge/context', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ query, maxChars }),
@@ -123,7 +123,7 @@ export async function getKnowledgeContext(query: string, maxChars = 12000): Prom
 }
 
 export async function reindexKnowledge(maxChunks = 500): Promise<any> {
-  const response = await fetch('/api/caspa/knowledge/reindex', {
+  const response = await fetch('/api/atlas/knowledge/reindex', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ maxChunks }),
@@ -132,7 +132,7 @@ export async function reindexKnowledge(maxChunks = 500): Promise<any> {
 }
 
 export async function ingestKnowledgeText(name: string, text: string, mimeType = 'text/plain', fileId?: string, deferEmbeddings = false): Promise<any> {
-  const response = await fetch('/api/caspa/knowledge/ingest/text', {
+  const response = await fetch('/api/atlas/knowledge/ingest/text', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ name, text, mimeType, fileId, deferEmbeddings }),
@@ -146,7 +146,7 @@ export async function ingestKnowledgeFile(file: File, fileId?: string, deferEmbe
   form.append('file', file, file.name);
   if (fileId) form.append('fileId', fileId);
   if (deferEmbeddings) form.append('deferEmbeddings', '1');
-  const response = await fetch('/api/caspa/knowledge/ingest/file', {
+  const response = await fetch('/api/atlas/knowledge/ingest/file', {
     method: 'POST',
     headers: await authHeaders(),
     body: form,
