@@ -27,102 +27,6 @@ if (typeof window !== 'undefined') {
   installInspirationFetchBridge();
 }
 
-/**
- * Body-level fast upload control.
- *
- * This intentionally lives outside React and outside the Atlas application shell.
- * It cannot be hidden by sidebar/mobile/layout CSS or replaced by a component error.
- * The user selects files with this native picker; we forward that FileList into the
- * existing sidebar ingest input so the normal high-speed multi-file pipeline runs.
- */
-function installBodyFastUploadControl(): void {
-  if (typeof document === 'undefined' || document.getElementById('atlas-body-fast-upload')) return;
-
-  const picker = document.createElement('input');
-  picker.id = 'atlas-body-fast-upload-picker';
-  picker.type = 'file';
-  picker.multiple = true;
-  picker.style.setProperty('display', 'none', 'important');
-  document.body.appendChild(picker);
-
-  const button = document.createElement('button');
-  button.id = 'atlas-body-fast-upload';
-  button.type = 'button';
-  button.textContent = '⚡ FAST FILE UPLOAD · MULTI';
-  button.setAttribute('aria-label', 'Fast multi-file upload');
-  button.title = 'High-speed Atlas file upload — select multiple files';
-
-  Object.assign(button.style, {
-    position: 'fixed',
-    right: '18px',
-    bottom: '18px',
-    zIndex: '2147483647',
-    display: 'block',
-    visibility: 'visible',
-    opacity: '1',
-    minWidth: '220px',
-    minHeight: '52px',
-    padding: '13px 18px',
-    border: '3px solid #111111',
-    borderRadius: '14px',
-    background: '#ffdf4d',
-    color: '#111111',
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
-    fontSize: '13px',
-    fontWeight: '900',
-    letterSpacing: '0.35px',
-    lineHeight: '1.2',
-    textAlign: 'center',
-    boxShadow: '0 10px 36px rgba(0,0,0,.35)',
-    cursor: 'pointer',
-    pointerEvents: 'auto',
-    transform: 'none',
-  });
-  // Critical visibility rules use CSS syntax and !important so even aggressive
-  // application/theme styles cannot bury this emergency control.
-  button.style.setProperty('position', 'fixed', 'important');
-  button.style.setProperty('right', '18px', 'important');
-  button.style.setProperty('bottom', '18px', 'important');
-  button.style.setProperty('z-index', '2147483647', 'important');
-  button.style.setProperty('display', 'block', 'important');
-  button.style.setProperty('visibility', 'visible', 'important');
-  button.style.setProperty('opacity', '1', 'important');
-  button.style.setProperty('pointer-events', 'auto', 'important');
-
-  button.addEventListener('click', () => picker.click());
-  picker.addEventListener('change', () => {
-    const files = Array.from(picker.files || []);
-    if (!files.length) return;
-
-    const target = document.querySelector<HTMLInputElement>('.caspa-sidebar input[type="file"][multiple]')
-      || document.querySelector<HTMLInputElement>('input[type="file"][multiple]:not(#atlas-body-fast-upload-picker)');
-
-    if (!target) {
-      button.textContent = 'UPLOAD READY · OPEN ATLAS WORKSPACE';
-      window.setTimeout(() => { button.textContent = '⚡ FAST FILE UPLOAD · MULTI'; }, 2600);
-      picker.value = '';
-      return;
-    }
-
-    try {
-      const transfer = new DataTransfer();
-      files.forEach((file) => transfer.items.add(file));
-      target.files = transfer.files;
-      button.textContent = `⚡ INGESTING ${files.length} FILE${files.length === 1 ? '' : 'S'}…`;
-      target.dispatchEvent(new Event('change', { bubbles: true }));
-      window.setTimeout(() => { button.textContent = '⚡ FAST FILE UPLOAD · MULTI'; }, 3000);
-    } catch (error) {
-      console.error('[Atlas fast upload bridge]', error);
-      button.textContent = 'UPLOAD ERROR · CLICK TO RETRY';
-      window.setTimeout(() => { button.textContent = '⚡ FAST FILE UPLOAD · MULTI'; }, 3000);
-    } finally {
-      picker.value = '';
-    }
-  });
-
-  document.body.appendChild(button);
-}
-
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: ReactNode}) {
     super(props);
@@ -165,8 +69,6 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
     return this.props.children;
   }
 }
-
-installBodyFastUploadControl();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
