@@ -69,23 +69,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "python3 - <<'PY'
-import json, pathlib
-p='/root/Caspa/data/caspa-jobs.json'
-d=json.load(open(p))
-j=next(x for x in d['jobs'] if x['id']=='5afbd817-fee6-46cd-aa26-2274bee58052')
-if j.get('status')!='complete': raise SystemExit('job is not complete')
-r=j.get('result') or {}
-text=r.get('artefact') or r.get('finalText')
-if not text:
-    ch=r.get('chapters') or (j.get('checkpoint') or {}).get('chapters') or []
-    ch=sorted(ch,key=lambda x:x.get('order',0))
-    text='\n\n'.join('# '+str(c.get('title',''))+'\n\n'+str(c.get('content','')) for c in ch)
-out=pathlib.Path('/root/Caspa/exports/chemsex-guide-repaired.md')
-out.parent.mkdir(parents=True,exist_ok=True)
-out.write_text(text)
-print(out, len(text.split()), 'words')
-PY"
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "python3 -c \"import json,pathlib; p='/root/Caspa/data/caspa-jobs.json'; d=json.load(open(p)); j=next(x for x in d['jobs'] if x['id']=='5afbd817-fee6-46cd-aa26-2274bee58052'); r=j.get('result') or {}; text=r.get('artefact') or r.get('finalText'); ch=r.get('chapters') or (j.get('checkpoint') or {}).get('chapters') or []; ch=sorted(ch,key=lambda x:x.get('order',0)); text=text or '\\\\n\\\\n'.join('# '+str(c.get('title',''))+'\\\\n\\\\n'+str(c.get('content','')) for c in ch); out=pathlib.Path('/root/Caspa/exports/chemsex-guide-repaired.md'); out.parent.mkdir(parents=True,exist_ok=True); out.write_text(text); print(out, len(text.split()), 'words')\""
           scp -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/chemsex-guide-repaired.md" ./chemsex-guide-repaired.md
 
       - name: Upload repaired manuscript artifact
