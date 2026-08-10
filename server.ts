@@ -58,7 +58,7 @@ app.get("/health", (req, res) => {
   const build = getBuildInfo();
   res.json({
     status: "ok",
-    service: "Atlas",
+    service: "Caspa",
     version: build.version,
     gitSha: build.gitSha,
     gitShaShort: build.gitShaShort,
