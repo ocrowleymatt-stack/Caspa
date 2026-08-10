@@ -1,2 +1,2 @@
-deploy requested 2026-08-10T11:19:30Z
-reason: final CASPA identity cleanup including public health diagnostics and removal of Atlas identity enforcement workflows
+deploy requested 2026-08-10T20:27:00Z
+reason: deploy bounded provider failover and faster automatic model routing
