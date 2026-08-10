@@ -10,6 +10,11 @@ import {
   type TaskKind,
 } from './cloudModelRouter';
 import { callOllamaModelHunt } from './freeModelPool';
+import {
+  isProviderConfigured,
+  selectAttemptOrder,
+  sharedCircuitBreaker,
+} from './aiRouterPolicy';
 
 export type AtlasProvider = CloudProvider | 'ollama';
 
@@ -17,6 +22,7 @@ export interface RouterFailoverAttempt {
   provider: string;
   error: string;
   billingFailure: boolean;
+  skipped?: boolean;
 }
 
 export interface RouterFailoverResult {
@@ -30,42 +36,18 @@ export interface RouterFailoverOptions extends RoutedCallOptions {
   primaryProvider?: string;
   sensitive?: boolean;
   disableLocalFallback?: boolean;
-  providerDeadlineMs?: number;
 }
 
-function providerDeadlineMs(mode: IntelligenceMode, task: TaskKind, override?: number): number {
-  if (override && Number.isFinite(override) && override > 0) return Math.max(5_000, override);
-  if (task === 'council') return mode === 'speed' ? 12_000 : mode === 'god' ? 24_000 : 16_000;
-  if (mode === 'speed') return 20_000;
-  if (mode === 'god') {
-    return ['reasoning', 'legal', 'factual', 'synthesis', 'long'].includes(task) ? 75_000 : 50_000;
-  }
-  return ['reasoning', 'legal', 'factual', 'synthesis', 'long'].includes(task) ? 45_000 : 30_000;
-}
-
-async function withProviderDeadline<T>(promise: Promise<T>, ms: number, provider: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`ROUTER_TIMEOUT: ${provider} exceeded ${Math.round(ms / 1000)}s failover budget`)), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
+const BILLING_COOLDOWN_MS = Number(process.env.AI_BILLING_COOLDOWN_MS) || 15 * 60_000;
+const TRANSIENT_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 60_000;
 
 /**
  * Canonical Atlas failover path.
  *
- * 1. Try the ordered cloud provider pool.
- * 2. Treat billing/quota exhaustion as provider-scoped, never request-fatal.
- * 3. Bound each provider with a router-level deadline so one slow provider cannot
- *    stall the whole job while healthier alternatives are available.
- * 4. If every cloud provider is unavailable, enter the dynamic local Ollama pool.
- * 5. Fail only when both cloud and local survival tiers are exhausted.
+ * - Only configured, healthy cloud providers are attempted.
+ * - Billing/quota failures quarantine a provider for longer than transient errors.
+ * - Successful providers are immediately restored to healthy state.
+ * - If every cloud provider is unavailable, Atlas enters the dynamic Ollama pool.
  */
 export async function callWithProviderFailover(
   prompt: string,
@@ -74,28 +56,40 @@ export async function callWithProviderFailover(
   const mode: IntelligenceMode = normaliseMode(opts.mode);
   const task: TaskKind = opts.task || classifyTask(prompt, opts);
   const primary = String(opts.primaryProvider || '').trim();
-  const ordered = providerOrder(primary, mode, task, Boolean(opts.sensitive));
+  const preferred = providerOrder(primary, mode, task, Boolean(opts.sensitive));
   const attempts: RouterFailoverAttempt[] = [];
-  const deadline = providerDeadlineMs(mode, task, opts.providerDeadlineMs);
+
+  const { attempt: ordered, anyConfigured } = selectAttemptOrder(
+    preferred,
+    (provider) => isProviderConfigured(provider),
+    (provider) => sharedCircuitBreaker.isOpen(provider),
+  );
+
+  if (!anyConfigured) {
+    for (const provider of preferred) {
+      attempts.push({
+        provider,
+        error: 'Provider not configured',
+        billingFailure: false,
+        skipped: true,
+      });
+    }
+  }
 
   for (const providerName of ordered) {
     const provider = providerName as CloudProvider;
     try {
-      const result = await withProviderDeadline(
-        callCloudProvider(provider, prompt, { ...opts, mode, task }),
-        deadline,
-        provider,
-      );
+      const result = await callCloudProvider(provider, prompt, { ...opts, mode, task });
+      sharedCircuitBreaker.recordSuccess(provider);
       return { ...result, attempts };
     } catch (error: any) {
       const message = String(error?.message || error || 'Unknown provider failure');
-      attempts.push({
+      const billingFailure = isBillingFailure(error);
+      sharedCircuitBreaker.recordFailure(
         provider,
-        error: message,
-        billingFailure: isBillingFailure(error),
-      });
-      // Continue immediately. A dead, slow or exhausted provider must never hold
-      // the entire Atlas request hostage while another provider can answer.
+        billingFailure ? BILLING_COOLDOWN_MS : TRANSIENT_COOLDOWN_MS,
+      );
+      attempts.push({ provider, error: message, billingFailure });
     }
   }
 
@@ -122,7 +116,7 @@ export async function callWithProviderFailover(
   }
 
   const summary = attempts
-    .map((attempt) => `${attempt.provider}: ${attempt.error.slice(0, 180)}`)
+    .map((attempt) => `${attempt.provider}${attempt.skipped ? ' skipped' : ''}: ${attempt.error.slice(0, 180)}`)
     .join(' | ');
   throw new Error(`Atlas model pool exhausted${summary ? ` — ${summary}` : ''}`);
 }
