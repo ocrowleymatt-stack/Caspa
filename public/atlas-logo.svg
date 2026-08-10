@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="72" viewBox="0 0 320 72" role="img" aria-labelledby="title desc">
+  <title id="title">ATLAS</title>
+  <desc id="desc">ATLAS Nexus Strategist logo</desc>
+  <defs>
+    <linearGradient id="atlasGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F5D76E"/>
+      <stop offset="0.55" stop-color="#D4AF37"/>
+      <stop offset="1" stop-color="#A87913"/>
+    </linearGradient>
+  </defs>
+  <circle cx="36" cy="36" r="29" fill="url(#atlasGold)"/>
+  <circle cx="36" cy="36" r="28" fill="none" stroke="#FFF0A8" stroke-opacity="0.55"/>
+  <text x="36" y="46" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#090E16">O</text>
+  <text x="80" y="36" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" letter-spacing="1.4" fill="#F8FAFC">ATLAS</text>
+  <text x="82" y="54" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif" font-size="9" font-weight="600" letter-spacing="2.35" fill="#94A3B8">NEXUS STRATEGIST</text>
+</svg>
