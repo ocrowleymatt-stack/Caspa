@@ -7,6 +7,8 @@
  * External nginx vhost is environment-specific (see auth-gateway.conf).
  */
 
+import { routeAtlasPrompt } from './routerFallbackBridge';
+
 export function unifiedRouterBase(env: NodeJS.ProcessEnv = process.env): string | null {
   const raw = (env.UNIFIED_ROUTER_URL || '').trim().replace(/\/$/, '');
   return raw || null;
@@ -39,8 +41,31 @@ export function unifiedRouterModel(env: NodeJS.ProcessEnv = process.env): string
   return (env.UNIFIED_ROUTER_MODEL || 'llama3.2').trim() || 'llama3.2';
 }
 
+async function cloudFallback(
+  prompt: string,
+  opts?: {
+    json?: boolean;
+    maxTokens?: number;
+    system?: string;
+  }
+): Promise<string> {
+  const effectivePrompt = opts?.system
+    ? `${opts.system}\n\nUSER TASK:\n${prompt}`
+    : prompt;
+  const result = await routeAtlasPrompt(effectivePrompt, {
+    json: opts?.json,
+    maxTokens: opts?.maxTokens,
+  });
+  return result.text;
+}
+
 /**
  * Call the unified router's OpenAI-compatible chat completions endpoint.
+ *
+ * The host router remains first choice when configured. If it is absent or
+ * unhealthy, Atlas automatically continues through the cloud provider router.
+ * Billing/quota exhaustion inside that router is provider-scoped and causes an
+ * immediate move to the next provider rather than terminating the request.
  */
 export async function callUnifiedRouterChat(
   prompt: string,
@@ -54,43 +79,52 @@ export async function callUnifiedRouterChat(
 ): Promise<string> {
   const env = opts?.env || process.env;
   const url = unifiedRouterChatUrl(env);
-  if (!url) throw new Error('UNIFIED_ROUTER_URL is not set');
+
+  if (!url) {
+    return cloudFallback(prompt, opts);
+  }
 
   const timeoutMs = opts?.timeoutMs ?? (opts?.maxTokens && opts.maxTokens >= 4000 ? 180_000 : 120_000);
   const system =
     opts?.system ||
     'You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea, maintaining an intuitive process where the human still has a guiding hand.';
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: unifiedRouterAuthHeaders(env),
-    signal: AbortSignal.timeout(timeoutMs),
-    body: JSON.stringify({
-      model: unifiedRouterModel(env),
-      messages: [
-        { role: 'system', content: system },
-        {
-          role: 'user',
-          content: opts?.json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt,
-        },
-      ],
-      max_tokens: opts?.maxTokens || 4096,
-      temperature: 0.7,
-      ...(opts?.json ? { response_format: { type: 'json_object' } } : {}),
-    }),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: unifiedRouterAuthHeaders(env),
+      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify({
+        model: unifiedRouterModel(env),
+        messages: [
+          { role: 'system', content: system },
+          {
+            role: 'user',
+            content: opts?.json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt,
+          },
+        ],
+        max_tokens: opts?.maxTokens || 4096,
+        temperature: 0.7,
+        ...(opts?.json ? { response_format: { type: 'json_object' } } : {}),
+      }),
+    });
 
-  if (!response.ok) {
-    const err = await response.json().catch(async () => ({ text: await response.text().catch(() => '') }));
-    throw new Error(`Unified router error (${response.status}): ${JSON.stringify(err)}`);
-  }
+    if (!response.ok) {
+      const raw = await response.text().catch(() => '');
+      throw new Error(`Unified router error (${response.status}): ${raw.slice(0, 1000)}`);
+    }
 
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (!text || !String(text).trim()) {
-    throw new Error('Unified router returned an empty completion');
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text || !String(text).trim()) {
+      throw new Error('Unified router returned an empty completion');
+    }
+    return String(text);
+  } catch {
+    // Host/local router failure is not terminal. Continue via Atlas's provider
+    // cascade so one dead endpoint, quota boundary or provider cannot kill a job.
+    return cloudFallback(prompt, opts);
   }
-  return String(text);
 }
 
 /** Lightweight reachability probe for doctor / readiness (no secrets). */
