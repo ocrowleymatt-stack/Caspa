@@ -28,75 +28,70 @@ jobs:
           from pathlib import Path
           p = Path('server.ts')
           s = p.read_text()
-
           import_needle = "import { callUnifiedRouterChat } from './src/services/unifiedRouter';\n"
           import_line = "import { routeAtlasPrompt } from './src/services/routerFallbackBridge';\n"
           if import_line not in s:
               if import_needle not in s:
                   raise SystemExit('Could not find unifiedRouter import insertion point')
               s = s.replace(import_needle, import_needle + import_line, 1)
-
           start_marker = '// Initialize Google Gen AI\n'
           end_marker = '// API routes go here FIRST\n'
           start = s.find(start_marker)
           end = s.find(end_marker)
           if start < 0 or end < 0 or end <= start:
               raise SystemExit('Could not locate legacy provider helper block')
-
-          replacement = r'''// Canonical Atlas routing helpers. All text-model requests enter the same router,
-// preserving legacy helper signatures while eliminating direct provider bypasses.
-async function callRoutedServerModel(
-  prompt: string,
-  json = false,
-  maxTokens?: number,
-  primaryProvider?: string,
-  requestedModel?: string,
-  useSearch = false,
-) {
-  const result = await routeAtlasPrompt(prompt, {
-    json,
-    maxTokens,
-    primaryProvider,
-    requestedModel,
-    useSearch,
-  });
-  return result.text || null;
-}
-
-async function callGeminiOnServer(options: {
-  prompt: string;
-  model?: string;
-  json?: boolean;
-  maxTokens?: number;
-  useSearch?: boolean;
-}) {
-  const { prompt, model, json = false, maxTokens, useSearch = false } = options;
-  return callRoutedServerModel(prompt, json, maxTokens, 'gemini', model, useSearch);
-}
-
-async function callOpenAI(prompt: string, json = false, maxTokens?: number) {
-  return callRoutedServerModel(prompt, json, maxTokens, 'openai');
-}
-
-async function callClaude(prompt: string, json = false, maxTokens?: number) {
-  return callRoutedServerModel(prompt, json, maxTokens, 'claude');
-}
-
-async function callXAI(prompt: string, json = false, maxTokens?: number) {
-  return callRoutedServerModel(prompt, json, maxTokens, 'grok');
-}
-
-async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {
-  return callRoutedServerModel(prompt, json, maxTokens, 'venice');
-}
-
-'''
+          lines = [
+              '// Canonical Atlas routing helpers. All text-model requests enter the same router,',
+              '// preserving legacy helper signatures while eliminating direct provider bypasses.',
+              'async function callRoutedServerModel(',
+              '  prompt: string,',
+              '  json = false,',
+              '  maxTokens?: number,',
+              '  primaryProvider?: string,',
+              '  requestedModel?: string,',
+              '  useSearch = false,',
+              ') {',
+              '  const result = await routeAtlasPrompt(prompt, {',
+              '    json,',
+              '    maxTokens,',
+              '    primaryProvider,',
+              '    requestedModel,',
+              '    useSearch,',
+              '  });',
+              '  return result.text || null;',
+              '}',
+              '',
+              'async function callGeminiOnServer(options: {',
+              '  prompt: string;',
+              '  model?: string;',
+              '  json?: boolean;',
+              '  maxTokens?: number;',
+              '  useSearch?: boolean;',
+              '}) {',
+              '  const { prompt, model, json = false, maxTokens, useSearch = false } = options;',
+              "  return callRoutedServerModel(prompt, json, maxTokens, 'gemini', model, useSearch);",
+              '}',
+              '',
+              'async function callOpenAI(prompt: string, json = false, maxTokens?: number) {',
+              "  return callRoutedServerModel(prompt, json, maxTokens, 'openai');",
+              '}',
+              '',
+              'async function callClaude(prompt: string, json = false, maxTokens?: number) {',
+              "  return callRoutedServerModel(prompt, json, maxTokens, 'claude');",
+              '}',
+              '',
+              'async function callXAI(prompt: string, json = false, maxTokens?: number) {',
+              "  return callRoutedServerModel(prompt, json, maxTokens, 'grok');",
+              '}',
+              '',
+              'async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {',
+              "  return callRoutedServerModel(prompt, json, maxTokens, 'venice');",
+              '}',
+              '',
+          ]
+          replacement = '\n'.join(lines) + '\n'
           s = s[:start] + replacement + s[end:]
-
-          # The old direct SDK initialiser is no longer needed by server.ts.
           s = s.replace('import { GoogleGenAI } from "@google/genai";\n', '')
-
-          # Guardrail: fail the workflow if old direct text-model endpoints remain in server.ts.
           forbidden = [
               'api.openai.com/v1/chat/completions',
               'api.anthropic.com/v1/messages',
@@ -109,7 +104,6 @@ async function callVeniceOnServer(prompt: string, json = false, maxTokens?: numb
           hits = [x for x in forbidden if x in s]
           if hits:
               raise SystemExit('Legacy direct-provider routes still present: ' + ', '.join(hits))
-
           p.write_text(s)
           PY
       - name: Verify no text-model bypasses remain in server.ts
