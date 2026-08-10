@@ -1,2 +1,2 @@
-deploy requested 2026-08-09T23:57:10Z
-reason: prevent finish-book analysis crashes by timing out direct AI analysis and falling back to deterministic finish plans
+deploy requested 2026-08-10T00:05:00Z
+reason: remove intrusive bottom-right fast-upload control from Caspa and deploy finish-book fail-safe hardening
