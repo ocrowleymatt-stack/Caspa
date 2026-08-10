@@ -6,12 +6,16 @@ import express from 'express';
 import { GOLD_PASSES, runGoldPipeline } from '../services/goldPipelineService';
 import { createJob, getJob, getJobAudit, listRecentJobs, updateJob } from '../services/jobQueueService';
 import { queueServerCommission, resumePersistedCommissionJobs, runServerCommission } from '../services/serverCommissionJobService';
+import { ensureOneShotRecoveredBookRepair, queueRepairFromCompletedJob } from '../services/commissionRepairService';
 import type { GoldPipelineProgressEvent } from '../types/gold';
 
 const router = express.Router();
 
 // Recover any long Commission runs that were queued/running when Atlas restarted.
 setTimeout(() => resumePersistedCommissionJobs(), 250);
+// One-shot recovery for the retained completed manuscript. Guarded by a durable
+// marker in CASPA_DATA_DIR, so repeated deploys cannot create duplicate repairs.
+setTimeout(() => ensureOneShotRecoveredBookRepair(), 1250);
 
 function writeSse(res: express.Response, payload: GoldPipelineProgressEvent): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -47,6 +51,29 @@ router.post('/jobs/:jobId/retry', (req, res) => {
   updateJob(job.id, { status: 'queued', error: undefined, stage: 'retry-queued' });
   setTimeout(() => void runServerCommission(job.id), 0);
   return res.status(202).json({ success: true, data: { jobId: job.id, status: 'queued' } });
+});
+
+router.post('/jobs/:jobId/repair', (req, res) => {
+  try {
+    const jobId = queueRepairFromCompletedJob(req.params.jobId, {
+      title: req.body?.title,
+      idea: req.body?.idea,
+      tone: req.body?.tone,
+      audience: req.body?.audience,
+      targetWordCount: req.body?.targetWordCount,
+    });
+    return res.status(202).json({
+      success: true,
+      data: {
+        jobId,
+        status: 'queued',
+        sourceJobId: req.params.jobId,
+        message: 'Repair-only Commission accepted. The original completed manuscript remains untouched.',
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error instanceof Error ? error.message : 'Could not start manuscript repair.' });
+  }
 });
 
 router.post('/commission', (req, res) => {
