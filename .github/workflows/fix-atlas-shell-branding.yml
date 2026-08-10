@@ -1,89 +1,226 @@
-name: Fix Atlas Shell Identity
+name: Restore CASPA Identity
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/fix-atlas-shell-branding.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  repair-test-build:
+  restore-test-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      CASPA_HOST: 116.202.24.63
+      CASPA_USER: root
+      CASPA_DIR: /root/Caspa
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - run: npm ci
-      - name: Tighten repair-script duplicate checks
+
+      - name: Restore CASPA shell without rolling back product work
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('scripts/fix-atlas-shell-branding.py')
-          s = p.read_text()
-          old = "if 'Fast Data Upload' in s:\n    raise SystemExit('Fast Data Upload still present in App.tsx after repair')"
-          new = "if 'fastUploadRef' in s or 'onFastUpload=' in s:\n    raise SystemExit('Launchpad upload wiring still present in App.tsx after repair')"
-          if old in s:
-              s = s.replace(old, new, 1)
+          import re
 
-          marker = "# Atlas brand kicker on launch screen."
-          if 'old_footer_upload = ' not in s:
-              footer_patch = r'''# Remove the second launchpad upload entry point from the sticky footer too.
-          old_footer_upload = ''' + "'''" + r'''            <button
-              type="button"
-              onClick={() => fastUploadRef.current?.click()}
-              disabled={fastUploading}
-              style={{ ...ghostButton, color: '#ffe2a5', borderColor: '#6b5430', background: '#21180f' }}
-            >
-              <UploadCloud size={17} /> Fast Data Upload
-            </button>
-''' + "'''" + r'''
-          if old_footer_upload in s:
-              s = s.replace(old_footer_upload, '', 1)
+          app = Path('src/App.tsx')
+          s = app.read_text()
 
-          '''
-              if marker not in s:
-                  raise SystemExit('Atlas launch brand marker not found in repair script')
-              s = s.replace(marker, footer_patch + marker, 1)
-          p.write_text(s)
+          s = s.replace("aria-label={mobileMenuOpen ? 'Close Atlas menu' : 'Open Atlas menu'}", "aria-label={mobileMenuOpen ? 'Close Caspa menu' : 'Open Caspa menu'}")
+
+          mobile_pattern = re.compile(
+              r'\n\s*<div className="atlas-mobile-brand" aria-label="ATLAS — Nexus Strategist">\s*'
+              r'<img src="/atlas-logo\.svg" alt="ATLAS — Nexus Strategist" />\s*'
+              r'</div>\s*'
+              r'<button\s*'
+              r'type="button"\s*'
+              r'onClick=\{\(\) => sidebarFastUploadRef\.current\?\.click\(\)\}\s*'
+              r'disabled=\{sidebarFastUploading\}\s*'
+              r'className="atlas-mobile-upload"\s*'
+              r'aria-label="Upload data to Atlas"\s*'
+              r'>.*?</button>\s*',
+              re.S,
+          )
+          s, mobile_count = mobile_pattern.subn('\n', s, count=1)
+
+          s = s.replace('className="caspa-sidebar atlas-sidebar"', 'className="caspa-sidebar"')
+
+          atlas_brand = '''        <div className="atlas-brand atlas-brand--sidebar" style={{ marginBottom: 28 }}>
+          <img src="/atlas-logo.svg" alt="ATLAS — Nexus Strategist" style={{ display: 'block', width: 232, maxWidth: '100%', height: 'auto' }} />
+        </div>'''
+          caspa_brand = '''        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 28 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 16, background: '#d6a846', color: '#1a1208', display: 'grid', placeItems: 'center' }}><Sparkles size={24} /></div>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -1 }}>Caspa</div>
+            <div style={{ color: '#c9b898', fontSize: 13 }}>Make the thing first. Tools second.</div>
+          </div>
+        </div>'''
+          s = s.replace(atlas_brand, caspa_brand)
+          s = s.replace('className="atlas-desktop-ingest" style={{ marginBottom: 18 }}', 'style={{ marginBottom: 18 }}')
+          s = s.replace('marginBottom: 16 }}>ATLAS</div>', 'marginBottom: 16 }}>Caspa</div>')
+          s = s.replace('        .atlas-mobile-brand, .atlas-mobile-upload { display: none; }\n', '')
+
+          if '/atlas-logo.svg' in s or 'ATLAS — Nexus Strategist' in s or 'className="atlas-mobile-upload"' in s:
+              raise SystemExit('Visible Atlas shell identity remains in src/App.tsx')
+          if '>Caspa</div>' not in s or 'Make the thing first. Tools second.' not in s:
+              raise SystemExit('CASPA sidebar/launch identity was not restored')
+          app.write_text(s)
+
+          main = Path('src/main.tsx')
+          s = main.read_text()
+          s = s.replace('ATLAS hit a snag', 'Caspa hit a snag')
+          s = s.replace('Reload ATLAS', 'Reload Caspa')
+          main.write_text(s)
+
+          index = Path('index.html')
+          s = index.read_text()
+          s = re.sub(r'\s*<link rel="icon" type="image/svg\+xml" href="/atlas-logo\.svg" />', '', s)
+          s = s.replace('<title>ATLAS • Nexus Strategist</title>', '<title>CASPA • Creative Engine</title>')
+          index.write_text(s)
+
+          doctor = Path('src/services/doctorService.ts')
+          s = doctor.read_text().replace("service: 'Atlas',", "service: 'Caspa',")
+          doctor.write_text(s)
+
+          deploy = Path('.github/workflows/deploy-atlas.yml')
+          s = deploy.read_text()
+          s = s.replace('name: Deploy Atlas', 'name: Deploy Caspa')
+          s = s.replace('# Production deploy to Hetzner Atlas (caspa.ocrowley.com).', '# Production deploy to Hetzner CASPA (caspa.ocrowley.com).')
+          s = s.replace("description: 'Type deploy to confirm Atlas production restart'", "description: 'Type deploy to confirm CASPA production restart'")
+          s = s.replace('Refusing: set confirm=deploy to run the Atlas deploy.', 'Refusing: set confirm=deploy to run the CASPA deploy.')
+          s = s.replace('Deploy origin/main on Atlas', 'Deploy origin/main on CASPA')
+          s = s.replace('No Atlas SSH secret found.', 'No CASPA SSH secret found.')
+          s = s.replace("echo \"$DOCTOR\" | grep -q '\"service\":\"Atlas\"'", "echo \"$DOCTOR\" | grep -q '\"service\":\"Caspa\"'")
+          s = s.replace('Public /api/doctor is not serving Atlas.', 'Public /api/doctor is not serving Caspa.')
+          s = s.replace('Public Atlas is not serving the commit just deployed.', 'Public Caspa is not serving the commit just deployed.')
+          s = s.replace('Public Atlas is serving expected commit', 'Public Caspa is serving expected commit')
+          deploy.write_text(s)
+
+          for dead in [
+              'public/atlas-logo.svg',
+              'scripts/fix-atlas-shell-branding.py',
+              'scripts/atlas-shell-identity-v2.py',
+              'scripts/run-atlas-shell-identity-v2.py',
+          ]:
+              p = Path(dead)
+              if p.exists():
+                  p.unlink()
+
+          Path('.deploy-atlas-trigger').write_text('caspa-identity-restored-2026-08-10\n')
           PY
-      - name: Apply Atlas shell identity repair
-        run: python3 scripts/fix-atlas-shell-branding.py
+
       - name: Test
         run: npm test
+
       - name: Production build
         run: npm run build
-      - name: Assert Atlas public contract
+
+      - name: Assert CASPA public identity
         shell: bash
         run: |
-          grep -q '/atlas-logo.svg' src/App.tsx
-          grep -q 'NEXUS STRATEGIST' public/atlas-logo.svg
-          grep -q 'atlas-mobile-upload' src/App.tsx
-          ! grep -q 'fastUploadRef' src/App.tsx
-          ! grep -q 'onFastUpload=' src/App.tsx
-          grep -q '/api/atlas/knowledge' src/services/knowledgeClient.ts
-          grep -q 'X-Atlas-Local-Scope' src/services/knowledgeClient.ts
-          grep -q 'app.use("/api/atlas/knowledge"' server.ts
-          grep -q "service: 'Atlas'" src/services/doctorService.ts
-          grep -q 'ATLAS • Nexus Strategist' index.html
-          grep -q '"service":"Atlas"' .github/workflows/deploy-atlas.yml
-      - name: Commit verified repair
+          grep -q 'CASPA • Creative Engine' index.html
+          grep -q 'Caspa hit a snag' src/main.tsx
+          grep -q 'Make the thing first. Tools second.' src/App.tsx
+          grep -q "service: 'Caspa'" src/services/doctorService.ts
+          ! grep -q '/atlas-logo.svg' src/App.tsx
+          ! grep -q 'ATLAS • Nexus Strategist' index.html
+          ! grep -q 'className="atlas-mobile-upload"' src/App.tsx
+          test ! -e public/atlas-logo.svg
+
+      - name: Commit restored identity
+        id: commit
         shell: bash
         run: |
-          if git diff --quiet; then
+          git config user.name caspa-automation
+          git config user.email caspa-automation@users.noreply.github.com
+          git add -A
+          if git diff --cached --quiet; then
             echo 'No source changes required.'
-            exit 0
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m 'Restore CASPA identity and remove Atlas shell branding'
+            git push origin HEAD:main
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
-          git config user.name atlas-automation
-          git config user.email atlas-automation@users.noreply.github.com
-          git add scripts/fix-atlas-shell-branding.py src/App.tsx src/main.tsx index.html src/services/knowledgeClient.ts src/routes/caspa-knowledge-routes.ts server.ts src/services/doctorService.ts .github/workflows/deploy-atlas.yml
-          git commit -m 'Restore Atlas identity and single mobile ingest'
-          git push origin HEAD:main
+
+      - name: Select deployment SSH key
+        id: key
+        shell: bash
+        run: |
+          key=""
+          chosen=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then
+              key="${!name}"
+              chosen="$name"
+              break
+            fi
+          done
+          if [ -z "$key" ]; then
+            echo "::error::No CASPA SSH secret found."
+            exit 2
+          fi
+          echo "Using secret: $chosen"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$CASPA_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy restored CASPA to production
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 \
+            "${CASPA_USER}@${CASPA_HOST}" \
+            "set -euo pipefail
+             cd '${CASPA_DIR}'
+             git fetch origin
+             git reset --hard origin/main
+             git clean -fd -e data -e .env -e exports -e backups -e .caspa_snapshots
+             export CASPA_GIT_SHA=\$(git rev-parse HEAD)
+             export CASPA_GIT_BRANCH=\$(git rev-parse --abbrev-ref HEAD || echo main)
+             export CASPA_BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+             unset NODE_ENV || true
+             npm ci
+             export NODE_ENV=production
+             export CASPA_DATA_DIR=/root/Caspa/data
+             npm run build
+             test -f dist/server.cjs
+             test -f dist/index.html
+             pm2 delete caspa caspa-server || true
+             pm2 start ecosystem.config.cjs --update-env
+             pm2 save
+             sleep 3
+             curl -fsS http://127.0.0.1:3000/health >/dev/null
+             curl -fsS http://127.0.0.1:3000/api/doctor"
+
+      - name: Verify live CASPA identity
+        shell: bash
+        run: |
+          sleep 2
+          HTML=$(curl -fsS -H 'Cache-Control: no-cache' "https://caspa.ocrowley.com/?t=$(date +%s)")
+          echo "$HTML" | grep -q 'CASPA • Creative Engine'
+          ! echo "$HTML" | grep -q 'ATLAS • Nexus Strategist'
+          DOCTOR=$(curl -fsS "https://caspa.ocrowley.com/api/doctor")
+          echo "$DOCTOR" | grep -q '"service":"Caspa"'
+          echo "$DOCTOR" | grep -Fq "\"gitSha\":\"${{ steps.commit.outputs.sha }}\""
+          echo 'CASPA identity restored and live.'
