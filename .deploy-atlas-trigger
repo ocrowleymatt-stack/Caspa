@@ -1,2 +1,2 @@
-deploy requested 2026-08-10T03:38:00Z
-reason: speed Finish the book recovery with targeted parallel additive expansion; preserve retained checkpoint
+deploy requested 2026-08-10T05:59:30Z
+reason: deploy repair-only Commission endpoint and one-shot recovery for completed job 0420dfe9-2899-491f-80ca-399369daddac; preserve original manuscript
