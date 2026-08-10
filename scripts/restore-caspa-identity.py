@@ -71,6 +71,13 @@ doctor = Path('src/services/doctorService.ts')
 s = doctor.read_text().replace("service: 'Atlas',", "service: 'Caspa',")
 doctor.write_text(s)
 
+# The lightweight /health route had also been relabelled Atlas. Keep diagnostics consistent.
+server = Path('server.ts')
+s = server.read_text()
+s = s.replace('service: "Atlas"', 'service: "Caspa"')
+s = s.replace("service: 'Atlas'", "service: 'Caspa'")
+server.write_text(s)
+
 # Remove only non-workflow files whose sole purpose was to impose the accidental Atlas shell identity.
 # Workflow files are handled separately because GitHub Actions tokens may not edit workflows.
 for dead in (
@@ -87,6 +94,7 @@ for dead in (
 require('CASPA • Creative Engine' in index.read_text(), 'CASPA document title missing')
 require('Caspa hit a snag' in main.read_text(), 'CASPA error boundary missing')
 require("service: 'Caspa'" in doctor.read_text(), 'CASPA doctor identity missing')
+require('service: "Atlas"' not in server.read_text() and "service: 'Atlas'" not in server.read_text(), 'Atlas diagnostic service label remains in server.ts')
 require('/api/atlas/knowledge' in Path('src/services/knowledgeClient.ts').read_text(), 'Compatibility knowledge route was unexpectedly altered')
 
 print('CASPA_IDENTITY_RESTORED')
