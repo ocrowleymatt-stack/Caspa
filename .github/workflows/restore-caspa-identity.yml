@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/restore-caspa-identity.yml'
+      - 'scripts/restore-caspa-identity.py'
   workflow_dispatch:
 
 permissions:
