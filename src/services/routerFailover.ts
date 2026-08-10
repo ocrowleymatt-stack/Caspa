@@ -7,9 +7,11 @@ import {
   type CloudProvider,
   type IntelligenceMode,
   type RoutedCallOptions,
-  type RoutedCloudResult,
   type TaskKind,
 } from './cloudModelRouter';
+import { callOllamaModelHunt } from './freeModelPool';
+
+export type AtlasProvider = CloudProvider | 'ollama';
 
 export interface RouterFailoverAttempt {
   provider: string;
@@ -17,21 +19,27 @@ export interface RouterFailoverAttempt {
   billingFailure: boolean;
 }
 
-export interface RouterFailoverResult extends RoutedCloudResult {
+export interface RouterFailoverResult {
+  text: string;
+  model: string;
+  provider: AtlasProvider;
   attempts: RouterFailoverAttempt[];
 }
 
 export interface RouterFailoverOptions extends RoutedCallOptions {
   primaryProvider?: string;
   sensitive?: boolean;
+  disableLocalFallback?: boolean;
 }
 
 /**
- * Canonical Atlas cloud failover path.
+ * Canonical Atlas failover path.
  *
- * Billing/quota exhaustion is provider-scoped: once detected, the router skips
- * the rest of that provider and immediately advances to the next provider.
- * Other provider failures are also isolated to that provider for this request.
+ * 1. Try the ordered cloud provider pool.
+ * 2. Treat billing/quota exhaustion as provider-scoped, never request-fatal.
+ * 3. If every cloud provider is unavailable, automatically enter the dynamic
+ *    local Ollama pool and select the best healthy interactive-size model.
+ * 4. Fail only when both cloud and local survival tiers are exhausted.
  */
 export async function callWithProviderFailover(
   prompt: string,
@@ -55,13 +63,35 @@ export async function callWithProviderFailover(
         error: message,
         billingFailure: isBillingFailure(error),
       });
-      // Deliberately continue. A dead provider must never terminate an Atlas
-      // request while another configured provider may still satisfy it.
+      // Deliberately continue. A dead or exhausted provider must never terminate
+      // an Atlas request while another provider may still satisfy it.
+    }
+  }
+
+  if (!opts.disableLocalFallback) {
+    try {
+      const local = await callOllamaModelHunt(prompt, {
+        json: opts.json,
+        maxTokens: opts.maxTokens,
+        mode,
+      });
+      return {
+        text: local.text,
+        model: local.model,
+        provider: 'ollama',
+        attempts,
+      };
+    } catch (error: any) {
+      attempts.push({
+        provider: 'ollama',
+        error: String(error?.message || error || 'Local model pool failure'),
+        billingFailure: false,
+      });
     }
   }
 
   const summary = attempts
     .map((attempt) => `${attempt.provider}: ${attempt.error.slice(0, 180)}`)
     .join(' | ');
-  throw new Error(`Atlas provider pool exhausted${summary ? ` — ${summary}` : ''}`);
+  throw new Error(`Atlas model pool exhausted${summary ? ` — ${summary}` : ''}`);
 }
