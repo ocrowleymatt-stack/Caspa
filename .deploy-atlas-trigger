@@ -1,2 +1,2 @@
-deploy requested 2026-08-10T01:10:20Z
-reason: remove misplaced global fast-upload control from Caspa; Atlas uploader is deployed separately in the Life/Atlas stack
+deploy requested 2026-08-10T03:38:00Z
+reason: speed Finish the book recovery with targeted parallel additive expansion; preserve retained checkpoint
