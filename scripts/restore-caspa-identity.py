@@ -71,35 +71,19 @@ doctor = Path('src/services/doctorService.ts')
 s = doctor.read_text().replace("service: 'Atlas',", "service: 'Caspa',")
 doctor.write_text(s)
 
-# Keep internal compatibility namespaces intact, but make the production deploy and verification
-# correctly identify the product being served at caspa.ocrowley.com.
-deploy = Path('.github/workflows/deploy-atlas.yml')
-s = deploy.read_text()
-s = s.replace('name: Deploy Atlas', 'name: Deploy Caspa')
-s = s.replace('# Production deploy to Hetzner Atlas (caspa.ocrowley.com).', '# Production deploy to Hetzner CASPA (caspa.ocrowley.com).')
-s = s.replace("description: 'Type deploy to confirm Atlas production restart'", "description: 'Type deploy to confirm CASPA production restart'")
-s = s.replace('Refusing: set confirm=deploy to run the Atlas deploy.', 'Refusing: set confirm=deploy to run the CASPA deploy.')
-s = s.replace('Deploy origin/main on Atlas', 'Deploy origin/main on CASPA')
-s = s.replace('No Atlas SSH secret found.', 'No CASPA SSH secret found.')
-s = s.replace("echo \"$DOCTOR\" | grep -q '\"service\":\"Atlas\"'", "echo \"$DOCTOR\" | grep -q '\"service\":\"Caspa\"'")
-s = s.replace('Public /api/doctor is not serving Atlas.', 'Public /api/doctor is not serving Caspa.')
-s = s.replace('Public Atlas is not serving the commit just deployed.', 'Public Caspa is not serving the commit just deployed.')
-s = s.replace('Public Atlas is serving expected commit', 'Public Caspa is serving expected commit')
-deploy.write_text(s)
-
-# Remove the files whose sole purpose was to impose the accidental Atlas shell identity on CASPA.
+# Remove only non-workflow files whose sole purpose was to impose the accidental Atlas shell identity.
+# Workflow files are handled separately because GitHub Actions tokens may not edit workflows.
 for dead in (
     'public/atlas-logo.svg',
     'scripts/fix-atlas-shell-branding.py',
     'scripts/atlas-shell-identity-v2.py',
     'scripts/run-atlas-shell-identity-v2.py',
-    '.github/workflows/fix-atlas-shell-branding.yml',
 ):
     p = Path(dead)
     if p.exists():
         p.unlink()
 
-# Assertions: identity changed, capability code left alone.
+# Assertions: identity changed, capability/compatibility namespaces left alone.
 require('CASPA • Creative Engine' in index.read_text(), 'CASPA document title missing')
 require('Caspa hit a snag' in main.read_text(), 'CASPA error boundary missing')
 require("service: 'Caspa'" in doctor.read_text(), 'CASPA doctor identity missing')
