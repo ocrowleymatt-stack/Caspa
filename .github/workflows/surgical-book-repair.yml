@@ -1,0 +1,97 @@
+name: Surgical Book Repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/surgical-repair-job.mjs'
+      - '.github/workflows/surgical-book-repair.yml'
+  workflow_dispatch:
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      ATLAS_DIR: /root/Caspa
+      JOB_ID: 5afbd817-fee6-46cd-aa26-2274bee58052
+    steps:
+      - name: Prepare SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATEKEY2"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Surgical repair on Atlas
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "set -euo pipefail
+             cd '${ATLAS_DIR}'
+             git fetch origin
+             git reset --hard origin/main
+             export CASPA_DATA_DIR=/root/Caspa/data
+             export CASPA_REPAIR_JOB_ID='${JOB_ID}'
+             timeout 1200 node scripts/surgical-repair-job.mjs
+             pm2 restart caspa-server --update-env
+             sleep 4
+             curl -fsS -X POST 'http://127.0.0.1:3000/api/caspa/gold/jobs/${JOB_ID}/retry'
+             echo"
+
+      - name: Wait for final QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 80); do
+            BODY=$(ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "curl -fsS 'http://127.0.0.1:3000/api/caspa/gold/jobs/${JOB_ID}'")
+            STATUS=$(printf '%s' "$BODY" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"].get("status",""))')
+            STAGE=$(printf '%s' "$BODY" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"].get("stage",""))')
+            echo "[$i] $STATUS :: $STAGE"
+            if [ "$STATUS" = "complete" ]; then exit 0; fi
+            if [ "$STATUS" = "failed" ]; then
+              printf '%s' "$BODY" | python3 -m json.tool
+              exit 1
+            fi
+            sleep 15
+          done
+          echo 'Timed out waiting for final QA'
+          exit 1
+
+      - name: Export repaired manuscript
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "python3 - <<'PY'
+import json, pathlib
+p='/root/Caspa/data/caspa-jobs.json'
+d=json.load(open(p))
+j=next(x for x in d['jobs'] if x['id']=='5afbd817-fee6-46cd-aa26-2274bee58052')
+if j.get('status')!='complete': raise SystemExit('job is not complete')
+r=j.get('result') or {}
+text=r.get('artefact') or r.get('finalText')
+if not text:
+    ch=r.get('chapters') or (j.get('checkpoint') or {}).get('chapters') or []
+    ch=sorted(ch,key=lambda x:x.get('order',0))
+    text='\n\n'.join('# '+str(c.get('title',''))+'\n\n'+str(c.get('content','')) for c in ch)
+out=pathlib.Path('/root/Caspa/exports/chemsex-guide-repaired.md')
+out.parent.mkdir(parents=True,exist_ok=True)
+out.write_text(text)
+print(out, len(text.split()), 'words')
+PY"
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/chemsex-guide-repaired.md" ./chemsex-guide-repaired.md
+
+      - name: Upload repaired manuscript artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemsex-guide-repaired
+          path: chemsex-guide-repaired.md
+          if-no-files-found: error
+          retention-days: 7
