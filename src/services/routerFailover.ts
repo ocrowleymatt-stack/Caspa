@@ -30,6 +30,31 @@ export interface RouterFailoverOptions extends RoutedCallOptions {
   primaryProvider?: string;
   sensitive?: boolean;
   disableLocalFallback?: boolean;
+  providerDeadlineMs?: number;
+}
+
+function providerDeadlineMs(mode: IntelligenceMode, task: TaskKind, override?: number): number {
+  if (override && Number.isFinite(override) && override > 0) return Math.max(5_000, override);
+  if (task === 'council') return mode === 'speed' ? 12_000 : mode === 'god' ? 24_000 : 16_000;
+  if (mode === 'speed') return 20_000;
+  if (mode === 'god') {
+    return ['reasoning', 'legal', 'factual', 'synthesis', 'long'].includes(task) ? 75_000 : 50_000;
+  }
+  return ['reasoning', 'legal', 'factual', 'synthesis', 'long'].includes(task) ? 45_000 : 30_000;
+}
+
+async function withProviderDeadline<T>(promise: Promise<T>, ms: number, provider: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`ROUTER_TIMEOUT: ${provider} exceeded ${Math.round(ms / 1000)}s failover budget`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -37,9 +62,10 @@ export interface RouterFailoverOptions extends RoutedCallOptions {
  *
  * 1. Try the ordered cloud provider pool.
  * 2. Treat billing/quota exhaustion as provider-scoped, never request-fatal.
- * 3. If every cloud provider is unavailable, automatically enter the dynamic
- *    local Ollama pool and select the best healthy interactive-size model.
- * 4. Fail only when both cloud and local survival tiers are exhausted.
+ * 3. Bound each provider with a router-level deadline so one slow provider cannot
+ *    stall the whole job while healthier alternatives are available.
+ * 4. If every cloud provider is unavailable, enter the dynamic local Ollama pool.
+ * 5. Fail only when both cloud and local survival tiers are exhausted.
  */
 export async function callWithProviderFailover(
   prompt: string,
@@ -50,11 +76,16 @@ export async function callWithProviderFailover(
   const primary = String(opts.primaryProvider || '').trim();
   const ordered = providerOrder(primary, mode, task, Boolean(opts.sensitive));
   const attempts: RouterFailoverAttempt[] = [];
+  const deadline = providerDeadlineMs(mode, task, opts.providerDeadlineMs);
 
   for (const providerName of ordered) {
     const provider = providerName as CloudProvider;
     try {
-      const result = await callCloudProvider(provider, prompt, { ...opts, mode, task });
+      const result = await withProviderDeadline(
+        callCloudProvider(provider, prompt, { ...opts, mode, task }),
+        deadline,
+        provider,
+      );
       return { ...result, attempts };
     } catch (error: any) {
       const message = String(error?.message || error || 'Unknown provider failure');
@@ -63,8 +94,8 @@ export async function callWithProviderFailover(
         error: message,
         billingFailure: isBillingFailure(error),
       });
-      // Deliberately continue. A dead or exhausted provider must never terminate
-      // an Atlas request while another provider may still satisfy it.
+      // Continue immediately. A dead, slow or exhausted provider must never hold
+      // the entire Atlas request hostage while another provider can answer.
     }
   }
 
