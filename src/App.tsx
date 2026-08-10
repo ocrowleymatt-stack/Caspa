@@ -1053,37 +1053,25 @@ function CaspaUI() {
       <button
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         className="mobile-menu"
-        aria-label={mobileMenuOpen ? 'Close Atlas menu' : 'Open Atlas menu'}
+        aria-label={mobileMenuOpen ? 'Close Caspa menu' : 'Open Caspa menu'}
         style={{ position: 'fixed', top: 16, left: 16, zIndex: 60, border: '1px solid #e0d3bf', background: '#fffaf2', borderRadius: 12, padding: 10 }}
       >
         {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
-
-      <div className="atlas-mobile-brand" aria-label="ATLAS — Nexus Strategist">
-        <img src="/atlas-logo.svg" alt="ATLAS — Nexus Strategist" />
-      </div>
-
-      <button
-        type="button"
-        onClick={() => sidebarFastUploadRef.current?.click()}
-        disabled={sidebarFastUploading}
-        className="atlas-mobile-upload"
-        aria-label="Upload data to Atlas"
-      >
-        {sidebarFastUploading ? <Loader size={17} className="spin" /> : <UploadCloud size={17} />}
-        <span>{sidebarFastUploading ? 'Ingesting…' : 'Upload'}</span>
-      </button>
-
-      <aside style={{ width: 300, minWidth: 300, height: '100%', background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar atlas-sidebar">
-        <div className="atlas-brand atlas-brand--sidebar" style={{ marginBottom: 28 }}>
-          <img src="/atlas-logo.svg" alt="ATLAS — Nexus Strategist" style={{ display: 'block', width: 232, maxWidth: '100%', height: 'auto' }} />
+<aside style={{ width: 300, minWidth: 300, height: '100%', background: '#17120c', color: '#f8efe0', borderRight: '1px solid #2b2116', padding: '24px 18px', overflowY: 'auto', transform: mobileMenuOpen ? 'translateX(0)' : undefined }} className="caspa-sidebar">
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 28 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 16, background: '#d6a846', color: '#1a1208', display: 'grid', placeItems: 'center' }}><Sparkles size={24} /></div>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -1 }}>Caspa</div>
+            <div style={{ color: '#c9b898', fontSize: 13 }}>Make the thing first. Tools second.</div>
+          </div>
         </div>
 
         <div style={{ marginBottom: 20, padding: '0 8px', fontSize: 12, color: '#a89572', lineHeight: 1.5 }}>
           One step at a time. Advanced rooms stay tucked away until you need them.
         </div>
 
-        <div className="atlas-desktop-ingest" style={{ marginBottom: 18 }}>
+        <div style={{ marginBottom: 18 }}>
           <button
             type="button"
             onClick={() => sidebarFastUploadRef.current?.click()}
@@ -1211,7 +1199,6 @@ function CaspaUI() {
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
         .mobile-menu { display: none; }
-        .atlas-mobile-brand, .atlas-mobile-upload { display: none; }
         textarea:focus, input:focus, select:focus { outline: 2px solid #d6a846; outline-offset: 2px; }
         button { font-family: inherit; }
         @media (max-width: 860px) {
@@ -1359,7 +1346,7 @@ function LaunchpadView({ onStart }: {
       <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '54px clamp(24px, 5vw, 72px) 24px' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ borderRadius: 34, padding: '42px clamp(24px, 4vw, 48px)', background: '#17120c', color: '#fffaf2', boxShadow: '0 30px 90px rgba(23,18,12,.24)', marginBottom: 24 }}>
-          <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>ATLAS</div>
+          <div style={{ color: '#d6a846', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12, marginBottom: 16 }}>Caspa</div>
           <h1 style={{ fontSize: 'clamp(40px, 7vw, 72px)', lineHeight: .9, margin: 0, letterSpacing: -2.5 }}>What are we making?</h1>
           <p style={{ maxWidth: 640, color: '#d7c8aa', fontSize: 18, lineHeight: 1.5, marginTop: 18 }}>
             Fiction is one door. Non-fiction, picture books, a show in a box — pick the form first.
