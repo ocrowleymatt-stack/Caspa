@@ -1,2 +1,2 @@
-deploy requested 2026-08-10T20:27:00Z
-reason: deploy bounded provider failover and faster automatic model routing
+deploy requested 2026-08-10T21:27:00Z
+reason: push latest router survival build and bounded provider failover to production
