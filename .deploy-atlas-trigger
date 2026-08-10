@@ -1,2 +1,2 @@
-deploy requested 2026-08-10T00:05:00Z
-reason: remove intrusive bottom-right fast-upload control from Caspa and deploy finish-book fail-safe hardening
+deploy requested 2026-08-10T01:10:20Z
+reason: remove misplaced global fast-upload control from Caspa; Atlas uploader is deployed separately in the Life/Atlas stack
