@@ -29,8 +29,15 @@ type Checkpoint = {
   phase: string;
 };
 
+type QualityIssue = {
+  type: 'placeholder' | 'citation' | 'duplication' | 'unsafe-specificity';
+  message: string;
+  chapterOrders: number[];
+};
+
 const activeWorkers = new Set<string>();
 const RECOVERY_CONCURRENCY = 2;
+const QA_CONCURRENCY = 2;
 
 function countWords(text?: string | null): number {
   return (text || '').trim().split(/\s+/).filter(Boolean).length;
@@ -77,10 +84,14 @@ function nonfictionContract(brief: ServerCommissionBrief): string {
   if (!isNonfiction(brief)) return '';
   return `NONFICTION GUIDE CONTRACT — overrides fiction defaults where they conflict:
 - Write authoritative, lucid guide/reference material for ${brief.audience || 'the intended reader'}; never novelise the subject.
-- Structure first, prose second. Use descriptive headings/subheadings, definitions, explanation, worked examples, practical scenarios, checklists, decision aids, tables, boxes, summaries and takeaways when useful.
+- Structure first, prose second. Each chapter must have a distinct job and advance the reader; never re-teach material owned by another chapter merely to fill space.
+- Use descriptive headings/subheadings, definitions, explanation, worked examples, practical scenarios, checklists, decision aids, tables, boxes, summaries and takeaways only when they add genuine utility.
 - Distinguish fact, interpretation, professional judgement, lived experience and speculation.
-- Never invent citations, studies, statistics, organisations, quotations, dates or authorities. If evidence is unavailable, write [CITATION NEEDED].
+- Never invent citations, studies, statistics, organisations, quotations, dates, phone numbers, authorities or named services. If provenance cannot be established, omit the claim rather than fabricate it.
+- For health, medicine, drugs, law, finance, safeguarding or other high-stakes material: do not invent or casually prescribe exact doses, taper schedules, thresholds, treatment regimens or emergency interventions. Retain precise figures only when supported by trustworthy research in the current research-enabled pass and attribute them clearly.
+- Do not claim naloxone reverses GHB/GBL, stimulant, ketamine or other non-opioid toxicity. Mention naloxone only where opioid exposure is relevant; otherwise direct emergency response appropriately.
 - When web research supplies trustworthy provenance, use Harvard-style author-date citations and enough bibliographic detail to assemble a reference list.
+- A finished manuscript must contain no [CITATION NEEDED], dummy telephone numbers, "replace later" notes or other production placeholders.
 - Expand by adding substance, evidence, explanation, examples and reader utility — never padding or repeated paraphrase.
 - Mark genuinely useful visual opportunities inline as [FIGURE: ...], [TABLE: ...] or [BOX: ...].
 - Maintain one coherent book with cumulative learning and cross-chapter continuity, not a bundle of essays.`;
@@ -133,6 +144,14 @@ function continuityBefore(chapters: Chapter[], order: number): string {
     .slice(-14000);
 }
 
+function bookOwnershipMap(chapters: Chapter[]): string {
+  return [...chapters]
+    .sort((a, b) => a.order - b.order)
+    .map((c) => `${c.order + 1}. ${c.title} — ${c.summary || 'No summary supplied'}`)
+    .join('\n')
+    .slice(0, 18000);
+}
+
 function chapterPrompt(payload: ServerCommissionPayload, working: Chapter[], chapter: Chapter, chapterTarget: number): string {
   const brief = payload.brief;
   const directives = selectedDirectives(payload);
@@ -151,6 +170,9 @@ THIS CHAPTER TARGET: ${chapterTarget.toLocaleString()} words. Acceptable range $
 
 ${nonfictionContract(brief)}
 
+BOOK OWNERSHIP MAP — respect these chapter boundaries. Do not steal another chapter's job:
+${bookOwnershipMap(working)}
+
 CHAPTER ${chapter.order + 1}: ${chapter.title}
 CHAPTER PURPOSE: ${chapter.summary || ''}
 ${existing ? `EXISTING CHAPTER TO IMPROVE:\n${existing.slice(0, 50000)}\n` : ''}
@@ -165,6 +187,7 @@ RULES:
 - The target word count is a production requirement, not a suggestion.
 - Output the finished chapter only; no task notes or word-count commentary.
 - Preserve continuity and do not reintroduce the whole book at every chapter.
+- Never repeat definitions, drug profiles, frameworks, examples, checklists or tables already owned by another chapter unless a short cross-reference is genuinely necessary.
 - Do not use filler to reach length. Add missing substance instead.
 - Never silently abandon an approved fix or promised topic.
 - Use Markdown headings only where appropriate to this book type.`;
@@ -184,6 +207,9 @@ TONE: ${brief.tone || 'Clear and controlled'}
 BOOK PURPOSE: ${brief.idea || ''}
 ${nonfictionContract(brief)}
 
+BOOK OWNERSHIP MAP:
+${bookOwnershipMap(working)}
+
 CHAPTER ${chapter.order + 1}: ${chapter.title}
 CHAPTER PURPOSE: ${chapter.summary || ''}
 CURRENT CHAPTER (${countWords(existing).toLocaleString()} words):
@@ -194,9 +220,9 @@ ${directives.length ? directives.map((d) => `- ${d}`).join('\n') : '- Complete t
 
 ADD APPROXIMATELY ${targetAdd.toLocaleString()} NEW WORDS OF GENUINELY USEFUL MATERIAL.
 - Return ONLY the new material to append, not the original chapter.
-- Do not repeat, recap or paraphrase material already present.
+- Do not repeat, recap or paraphrase material already present or material assigned to another chapter.
 - Prefer missing explanation, practical detail, worked examples, distinctions, cautions, decision aids, evidence-aware context, tables/boxes/figures, and reader questions that materially improve this chapter.
-- Do not invent evidence or citations. Use [CITATION NEEDED] where provenance is unavailable.
+- Do not invent evidence or citations. Omit unsupported high-stakes specifics rather than inserting placeholders.
 - Make the addition read as a natural continuation of this chapter, with headings only when useful.
 - Aim for ${Math.round(targetAdd * 0.95).toLocaleString()}–${Math.round(targetAdd * 1.15).toLocaleString()} new words.
 
@@ -208,8 +234,10 @@ async function rebuildArchitecture(payload: ServerCommissionPayload, chapters: C
   const target = targetWords(payload.brief);
   const source = chapters.map((c) => `# ${c.title}\n${c.summary}\n${c.content}`).join('\n\n').slice(0, 90000);
   const prompt = `Rebuild the architecture of this ${payload.brief.mode} book into a coherent chapter plan capable of supporting ${target.toLocaleString()} finished words.
-Return JSON only: {"chapters":[{"title":"...","summary":"specific chapter purpose and coverage"}]}.
-Preserve valuable source material and all important reader promises. Avoid essay-bundle structure. Aim for enough chapters to give each chapter a practical 2,000–4,500 word allocation where appropriate.
+Return JSON only: {"chapters":[{"title":"...","summary":"specific chapter purpose, required coverage, and what this chapter must NOT duplicate from neighbouring chapters"}]}.
+Preserve valuable source material and all important reader promises. Avoid essay-bundle structure. Give every chapter one distinct editorial job. Aim for enough chapters to give each chapter a practical 2,000–4,500 word allocation where appropriate.
+
+${nonfictionContract(payload.brief)}
 
 BOOK PURPOSE: ${payload.brief.idea}
 SOURCE:\n${source}`;
@@ -231,6 +259,126 @@ SOURCE:\n${source}`;
     updatedAt: Date.now(),
     wordCount: 0,
   } as Chapter));
+}
+
+function normaliseHeading(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\b(chapter|section|part|the|a|an|and|of|to|in|for|with)\b/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function headingSet(chapter: Chapter): Set<string> {
+  const values = (chapter.content || '')
+    .split('\n')
+    .filter((line) => /^#{2,5}\s+/.test(line.trim()))
+    .map((line) => normaliseHeading(line.replace(/^#{2,5}\s+/, '')))
+    .filter((line) => line.length >= 6);
+  return new Set(values);
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let intersection = 0;
+  for (const value of a) if (b.has(value)) intersection += 1;
+  return intersection / (a.size + b.size - intersection);
+}
+
+function detectQualityIssues(chapters: Chapter[], brief: ServerCommissionBrief): QualityIssue[] {
+  const issues: QualityIssue[] = [];
+  if (!isNonfiction(brief)) return issues;
+
+  for (const chapter of chapters) {
+    const text = chapter.content || '';
+    if (/\[CITATION NEEDED\]|replace with local|replace later|placeholder|0800\s*123\s*4567|1[-\s]?800[-\s]?555[-\s]?0199/i.test(text)) {
+      issues.push({ type: /CITATION NEEDED/i.test(text) ? 'citation' : 'placeholder', message: `Chapter ${chapter.order + 1} contains unresolved production placeholders or unsupported citation markers.`, chapterOrders: [chapter.order] });
+    }
+    if (/\b(?:dose|dosage|taper|reduce by|mg|ml|milligrams?|millilitres?)\b/i.test(text) && !/\([A-Z][A-Za-z-]+(?: et al\.)?,?\s*\d{4}[a-z]?\)/.test(text)) {
+      issues.push({ type: 'unsafe-specificity', message: `Chapter ${chapter.order + 1} contains precise health/drug guidance without visible author-date attribution.`, chapterOrders: [chapter.order] });
+    }
+  }
+
+  for (let i = 0; i < chapters.length; i += 1) {
+    const a = headingSet(chapters[i]);
+    for (let j = i + 1; j < chapters.length; j += 1) {
+      const b = headingSet(chapters[j]);
+      const similarity = jaccard(a, b);
+      if (similarity >= 0.42 && Math.min(a.size, b.size) >= 4) {
+        issues.push({ type: 'duplication', message: `Chapters ${chapters[i].order + 1} and ${chapters[j].order + 1} substantially duplicate heading/topic structure (${Math.round(similarity * 100)}% overlap).`, chapterOrders: [chapters[i].order, chapters[j].order] });
+      }
+    }
+  }
+  return issues;
+}
+
+function qaRepairPrompt(payload: ServerCommissionPayload, chapters: Chapter[], chapter: Chapter, issues: QualityIssue[]): string {
+  const related = issues.filter((issue) => issue.chapterOrders.includes(chapter.order));
+  const otherChapters = chapters.filter((c) => c.order !== chapter.order).map((c) => `${c.order + 1}. ${c.title} — ${c.summary || ''}`).join('\n');
+  return `You are Caspa's final nonfiction QA editor. Repair the chapter below so it can pass a publication gate.
+
+BOOK: ${payload.brief.title}
+BOOK PURPOSE: ${payload.brief.idea}
+AUDIENCE: ${payload.brief.audience}
+${nonfictionContract(payload.brief)}
+
+BOOK OWNERSHIP MAP:
+${otherChapters}
+
+THIS CHAPTER: ${chapter.order + 1}. ${chapter.title}
+PURPOSE: ${chapter.summary || ''}
+CURRENT WORD COUNT: ${countWords(chapter.content)}
+
+DETECTED FAILURES:
+${related.map((issue) => `- ${issue.message}`).join('\n') || '- General final QA'}
+
+CURRENT CHAPTER:
+${(chapter.content || '').slice(0, 65000)}
+
+REPAIR RULES:
+- Return the complete repaired chapter only.
+- Preserve useful unique material and roughly preserve length; do not shrink it merely to remove repetition.
+- Remove material whose real editorial home is another chapter and replace lost length with material genuinely owned by this chapter.
+- Eliminate repeated definitions, repeated drug-by-drug profiles, repeated dashboards/checklists, repeated support directories and repeated generic introductions.
+- Fact-check high-stakes claims using web research. Use Harvard-style author-date attribution for retained precise medical, pharmacological, legal or statistical claims.
+- Remove fabricated or unverifiable phone numbers, organisations, quotations and citations.
+- Do not leave [CITATION NEEDED], TODOs or placeholders in finished copy.
+- Do not give precise dosing/taper instructions unless they are directly supported by a trustworthy source and genuinely appropriate for a public guide.
+- Never imply naloxone treats non-opioid toxicity.
+- Keep this a coherent chapter of one book, not an isolated essay.`;
+}
+
+async function runFinalQa(payload: ServerCommissionPayload, chapters: Chapter[], jobId: string, completedOrders: Set<number>): Promise<Chapter[]> {
+  if (!isNonfiction(payload.brief)) return chapters;
+  let working = chapters;
+
+  for (let pass = 1; pass <= 2; pass += 1) {
+    const issues = detectQualityIssues(working, payload.brief);
+    if (!issues.length) return working;
+    const affectedOrders = [...new Set(issues.flatMap((issue) => issue.chapterOrders))];
+    updateJob(jobId, { stage: `final-qa:${pass}:${issues.length}-issues`, progress: 96 + pass });
+
+    for (let i = 0; i < affectedOrders.length; i += QA_CONCURRENCY) {
+      const batchOrders = affectedOrders.slice(i, i + QA_CONCURRENCY);
+      const snapshot = working;
+      const repaired = await Promise.all(batchOrders.map(async (order) => {
+        const chapter = snapshot.find((c) => c.order === order);
+        if (!chapter) return null;
+        const prompt = qaRepairPrompt(payload, snapshot, chapter, issues);
+        const maxTokens = Math.min(14000, Math.max(3500, Math.ceil(countWords(chapter.content) * 1.7)));
+        const content = await callAiWithRetry(prompt, maxTokens, true, 2);
+        return { order, content };
+      }));
+      for (const item of repaired) {
+        if (!item) continue;
+        working = working.map((c) => c.order === item.order ? { ...c, content: item.content, wordCount: countWords(item.content), updatedAt: Date.now() } : c);
+      }
+      updateJob(jobId, { checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'final-qa' } as any });
+    }
+  }
+
+  const remaining = detectQualityIssues(working, payload.brief);
+  if (remaining.length) {
+    const summary = remaining.slice(0, 8).map((issue) => issue.message).join(' ');
+    throw new Error(`Final QA gate refused publication: ${summary}${remaining.length > 8 ? ` (+${remaining.length - 8} more)` : ''}. Checkpoint retained for repair.`);
+  }
+  return working;
 }
 
 export function queueServerCommission(payload: ServerCommissionPayload): string {
@@ -344,7 +492,17 @@ export async function runServerCommission(jobId: string): Promise<void> {
       }
     }
 
-    updateJob(jobId, { stage: 'final-qa', progress: 96 });
+    updateJob(jobId, { stage: 'final-qa', progress: 96, checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'pre-final-qa' } as any });
+    working = await runFinalQa(payload, working, jobId, completedOrders);
+
+    if (scopeNeedsFullBook(payload.scope)) {
+      const minWords = Math.round(fullTarget * 0.95);
+      const finalWords = totalWords(working);
+      if (finalWords < minWords) {
+        throw new Error(`Final QA improved quality but reduced the manuscript below production length: ${finalWords.toLocaleString()} / ${fullTarget.toLocaleString()} words. Checkpoint retained for targeted expansion.`);
+      }
+    }
+
     const artefact = [...working]
       .sort((a, b) => a.order - b.order)
       .map((c) => `# ${c.title}\n\n${c.content || ''}`)
