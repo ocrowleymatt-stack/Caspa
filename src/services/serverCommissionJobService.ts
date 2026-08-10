@@ -35,9 +35,14 @@ type QualityIssue = {
   chapterOrders: number[];
 };
 
+type IntelligenceMode = 'speed' | 'balanced' | 'god';
+type TaskHint = 'fast' | 'creative' | 'reasoning' | 'factual' | 'legal' | 'synthesis' | 'long' | 'council';
+
 const activeWorkers = new Set<string>();
-const RECOVERY_CONCURRENCY = 2;
+const RECOVERY_CONCURRENCY = 3;
 const QA_CONCURRENCY = 2;
+const SPEED_CALL_DEADLINE_MS = 105_000;
+const STANDARD_CALL_DEADLINE_MS = 210_000;
 
 function countWords(text?: string | null): number {
   return (text || '').trim().split(/\s+/).filter(Boolean).length;
@@ -97,16 +102,24 @@ function nonfictionContract(brief: ServerCommissionBrief): string {
 - Maintain one coherent book with cumulative learning and cross-chapter continuity, not a bundle of essays.`;
 }
 
-async function callAi(prompt: string, maxTokens: number, useWebSearch = false): Promise<string> {
+async function callAi(
+  prompt: string,
+  maxTokens: number,
+  useWebSearch = false,
+  intelligenceMode: IntelligenceMode = 'balanced',
+  taskHint: TaskHint = 'long',
+): Promise<string> {
   const port = Number(process.env.PORT) || 3000;
+  const deadline = intelligenceMode === 'speed' ? SPEED_CALL_DEADLINE_MS : STANDARD_CALL_DEADLINE_MS;
   const response = await fetch(`http://127.0.0.1:${port}/api/ai/call`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(deadline),
     body: JSON.stringify({
       prompt,
       maxTokens,
-      intelligenceMode: 'balanced',
-      taskHint: 'longform',
+      intelligenceMode,
+      taskHint,
       useWebSearch,
       skipLocalFallback: true,
     }),
@@ -116,14 +129,21 @@ async function callAi(prompt: string, maxTokens: number, useWebSearch = false): 
   return String(data.result).trim();
 }
 
-async function callAiWithRetry(prompt: string, maxTokens: number, useWebSearch = false, attempts = 3): Promise<string> {
+async function callAiWithRetry(
+  prompt: string,
+  maxTokens: number,
+  useWebSearch = false,
+  attempts = 3,
+  intelligenceMode: IntelligenceMode = 'balanced',
+  taskHint: TaskHint = 'long',
+): Promise<string> {
   let last: unknown = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await callAi(prompt, maxTokens, useWebSearch);
+      return await callAi(prompt, maxTokens, useWebSearch, intelligenceMode, taskHint);
     } catch (error) {
       last = error;
-      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 900 * attempt));
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
     }
   }
   throw last instanceof Error ? last : new Error('AI worker failed after retries');
@@ -241,7 +261,7 @@ ${nonfictionContract(payload.brief)}
 
 BOOK PURPOSE: ${payload.brief.idea}
 SOURCE:\n${source}`;
-  const text = await callAiWithRetry(prompt, 6000, false);
+  const text = await callAiWithRetry(prompt, 6000, false, 2, 'balanced', 'reasoning');
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Rebuild architecture returned no usable JSON');
   const parsed = JSON.parse(match[0]);
@@ -352,7 +372,7 @@ async function runFinalQa(payload: ServerCommissionPayload, chapters: Chapter[],
     const issues = detectQualityIssues(working, payload.brief);
     if (!issues.length) return working;
     const affectedOrders = [...new Set(issues.flatMap((issue) => issue.chapterOrders))];
-    updateJob(jobId, { stage: `final-qa:${pass}:${issues.length}-issues`, progress: 96 + pass });
+    updateJob(jobId, { stage: `final-qa:${pass}:${issues.length}-issues:${totalWords(working)}-words`, progress: 96 + pass });
 
     for (let i = 0; i < affectedOrders.length; i += QA_CONCURRENCY) {
       const batchOrders = affectedOrders.slice(i, i + QA_CONCURRENCY);
@@ -362,14 +382,17 @@ async function runFinalQa(payload: ServerCommissionPayload, chapters: Chapter[],
         if (!chapter) return null;
         const prompt = qaRepairPrompt(payload, snapshot, chapter, issues);
         const maxTokens = Math.min(14000, Math.max(3500, Math.ceil(countWords(chapter.content) * 1.7)));
-        const content = await callAiWithRetry(prompt, maxTokens, true, 2);
+        const content = await callAiWithRetry(prompt, maxTokens, true, 2, 'balanced', 'factual');
         return { order, content };
       }));
       for (const item of repaired) {
         if (!item) continue;
         working = working.map((c) => c.order === item.order ? { ...c, content: item.content, wordCount: countWords(item.content), updatedAt: Date.now() } : c);
       }
-      updateJob(jobId, { checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'final-qa' } as any });
+      updateJob(jobId, {
+        checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'final-qa' } as any,
+        stage: `final-qa-checkpoint:${pass}:${totalWords(working)}-words:${Math.min(i + batchOrders.length, affectedOrders.length)}/${affectedOrders.length}`,
+      });
     }
   }
 
@@ -400,7 +423,7 @@ export async function runServerCommission(jobId: string): Promise<void> {
     let working = existingCheckpoint?.chapters?.length ? existingCheckpoint.chapters : [...payload.chapters].sort((a, b) => a.order - b.order);
     const completedOrders = new Set<number>(existingCheckpoint?.completedOrders || []);
 
-    updateJob(jobId, { status: 'running', stage: existingCheckpoint ? 'resuming' : 'starting', progress: Math.max(job.progress || 0, 2), error: undefined });
+    updateJob(jobId, { status: 'running', stage: existingCheckpoint ? `resuming:${totalWords(working)}-words` : 'starting', progress: Math.max(job.progress || 0, 2), error: undefined });
 
     if (!existingCheckpoint && (payload.scope.type === 'rebuild' || payload.diagnosis.recommendations.some((r) => payload.selectedRecommendationIds.includes(r.id) && r.actionType === 'rebuild'))) {
       updateJob(jobId, { stage: 'rebuilding', progress: 6 });
@@ -416,10 +439,10 @@ export async function runServerCommission(jobId: string): Promise<void> {
     for (let index = 0; index < targets.length; index += 1) {
       const chapter = targets[index];
       const pct = 15 + Math.round(((index + 1) / Math.max(1, targets.length)) * 62);
-      updateJob(jobId, { status: 'running', stage: `writing:${chapter.order + 1}:${chapter.title}`, progress: pct });
+      updateJob(jobId, { status: 'running', stage: `writing:${chapter.order + 1}:${chapter.title}:${totalWords(working)}/${fullTarget}-words`, progress: pct });
       const prompt = chapterPrompt(payload, working, chapter, chapterTarget);
       const maxTokens = Math.min(16000, Math.max(2500, Math.ceil(chapterTarget * 1.65)));
-      const content = await callAiWithRetry(prompt, maxTokens, Boolean(payload.autoResearch && isNonfiction(payload.brief)));
+      const content = await callAiWithRetry(prompt, maxTokens, Boolean(payload.autoResearch && isNonfiction(payload.brief)), 2, 'balanced', 'creative');
       working = working.map((c) => c.order === chapter.order ? {
         ...c,
         content,
@@ -430,7 +453,7 @@ export async function runServerCommission(jobId: string): Promise<void> {
       completedOrders.add(chapter.order);
       updateJob(jobId, {
         checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'draft' } as any,
-        stage: `checkpoint:${chapter.order + 1}`,
+        stage: `checkpoint:${chapter.order + 1}:${totalWords(working)}/${fullTarget}-words`,
         progress: pct,
       });
     }
@@ -442,7 +465,7 @@ export async function runServerCommission(jobId: string): Promise<void> {
       for (let pass = 1; pass <= 3 && totalWords(working) < minWords; pass += 1) {
         const current = totalWords(working);
         const remaining = Math.max(0, recoveryGoal - current);
-        updateJob(jobId, { stage: `length-audit:${pass}:${current}`, progress: 80 + pass * 4 });
+        updateJob(jobId, { stage: `length-audit:${pass}:${current}/${fullTarget}-words`, progress: 80 + pass * 4 });
 
         const ranked = [...working]
           .map((chapter) => ({ chapter, deficit: Math.max(0, chapterTarget - countWords(chapter.content)) }))
@@ -450,22 +473,23 @@ export async function runServerCommission(jobId: string): Promise<void> {
         if (!ranked.length || remaining <= 0) break;
 
         const candidates = ranked.slice(0, Math.min(6, ranked.length));
-        const share = Math.max(450, Math.ceil((remaining * 1.08) / Math.min(candidates.length, 4)));
+        const share = Math.max(450, Math.ceil((remaining * 1.08) / Math.min(candidates.length, RECOVERY_CONCURRENCY * 2)));
 
         for (let i = 0; i < candidates.length && totalWords(working) < minWords; i += RECOVERY_CONCURRENCY) {
           const batch = candidates.slice(i, i + RECOVERY_CONCURRENCY);
           const snapshot = working;
+          const beforeBatchWords = totalWords(snapshot);
           updateJob(jobId, {
-            stage: `length-recovery:${pass}:${totalWords(working)}:${Math.min(i + batch.length, candidates.length)}/${candidates.length}`,
+            stage: `length-recovery:${pass}:${beforeBatchWords}/${fullTarget}-words:${Math.min(i + batch.length, candidates.length)}/${candidates.length}`,
             progress: Math.min(95, 83 + pass * 3 + Math.round(((i + batch.length) / candidates.length) * 3)),
           });
 
           const additions = await Promise.all(batch.map(async ({ chapter, deficit }) => {
-            const stillNeeded = Math.max(350, recoveryGoal - totalWords(snapshot));
+            const stillNeeded = Math.max(350, recoveryGoal - beforeBatchWords);
             const addWords = Math.min(Math.max(share, deficit), Math.max(650, Math.ceil(stillNeeded / Math.max(1, batch.length))));
             const prompt = expansionPrompt(payload, snapshot, chapter, addWords);
-            const maxTokens = Math.min(8000, Math.max(1400, Math.ceil(addWords * 1.65)));
-            const addition = await callAiWithRetry(prompt, maxTokens, false, 2);
+            const maxTokens = Math.min(6500, Math.max(1200, Math.ceil(addWords * 1.45)));
+            const addition = await callAiWithRetry(prompt, maxTokens, false, 2, 'speed', 'creative');
             return { order: chapter.order, addition };
           }));
 
@@ -481,7 +505,7 @@ export async function runServerCommission(jobId: string): Promise<void> {
 
           updateJob(jobId, {
             checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'length-audit' } as any,
-            stage: `length-checkpoint:${pass}:${totalWords(working)}`,
+            stage: `length-checkpoint:${pass}:${totalWords(working)}/${fullTarget}-words`,
           });
         }
       }
@@ -492,7 +516,7 @@ export async function runServerCommission(jobId: string): Promise<void> {
       }
     }
 
-    updateJob(jobId, { stage: 'final-qa', progress: 96, checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'pre-final-qa' } as any });
+    updateJob(jobId, { stage: `final-qa:${totalWords(working)}/${fullTarget}-words`, progress: 96, checkpoint: { chapters: working, completedOrders: [...completedOrders], phase: 'pre-final-qa' } as any });
     working = await runFinalQa(payload, working, jobId, completedOrders);
 
     if (scopeNeedsFullBook(payload.scope)) {
@@ -512,7 +536,7 @@ export async function runServerCommission(jobId: string): Promise<void> {
     updateJob(jobId, {
       status: 'complete',
       progress: 100,
-      stage: 'complete',
+      stage: `complete:${words}/${fullTarget}-words`,
       result: { finalText: artefact, artefact, chapters: working, words, targetWords: fullTarget, promises: payload.promises || [] },
       input: undefined,
       checkpoint: undefined,
