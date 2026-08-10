@@ -36,6 +36,7 @@ export interface RouterFailoverOptions extends RoutedCallOptions {
   primaryProvider?: string;
   sensitive?: boolean;
   disableLocalFallback?: boolean;
+  strictProvider?: boolean;
 }
 
 const BILLING_COOLDOWN_MS = Number(process.env.AI_BILLING_COOLDOWN_MS) || 15 * 60_000;
@@ -47,7 +48,10 @@ const TRANSIENT_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 60_
  * - Only configured, healthy cloud providers are attempted.
  * - Billing/quota failures quarantine a provider for longer than transient errors.
  * - Successful providers are immediately restored to healthy state.
- * - If every cloud provider is unavailable, Atlas enters the dynamic Ollama pool.
+ * - Explicit strict-provider requests still enter this router, but are constrained
+ *   to the requested cloud provider and never silently switch elsewhere.
+ * - If every cloud provider is unavailable, Atlas enters the dynamic Ollama pool
+ *   unless local fallback was disabled or strict-provider routing was requested.
  */
 export async function callWithProviderFailover(
   prompt: string,
@@ -56,7 +60,9 @@ export async function callWithProviderFailover(
   const mode: IntelligenceMode = normaliseMode(opts.mode);
   const task: TaskKind = opts.task || classifyTask(prompt, opts);
   const primary = String(opts.primaryProvider || '').trim();
-  const preferred = providerOrder(primary, mode, task, Boolean(opts.sensitive));
+  const preferred = opts.strictProvider && primary
+    ? [primary]
+    : providerOrder(primary, mode, task, Boolean(opts.sensitive));
   const attempts: RouterFailoverAttempt[] = [];
 
   const { attempt: ordered, anyConfigured } = selectAttemptOrder(
@@ -93,7 +99,7 @@ export async function callWithProviderFailover(
     }
   }
 
-  if (!opts.disableLocalFallback) {
+  if (!opts.disableLocalFallback && !opts.strictProvider) {
     try {
       const local = await callOllamaModelHunt(prompt, {
         json: opts.json,
