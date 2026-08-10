@@ -12,61 +12,66 @@ permissions:
 jobs:
   repair:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Patch finish-book flow
+      - name: Patch checkpoint resume flow
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          # 1) Workshop must never silently no-op because diagnosis returned zero recommendations.
+          p = Path('src/services/commissionService.ts')
+          s = p.read_text()
+          old = """      if (existing?.status === 'failed') {
+        // Failed jobs retain their checkpoint server-side, but a fresh job is
+        // deliberately submitted from the latest client state on explicit retry.
+        forgetActiveJobId(brief);
+      }
+"""
+          new = """      if (existing?.status === 'failed') {
+        onProgress({ phase: 'resume', message: 'Resuming from the saved Atlas checkpoint…', percent: Math.max(2, Number(existing.progress || 2)) });
+        const retryResponse = await fetch(`/api/caspa/gold/jobs/${encodeURIComponent(remembered)}/retry`, { method: 'POST' });
+        const retryJson = await retryResponse.json().catch(() => ({}));
+        if (!retryResponse.ok || !retryJson?.success) throw new Error(retryJson?.message || 'Atlas could not resume the saved finish checkpoint.');
+        return await pollServerJob(brief, remembered, onProgress, fallbackPromises);
+      }
+"""
+          if old not in s:
+              raise SystemExit('failed-job resume pattern not found')
+          p.write_text(s.replace(old, new, 1))
+
           p = Path('src/components/CommissionStudio.tsx')
           s = p.read_text()
-          old = """  const runCommission = async (ids: string[], scope: CommissionScope) => {\n    if (!state.diagnosis || state.chapters.length === 0 || ids.length === 0) return;\n    const nextIdea = directedIdea.trim() || brief.idea;\n    const writeBrief = { ...brief, idea: nextIdea };\n"""
-          new = """  const runCommission = async (ids: string[], scope: CommissionScope) => {\n    if (!state.diagnosis || state.chapters.length === 0) {\n      update({ phase: 'error', error: 'Add and analyse a manuscript before finishing the book.' });\n      return;\n    }\n    const effectiveIds = ids.length ? ids : (recommendedIds(state.diagnosis).length ? recommendedIds(state.diagnosis) : ['rec-complete-book']);\n    const nextIdea = directedIdea.trim() || brief.idea;\n    const writeBrief = { ...brief, idea: nextIdea };\n"""
+          old = "            onRetry={() => setTab('recommendations')}"
+          new = """            onRetry={() => {
+              if (state.error && state.diagnosis) void runCommission(state.selectedRecommendationIds, state.scope);
+              else setTab('recommendations');
+            }}"""
           if old not in s:
-              raise SystemExit('CommissionStudio runCommission pattern not found')
+              raise SystemExit('onRetry pattern not found')
           s = s.replace(old, new, 1)
-          s = s.replace("selectedRecommendationIds: ids,\n      scope,", "selectedRecommendationIds: effectiveIds,\n      scope,", 1)
-          s = s.replace("        ids,\n        scope,", "        effectiveIds,\n        scope,", 1)
-          s = s.replace("disabled={executing || selectedIds.length === 0}", "disabled={executing}", 1)
-          s = s.replace("{executing ? 'Finishing…' : `Finish book with ${selectedIds.length} fix${selectedIds.length === 1 ? '' : 'es'}`}", "{executing ? 'Finishing…' : selectedIds.length ? `Finish book with ${selectedIds.length} fix${selectedIds.length === 1 ? '' : 'es'}` : 'Finish book'}", 1)
-          s = s.replace("{selectedIds.length === 0 && <p style={{ color: '#ffcf8f', fontSize: 13, margin: 0 }}>Select at least one fix, or use “Accept plan & finish book”.</p>}", "{selectedIds.length === 0 && <p style={{ color: '#d6cbdc', fontSize: 13, margin: 0 }}>No fixes selected — Caspa will still complete the book to the agreed brief.</p>}", 1)
-          p.write_text(s)
-
-          # 2) Server endpoint accepts a valid finish request even when there are no editorial recommendations.
-          p = Path('src/routes/caspa-gold-routes.ts')
-          s = p.read_text()
-          old = "!brief || !Array.isArray(chapters) || !chapters.length || !diagnosis || !Array.isArray(selectedRecommendationIds) || !selectedRecommendationIds.length || !scope"
-          new = "!brief || !Array.isArray(chapters) || !chapters.length || !diagnosis || !Array.isArray(selectedRecommendationIds) || !scope"
+          old = """    return <article style={card}><h2 style={sectionTitle}>The finish run stopped</h2><p style={{ color: '#ffb4b4' }}>{error}</p><button type="button" onClick={onRetry} style={primaryBtn}>Return to finish plan</button></article>;"""
+          new = """    return <article style={card}><h2 style={sectionTitle}>The finish run stopped</h2><p style={{ color: '#ffb4b4' }}>{error}</p><p style={muted}>Your server checkpoint is retained. Resume continues from the saved manuscript rather than starting again.</p><button type="button" onClick={onRetry} style={primaryBtn}><Wand2 size={17} /> Resume & complete book</button></article>;"""
           if old not in s:
-              raise SystemExit('gold route validation pattern not found')
-          s = s.replace(old, new, 1)
-          s = s.replace("brief, chapters, diagnosis, selectedRecommendationIds and scope are required", "brief, chapters, diagnosis, selectedRecommendationIds array and scope are required", 1)
-          p.write_text(s)
-
-          # 3) Finish-book jobs must not inherit a tiny stale section/picture target.
-          p = Path('src/services/serverCommissionJobService.ts')
-          s = p.read_text()
-          old = """function targetWords(brief: ServerCommissionBrief): number {\n  if (typeof brief.targetWordCount === 'number' && brief.targetWordCount > 0) return brief.targetWordCount;\n  if (brief.mode === 'essay') return 3000;\n  if (brief.mode === 'poetry') return 800;\n  if (brief.mode === 'nonfiction') return 50000;\n  if (brief.mode === 'script') return 20000;\n  if (brief.mode === 'musical') return 25000;\n  if (brief.mode === 'picture') return 500;\n  return 80000;\n}\n"""
-          new = """function targetWords(brief: ServerCommissionBrief): number {\n  const supplied = typeof brief.targetWordCount === 'number' && Number.isFinite(brief.targetWordCount) && brief.targetWordCount > 0\n    ? Math.round(brief.targetWordCount)\n    : 0;\n  const mode = (brief.mode || '').toLowerCase();\n\n  // Workshop means FINISH THE BOOK. Tiny values commonly leak in from a previous\n  // picture/section/quick-write brief; treating 700 words as a nonfiction book\n  // silently produces a pamphlet and incorrectly calls it complete. Short-form\n  // work remains available through essay/poetry/picture modes.\n  if (mode === 'nonfiction') return supplied >= 5000 ? supplied : 50000;\n  if (mode === 'novel' || mode === 'adaptation' || mode === 'chaos') return supplied >= 10000 ? supplied : 80000;\n  if (mode === 'script') return supplied >= 5000 ? supplied : 20000;\n  if (mode === 'musical') return supplied >= 8000 ? supplied : 25000;\n  if (mode === 'essay') return supplied || 3000;\n  if (mode === 'poetry') return supplied || 800;\n  if (mode === 'picture') return supplied || 500;\n  return supplied >= 10000 ? supplied : 80000;\n}\n"""
-          if old not in s:
-              raise SystemExit('server targetWords pattern not found')
-          s = s.replace(old, new, 1)
-          p.write_text(s)
+              raise SystemExit('stopped-state button pattern not found')
+          p.write_text(s.replace(old, new, 1))
           PY
-
-      - name: Build
-        run: npm ci && npm run build
-      - name: Commit repair
+      - name: Validate
+        run: |
+          npm ci
+          npm test
+          npm run build
+          git diff --check
+      - name: Commit repair and request deploy
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'ocrowleymatt-stack'
-          git config user.email 'ocrowley.matt@gmail.com'
-          git add src/components/CommissionStudio.tsx src/routes/caspa-gold-routes.ts src/services/serverCommissionJobService.ts
-          git commit -m 'Fix finish-book no-op and stale word targets'
+          git config user.name 'atlas-automation'
+          git config user.email 'atlas-automation@users.noreply.github.com'
+          printf 'checkpoint-resume %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          git add src/services/commissionService.ts src/components/CommissionStudio.tsx .deploy-atlas-trigger
+          git commit -m 'Resume failed finish jobs from retained checkpoint'
           git push origin HEAD:main
