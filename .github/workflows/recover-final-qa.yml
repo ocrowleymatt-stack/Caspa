@@ -10,12 +10,13 @@ on:
 jobs:
   recover:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       ATLAS_HOST: 116.202.24.63
       ATLAS_USER: root
-      JOB_ID: 3f246dc4-9b68-41f3-9867-b4c33c71e0d5
+      PARENT_JOB_ID: 5afbd817-fee6-46cd-aa26-2274bee58052
+      TRANSIENT_JOB_ID: 3f246dc4-9b68-41f3-9867-b4c33c71e0d5
     steps:
       - name: Prepare SSH
         shell: bash
@@ -27,62 +28,65 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Recover Final QA status
+      - name: Inspect persisted Atlas jobs and export best manuscript
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 80); do
-            BODY=$(ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "curl -fsS 'http://127.0.0.1:3000/api/caspa/gold/jobs/${JOB_ID}'")
-            printf '%s' "$BODY" > atlas-job-status.json
-            STATUS=$(printf '%s' "$BODY" | python3 -c 'import sys,json; print((json.load(sys.stdin).get("data") or {}).get("status",""))')
-            STAGE=$(printf '%s' "$BODY" | python3 -c 'import sys,json; print((json.load(sys.stdin).get("data") or {}).get("stage",""))')
-            echo "[$i] ${STATUS:-unknown} :: ${STAGE:-unknown}"
-            if [ "$STATUS" = "complete" ]; then
-              printf '%s' "$BODY" | python3 -m json.tool
-              exit 0
-            fi
-            if [ "$STATUS" = "failed" ]; then
-              printf '%s' "$BODY" | python3 -m json.tool
-              exit 1
-            fi
-            sleep 15
-          done
-          echo 'Atlas job is still processing after 20 minutes; no repair or retry was re-run.'
-          exit 2
-
-      - name: Export existing Final QA artefact
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "python3 - <<'PY'
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "python3 - <<'PY'
           import json, pathlib
-          job_id = '3f246dc4-9b68-41f3-9867-b4c33c71e0d5'
-          p = pathlib.Path('/root/Caspa/data/caspa-jobs.json')
-          d = json.loads(p.read_text())
-          j = next(x for x in d['jobs'] if x['id'] == job_id)
-          r = j.get('result') or {}
-          text = r.get('artefact') or r.get('finalText')
-          chapters = r.get('chapters') or (j.get('checkpoint') or {}).get('chapters') or []
-          chapters = sorted(chapters, key=lambda x: x.get('order', 0))
+          parent='5afbd817-fee6-46cd-aa26-2274bee58052'
+          transient='3f246dc4-9b68-41f3-9867-b4c33c71e0d5'
+          p=pathlib.Path('/root/Caspa/data/caspa-jobs.json')
+          d=json.loads(p.read_text())
+          jobs=d if isinstance(d,list) else d.get('jobs',[])
+          related=[]
+          for j in jobs:
+              inp=j.get('input') or {}
+              if j.get('id') in {parent,transient} or inp.get('repairSourceJobId')==parent or inp.get('sourceJobId')==parent:
+                  related.append(j)
+          report=[]
+          for j in related:
+              report.append({k:j.get(k) for k in ['id','status','stage','progress','updatedAt','error']})
+          pathlib.Path('/root/Caspa/exports').mkdir(parents=True,exist_ok=True)
+          pathlib.Path('/root/Caspa/exports/final-qa-status.json').write_text(json.dumps(report,indent=2))
+          if not related:
+              raise SystemExit('No related persisted jobs found')
+          chosen=next((j for j in related if j.get('status')=='complete'),None)
+          parent_job=next((j for j in related if j.get('id')==parent),None)
+          source=chosen or parent_job or max(related,key=lambda j:str(j.get('updatedAt','')))
+          r=source.get('result') or {}
+          chapters=r.get('chapters') or (source.get('checkpoint') or {}).get('chapters') or []
+          chapters=sorted(chapters,key=lambda x:x.get('order',0))
+          text=r.get('artefact') or r.get('finalText')
           if not text and chapters:
-              text = '\n\n'.join('# ' + str(c.get('title','')) + '\n\n' + str(c.get('content','')) for c in chapters)
+              text='\n\n'.join('# '+str(c.get('title',''))+'\n\n'+str(c.get('content','')) for c in chapters)
           if not text:
-              raise SystemExit('Final QA is complete but no manuscript artefact/finalText/chapters were found')
-          out = pathlib.Path('/root/Caspa/exports/chemsex-guide-final-qa.md')
-          out.parent.mkdir(parents=True, exist_ok=True)
+              raise SystemExit('Related job exists but no manuscript text/checkpoint found')
+          out=pathlib.Path('/root/Caspa/exports/chemsex-guide-recovered.md')
           out.write_text(text)
-          print(out, len(text.split()), 'words')
+          verdict='FINAL_QA_COMPLETE' if chosen else 'REPAIRED_CHECKPOINT_ONLY'
+          print(verdict, source.get('id'), source.get('status'), source.get('stage'), len(text.split()), 'words')
           PY"
-          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/chemsex-guide-final-qa.md" ./chemsex-guide-final-qa.md
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/final-qa-status.json" ./final-qa-status.json
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/chemsex-guide-recovered.md" ./chemsex-guide-recovered.md
+          cat final-qa-status.json
+          wc -w chemsex-guide-recovered.md
 
-      - name: Upload recovery evidence
-        if: always()
+      - name: Check live parent API without failing recovery
+        shell: bash
+        run: |
+          set +e
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "curl -sS -i 'http://127.0.0.1:3000/api/caspa/gold/jobs/${PARENT_JOB_ID}'" > parent-api.txt
+          cat parent-api.txt
+          exit 0
+
+      - name: Upload recovered manuscript and status
         uses: actions/upload-artifact@v4
         with:
           name: atlas-final-qa-recovery
           path: |
-            atlas-job-status.json
-            chemsex-guide-final-qa.md
-          if-no-files-found: warn
+            final-qa-status.json
+            chemsex-guide-recovered.md
+            parent-api.txt
+          if-no-files-found: error
           retention-days: 7
