@@ -1,0 +1,134 @@
+name: Unify Atlas Router
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/unify-atlas-router.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  unify-router:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Replace legacy direct-provider server helpers
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server.ts')
+          s = p.read_text()
+
+          import_needle = "import { callUnifiedRouterChat } from './src/services/unifiedRouter';\n"
+          import_line = "import { routeAtlasPrompt } from './src/services/routerFallbackBridge';\n"
+          if import_line not in s:
+              if import_needle not in s:
+                  raise SystemExit('Could not find unifiedRouter import insertion point')
+              s = s.replace(import_needle, import_needle + import_line, 1)
+
+          start_marker = '// Initialize Google Gen AI\n'
+          end_marker = '// API routes go here FIRST\n'
+          start = s.find(start_marker)
+          end = s.find(end_marker)
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('Could not locate legacy provider helper block')
+
+          replacement = r'''// Canonical Atlas routing helpers. All text-model requests enter the same router,
+// preserving legacy helper signatures while eliminating direct provider bypasses.
+async function callRoutedServerModel(
+  prompt: string,
+  json = false,
+  maxTokens?: number,
+  primaryProvider?: string,
+  requestedModel?: string,
+  useSearch = false,
+) {
+  const result = await routeAtlasPrompt(prompt, {
+    json,
+    maxTokens,
+    primaryProvider,
+    requestedModel,
+    useSearch,
+  });
+  return result.text || null;
+}
+
+async function callGeminiOnServer(options: {
+  prompt: string;
+  model?: string;
+  json?: boolean;
+  maxTokens?: number;
+  useSearch?: boolean;
+}) {
+  const { prompt, model, json = false, maxTokens, useSearch = false } = options;
+  return callRoutedServerModel(prompt, json, maxTokens, 'gemini', model, useSearch);
+}
+
+async function callOpenAI(prompt: string, json = false, maxTokens?: number) {
+  return callRoutedServerModel(prompt, json, maxTokens, 'openai');
+}
+
+async function callClaude(prompt: string, json = false, maxTokens?: number) {
+  return callRoutedServerModel(prompt, json, maxTokens, 'claude');
+}
+
+async function callXAI(prompt: string, json = false, maxTokens?: number) {
+  return callRoutedServerModel(prompt, json, maxTokens, 'grok');
+}
+
+async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {
+  return callRoutedServerModel(prompt, json, maxTokens, 'venice');
+}
+
+'''
+          s = s[:start] + replacement + s[end:]
+
+          # The old direct SDK initialiser is no longer needed by server.ts.
+          s = s.replace('import { GoogleGenAI } from "@google/genai";\n', '')
+
+          # Guardrail: fail the workflow if old direct text-model endpoints remain in server.ts.
+          forbidden = [
+              'api.openai.com/v1/chat/completions',
+              'api.anthropic.com/v1/messages',
+              'api.x.ai/v1/chat/completions',
+              'generativelanguage.googleapis.com/v1beta/models/',
+              'api.venice.ai/api/v1/chat/completions',
+              'model: "gpt-4o"',
+              'model: "grok-3"',
+          ]
+          hits = [x for x in forbidden if x in s]
+          if hits:
+              raise SystemExit('Legacy direct-provider routes still present: ' + ', '.join(hits))
+
+          p.write_text(s)
+          PY
+      - name: Verify no text-model bypasses remain in server.ts
+        shell: bash
+        run: |
+          grep -nE 'api\.(openai|anthropic|x\.ai|venice)|generativelanguage\.googleapis\.com' server.ts && exit 1 || true
+      - run: npm test
+      - run: npm run build
+      - name: Commit verified router unification and trigger deploy
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Router already unified.'
+            exit 0
+          fi
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add server.ts
+          printf 'deploy requested %s\nreason: verified canonical Atlas router unification across server text-model helpers\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          git add .deploy-atlas-trigger
+          git commit -m 'Route all server text-model helpers through Atlas router'
+          git push origin HEAD:main
