@@ -1,0 +1,40 @@
+name: Restore Caspa Pilot Seat
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-caspa-pilot-seat.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Restore Pilot Seat to pre-Atlas-bridge state
+        run: git checkout 10e678fd510c3594bb3c03c54b7d34089d1e316e -- src/components/PilotSeatView.tsx
+      - name: Assert Atlas delivery code is absent from Caspa Pilot Seat
+        run: |
+          ! grep -q "Background findings delivery" src/components/PilotSeatView.tsx
+          ! grep -q "/api/ai/economy/deliveries" src/components/PilotSeatView.tsx
+      - run: npm test
+      - run: npm run build
+      - name: Commit verified Caspa restore and redeploy
+        run: |
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add src/components/PilotSeatView.tsx
+          printf 'deploy requested %s\nreason: restore Caspa Pilot Seat; Atlas background delivery must not modify Caspa UI\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          git add .deploy-atlas-trigger
+          git commit -m 'Restore Caspa Pilot Seat after Atlas UI mix-up'
+          git push origin HEAD:main
