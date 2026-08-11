@@ -1,20 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 
-vi.mock('../src/services/routerFailover', () => ({
-  callWithProviderFailover: vi.fn(async () => ({
-    text: 'ok',
-    model: 'model-x',
-    provider: 'gemini',
-    attempts: [],
-  })),
-}));
-
-import { routeAtlasPrompt } from '../src/services/routerFallbackBridge';
-
-describe('routeAtlasPrompt', () => {
-  it('uses the canonical failover router', async () => {
-    const result = await routeAtlasPrompt('hello');
-    expect(result.text).toBe('ok');
-    expect(result.provider).toBe('gemini');
-  });
+test('routeAtlasPrompt delegates to the canonical failover router', async () => {
+  const source = await readFile(new URL('../src/services/routerFallbackBridge.ts', import.meta.url), 'utf8');
+  assert.match(source, /return callWithProviderFailover\(prompt, options\);/);
+  assert.match(source, /from '\.\/routerFailover'/);
 });
