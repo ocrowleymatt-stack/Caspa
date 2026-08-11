@@ -1,0 +1,83 @@
+name: Wire Background Chat Delivery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wire-background-chat-delivery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Add conversation-aware delivery bridge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Economy service metadata + delivery helpers
+          p = Path('src/services/economyBatchService.ts')
+          s = p.read_text()
+          s = s.replace("  displayName?: string;\n}", "  displayName?: string;\n  conversationId?: string;\n  requestId?: string;\n}")
+          s = s.replace("  estimatedDiscountPct: number;\n}", "  estimatedDiscountPct: number;\n  conversationId?: string;\n  requestId?: string;\n  deliveredAt?: string;\n}")
+          s = s.replace("estimatedDiscountPct: 50 };", "estimatedDiscountPct: 50, conversationId: req.conversationId, requestId: req.requestId };", 2)
+          helper = '''\nexport function listUndeliveredEconomyResults(conversationId: string): EconomyBatchJob[] {\n  return [...jobs.values()]\n    .filter((job) => job.conversationId === conversationId && job.state === 'succeeded' && Boolean(job.result) && !job.deliveredAt)\n    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));\n}\n\nexport function markEconomyBatchDelivered(id: string): EconomyBatchJob | null {\n  const job = jobs.get(id);\n  if (!job) return null;\n  job.deliveredAt = new Date().toISOString();\n  jobs.set(id, job);\n  return job;\n}\n'''
+          if 'listUndeliveredEconomyResults' not in s:
+              s += helper
+          p.write_text(s)
+
+          # Routes for pending deliveries + acknowledgement
+          p = Path('src/routes/economy-batch-routes.ts')
+          s = p.read_text()
+          s = s.replace("  listEconomyBatches,\n  submitEconomyBatch,", "  listEconomyBatches,\n  listUndeliveredEconomyResults,\n  markEconomyBatchDelivered,\n  submitEconomyBatch,")
+          insert = '''\nrouter.get('/deliveries', (_req, res) => {\n  const conversationId = String(_req.query.conversationId || '').trim();\n  if (!conversationId) return res.status(400).json({ message: 'conversationId is required' });\n  return res.json({ jobs: listUndeliveredEconomyResults(conversationId) });\n});\n\nrouter.post('/jobs/:id/delivered', (req, res) => {\n  const job = markEconomyBatchDelivered(req.params.id);\n  if (!job) return res.status(404).json({ message: 'Economy batch job not found' });\n  return res.json(job);\n});\n'''
+          if "router.get('/deliveries'" not in s:
+              s = s.replace("router.post('/jobs', async (req, res) => {", insert + "\nrouter.post('/jobs', async (req, res) => {")
+          p.write_text(s)
+
+          # Pilot Seat polls and inserts completed background results once
+          p = Path('src/components/PilotSeatView.tsx')
+          s = p.read_text()
+          anchor = "  // ── Build context snapshot ─────────────────────────────────────────────────\n"
+          effect = '''  // ── Background findings delivery ─────────────────────────────────────────────\n  useEffect(() => {\n    if (!project.id) return;\n    let stopped = false;\n    const poll = async () => {\n      try {\n        const res = await fetch(`/api/ai/economy/deliveries?conversationId=${encodeURIComponent(project.id)}`);\n        if (!res.ok || stopped) return;\n        const data = await res.json();\n        const jobs = Array.isArray(data?.jobs) ? data.jobs : [];\n        for (const job of jobs) {\n          if (stopped || !job?.id || !job?.result) continue;\n          const msgId = `background-${job.id}`;\n          setMessages(prev => prev.some(m => m.id === msgId) ? prev : [...prev, {\n            id: msgId,\n            role: 'ai',\n            content: `**Background analysis complete**${job.model ? ` — ${job.model}` : ''}\\n\\n${job.result}`,\n            timestamp: Date.now(),\n          }]);\n          await fetch(`/api/ai/economy/jobs/${encodeURIComponent(job.id)}/delivered`, { method: 'POST' }).catch(() => undefined);\n        }\n      } catch {\n        // Background delivery must never interrupt ordinary chat.\n      }\n    };\n    poll();\n    const timer = window.setInterval(poll, 10_000);\n    return () => { stopped = true; window.clearInterval(timer); };\n  }, [project.id]);\n\n'''
+          if 'Background findings delivery' not in s:
+              if anchor not in s:
+                  raise SystemExit('Pilot Seat insertion anchor not found')
+              s = s.replace(anchor, effect + anchor, 1)
+          p.write_text(s)
+          PY
+      - name: Verify delivery bridge
+        shell: bash
+        run: |
+          grep -q "listUndeliveredEconomyResults" src/services/economyBatchService.ts
+          grep -q "router.get('/deliveries'" src/routes/economy-batch-routes.ts
+          grep -q "Background findings delivery" src/components/PilotSeatView.tsx
+          grep -q "background-\${job.id}" src/components/PilotSeatView.tsx
+      - run: npm test
+      - run: npm run build
+      - name: Commit verified bridge and trigger deploy
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Background chat delivery already wired.'
+            exit 0
+          fi
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add src/services/economyBatchService.ts src/routes/economy-batch-routes.ts src/components/PilotSeatView.tsx
+          printf 'deploy requested %s\nreason: deliver completed background OSINT/economy findings into Pilot Seat chat\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          git add .deploy-atlas-trigger
+          git commit -m 'Push completed background findings into chat'
+          git push origin HEAD:main
