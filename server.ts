@@ -21,6 +21,7 @@ import caspaKnowledgeRoutes from './src/routes/caspa-knowledge-routes';
 import caspaRewireRoutes from './src/routes/caspa-rewire-routes';
 import caspaWriteRoutes from './src/routes/caspa-write-routes';
 import caspaDesignRoutes from './src/routes/caspa-design-routes';
+import economyBatchRoutes from './src/routes/economy-batch-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 import { getBuildInfo } from './src/services/buildInfoService';
 import { startCloudKnowledgeAutopilot } from './src/services/cloudKnowledgeAutopilotService';
@@ -68,6 +69,8 @@ app.get("/health", (req, res) => {
     env: process.env.NODE_ENV || "production (default)",
   });
 });
+
+app.use('/api/ai/economy', economyBatchRoutes);
 
 // Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.
 app.use("/api/doctor", caspaDoctorRoutes);
