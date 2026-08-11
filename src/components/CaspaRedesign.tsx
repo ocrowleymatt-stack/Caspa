@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   BookText,
@@ -64,7 +64,7 @@ const navItems: NavItem[] = [
   { id: 'intelligence', label: 'Red Pen', detail: 'Issues and repairs', icon: CircleAlert },
   { id: 'library', label: 'Library', detail: 'Projects and shelves', icon: Library },
   { id: 'upload', label: 'Research Desk', detail: 'Sources and notes', icon: Search },
-  { id: 'publish', label: 'Publish', detail: 'Export and readers', icon: Download },
+  { id: 'publish', label: 'Publication Studio', detail: 'Adapt, finish, QA and export', icon: Download },
   { id: 'settings', label: 'Settings', detail: 'Account and privacy', icon: Settings },
 ];
 
@@ -91,6 +91,8 @@ export default function CaspaRedesign(props: Props) {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantResult, setAssistantResult] = useState<string | null>(null);
+  const [publicationStatus, setPublicationStatus] = useState<any>(null);
+  const [publicationStatusError, setPublicationStatusError] = useState<string | null>(null);
 
   const chapters = props.chapters && props.chapters.length > 0
     ? [...props.chapters].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -105,6 +107,26 @@ export default function CaspaRedesign(props: Props) {
   const progress = Math.min(99, Math.max(1, Math.round((computedWords / 120000) * 100)));
   const projectTitle = props.project?.title && props.project.title !== 'Untitled Narrative' ? props.project.title : 'Untitled Manuscript';
   const genre = props.project?.genre || 'Literary Fiction';
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch('/api/caspa/gold/publication-studio/progress', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok || payload?.success === false) throw new Error(payload?.message || ('HTTP ' + response.status));
+        if (!cancelled) {
+          setPublicationStatus(payload?.data || payload);
+          setPublicationStatusError(null);
+        }
+      } catch (error: any) {
+        if (!cancelled) setPublicationStatusError(error?.message || 'Progress unavailable');
+      }
+    };
+    load();
+    const timer = window.setInterval(load, 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
 
   const callAssistant = async (action: string, content?: string) => {
     setAssistantLoading(true);
@@ -158,13 +180,13 @@ export default function CaspaRedesign(props: Props) {
       case 'upload':
         return <ResearchScreen />;
       case 'publish':
-        return <PublishScreen title={projectTitle} computedWords={computedWords} />;
+        return <PublicationStudioScreen title={projectTitle} computedWords={computedWords} status={publicationStatus} statusError={publicationStatusError} />;
       case 'settings':
         return <SettingsScreen user={props.user} />;
       default:
         return <ProjectDesk title={projectTitle} genre={genre} chapters={chapters} characters={characters} progress={progress} computedWords={computedWords} setCurrentView={props.setCurrentView} onAssist={() => callAssistant('outline-next-chapter')} />;
     }
-  }, [props.currentView, projectTitle, genre, selectedChapter, chapters, characters, progress, computedWords, assistantLoading, assistantResult]);
+  }, [props.currentView, projectTitle, genre, selectedChapter, chapters, characters, progress, computedWords, assistantLoading, assistantResult, publicationStatus, publicationStatusError]);
 
   return (
     <div className="cs-shell">
@@ -412,7 +434,46 @@ function RedPen({ title, chapters, characters, computedWords, onAnalyze, isLoadi
 
 function LibraryScreen({ createNewProject }: { createNewProject: (title?: string) => void }) { return <SimpleScreen title="Library" text="Your manuscripts, shelves, public read links and local drafts." action="New project" icon={Boxes} onClick={() => createNewProject('Untitled Narrative')} />; }
 function ResearchScreen() { return <SimpleScreen title="Research Desk" text="A cleaner home for uploaded sources, notes, worldbuilding material and evidence-like references." action="Add source" icon={CalendarDays} />; }
-function PublishScreen({ title, computedWords }: { title: string; computedWords: number }) { return <SimpleScreen title="Publish" text={`${title} is at ${formatNumber(computedWords)} words. Export EPUB/PDF, create private links, and prep release metadata.`} action="Generate export" icon={ShieldCheck} />; }
+function PublicationStudioScreen({ title, computedWords, status, statusError }: { title: string; computedWords: number; status: any; statusError: string | null }) {
+  const job = status?.active || status?.job || status;
+  const currentWords = Number(job?.currentWords ?? job?.wordCount ?? computedWords ?? 0);
+  const targetWords = Number(job?.targetWords ?? job?.targetWordCount ?? 0);
+  const completed = Number(job?.chaptersCompleted ?? job?.completedChapters ?? job?.chapter ?? 0);
+  const total = Number(job?.chaptersTotal ?? job?.totalChapters ?? 0);
+  const stage = String(job?.stage || job?.status || 'Ready');
+  const pct = targetWords > 0 ? Math.min(100, Math.round((currentWords / targetWords) * 100)) : 0;
+  const updated = job?.updatedAt || job?.heartbeatAt || status?.updatedAt;
+  return (
+    <section className="cs-page">
+      <div className="cs-hero cs-hero--compact"><div><div className="cs-kicker">Publication Studio</div><h1>{title}</h1><p>One place to adapt, finish, quality-check, recover and export long-form work.</p></div><ShieldCheck size={34} /></div>
+      <div className="cs-grid">
+        <article className="cs-card cs-card--large">
+          <div className="cs-card__title">Current long-form job</div>
+          {statusError && !status ? <p>Live progress is temporarily unavailable: {statusError}</p> : <>
+            <div className="cs-stat-row">
+              <Metric value={stage} label="Stage" />
+              <Metric value={total ? (completed + '/' + total) : (completed || '—')} label="Chapters" />
+              <Metric value={formatNumber(currentWords)} label="Words" />
+              <Metric value={targetWords ? formatNumber(targetWords) : '—'} label="Target" />
+            </div>
+            {targetWords > 0 && <><div className="cs-progress-bar"><span style={{ width: pct + '%' }} /></div><p>{pct}% of target word count.</p></>}
+            <p>{updated ? ('Last checkpoint: ' + new Date(updated).toLocaleString('en-GB')) : 'Waiting for a persisted checkpoint.'}</p>
+          </>}
+        </article>
+        <article className="cs-card">
+          <div className="cs-card__title">Publication workflow</div>
+          <p><strong>Create or adapt</strong> → develop → QA/repair → design/illustrate → export.</p>
+          <p>Gold, Finish, repair and recovery remain internal capabilities; you do not need to hunt for separate engines.</p>
+        </article>
+        <article className="cs-card">
+          <div className="cs-card__title">Manuscript</div>
+          <p>{formatNumber(computedWords)} words currently loaded in this project.</p>
+          <button className="cs-button cs-button--gold">Continue / Resume</button>
+        </article>
+      </div>
+    </section>
+  );
+}
 function SettingsScreen({ user }: { user: Props['user'] }) { return <SimpleScreen title="Settings" text={`Signed in as ${user.email || user.displayName || 'local author'}. Account, privacy, storage and model defaults live here.`} action="Manage account" icon={Ghost} />; }
 
 function SimpleScreen({ title, text, action, icon: Icon, onClick }: { title: string; text: string; action: string; icon: React.ComponentType<{ size?: number }>; onClick?: () => void }) { return <section className="cs-page"><article className="cs-card cs-simple"><div className="cs-simple__icon"><Icon size={32} /></div><h1>{title}</h1><p>{text}</p><button className="cs-button cs-button--gold" onClick={onClick}>{action}</button></article></section>; }
