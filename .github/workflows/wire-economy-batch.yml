@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/services/economyBatchService.ts'
       - 'src/routes/economy-batch-routes.ts'
+      - 'tests/router*.test.ts'
       - '.github/workflows/wire-economy-batch.yml'
 
 permissions:
