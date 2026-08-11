@@ -1,0 +1,67 @@
+name: Humanise Everyman Guide
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/humanise-everyman-guide.mjs'
+      - '.github/workflows/humanise-everyman-guide.yml'
+  workflow_dispatch:
+
+jobs:
+  humanise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      ATLAS_DIR: /root/Caspa
+      SOURCE_JOB_ID: 5afbd817-fee6-46cd-aa26-2274bee58052
+    steps:
+      - name: Prepare SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATEKEY2"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Run resumable humanisation on Atlas
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "set -euo pipefail
+             cd '${ATLAS_DIR}'
+             git fetch origin
+             git reset --hard origin/main
+             export CASPA_SOURCE_JOB_ID='${SOURCE_JOB_ID}'
+             export TARGET_WORDS=70000
+             export CASPA_EVERYMAN_STATE='/root/Caspa/data/everyman-humanise-state.json'
+             export CASPA_EVERYMAN_OUT='/root/Caspa/exports/chemsex-everyman-guide.md'
+             node scripts/humanise-everyman-guide.mjs"
+
+      - name: Recover output even if later packaging fails
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          scp -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/chemsex-everyman-guide.md" ./chemsex-everyman-guide.md
+          scp -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/data/everyman-humanise-state.json" ./everyman-humanise-state.json
+          if [ -f chemsex-everyman-guide.md ]; then wc -w chemsex-everyman-guide.md; fi
+          if [ -f everyman-humanise-state.json ]; then cat everyman-humanise-state.json | python3 -c 'import sys,json; d=json.load(sys.stdin); print("stage=",d.get("stage"),"finalWords=",d.get("finalWords"),"failures=",len(d.get("failures") or []))'; fi
+          exit 0
+
+      - name: Upload Everyman guide artefact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chemsex-everyman-guide
+          path: |
+            chemsex-everyman-guide.md
+            everyman-humanise-state.json
+          if-no-files-found: warn
+          retention-days: 14
