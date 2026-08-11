@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/diagnose-atlas-council-live.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,7 +12,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
@@ -33,7 +34,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect live Atlas services
+      - name: Trace live Council implementation
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
@@ -42,48 +43,54 @@ jobs:
           date -u
           hostname
 
-          echo '=== LISTENING TCP PORTS ==='
-          ss -ltnp 2>/dev/null | sed -n '1,120p'
+          echo '=== LIVE REPOSITORY STATE ==='
+          cd /root/Caspa 2>/dev/null || exit 0
+          printf 'HEAD='; git rev-parse HEAD 2>/dev/null || true
+          printf 'BRANCH='; git branch --show-current 2>/dev/null || true
+          git status --short 2>/dev/null || true
+          git diff --stat 2>/dev/null || true
 
-          echo '=== PM2 ==='
+          echo '=== PM2 EXECUTION OWNERS ==='
           pm2 jlist 2>/dev/null | node -e '
-            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{for(const p of JSON.parse(s)){console.log(JSON.stringify({name:p.name,pid:p.pid,status:p.pm2_env?.status,port:p.pm2_env?.env?.PORT||p.pm2_env?.PORT||null,cwd:p.pm2_env?.pm_cwd||null}))}}catch(e){console.log("pm2 parse failed")}})'
+            let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{try{for(const p of JSON.parse(s)){console.log(JSON.stringify({name:p.name,pid:p.pid,status:p.pm2_env?.status,cwd:p.pm2_env?.pm_cwd||null,exec:p.pm2_env?.pm_exec_path||null,port:p.pm2_env?.env?.PORT||p.pm2_env?.PORT||null}))}}catch(e){console.log("pm2 parse failed")}})'
 
-          echo '=== DOCKER ==='
+          echo '=== CONTAINERS / SIDECARS ==='
           docker ps --format '{{.Names}} | {{.Image}} | {{.Ports}} | {{.Status}}' 2>/dev/null || true
 
-          echo '=== SYSTEMD LIKELY AI / WEB SERVICES ==='
-          systemctl --type=service --state=running --no-pager 2>/dev/null | grep -Ei 'open-webui|webui|atlas|ollama|litellm|router|python|caspa|nginx' || true
+          echo '=== COUNCIL ROUTE / FAILURE STRING OWNERS ==='
+          PATTERN='Council retrieval quorum|local inference saturated|retrieval preserved|Council audit:|no emergency inference|runCouncilResearch|getCouncilResearchStaticInfo|getCouncilResearchSourceCollectorStaticInfo|/api/ai/council|Council OSINT pass|bounded specialist inference'
+          grep -RInE --binary-files=without-match \
+            --exclude-dir=node_modules --exclude-dir=.git --exclude='*.map' \
+            "$PATTERN" /root/Caspa 2>/dev/null | head -n 260 || true
 
-          echo '=== NGINX ACTIVE SITES / UPSTREAM TARGETS ==='
-          nginx -T 2>/dev/null | grep -E 'server_name|proxy_pass|upstream ' | sed -n '1,160p'
-
-          echo '=== CASPA SOURCE LOCAL-ENDPOINT REFERENCES ==='
-          cd /root/Caspa 2>/dev/null || true
-          grep -RInE --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude='*.map' '(127\.0\.0\.1|localhost|UNIFIED_ROUTER_URL|OLLAMA|COUNCIL|council)' . 2>/dev/null | head -n 180 || true
-
-          echo '=== SAFE ENV CONFIG SUMMARY ==='
-          node <<'NODE'
-          const fs=require('fs');
-          let raw='';try{raw=fs.readFileSync('/root/Caspa/.env','utf8')}catch{}
-          const rows=raw.split(/\r?\n/).filter(Boolean).filter(x=>!x.trim().startsWith('#'));
-          for(const row of rows){
-            const i=row.indexOf('='); if(i<1) continue;
-            const k=row.slice(0,i).trim(); const v=row.slice(i+1).trim().replace(/^['"]|['"]$/g,'');
-            if(/(URL|HOST|PORT|ROUTER|COUNCIL|ATLAS|OLLAMA|WEBUI)/i.test(k)){
-              let safe=v?'SET':'EMPTY';
-              if(/URL/i.test(k)&&v){try{const u=new URL(v); safe=`${u.protocol}//${u.hostname}${u.port?':'+u.port:''}${u.pathname}`;}catch{}}
-              console.log(`${k}=${safe}`);
-            }
-          }
-          NODE
-
-          echo '=== RECENT CONNECTION / COUNCIL ERRORS FROM PM2 ==='
-          pm2 logs caspa-server --lines 500 --nostream 2>&1 | grep -Ei 'refused|ECONNREFUSED|urlopen|council|failed|timeout|router|unified|ollama' | tail -n 160 || true
-
-          echo '=== OPEN WEBUI / PYTHON CONTAINER LOG ERRORS (IF PRESENT) ==='
-          for c in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei 'webui|atlas|open|litellm|router|council'); do
-            echo "--- $c ---"
-            docker logs --since 30m "$c" 2>&1 | grep -Ei 'refused|urlopen|errno 111|council|adversarial|evidence analyst|timeout|error' | tail -n 160 || true
+          echo '=== RELEVANT LIVE SOURCE CONTEXT ==='
+          grep -RIlE --binary-files=without-match \
+            --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude='*.map' \
+            "$PATTERN" /root/Caspa 2>/dev/null | head -n 16 | while read -r f; do
+              echo "--- FILE: $f ---"
+              grep -nE -C 16 "$PATTERN" "$f" 2>/dev/null | head -n 220 || true
           done
+
+          echo '=== DIRTY RELEVANT SOURCE DIFF ==='
+          for f in $(git status --porcelain 2>/dev/null | awk '{print $2}'); do
+            if [ -f "$f" ] && grep -qEi "$PATTERN" "$f" 2>/dev/null; then
+              echo "--- DIFF: $f ---"
+              git diff -- "$f" 2>/dev/null | head -n 280 || true
+            fi
+          done
+
+          echo '=== LIVE BUILD INFO ==='
+          curl -ksS --max-time 8 https://caspa.ocrowley.com/api/build-info 2>/dev/null || true
+          echo
+
+          echo '=== BOUNDED COUNCIL PROBE ==='
+          curl -ksS --max-time 55 \
+            -H 'Content-Type: application/json' \
+            -X POST https://caspa.ocrowley.com/api/ai/council \
+            --data '{"question":"Find the latest public UK government update about digital identity. Identify the bounded target before searching and cite the source.","intelligenceMode":"balanced","useSearch":true,"deepResearch":true}' \
+            2>/dev/null | head -c 16000 || true
+          echo
+
+          echo '=== RECENT COUNCIL LOGS ==='
+          pm2 logs caspa-server --lines 700 --nostream 2>&1 | grep -Ei 'council|ollama|quorum|retrieval|source collector|timeout|emergency' | tail -n 220 || true
           REMOTE
