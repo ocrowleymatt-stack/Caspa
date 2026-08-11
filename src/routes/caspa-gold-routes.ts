@@ -3,6 +3,8 @@
  */
 
 import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import { GOLD_PASSES, runGoldPipeline } from '../services/goldPipelineService';
 import { createJob, getJob, getJobAudit, listRecentJobs, updateJob } from '../services/jobQueueService';
 import { queueServerCommission, resumePersistedCommissionJobs, runServerCommission } from '../services/serverCommissionJobService';
@@ -31,6 +33,56 @@ router.get('/jobs', (_req, res) => {
 
 router.get('/jobs/audit', (_req, res) => {
   res.json({ success: true, data: getJobAudit() });
+});
+
+/**
+ * Central long-form progress feed for the front end. Specialist engines remain
+ * internal; users see one Publication Studio lifecycle.
+ */
+router.get('/publication-studio/status', (_req, res) => {
+  const dataDir = process.env.CASPA_DATA_DIR || path.join(process.cwd(), 'data');
+  const candidates = [
+    process.env.CASPA_PUBLICATION_STATE,
+    path.join(dataDir, 'publication-studio-state.json'),
+    path.join(dataDir, 'everyman-humanise-state.json'),
+  ].filter(Boolean) as string[];
+
+  for (const file of candidates) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const chapters = Array.isArray(state.chapters) ? state.chapters : [];
+      const completedChapters = chapters.filter((c: any) => c && c.content).length;
+      const currentWords = Number(state.finalWords || chapters.reduce((n: number, c: any) => n + Number(c?.wordCount || 0), 0));
+      const totalChapters = Number(state.totalChapters || state.sourceChapterCount || Math.max(completedChapters, 0));
+      const targetWords = Number(state.targetWords || 0);
+      const updatedAt = state.updatedAt || state.completedAt || state.createdAt || null;
+      const stage = String(state.stage || 'idle');
+      const complete = stage === 'exported' || Boolean(state.completedAt);
+      const failed = Array.isArray(state.failures) ? state.failures.length : 0;
+
+      return res.json({
+        success: true,
+        data: {
+          kind: 'publication',
+          title: state.title || 'Long-Form Adaptation',
+          status: complete ? 'complete' : failed && completedChapters === 0 ? 'attention' : 'running',
+          stage,
+          completedChapters,
+          totalChapters,
+          currentWords,
+          targetWords,
+          updatedAt,
+          failures: failed,
+          output: state.output || null,
+        },
+      });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Could not read Publication Studio state.' });
+    }
+  }
+
+  return res.json({ success: true, data: { kind: 'publication', title: 'Publication Studio', status: 'idle', stage: 'idle', completedChapters: 0, totalChapters: 0, currentWords: 0, targetWords: 0, updatedAt: null, failures: 0, output: null } });
 });
 
 router.get('/jobs/:jobId', (req, res) => {
@@ -125,97 +177,29 @@ router.post('/pipeline', async (req, res) => {
     return res.status(400).json({ success: false, message: 'content is required' });
   }
 
-  const job = createJob('gold-pipeline', 'starting');
-  updateJob(job.id, { status: 'running', progress: 0, stage: 'structure' });
-  const meta = {
-    title,
-    tone,
-    mode,
-    targetWordCount:
-      typeof targetWordCount === 'number' && targetWordCount > 0 ? targetWordCount : null,
-    plotHold: plotHold as any,
-  };
-
   if (stream) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders?.();
+    res.flushHeaders();
 
     try {
-      const total = GOLD_PASSES.length;
-      let completed = 0;
-
-      const { finalText, passes } = await runGoldPipeline(
-        content,
-        meta,
-        (passId, status, result) => {
-          if (status === 'running') {
-            updateJob(job.id, { stage: passId, progress: Math.round((completed / total) * 100) });
-            writeSse(res, {
-              type: 'stage',
-              jobId: job.id,
-              passId,
-              passName: GOLD_PASSES.find((p) => p.id === passId)?.name,
-              status: 'running',
-              percent: Math.round((completed / total) * 100),
-            });
-          } else {
-            completed += 1;
-            updateJob(job.id, { stage: passId, progress: Math.round((completed / total) * 100) });
-            writeSse(res, {
-              type: 'stage',
-              jobId: job.id,
-              passId,
-              passName: result?.name,
-              status: 'done',
-              percent: Math.round((completed / total) * 100),
-              notes: result?.notes,
-              revisedText: result?.revisedText,
-            });
-          }
-        }
-      );
-
-      updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete', result: { finalText } });
-      writeSse(res, {
-        type: 'complete',
-        jobId: job.id,
-        percent: 100,
-        finalText,
-        message: `${passes.length} passes complete`,
-      });
-      res.write('data: [DONE]\n\n');
-      res.end();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Gold pipeline failed';
-      updateJob(job.id, { status: 'failed', error: message });
-      writeSse(res, { type: 'error', jobId: job.id, message, status: 'failed' });
-      res.write('data: [DONE]\n\n');
+      const result = await runGoldPipeline({ content, title, tone, mode, targetWordCount, plotHold }, (event) => writeSse(res, event));
+      writeSse(res, { type: 'complete', result });
+    } catch (error) {
+      writeSse(res, { type: 'error', message: error instanceof Error ? error.message : 'Pipeline failed' });
+    } finally {
       res.end();
     }
     return;
   }
 
-  // Non-streaming: run async, return job id immediately
-  res.status(202).json({ success: true, data: { jobId: job.id, status: 'running' } });
-
-  runGoldPipeline(content, meta, (passId, status) => {
-    if (status === 'done') {
-      const idx = GOLD_PASSES.findIndex((p) => p.id === passId);
-      updateJob(job.id, {
-        stage: passId,
-        progress: Math.round(((idx + 1) / GOLD_PASSES.length) * 100),
-      });
-    }
-  })
-    .then(({ finalText }) => updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete', result: { finalText } }))
-    .catch((err) =>
-      updateJob(job.id, {
-        status: 'failed',
-        error: err instanceof Error ? err.message : 'Gold pipeline failed',
-      })
-    );
+  try {
+    const result = await runGoldPipeline({ content, title, tone, mode, targetWordCount, plotHold });
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Pipeline failed' });
+  }
 });
 
 export default router;
