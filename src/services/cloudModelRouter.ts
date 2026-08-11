@@ -31,8 +31,6 @@ function timeoutMs(maxTokens?: number, mode: IntelligenceMode = 'balanced'): num
   return maxTokens && maxTokens >= 4000 ? 180_000 : maxTokens && maxTokens >= 1500 ? 120_000 : 90_000;
 }
 
-// Council is an ensemble workload: diversity comes from parallel providers, not from
-// letting one chair burn minutes cycling models. Keep every seat tightly bounded.
 function routedTimeoutMs(opts: RoutedCallOptions, mode: IntelligenceMode): number {
   if (opts.task === 'council') {
     if (mode === 'speed') return 10_000;
@@ -60,7 +58,7 @@ export function classifyTask(prompt: string, opts: { json?: boolean; maxTokens?:
   const p = prompt.toLowerCase();
   if (/\b(council|critic|critique|peer review|editorial board|swarm)\b/.test(p)) return 'council';
   if (/\b(heads? of claim|judicial review|statutory|jurisdiction|legal|police complaint|evidence schedule|public law|case law)\b/.test(p)) return 'legal';
-  if (opts.useSearch || /\b(fact check|verify|source|citation|research|current|latest|timeline|evidence|historical|medical accuracy)\b/.test(p)) return 'factual';
+  if (opts.useSearch || /\b(osint|fact check|verify|source|citation|research|current|latest|timeline|evidence|historical|medical accuracy)\b/.test(p)) return 'factual';
   if (/\b(synthesi[sz]e|integrate|consolidate|compare|reconcile|merge findings|final answer|chair)\b/.test(p)) return 'synthesis';
   if ((opts.maxTokens || 0) >= 3500 || prompt.length > 25_000) return 'long';
   if (/\b(reason|analyse|analyze|deduce|diagnose|architecture|logic|strategy|complex)\b/.test(p)) return 'reasoning';
@@ -99,22 +97,15 @@ async function fetchJson(url: string, headers: Record<string, string> = {}): Pro
 export async function discoverCloudModels(provider: CloudProvider, force = false): Promise<string[]> {
   const cached = catalogCache.get(provider);
   if (!force && cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.ids;
-
   const key = envKey(provider);
   if (!key) return [];
   try {
     let data: any;
-    if (provider === 'openai') {
-      data = await fetchJson('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
-    } else if (provider === 'grok') {
-      data = await fetchJson('https://api.x.ai/v1/models', { Authorization: `Bearer ${key}` });
-    } else if (provider === 'claude') {
-      data = await fetchJson('https://api.anthropic.com/v1/models', { 'x-api-key': key, 'anthropic-version': '2023-06-01' });
-    } else if (provider === 'gemini') {
-      data = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
-    } else {
-      data = await fetchJson('https://api.venice.ai/api/v1/models', { Authorization: `Bearer ${key}` });
-    }
+    if (provider === 'openai') data = await fetchJson('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
+    else if (provider === 'grok') data = await fetchJson('https://api.x.ai/v1/models', { Authorization: `Bearer ${key}` });
+    else if (provider === 'claude') data = await fetchJson('https://api.anthropic.com/v1/models', { 'x-api-key': key, 'anthropic-version': '2023-06-01' });
+    else if (provider === 'gemini') data = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+    else data = await fetchJson('https://api.venice.ai/api/v1/models', { Authorization: `Bearer ${key}` });
     const ids = parseModelIds(data);
     catalogCache.set(provider, { at: Date.now(), ids });
     return ids;
@@ -152,9 +143,6 @@ const MODEL_PREFERENCES: Record<CloudProvider, Record<IntelligenceMode, string[]
 };
 
 function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: IntelligenceMode): string[] {
-  // Council seats favour diverse, strong *fast* models. God Mode reserves the
-  // slower reasoning/multi-agent engines for synthesis and genuinely deep tasks,
-  // instead of making every critic seat pay maximum latency.
   if (task === 'council') {
     if (provider === 'grok') return ['grok-4.5', 'grok-4.20-0309-non-reasoning'];
     if (provider === 'gemini') return ['gemini-3.6-flash', 'gemini-3.5-flash'];
@@ -172,7 +160,8 @@ function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: Intellig
   }
   if (provider === 'venice') {
     if (task === 'fast') return ['qwen3-6-27b'];
-    if (task === 'reasoning' || task === 'legal' || task === 'factual') return mode === 'god' ? ['deepseek-v4-flash', 'openai-gpt-oss-120b'] : ['openai-gpt-oss-120b', 'qwen3-6-27b'];
+    if (task === 'factual') return mode === 'god' ? ['deepseek-v4-flash', 'openai-gpt-oss-120b'] : ['openai-gpt-oss-120b', 'qwen3-6-27b'];
+    if (task === 'reasoning' || task === 'legal') return mode === 'god' ? ['deepseek-v4-flash', 'openai-gpt-oss-120b'] : ['openai-gpt-oss-120b', 'qwen3-6-27b'];
   }
   if (provider === 'openai' && task === 'fast') return ['gpt-5.4-mini', 'gpt-5.4-nano'];
   if (provider === 'claude' && task === 'fast') return ['claude-fable-5', 'claude-haiku-4-5-20251001'];
@@ -184,9 +173,9 @@ export async function modelCandidates(provider: CloudProvider, mode: Intelligenc
   const preferred = [...taskAdjustments(provider, task, mode), ...MODEL_PREFERENCES[provider][mode]];
   if (requestedModel && !/gemini-2\.0|gemini-1\.5|gpt-4o|grok-3|claude-3/.test(requestedModel)) preferred.unshift(requestedModel);
   const unique = [...new Set(preferred)];
-  // One fast model per Council provider. If it is unhealthy, that seat fails fast
-  // and the other providers still form a quorum; model-by-model retry chains are forbidden.
-  const limit = task === 'council' ? 1 : 4;
+  // Cheap/interactive work gets at most two model attempts inside a provider.
+  // Deep modes can spend more attempts because quality is intentionally prioritised.
+  const limit = task === 'council' ? 1 : mode === 'speed' || task === 'fast' ? 2 : mode === 'god' ? 4 : 3;
   if (!available.length) return unique.slice(0, limit);
   const filtered = unique.filter((id) => available.includes(id));
   return (filtered.length ? filtered : unique).slice(0, limit);
@@ -194,15 +183,11 @@ export async function modelCandidates(provider: CloudProvider, mode: Intelligenc
 
 function requireValidJson(text: string): string {
   let candidate = text.trim();
-  if (candidate.startsWith('```')) {
-    candidate = candidate.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  }
+  if (candidate.startsWith('```')) candidate = candidate.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   try {
     JSON.parse(candidate);
     return candidate;
   } catch {
-    // Some otherwise-good models prepend a sentence. Salvage a single JSON
-    // object/array only when it parses cleanly; otherwise reject and try the next model.
     const objectStart = candidate.indexOf('{');
     const objectEnd = candidate.lastIndexOf('}');
     const arrayStart = candidate.indexOf('[');
@@ -255,45 +240,38 @@ async function callOpenAI(prompt: string, model: string, opts: RoutedCallOptions
   const key = envKey('openai');
   if (!key) throw new Error('OpenAI key unavailable');
   const mode = normaliseMode(opts.mode);
-  const task = opts.task || classifyTask(prompt, opts);
-  // Council seats are critics, not long-form solvers. Expensive hidden reasoning on
-  // every seat destroys ensemble latency without improving diversity.
-  const effort = task === 'council'
-    ? 'none'
-    : mode === 'god'
-      ? (['reasoning', 'legal', 'synthesis', 'long'].includes(task) ? 'xhigh' : 'high')
-      : mode === 'speed' ? 'none' : 'low';
-  const data = await providerPost('https://api.openai.com/v1/chat/completions', {
+  const data = await providerPost('https://api.openai.com/v1/responses', {
     model,
-    messages: [
+    input: [
       { role: 'system', content: SYSTEM_BASE + (mode === 'god' ? GOD_DIRECTIVE : '') },
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
-    max_completion_tokens: opts.maxTokens || 4096,
-    reasoning_effort: effort,
-    ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
+    max_output_tokens: opts.maxTokens || 4096,
   }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
-  return String(data?.choices?.[0]?.message?.content || '').trim();
+  const text = outputTextFromResponses(data);
+  if (!text) throw new Error(`OpenAI/${model} returned empty output`);
+  return text;
 }
 
 async function callGrok(prompt: string, model: string, opts: RoutedCallOptions): Promise<string> {
   const key = envKey('grok');
   if (!key) throw new Error('Grok key unavailable');
   const mode = normaliseMode(opts.mode);
-  const task = opts.task || classifyTask(prompt, opts);
-  const data = await providerPost('https://api.x.ai/v1/chat/completions', {
+  const data = await providerPost('https://api.x.ai/v1/responses', {
     model,
-    messages: [
+    input: [
       { role: 'system', content: SYSTEM_BASE + (mode === 'god' ? GOD_DIRECTIVE : '') },
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
-    max_tokens: opts.maxTokens || 4096,
-    ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
+    max_output_tokens: opts.maxTokens || 4096,
+    ...(opts.useSearch ? { tools: [{ type: 'web_search' }, { type: 'x_search' }] } : {}),
   }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
-  return String(data?.choices?.[0]?.message?.content || '').trim();
+  const text = outputTextFromResponses(data);
+  if (!text) throw new Error(`Grok/${model} returned empty output`);
+  return text;
 }
 
-export async function callGrokMultiAgent(prompt: string, opts: RoutedCallOptions): Promise<RoutedCloudResult> {
+async function callGrokMultiAgent(prompt: string, opts: RoutedCallOptions): Promise<RoutedCloudResult> {
   const key = envKey('grok');
   if (!key) throw new Error('Grok key unavailable');
   const mode = normaliseMode(opts.mode);
@@ -396,16 +374,31 @@ export async function callCloudProvider(provider: CloudProvider, prompt: string,
   throw lastError || new Error(`${provider} model pool exhausted`);
 }
 
+/**
+ * Cost-aware provider policy.
+ *
+ * Routine/interactive work favours economical high-throughput lanes first.
+ * Heavy reasoning, legal synthesis and God mode escalate to stronger providers.
+ * Sensitive creative work can still prefer Venice/open-weight-style models.
+ * A requested primary provider is honoured as an explicit override.
+ */
 export function providerOrder(primary: string, mode: IntelligenceMode, task: TaskKind, sensitive = false): string[] {
   let ordered: string[];
   if (mode === 'speed') {
-    ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
+    ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
   } else if (mode === 'god') {
     if (sensitive || task === 'creative') ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
-    else if (['reasoning', 'legal', 'factual', 'synthesis', 'long'].includes(task)) ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
+    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
+    else if (task === 'factual') ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
     else ordered = ['grok', 'venice', 'gemini', 'openai', 'claude'];
   } else {
-    ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
+    if (task === 'fast') ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
+    else if (task === 'factual') ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
+    else if (task === 'creative') ordered = sensitive
+      ? ['venice', 'gemini', 'grok', 'openai', 'claude']
+      : ['gemini', 'venice', 'grok', 'openai', 'claude'];
+    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['venice', 'gemini', 'grok', 'openai', 'claude'];
+    else ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
   }
   if (primary && ordered.includes(primary)) ordered = [primary, ...ordered.filter((p) => p !== primary)];
   if (sensitive && ordered.includes('venice')) ordered = ['venice', ...ordered.filter((p) => p !== 'venice')];
