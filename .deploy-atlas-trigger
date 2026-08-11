@@ -1,2 +1,2 @@
-deploy requested 2026-08-10T21:42:00Z
-reason: deploy canonical router enforcement, provider circuit breaking, and faster failover
+deploy requested 2026-08-11T00:15:00Z
+reason: deploy cost-aware Atlas routing, OSINT cheap-heavyweight preference, and bounded model attempts
