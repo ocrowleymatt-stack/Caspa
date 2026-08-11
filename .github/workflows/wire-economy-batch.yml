@@ -1,0 +1,62 @@
+name: Wire Economy Batch Lane
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/services/economyBatchService.ts'
+      - 'src/routes/economy-batch-routes.ts'
+      - '.github/workflows/wire-economy-batch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Wire economy routes into server
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server.ts')
+          s = p.read_text()
+          imp = "import economyBatchRoutes from './src/routes/economy-batch-routes';\n"
+          anchor = "import caspaDesignRoutes from './src/routes/caspa-design-routes';\n"
+          if imp not in s:
+              if anchor not in s:
+                  raise SystemExit('Could not find route import anchor')
+              s = s.replace(anchor, anchor + imp, 1)
+          mount = "app.use('/api/ai/economy', economyBatchRoutes);\n"
+          health = '// Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.\n'
+          if mount not in s:
+              if health not in s:
+                  raise SystemExit('Could not find route mount anchor')
+              s = s.replace(health, mount + '\n' + health, 1)
+          p.write_text(s)
+          PY
+      - run: npm test
+      - run: npm run build
+      - name: Commit verified wiring and request deploy
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Economy lane already wired.'
+            exit 0
+          fi
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add server.ts
+          printf 'deploy requested %s\nreason: deploy asynchronous 50-percent economy batch lane for Groq GPT-OSS and Gemini\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          git add .deploy-atlas-trigger
+          git commit -m 'Wire Atlas economy batch lane into server'
+          git push origin HEAD:main
