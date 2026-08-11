@@ -1,0 +1,84 @@
+name: Wire OSINT Analyst
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/services/osintAnalystService.ts'
+      - 'src/routes/osint-routes.ts'
+      - 'tests/osintAnalystService.test.ts'
+      - '.github/workflows/wire-osint-analyst.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Wire OSINT route and remove direct Gemini text fallback
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          server = Path('server.ts')
+          s = server.read_text()
+          imp = "import osintRoutes from './src/routes/osint-routes';\n"
+          anchor = "import economyBatchRoutes from './src/routes/economy-batch-routes';\n"
+          if imp not in s:
+              if anchor not in s:
+                  raise SystemExit('OSINT import anchor missing')
+              s = s.replace(anchor, anchor + imp, 1)
+          mount = "app.use('/api/osint', osintRoutes);\n"
+          mount_anchor = "app.use('/api/ai/economy', economyBatchRoutes);\n"
+          if mount not in s:
+              if mount_anchor not in s:
+                  raise SystemExit('OSINT mount anchor missing')
+              s = s.replace(mount_anchor, mount_anchor + mount, 1)
+          server.write_text(s)
+
+          research = Path('src/routes/caspa-research-routes.ts')
+          r = research.read_text()
+          start = r.find("    const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;\n")
+          if start >= 0:
+              end_marker = "\n    return res.status(502).json({ success: false, message: 'No AI provider available for topic suggestion' });"
+              end = r.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit('Could not locate direct Gemini fallback block end')
+              replacement = "    return res.status(502).json({ success: false, message: 'No routed AI provider available for topic suggestion' });"
+              r = r[:start] + replacement + r[end + len(end_marker):]
+              research.write_text(r)
+          PY
+      - name: Assert OSINT analyst route is mounted and no research text bypass remains
+        shell: bash
+        run: |
+          grep -q "app.use('/api/osint', osintRoutes);" server.ts
+          if grep -nE "gemini-2\.0-flash|new GoogleGenAI" src/routes/caspa-research-routes.ts; then
+            echo 'Direct Gemini text fallback remains in research route'
+            exit 1
+          fi
+      - run: npm test
+      - run: npm run build
+      - name: Commit verified OSINT wiring and trigger deploy
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'OSINT analyst already wired.'
+            exit 0
+          fi
+          git config user.name atlas-automation
+          git config user.email atlas-automation@users.noreply.github.com
+          git add server.ts src/routes/caspa-research-routes.ts
+          printf 'deploy requested %s\nreason: verified OSINT evidence-to-analyst-to-pivots pipeline\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          git add .deploy-atlas-trigger
+          git commit -m 'Wire Atlas OSINT analyst expansion pipeline'
+          git push origin HEAD:main
