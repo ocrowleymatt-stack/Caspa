@@ -34,60 +34,30 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Extract live Council function internals
+      - name: Inspect exact Council retrieval and exit paths
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set +e
-          echo '=== LIVE CASPA HEAD ==='
-          cd /root/Caspa && git rev-parse HEAD && git status --short
-
-          echo '=== OPENWEBUI COUNCIL FUNCTION ==='
+          set -e
           docker exec -i atlas-openwebui python3 - <<'PY'
-          import re, sqlite3
-          path='/app/backend/data/webui.db'
-          con=sqlite3.connect(path)
-          con.row_factory=sqlite3.Row
-          print('SCHEMA', [tuple(r) for r in con.execute('pragma table_info("function")')])
-          row=con.execute("SELECT * FROM function WHERE content LIKE '%Council retrieval quorum%' LIMIT 1").fetchone()
-          if not row:
-              print('NO MATCH'); raise SystemExit(0)
-          for k in row.keys():
-              if k != 'content':
-                  v=row[k]
-                  if isinstance(v, str) and len(v)>800: v=v[:800]+'...[truncated]'
-                  print(f'META {k}={v!r}')
-          code=str(row['content'] or '')
-          lines=code.splitlines()
-          print('CONTENT_LINES', len(lines), 'CONTENT_CHARS', len(code))
-          print('=== DEFINITIONS INDEX ===')
-          for i,line in enumerate(lines,1):
-              if re.match(r'^\s*(?:async\s+)?def\s+', line) or re.match(r'^\s*class\s+', line):
-                  print(f'{i}: {line.strip()}')
-
-          wanted=('valves','pipe','profile','source','osint','target','worker','report','model','ollama','generate','request','synth','fail','quorum','deadline')
-          starts=[]
-          for i,line in enumerate(lines):
-              m=re.match(r'^(\s*)(?:async\s+)?def\s+([A-Za-z0-9_]+)\s*\(', line)
-              if m and any(w in m.group(2).lower() for w in wanted):
-                  starts.append((i,len(m.group(1)),m.group(2)))
-          print('=== SELECTED METHOD BLOCKS ===')
-          emitted=set()
-          for start,indent,name in starts:
-              if start in emitted: continue
-              end=min(len(lines), start+180)
-              for j in range(start+1,min(len(lines),start+240)):
-                  m=re.match(r'^(\s*)(?:async\s+)?def\s+[A-Za-z0-9_]+\s*\(', lines[j])
-                  if m and len(m.group(1))==indent:
-                      end=j; break
-              print(f'--- {name} lines {start+1}-{end} ---')
-              for n in range(start,end):
-                  # Redact assignments that look like credentials while preserving control flow.
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          row=con.execute("SELECT content FROM function WHERE id='atlas-council'").fetchone()
+          if not row: raise SystemExit('atlas-council function missing')
+          lines=str(row[0]).splitlines()
+          for a,b,label in [
+              (40,126,'VALVES / REGEX CONSTANTS'),
+              (131,162,'QUESTION EXTRACTION / CASE'),
+              (245,281,'KNOWLEDGE / GRAPH / WEB PACKETS'),
+              (585,621,'BIGBROTHER / EVIDENCE PACKET'),
+              (1420,1511,'PIPE TERMINAL PATHS'),
+          ]:
+              print(f'=== {label} lines {a}-{b} ===')
+              for n in range(a-1,min(b,len(lines))):
                   text=lines[n]
-                  if re.search(r'(?i)(api[_-]?key|secret|token|password)\s*=', text):
-                      text=re.sub(r'=.*$', '= <REDACTED>', text)
+                  if any(x in text.lower() for x in ('api_key =','secret =','password =','token =')):
+                      text=text.split('=',1)[0]+'= <REDACTED>'
                   print(f'{n+1:04d} {text}')
-              emitted.add(start)
           con.close()
           PY
           REMOTE
