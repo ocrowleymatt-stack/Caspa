@@ -34,86 +34,60 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Trace live Council implementation
+      - name: Extract live Council function internals
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set +e
-          PATTERN='Council retrieval quorum|local inference saturated|retrieval preserved|Council audit:|no emergency inference|runCouncilResearch|getCouncilResearchStaticInfo|getCouncilResearchSourceCollectorStaticInfo|/api/ai/council|Council OSINT pass|bounded specialist inference'
+          echo '=== LIVE CASPA HEAD ==='
+          cd /root/Caspa && git rev-parse HEAD && git status --short
 
-          echo '=== CLOCK / HOST ==='
-          date -u
-          hostname
+          echo '=== OPENWEBUI COUNCIL FUNCTION ==='
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import re, sqlite3
+          path='/app/backend/data/webui.db'
+          con=sqlite3.connect(path)
+          con.row_factory=sqlite3.Row
+          print('SCHEMA', [tuple(r) for r in con.execute('pragma table_info("function")')])
+          row=con.execute("SELECT * FROM function WHERE content LIKE '%Council retrieval quorum%' LIMIT 1").fetchone()
+          if not row:
+              print('NO MATCH'); raise SystemExit(0)
+          for k in row.keys():
+              if k != 'content':
+                  v=row[k]
+                  if isinstance(v, str) and len(v)>800: v=v[:800]+'...[truncated]'
+                  print(f'META {k}={v!r}')
+          code=str(row['content'] or '')
+          lines=code.splitlines()
+          print('CONTENT_LINES', len(lines), 'CONTENT_CHARS', len(code))
+          print('=== DEFINITIONS INDEX ===')
+          for i,line in enumerate(lines,1):
+              if re.match(r'^\s*(?:async\s+)?def\s+', line) or re.match(r'^\s*class\s+', line):
+                  print(f'{i}: {line.strip()}')
 
-          echo '=== LIVE CASPA STATE ==='
-          cd /root/Caspa 2>/dev/null || exit 0
-          printf 'HEAD='; git rev-parse HEAD 2>/dev/null || true
-          printf 'BRANCH='; git branch --show-current 2>/dev/null || true
-          git status --short 2>/dev/null || true
-
-          echo '=== PM2 EXECUTION OWNERS ==='
-          pm2 jlist 2>/dev/null | node -e '
-            let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{try{for(const p of JSON.parse(s)){console.log(JSON.stringify({name:p.name,pid:p.pid,status:p.pm2_env?.status,cwd:p.pm2_env?.pm_cwd||null,exec:p.pm2_env?.pm_exec_path||null,port:p.pm2_env?.env?.PORT||p.pm2_env?.PORT||null}))}}catch(e){console.log("pm2 parse failed")}})'
-
-          echo '=== CONTAINERS / SIDECARS ==='
-          docker ps --format '{{.Names}} | {{.Image}} | {{.Ports}} | {{.Status}}' 2>/dev/null || true
-
-          echo '=== HOST-SIDE COUNCIL STRING OWNERS ==='
-          for root in /root/Caspa /root/unified-router /root/enhanced-omni-tools /root/Nexus /opt/arcanum; do
-            [ -e "$root" ] || continue
-            echo "--- $root ---"
-            grep -RInE --binary-files=without-match --exclude-dir=node_modules --exclude-dir=.git --exclude='*.map' "$PATTERN" "$root" 2>/dev/null | head -n 160 || true
-          done
-
-          echo '=== CONTAINER COUNCIL STRING OWNERS ==='
-          for c in atlas-openwebui atlas-osint-broker atlas-bbot atlas-spiderfoot atlas-council-ollama; do
-            docker inspect "$c" >/dev/null 2>&1 || continue
-            echo "--- CONTAINER: $c ---"
-            docker exec "$c" sh -lc 'P="Council retrieval quorum|local inference saturated|retrieval preserved|Council audit:|no emergency inference|runCouncilResearch|Council OSINT pass|bounded specialist inference"; for r in /app /workspace /opt /srv /usr/src; do [ -e "$r" ] || continue; grep -RInE --binary-files=without-match --exclude="*.map" "$P" "$r" 2>/dev/null | head -n 120; done' 2>/dev/null || true
-          done
-
-          echo '=== OPENWEBUI DATABASE MATCHES ==='
-          docker exec -i atlas-openwebui python3 - <<'PY' 2>/dev/null || true
-          import os, sqlite3
-          needles = ['Council retrieval quorum', 'local inference saturated', 'retrieval preserved', 'Council audit:', 'no emergency inference', 'Council OSINT pass', 'bounded specialist inference']
-          paths = ['/app/backend/data/webui.db', '/app/backend/data/data.db', '/app/data/webui.db']
-          for path in paths:
-              if not os.path.exists(path):
-                  continue
-              print('DB', path)
-              con = sqlite3.connect(path)
-              tables = [r[0] for r in con.execute("select name from sqlite_master where type='table'")]
-              for table in tables:
-                  try:
-                      cols = [r[1] for r in con.execute(f'pragma table_info("{table}")')]
-                  except Exception:
-                      continue
-                  for col in cols:
-                      for needle in needles:
-                          try:
-                              row = con.execute(f'SELECT CAST("{col}" AS TEXT) FROM "{table}" WHERE CAST("{col}" AS TEXT) LIKE ? LIMIT 1', (f'%{needle}%',)).fetchone()
-                          except Exception:
-                              row = None
-                          if row and row[0]:
-                              text = str(row[0])
-                              pos = text.find(needle)
-                              lo = max(0, pos - 1200)
-                              hi = min(len(text), pos + 3500)
-                              print(f'MATCH table={table} column={col} needle={needle}')
-                              print(text[lo:hi].replace('\x00',''))
-                              print('---')
-                              break
-              con.close()
+          wanted=('valves','pipe','profile','source','osint','target','worker','report','model','ollama','generate','request','synth','fail','quorum','deadline')
+          starts=[]
+          for i,line in enumerate(lines):
+              m=re.match(r'^(\s*)(?:async\s+)?def\s+([A-Za-z0-9_]+)\s*\(', line)
+              if m and any(w in m.group(2).lower() for w in wanted):
+                  starts.append((i,len(m.group(1)),m.group(2)))
+          print('=== SELECTED METHOD BLOCKS ===')
+          emitted=set()
+          for start,indent,name in starts:
+              if start in emitted: continue
+              end=min(len(lines), start+180)
+              for j in range(start+1,min(len(lines),start+240)):
+                  m=re.match(r'^(\s*)(?:async\s+)?def\s+[A-Za-z0-9_]+\s*\(', lines[j])
+                  if m and len(m.group(1))==indent:
+                      end=j; break
+              print(f'--- {name} lines {start+1}-{end} ---')
+              for n in range(start,end):
+                  # Redact assignments that look like credentials while preserving control flow.
+                  text=lines[n]
+                  if re.search(r'(?i)(api[_-]?key|secret|token|password)\s*=', text):
+                      text=re.sub(r'=.*$', '= <REDACTED>', text)
+                  print(f'{n+1:04d} {text}')
+              emitted.add(start)
+          con.close()
           PY
-
-          echo '=== CASPA ROUTE REALITY ==='
-          curl -ksS --max-time 8 -H 'Content-Type: application/json' -X POST https://caspa.ocrowley.com/api/ai/council --data '{"question":"bounded probe"}' 2>/dev/null || true
-          echo
-
-          echo '=== RECENT COUNCIL / OLLAMA LOGS ==='
-          pm2 logs caspa-server --lines 800 --nostream 2>&1 | grep -Ei 'council|ollama|quorum|retrieval|source collector|timeout|emergency' | tail -n 260 || true
-          for c in atlas-openwebui atlas-osint-broker; do
-            echo "--- $c logs ---"
-            docker logs --since 2h "$c" 2>&1 | grep -Ei 'council|ollama|quorum|retrieval|source collector|timeout|emergency' | tail -n 220 || true
-          done
           REMOTE
