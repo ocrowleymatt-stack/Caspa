@@ -84,6 +84,7 @@ jobs:
              export CASPA_BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
              unset NODE_ENV || true
              npm ci
+             node scripts/apply-publication-studio-ui.mjs
              export NODE_ENV=production
              export CASPA_DATA_DIR=/root/Caspa/data
              if grep -q '^CLOUD_TOKEN_ENCRYPTION_KEY=$' .env 2>/dev/null; then
