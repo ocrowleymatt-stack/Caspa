@@ -117,6 +117,36 @@ export default function PilotSeatView({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // ── Background findings delivery ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!project.id) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/ai/economy/deliveries?conversationId=${encodeURIComponent(project.id)}`);
+        if (!res.ok || stopped) return;
+        const data = await res.json();
+        const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
+        for (const job of jobs) {
+          if (stopped || !job?.id || !job?.result) continue;
+          const msgId = `background-${job.id}`;
+          setMessages(prev => prev.some(m => m.id === msgId) ? prev : [...prev, {
+            id: msgId,
+            role: 'ai',
+            content: `**Background analysis complete**${job.model ? ` — ${job.model}` : ''}\n\n${job.result}`,
+            timestamp: Date.now(),
+          }]);
+          await fetch(`/api/ai/economy/jobs/${encodeURIComponent(job.id)}/delivered`, { method: 'POST' }).catch(() => undefined);
+        }
+      } catch {
+        // Background delivery must never interrupt ordinary chat.
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 10_000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [project.id]);
+
   // ── Build context snapshot ─────────────────────────────────────────────────
   const buildContext = useCallback(() => ({
     project: {

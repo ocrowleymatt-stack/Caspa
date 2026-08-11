@@ -3,6 +3,8 @@ import {
   economyCapabilities,
   getEconomyBatch,
   listEconomyBatches,
+  listUndeliveredEconomyResults,
+  markEconomyBatchDelivered,
   submitEconomyBatch,
 } from '../services/economyBatchService';
 
@@ -14,6 +16,19 @@ router.get('/capabilities', (_req, res) => {
 
 router.get('/jobs', (_req, res) => {
   res.json({ jobs: listEconomyBatches() });
+});
+
+
+router.get('/deliveries', (_req, res) => {
+  const conversationId = String(_req.query.conversationId || '').trim();
+  if (!conversationId) return res.status(400).json({ message: 'conversationId is required' });
+  return res.json({ jobs: listUndeliveredEconomyResults(conversationId) });
+});
+
+router.post('/jobs/:id/delivered', (req, res) => {
+  const job = markEconomyBatchDelivered(req.params.id);
+  if (!job) return res.status(404).json({ message: 'Economy batch job not found' });
+  return res.json(job);
 });
 
 router.post('/jobs', async (req, res) => {

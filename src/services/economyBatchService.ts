@@ -10,6 +10,8 @@ export interface EconomyBatchRequest {
   maxTokens?: number;
   json?: boolean;
   displayName?: string;
+  conversationId?: string;
+  requestId?: string;
 }
 
 export interface EconomyBatchJob {
@@ -23,6 +25,9 @@ export interface EconomyBatchJob {
   result?: string;
   error?: string;
   estimatedDiscountPct: number;
+  conversationId?: string;
+  requestId?: string;
+  deliveredAt?: string;
 }
 
 const jobs = new Map<string, EconomyBatchJob>();
@@ -85,7 +90,7 @@ async function createGroqBatch(req: EconomyBatchRequest): Promise<EconomyBatchJo
   if (!create.ok) throw new Error(`Groq batch create ${create.status}: ${(await create.text()).slice(0, 500)}`);
   const batch = await create.json() as any;
   const now = new Date().toISOString();
-  const job: EconomyBatchJob = { id, provider: 'groq', providerJobId: batch.id, state: 'queued', model, createdAt: now, updatedAt: now, estimatedDiscountPct: 50 };
+  const job: EconomyBatchJob = { id, provider: 'groq', providerJobId: batch.id, state: 'queued', model, createdAt: now, updatedAt: now, estimatedDiscountPct: 50, conversationId: req.conversationId, requestId: req.requestId };
   jobs.set(id, job);
   return job;
 }
@@ -120,7 +125,7 @@ async function createGeminiBatch(req: EconomyBatchRequest): Promise<EconomyBatch
   const providerJobId = batch.name || batch?.batch?.name;
   if (!providerJobId) throw new Error('Gemini batch response did not include a job name');
   const now = new Date().toISOString();
-  const job: EconomyBatchJob = { id, provider: 'gemini', providerJobId, state: 'queued', model, createdAt: now, updatedAt: now, estimatedDiscountPct: 50 };
+  const job: EconomyBatchJob = { id, provider: 'gemini', providerJobId, state: 'queued', model, createdAt: now, updatedAt: now, estimatedDiscountPct: 50, conversationId: req.conversationId, requestId: req.requestId };
   jobs.set(id, job);
   return job;
 }
@@ -197,4 +202,18 @@ export async function getEconomyBatch(id: string): Promise<EconomyBatchJob | nul
 
 export function listEconomyBatches(): EconomyBatchJob[] {
   return [...jobs.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function listUndeliveredEconomyResults(conversationId: string): EconomyBatchJob[] {
+  return [...jobs.values()]
+    .filter((job) => job.conversationId === conversationId && job.state === 'succeeded' && Boolean(job.result) && !job.deliveredAt)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export function markEconomyBatchDelivered(id: string): EconomyBatchJob | null {
+  const job = jobs.get(id);
+  if (!job) return null;
+  job.deliveredAt = new Date().toISOString();
+  jobs.set(id, job);
+  return job;
 }
