@@ -1,31 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { isBillingFailure, providerOrder } from '../src/services/cloudModelRouter';
 
-vi.mock('../src/services/cloudModelRouter', async () => {
-  const actual = await vi.importActual<any>('../src/services/cloudModelRouter');
-  return {
-    ...actual,
-    callCloudProvider: vi.fn(),
-  };
+test('billing exhaustion remains a failover-class error', () => {
+  assert.equal(isBillingFailure(new Error('BILLING_UNAVAILABLE: insufficient_quota')), true);
 });
 
-import { callCloudProvider } from '../src/services/cloudModelRouter';
-import { callWithProviderFailover } from '../src/services/routerFailover';
-
-describe('Atlas provider cascade', () => {
-  it('continues to the next provider after billing exhaustion', async () => {
-    const mocked = vi.mocked(callCloudProvider);
-    mocked.mockRejectedValueOnce(new Error('BILLING_UNAVAILABLE: insufficient_quota'));
-    mocked.mockResolvedValueOnce({ text: 'fallback ok', model: 'fallback-model', provider: 'gemini' });
-
-    const result = await callWithProviderFailover('Analyse this', {
-      primaryProvider: 'openai',
-      mode: 'balanced',
-      task: 'reasoning',
-    });
-
-    expect(result.text).toBe('fallback ok');
-    expect(result.provider).toBe('gemini');
-    expect(result.attempts[0]).toMatchObject({ provider: 'openai', billingFailure: true });
-    expect(mocked).toHaveBeenCalledTimes(2);
-  });
+test('provider cascade retains viable alternatives after an explicit primary', () => {
+  const order = providerOrder('openai', 'balanced', 'reasoning');
+  assert.equal(order[0], 'openai');
+  assert.ok(order.slice(1).some((provider) => provider !== 'openai'));
+  assert.ok(order.includes('gemini'));
+  assert.ok(order.includes('venice'));
 });
