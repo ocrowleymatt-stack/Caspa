@@ -1,2 +1,2 @@
-deploy requested 2026-08-11T12:16:00Z
-reason: deploy consolidated Publication Studio UI and live progress display
+deploy requested 2026-08-11T12:21:00Z
+reason: redeploy committed Publication Studio UI after removing obsolete deploy-time patch step
