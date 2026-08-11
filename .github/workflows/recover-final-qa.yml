@@ -16,7 +16,6 @@ jobs:
       ATLAS_HOST: 116.202.24.63
       ATLAS_USER: root
       PARENT_JOB_ID: 5afbd817-fee6-46cd-aa26-2274bee58052
-      TRANSIENT_JOB_ID: 3f246dc4-9b68-41f3-9867-b4c33c71e0d5
     steps:
       - name: Prepare SSH
         shell: bash
@@ -28,51 +27,40 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect persisted Atlas jobs and export best manuscript
+      - name: Inspect persisted Atlas job and export manuscript
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "python3 - <<'PY'
           import json, pathlib
           parent='5afbd817-fee6-46cd-aa26-2274bee58052'
-          transient='3f246dc4-9b68-41f3-9867-b4c33c71e0d5'
           p=pathlib.Path('/root/Caspa/data/caspa-jobs.json')
           d=json.loads(p.read_text())
           jobs=d if isinstance(d,list) else d.get('jobs',[])
-          related=[]
-          for j in jobs:
-              inp=j.get('input') or {}
-              if j.get('id') in {parent,transient} or inp.get('repairSourceJobId')==parent or inp.get('sourceJobId')==parent:
-                  related.append(j)
-          report=[]
-          for j in related:
-              report.append({k:j.get(k) for k in ['id','status','stage','progress','updatedAt','error']})
-          pathlib.Path('/root/Caspa/exports').mkdir(parents=True,exist_ok=True)
-          pathlib.Path('/root/Caspa/exports/final-qa-status.json').write_text(json.dumps(report,indent=2))
-          if not related:
-              raise SystemExit('No related persisted jobs found')
-          chosen=next((j for j in related if j.get('status')=='complete'),None)
-          parent_job=next((j for j in related if j.get('id')==parent),None)
-          source=chosen or parent_job or max(related,key=lambda j:str(j.get('updatedAt','')))
-          r=source.get('result') or {}
-          chapters=r.get('chapters') or (source.get('checkpoint') or {}).get('chapters') or []
+          job=next((j for j in jobs if j.get('id')==parent),None)
+          if not job:
+              raise SystemExit('Persisted CASPA job not found')
+          report={k:job.get(k) for k in ['id','status','stage','progress','updatedAt','error']}
+          outdir=pathlib.Path('/root/Caspa/exports'); outdir.mkdir(parents=True,exist_ok=True)
+          (outdir/'final-qa-status.json').write_text(json.dumps(report,indent=2))
+          r=job.get('result') or {}
+          chapters=r.get('chapters') or (job.get('checkpoint') or {}).get('chapters') or []
           chapters=sorted(chapters,key=lambda x:x.get('order',0))
           text=r.get('artefact') or r.get('finalText')
           if not text and chapters:
               text='\n\n'.join('# '+str(c.get('title',''))+'\n\n'+str(c.get('content','')) for c in chapters)
           if not text:
-              raise SystemExit('Related job exists but no manuscript text/checkpoint found')
-          out=pathlib.Path('/root/Caspa/exports/chemsex-guide-recovered.md')
-          out.write_text(text)
-          verdict='FINAL_QA_COMPLETE' if chosen else 'REPAIRED_CHECKPOINT_ONLY'
-          print(verdict, source.get('id'), source.get('status'), source.get('stage'), len(text.split()), 'words')
+              raise SystemExit('Persisted job has no result/checkpoint manuscript')
+          (outdir/'chemsex-guide-recovered.md').write_text(text)
+          print(json.dumps(report,indent=2))
+          print('EXPORTED',len(text.split()),'words')
           PY"
           scp -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/final-qa-status.json" ./final-qa-status.json
           scp -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}:/root/Caspa/exports/chemsex-guide-recovered.md" ./chemsex-guide-recovered.md
           cat final-qa-status.json
           wc -w chemsex-guide-recovered.md
 
-      - name: Check live parent API without failing recovery
+      - name: Check persisted job API
         shell: bash
         run: |
           set +e
