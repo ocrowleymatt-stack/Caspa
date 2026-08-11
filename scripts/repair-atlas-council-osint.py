@@ -159,7 +159,9 @@ extract_pattern = re.compile(
     r"    def _extract_osint_targets\(self, question: str\) -> list\[tuple\[str, str\]\]:\n.*?(?=    async def _public_network_target)",
     re.S,
 )
-patched, count = extract_pattern.subn(new_extract + "\n", old, count=1)
+# A callable replacement is essential here: new_extract deliberately contains
+# regex escapes such as \s which must not be interpreted as re.sub template escapes.
+patched, count = extract_pattern.subn(lambda _: new_extract + "\n", old, count=1)
 if count != 1:
     raise SystemExit(f"target extractor anchor mismatch: {count}")
 
