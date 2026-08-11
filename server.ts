@@ -32,6 +32,7 @@ import {
   sharedCircuitBreaker as aiBreaker,
 } from './src/services/aiRouterPolicy';
 import { callUnifiedRouterChat } from './src/services/unifiedRouter';
+import { routeAtlasPrompt } from './src/services/routerFallbackBridge';
 import {
   callOllamaModelHunt,
   callUnifiedModelHunt,
@@ -75,242 +76,37 @@ app.use('/api/ai/economy', economyBatchRoutes);
 // Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.
 app.use("/api/doctor", caspaDoctorRoutes);
 
-// Initialize Google Gen AI
-const geminiApiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-const ai = geminiApiKey 
-  ? new GoogleGenAI({
-      apiKey: geminiApiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    }) 
-  : null;
-
-// Helper APIs
-async function callGeminiOnServer(options: { 
-  prompt: string; 
-  model?: string; 
-  json?: boolean; 
-  maxTokens?: number;
-  useSearch?: boolean;
-}) {
-  if (!ai) {
-    throw new Error("GEMINI_API_KEY environment variable is not configured on the server.");
-  }
-
-  const { prompt, model = 'gemini-2.0-flash', json = false, maxTokens, useSearch = false } = options;
-
-  // Retired Gemini generations are upgraded at the server boundary so older
-  // client code cannot take the whole routing layer down when Google retires a model.
-  const retiredModels = [
-    'gemini-1.5-flash',
-    'gemini-1.5-pro',
-    'gemini-pro',
-    'gemini-2.0-flash',
-    'gemini-2.0-pro',
-    'gemini-2.0-flash-thinking'
-  ];
-  const activeModel = retiredModels.includes(model) ? 'gemini-3.6-flash' : model;
-
-  const controller = new AbortController();
-  const geminiTimeoutMs = aiCallTimeoutMs(maxTokens);
-  const timeoutId = setTimeout(() => controller.abort(), geminiTimeoutMs);
-
-  try {
-    const response = await ai.models.generateContent({
-      model: activeModel,
-      contents: prompt,
-      config: {
-        systemInstruction: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand. You provide raw, high-fidelity output.",
-        ...(json && !useSearch ? { responseMimeType: 'application/json' } : {}),
-        ...(maxTokens ? { maxOutputTokens: maxTokens } : {}),
-        ...(useSearch ? { tools: [{ googleSearch: {} }] } : {})
-      }
-    });
-
-    clearTimeout(timeoutId);
-    return response.text || null;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`Gemini timeout after ${Math.round(geminiTimeoutMs / 1000)}s`);
-    throw err;
-  }
+// Canonical Atlas text-routing helpers. Provider selection, cost policy,
+// circuit breaking and fallback all live behind routeAtlasPrompt().
+async function callRoutedServerModel(
+  prompt: string,
+  json = false,
+  maxTokens?: number,
+  primaryProvider?: string,
+  requestedModel?: string,
+  useSearch = false,
+) {
+  const result = await routeAtlasPrompt(prompt, {
+    json, maxTokens, primaryProvider, requestedModel, useSearch,
+  });
+  return result.text || null;
 }
 
-function aiCallTimeoutMs(maxTokens?: number) {
-  // Workshop / chapter drafts need far more than the old 15–25s caps.
-  if (maxTokens && maxTokens >= 4000) return 180000;
-  if (maxTokens && maxTokens >= 1500) return 120000;
-  return 90000;
+async function callGeminiOnServer(options: { prompt: string; model?: string; json?: boolean; maxTokens?: number; useSearch?: boolean }) {
+  const { prompt, model, json = false, maxTokens, useSearch = false } = options;
+  return callRoutedServerModel(prompt, json, maxTokens, 'gemini', model, useSearch);
 }
-
 async function callOpenAI(prompt: string, json = false, maxTokens?: number) {
-  const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OpenAI API key not configured on the server.");
-
-  const timeoutMs = aiCallTimeoutMs(maxTokens);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand." },
-          { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
-        ],
-        max_tokens: maxTokens || 4096,
-        ...(json ? { response_format: { type: "json_object" } } : {})
-      })
-    });
-
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`OpenAI error: ${JSON.stringify(err)}`);
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || null;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`OpenAI timeout after ${Math.round(timeoutMs / 1000)}s`);
-    throw err;
-  }
+  return callRoutedServerModel(prompt, json, maxTokens, 'openai');
 }
-
 async function callClaude(prompt: string, json = false, maxTokens?: number) {
-  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("Anthropic API key not configured on the server.");
-
-  const timeoutMs = aiCallTimeoutMs(maxTokens);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: maxTokens || 4096,
-        messages: [
-          { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
-        ],
-        system: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work."
-      })
-    });
-
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`Anthropic error: ${JSON.stringify(err)}`);
-    }
-
-    const data = await response.json();
-    return data.content?.[0]?.text || null;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`Claude timeout after ${Math.round(timeoutMs / 1000)}s`);
-    throw err;
-  }
+  return callRoutedServerModel(prompt, json, maxTokens, 'claude');
 }
-
 async function callXAI(prompt: string, json = false, maxTokens?: number) {
-  const apiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY;
-  if (!apiKey) throw new Error("xAI Grok API key not configured on the server.");
-
-  const timeoutMs = aiCallTimeoutMs(maxTokens);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: "grok-3",
-        messages: [
-          { role: "system", content: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand." },
-          { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
-        ],
-        max_tokens: maxTokens || 4096,
-        ...(json ? { response_format: { type: "json_object" } } : {})
-      })
-    });
-
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`xAI Grok error: ${JSON.stringify(err)}`);
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || null;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`xAI Grok timeout after ${Math.round(timeoutMs / 1000)}s`);
-    throw err;
-  }
+  return callRoutedServerModel(prompt, json, maxTokens, 'grok');
 }
-
 async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {
-  const apiKey = process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY;
-  if (!apiKey) throw new Error("Venice API key not configured on the server.");
-
-  const timeoutMs = aiCallTimeoutMs(maxTokens);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch("https://api.venice.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: "llama-3.3-70b",
-        messages: [
-          { role: "system", content: "You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea or even down to using a receipt as the only source material, maintaining an intuitive process where the human still has a guiding hand." },
-          { role: "user", content: json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt }
-        ],
-        max_tokens: maxTokens || 4096
-      })
-    });
-
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`Venice error: ${JSON.stringify(err)}`);
-    }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || null;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`Venice timeout after ${Math.round(timeoutMs / 1000)}s`);
-    throw err;
-  }
+  return callRoutedServerModel(prompt, json, maxTokens, 'venice');
 }
 
 // API routes go here FIRST
@@ -351,118 +147,44 @@ app.get("/api/ai/router", async (_req, res) => {
   });
 });
 
-// API endpoint for AI queries
+// API endpoint for AI queries — canonical text router only.
 app.post("/api/ai/call", async (req, res) => {
   const {
-    prompt,
-    model,
-    json = false,
-    maxTokens,
-    providerOverride,
-    strictProvider = false,
-    useSearch = false,
-    useWebSearch = false,
-    primaryProvider = "grok",
-    intelligenceMode = 'balanced',
-    taskHint,
-    skipLocalFallback = false,
+    prompt, model, json = false, maxTokens, providerOverride, strictProvider = false,
+    useSearch = false, useWebSearch = false, primaryProvider = "grok",
+    intelligenceMode = 'balanced', taskHint, skipLocalFallback = false,
   } = req.body;
 
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ message: 'Prompt is required.' });
   }
 
-  const mode = normaliseMode(intelligenceMode);
-  const searchEnabled = Boolean(useSearch || useWebSearch);
-  const task = taskHint || classifyTask(prompt, { json, maxTokens, useSearch: searchEnabled });
-  const isSensitive = /chem\s*sex|chemsex|slamming|crystal\s*meth|methamphetamine|gbl|ghb|tina|harm\s*reduction|overdose|substance|drug|rehab|addiction|recovery\s*guide|survival\s*guide|unfiltered|explicit|transgressive|hardcore/i.test(prompt);
-
-  const providers: string[] = [];
-  // Council recovery is latency-sensitive. A local/unified timeout must never
-  // consume another 30-120 seconds before healthy cloud providers are tried.
-  const avoidLocalFallback = Boolean(skipLocalFallback) || task === 'council';
-  if (strictProvider && providerOverride) {
-    providers.push(providerOverride);
-  } else {
-    if (!avoidLocalFallback && isProviderConfigured('unified')) providers.push('unified');
-    providers.push(...providerOrder(primaryProvider, mode, task, isSensitive));
-    if (providerOverride) providers.unshift(providerOverride);
-  }
-
-  const ordered = [...new Set(providers)].filter((provider) =>
-    !avoidLocalFallback || (provider !== 'unified' && provider !== 'ollama')
-  );
-  const { attempt, anyConfigured } = selectAttemptOrder(
-    ordered,
-    (provider) => isProviderConfigured(provider),
-    (provider) => aiBreaker.isOpen(provider),
-  );
-
-  if (!anyConfigured) {
-    return res.status(503).json({
-      message: "No AI provider configured on the server. Configure a cloud provider or run Ollama.",
+  try {
+    const routed = await routeAtlasPrompt(prompt, {
+      json,
+      maxTokens,
+      requestedModel: model,
+      primaryProvider: providerOverride || primaryProvider,
+      strictProvider: Boolean(strictProvider && providerOverride),
+      useSearch: Boolean(useSearch || useWebSearch),
+      mode: normaliseMode(intelligenceMode),
+      task: taskHint || classifyTask(prompt, { json, maxTokens, useSearch: Boolean(useSearch || useWebSearch) }),
+      disableLocalFallback: Boolean(skipLocalFallback),
+    });
+    return res.json({
+      result: routed.text,
+      provider: routed.provider,
+      model: routed.model,
+      attempts: routed.attempts,
+      mode: normaliseMode(intelligenceMode),
+    });
+  } catch (error: any) {
+    return res.status(502).json({
+      message: 'AI Fallback Failure: model pool exhausted.',
+      error: error?.message || String(error),
+      mode: normaliseMode(intelligenceMode),
     });
   }
-
-  let lastError: any = null;
-  for (const provider of attempt) {
-    try {
-      let result: string | null = null;
-      let selectedModel = '';
-      console.log(`[Express Backend] ${mode}/${task}: trying ${provider}`);
-
-      if (provider === 'unified') {
-        const hunted = await callUnifiedModelHunt(prompt, {
-          json,
-          maxTokens,
-          timeoutMs: aiCallTimeoutMs(maxTokens),
-          maxAttempts: 3,
-        });
-        result = hunted.text;
-        selectedModel = hunted.model;
-      } else if (provider === 'ollama') {
-        const hunted = await callOllamaModelHunt(prompt, {
-          json,
-          maxTokens,
-          maxAttempts: mode === 'speed' ? 1 : 2,
-          mode,
-        });
-        result = hunted.text;
-        selectedModel = hunted.model;
-      } else if (['grok', 'gemini', 'openai', 'claude', 'venice'].includes(provider)) {
-        const routed = await callCloudProvider(provider as CloudProvider, prompt, {
-          json,
-          maxTokens,
-          useSearch: searchEnabled,
-          mode,
-          task,
-          requestedModel: model,
-        });
-        result = routed.text;
-        selectedModel = routed.model;
-      }
-
-      if (result) {
-        aiBreaker.recordSuccess(provider);
-        console.log(`[Express Backend] ${provider}/${selectedModel || 'default'} succeeded.`);
-        return res.json({ result, provider, model: selectedModel || null, mode, task });
-      }
-    } catch (error: any) {
-      lastError = error;
-      const billing = isBillingFailure(error);
-      // Credit/billing failures cannot recover by retrying another model on the
-      // same provider. Park that provider for six hours to remove repeat latency.
-      aiBreaker.recordFailure(provider, billing ? 6 * 60 * 60_000 : undefined);
-      console.warn(`[Express Backend] ${provider} failed${billing ? ' (billing cooldown)' : ''}:`, error?.message || error);
-    }
-  }
-
-  return res.status(502).json({
-    message: "AI Fallback Failure: all currently healthy providers failed.",
-    error: lastError ? lastError.message : "Empty response",
-    mode,
-    task,
-  });
 });
 
 // Venice Image generation API
