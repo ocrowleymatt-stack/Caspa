@@ -250,20 +250,7 @@ Return JSON: { "topics": ["topic 1", "..."] }`;
       /* fall through to Gemini if available */
     }
 
-    const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    if (geminiKey) {
-      const { GoogleGenAI } = await import('@google/genai');
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
-      const parsed = JSON.parse(response.text || '{"topics":[]}');
-      return res.json({ success: true, data: { topics: parsed.topics || [] } });
-    }
-
-    return res.status(502).json({ success: false, message: 'No AI provider available for topic suggestion' });
+    return res.status(502).json({ success: false, message: 'No routed AI provider available for topic suggestion' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }
