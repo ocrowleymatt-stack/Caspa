@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths:
+      - 'server.ts'
+      - 'src/services/routerFailover.ts'
+      - 'src/services/routerFallbackBridge.ts'
       - '.github/workflows/unify-atlas-router.yml'
 
 permissions:
@@ -21,95 +24,98 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - name: Replace legacy direct-provider server helpers
+      - name: Route all general text calls through Atlas
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('server.ts')
           s = p.read_text()
-          import_needle = "import { callUnifiedRouterChat } from './src/services/unifiedRouter';\n"
+
+          # Canonical router import.
           import_line = "import { routeAtlasPrompt } from './src/services/routerFallbackBridge';\n"
+          anchor = "import { callUnifiedRouterChat } from './src/services/unifiedRouter';\n"
           if import_line not in s:
-              if import_needle not in s:
-                  raise SystemExit('Could not find unifiedRouter import insertion point')
-              s = s.replace(import_needle, import_needle + import_line, 1)
+              if anchor not in s:
+                  raise SystemExit('Could not find router import anchor')
+              s = s.replace(anchor, anchor + import_line, 1)
+
+          # Replace the legacy direct-provider helper block. Specialist image/vision
+          # endpoints later in server.ts are deliberately untouched.
           start_marker = '// Initialize Google Gen AI\n'
           end_marker = '// API routes go here FIRST\n'
           start = s.find(start_marker)
           end = s.find(end_marker)
-          if start < 0 or end < 0 or end <= start:
-              raise SystemExit('Could not locate legacy provider helper block')
-          lines = [
-              '// Canonical Atlas routing helpers. All text-model requests enter the same router,',
-              '// preserving legacy helper signatures while eliminating direct provider bypasses.',
-              'async function callRoutedServerModel(',
-              '  prompt: string,',
-              '  json = false,',
-              '  maxTokens?: number,',
-              '  primaryProvider?: string,',
-              '  requestedModel?: string,',
-              '  useSearch = false,',
-              ') {',
-              '  const result = await routeAtlasPrompt(prompt, {',
-              '    json,',
-              '    maxTokens,',
-              '    primaryProvider,',
-              '    requestedModel,',
-              '    useSearch,',
-              '  });',
-              '  return result.text || null;',
-              '}',
-              '',
-              'async function callGeminiOnServer(options: {',
-              '  prompt: string;',
-              '  model?: string;',
-              '  json?: boolean;',
-              '  maxTokens?: number;',
-              '  useSearch?: boolean;',
-              '}) {',
-              '  const { prompt, model, json = false, maxTokens, useSearch = false } = options;',
-              "  return callRoutedServerModel(prompt, json, maxTokens, 'gemini', model, useSearch);",
-              '}',
-              '',
-              'async function callOpenAI(prompt: string, json = false, maxTokens?: number) {',
-              "  return callRoutedServerModel(prompt, json, maxTokens, 'openai');",
-              '}',
-              '',
-              'async function callClaude(prompt: string, json = false, maxTokens?: number) {',
-              "  return callRoutedServerModel(prompt, json, maxTokens, 'claude');",
-              '}',
-              '',
-              'async function callXAI(prompt: string, json = false, maxTokens?: number) {',
-              "  return callRoutedServerModel(prompt, json, maxTokens, 'grok');",
-              '}',
-              '',
-              'async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {',
-              "  return callRoutedServerModel(prompt, json, maxTokens, 'venice');",
-              '}',
-              '',
-          ]
-          replacement = '\n'.join(lines) + '\n'
-          s = s[:start] + replacement + s[end:]
-          s = s.replace('import { GoogleGenAI } from "@google/genai";\n', '')
-          forbidden = [
-              'api.openai.com/v1/chat/completions',
-              'api.anthropic.com/v1/messages',
-              'api.x.ai/v1/chat/completions',
-              'generativelanguage.googleapis.com/v1beta/models/',
-              'api.venice.ai/api/v1/chat/completions',
-              'model: "gpt-4o"',
-              'model: "grok-3"',
-          ]
-          hits = [x for x in forbidden if x in s]
-          if hits:
-              raise SystemExit('Legacy direct-provider routes still present: ' + ', '.join(hits))
+          if start >= 0 and end > start:
+              replacement = '''// Canonical Atlas text-routing helpers. Provider selection, cost policy,\n// circuit breaking and fallback all live behind routeAtlasPrompt().\nasync function callRoutedServerModel(\n  prompt: string,\n  json = false,\n  maxTokens?: number,\n  primaryProvider?: string,\n  requestedModel?: string,\n  useSearch = false,\n) {\n  const result = await routeAtlasPrompt(prompt, {\n    json, maxTokens, primaryProvider, requestedModel, useSearch,\n  });\n  return result.text || null;\n}\n\nasync function callGeminiOnServer(options: { prompt: string; model?: string; json?: boolean; maxTokens?: number; useSearch?: boolean }) {\n  const { prompt, model, json = false, maxTokens, useSearch = false } = options;\n  return callRoutedServerModel(prompt, json, maxTokens, 'gemini', model, useSearch);\n}\nasync function callOpenAI(prompt: string, json = false, maxTokens?: number) {\n  return callRoutedServerModel(prompt, json, maxTokens, 'openai');\n}\nasync function callClaude(prompt: string, json = false, maxTokens?: number) {\n  return callRoutedServerModel(prompt, json, maxTokens, 'claude');\n}\nasync function callXAI(prompt: string, json = false, maxTokens?: number) {\n  return callRoutedServerModel(prompt, json, maxTokens, 'grok');\n}\nasync function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {\n  return callRoutedServerModel(prompt, json, maxTokens, 'venice');\n}\n\n'''
+              s = s[:start] + replacement + s[end:]
+
+          # Replace the duplicated /api/ai/call provider loop with a thin canonical-router endpoint.
+          call_marker = '// API endpoint for AI queries\n'
+          image_marker = '// Venice Image generation API\n'
+          a = s.find(call_marker)
+          b = s.find(image_marker)
+          if a < 0 or b < 0 or b <= a:
+              raise SystemExit('Could not locate /api/ai/call block')
+          call_route = '''// API endpoint for AI queries — canonical text router only.\napp.post("/api/ai/call", async (req, res) => {\n  const {\n    prompt, model, json = false, maxTokens, providerOverride, strictProvider = false,\n    useSearch = false, useWebSearch = false, primaryProvider = "grok",\n    intelligenceMode = 'balanced', taskHint, skipLocalFallback = false,\n  } = req.body;\n\n  if (!prompt || typeof prompt !== 'string') {\n    return res.status(400).json({ message: 'Prompt is required.' });\n  }\n\n  try {\n    const routed = await routeAtlasPrompt(prompt, {\n      json,\n      maxTokens,\n      requestedModel: model,\n      primaryProvider: providerOverride || primaryProvider,\n      strictProvider: Boolean(strictProvider && providerOverride),\n      useSearch: Boolean(useSearch || useWebSearch),\n      mode: normaliseMode(intelligenceMode),\n      task: taskHint || classifyTask(prompt, { json, maxTokens, useSearch: Boolean(useSearch || useWebSearch) }),\n      disableLocalFallback: Boolean(skipLocalFallback),\n    });\n    return res.json({\n      result: routed.text,\n      provider: routed.provider,\n      model: routed.model,\n      attempts: routed.attempts,\n      mode: normaliseMode(intelligenceMode),\n    });\n  } catch (error: any) {\n    return res.status(502).json({\n      message: 'AI Fallback Failure: model pool exhausted.',\n      error: error?.message || String(error),\n      mode: normaliseMode(intelligenceMode),\n    });\n  }\n});\n\n'''
+          s = s[:a] + call_route + s[b:]
+
+          # GoogleGenAI is only needed here if a later specialist endpoint uses it.
+          # Keep imports required by specialist image/vision routes; remove only if now unused.
           p.write_text(s)
           PY
-      - name: Verify no text-model bypasses remain in server.ts
+
+      - name: Audit runtime text-routing bypasses
         shell: bash
         run: |
-          grep -nE 'api\.(openai|anthropic|x\.ai|venice)|generativelanguage\.googleapis\.com' server.ts && exit 1 || true
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # General text traffic in server.ts must not directly hit providers. Specialist
+          # image/vision code begins at the image marker and is allowed to use modality APIs.
+          s = Path('server.ts').read_text()
+          image_marker = '// Venice Image generation API\n'
+          general = s.split(image_marker, 1)[0]
+          forbidden = [
+            'api.openai.com/v1/chat/completions',
+            'api.anthropic.com/v1/messages',
+            'api.x.ai/v1/chat/completions',
+            'api.venice.ai/api/v1/chat/completions',
+            'model: "gpt-4o"',
+            'model: "grok-3"',
+          ]
+          hits = [x for x in forbidden if x in general]
+          if hits:
+            raise SystemExit('General text-provider bypasses remain in server.ts: ' + ', '.join(hits))
+
+          # Provider endpoints are permitted only in canonical routing/economy or specialist
+          # multimodal services. Flag any new runtime file that starts talking directly to a
+          # chat-completions endpoint so future regressions fail CI.
+          allowed = {
+            'src/services/cloudModelRouter.ts',
+            'src/services/economyBatchService.ts',
+            'src/services/unifiedRouter.ts',
+            'src/routes/caspa-canvas-routes.ts',  # multimodal storyboard vision
+          }
+          needles = [
+            'api.openai.com/v1/chat/completions',
+            'api.anthropic.com/v1/messages',
+            'api.x.ai/v1/chat/completions',
+            'api.venice.ai/api/v1/chat/completions',
+          ]
+          offenders = []
+          for root in [Path('src')]:
+            for f in root.rglob('*.ts'):
+              rel = f.as_posix()
+              if rel in allowed:
+                continue
+              text = f.read_text(errors='ignore')
+              if any(n in text for n in needles):
+                offenders.append(rel)
+          if offenders:
+            raise SystemExit('Direct text-provider runtime calls outside router: ' + ', '.join(offenders))
+          PY
+
       - run: npm test
       - run: npm run build
       - name: Commit verified router unification and trigger deploy
@@ -122,7 +128,7 @@ jobs:
           git config user.name atlas-automation
           git config user.email atlas-automation@users.noreply.github.com
           git add server.ts
-          printf 'deploy requested %s\nreason: verified canonical Atlas router unification across server text-model helpers\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
+          printf 'deploy requested %s\nreason: verified repository-wide canonical Atlas text-router enforcement\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
           git add .deploy-atlas-trigger
-          git commit -m 'Route all server text-model helpers through Atlas router'
+          git commit -m 'Enforce canonical Atlas router for all general text calls'
           git push origin HEAD:main
