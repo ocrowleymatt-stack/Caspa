@@ -184,7 +184,7 @@ export async function modelCandidates(provider: CloudProvider, mode: Intelligenc
   const unique = [...new Set(preferred)];
   // Cheap/interactive work gets at most two model attempts inside a provider.
   // Deep modes can spend more attempts because quality is intentionally prioritised.
-  const limit = task === 'council' ? 1 : mode === 'speed' || task === 'fast' ? 2 : mode === 'god' ? 4 : 3;
+  const limit = task === 'council' ? 2 : mode === 'speed' || task === 'fast' ? 2 : mode === 'god' ? 4 : 3;
   if (!available.length) return unique.slice(0, limit);
   const filtered = unique.filter((id) => available.includes(id));
   return (filtered.length ? filtered : unique).slice(0, limit);
@@ -363,7 +363,7 @@ export async function callCloudProvider(provider: CloudProvider, prompt: string,
   const mode = normaliseMode(opts.mode);
   const task = opts.task || classifyTask(prompt, opts);
 
-  if (provider === 'grok' && mode === 'god' && opts.useSearch && ['factual', 'long', 'synthesis'].includes(task)) {
+  if (provider === 'grok' && mode !== 'speed' && opts.useSearch && ['factual', 'long', 'synthesis'].includes(task)) {
     try { return await callGrokMultiAgent(prompt, { ...opts, task, mode }); } catch (error) {
       if (isBillingFailure(error)) throw error;
     }
