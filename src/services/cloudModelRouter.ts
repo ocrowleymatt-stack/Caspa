@@ -148,7 +148,7 @@ function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: Intellig
   if (task === 'council') {
     if (provider === 'grok') return ['grok-4.5', 'grok-4.20-0309-non-reasoning'];
     if (provider === 'gemini') return ['gemini-3.6-flash', 'gemini-3.5-flash'];
-    if (provider === 'venice') return ['openai-gpt-oss-120b', 'qwen3-6-27b'];
+    if (provider === 'venice') return mode === 'god' ? ['deepseek-v4-pro', 'qwen-3-6-plus'] : ['qwen-3-6-plus', 'deepseek-v4-pro'];
     if (provider === 'openai') return ['gpt-5.4-mini', 'gpt-5.5'];
     if (provider === 'claude') return ['claude-sonnet-5', 'claude-fable-5'];
   }
