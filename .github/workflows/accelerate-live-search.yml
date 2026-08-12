@@ -1,0 +1,90 @@
+name: Accelerate Atlas Live Search
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/accelerate-live-search.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  accelerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply search latency fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 1) Canonical router: reserve Grok multi-agent for God/deep/long synthesis,
+          # not every balanced factual web lookup.
+          p = Path('src/services/cloudModelRouter.ts')
+          s = p.read_text()
+          old = """  if (provider === 'grok' && mode !== 'speed' && opts.useSearch && ['factual', 'long', 'synthesis'].includes(task)) {\n    try { return await callGrokMultiAgent(prompt, { ...opts, task, mode }); } catch (error) {\n      if (isBillingFailure(error)) throw error;\n    }\n  }\n"""
+          new = """  const explicitDeepSearch = /\\b(deep[- ]?(?:search|research)|multi[- ]agent|exhaustive research)\\b/i.test(prompt);\n  const useGrokMultiAgent = provider === 'grok'\n    && mode !== 'speed'\n    && opts.useSearch\n    && ['factual', 'long', 'synthesis'].includes(task)\n    && (mode === 'god' || task === 'long' || task === 'synthesis' || explicitDeepSearch);\n\n  if (useGrokMultiAgent) {\n    try { return await callGrokMultiAgent(prompt, { ...opts, task, mode }); } catch (error) {\n      if (isBillingFailure(error)) throw error;\n    }\n  }\n"""
+          if old not in s:
+              raise SystemExit('canonical Grok multi-agent anchor not found')
+          p.write_text(s.replace(old, new, 1))
+
+          # 2) OpenWebUI bridge: live-search feature already performs SearXNG retrieval
+          # before the pipe. Do not trigger a second provider-native search for ordinary
+          # Luna/Terra requests; keep it for Sol/God corroboration.
+          p = Path('scripts/repair-atlas-frontier-multiprovider.py')
+          s = p.read_text()
+          replacements = [
+              ('MARKER = "ATLAS MULTI-PROVIDER FRONTIER v2"', 'MARKER = "ATLAS MULTI-PROVIDER FRONTIER v2.1"'),
+              ('version: 2.0.0', 'version: 2.1.0'),
+              ('# ATLAS MULTI-PROVIDER FRONTIER v2', '# ATLAS MULTI-PROVIDER FRONTIER v2.1'),
+              ('        use_web = bool(features.get("web_search"))\n        prompt = self._prompt(body)',
+               '        use_web = bool(features.get("web_search"))\n        # OpenWebUI has already performed SearXNG retrieval when web_search is enabled.\n        # Avoid paying the latency cost twice for Luna/Terra; Sol keeps provider-native\n        # search as a corroborating second retrieval pass.\n        provider_web = bool(use_web and selected.endswith("sol"))\n        prompt = self._prompt(body)'),
+              ('            "useWebSearch": use_web,', '            "useWebSearch": provider_web,'),
+              ('            f"Atlas {selected.rsplit(\'-\', 1)[-1].title()} · Venice primary · multi-provider failover" + (" · web required" if use_web else ""),',
+               '            f"Atlas {selected.rsplit(\'-\', 1)[-1].title()} · Venice primary · multi-provider failover" + (" · live retrieval" if use_web else "") + (" · provider corroboration" if provider_web else ""),'),
+          ]
+          for old_text, new_text in replacements:
+              if old_text not in s:
+                  raise SystemExit(f'frontier anchor not found: {old_text[:80]}')
+              s = s.replace(old_text, new_text, 1)
+          p.write_text(s)
+
+          # 3) Make the persistent live-repair workflow self-trigger when its script changes
+          # and verify the new marker/duplicate-search split.
+          p = Path('.github/workflows/repair-atlas-frontier-multiprovider.yml')
+          s = p.read_text()
+          old_paths = """    paths:\n      - '.github/workflows/repair-atlas-frontier-multiprovider.yml'\n"""
+          new_paths = """    paths:\n      - '.github/workflows/repair-atlas-frontier-multiprovider.yml'\n      - 'scripts/repair-atlas-frontier-multiprovider.py'\n"""
+          if old_paths not in s:
+              raise SystemExit('repair workflow paths anchor not found')
+          s = s.replace(old_paths, new_paths, 1)
+          s = s.replace("assert 'ATLAS MULTI-PROVIDER FRONTIER v2' in code", "assert 'ATLAS MULTI-PROVIDER FRONTIER v2.1' in code", 1)
+          s = s.replace("assert 'ROUTER_URL: str = Field(default=\"https://caspa.ocrowley.com/api/ai/call\")' in code", "assert 'ROUTER_URL: str = Field(default=\"https://caspa.ocrowley.com/api/ai/call\")' in code\n          assert 'provider_web = bool(use_web and selected.endswith(\"sol\"))' in code", 1)
+          p.write_text(s)
+
+          # 4) Trigger canonical production deploy from the same commit.
+          Path('.deploy-atlas-trigger').write_text(
+              'deploy requested 2026-08-12T14:45:00Z\\n'
+              'reason: reduce live-search latency by avoiding duplicate retrieval and reserving Grok multi-agent for deep research\\n'
+          )
+          PY
+      - run: npm ci
+      - name: Router regression tests
+        run: node --import tsx --test tests/routerCostPolicy.test.ts
+      - run: npm run build
+      - name: Commit acceleration
+        shell: bash
+        run: |
+          git config user.name 'ocrowleymatt-stack'
+          git config user.email 'ocrowley.matt@gmail.com'
+          git add src/services/cloudModelRouter.ts scripts/repair-atlas-frontier-multiprovider.py .github/workflows/repair-atlas-frontier-multiprovider.yml .deploy-atlas-trigger
+          git commit -m 'Accelerate Atlas live search routing'
+          git push origin HEAD:main
