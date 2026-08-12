@@ -1,0 +1,83 @@
+name: Diagnose Atlas Parallel Retrievers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diag-atlas-parallel-retrievers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Probe retriever contracts and live Auto
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== PM2 RETRIEVERS ==='
+          pm2 jlist | python3 -c 'import json,sys; d=json.load(sys.stdin); [print({"name":p.get("name"),"cwd":p.get("pm2_env",{}).get("pm_cwd"),"exec":p.get("pm2_env",{}).get("pm_exec_path"),"args":p.get("pm2_env",{}).get("args")}) for p in d if p.get("name") in {"tavily-search","perplexica-research","spiderfoot-osint"}]'
+
+          echo '=== LISTENERS ==='
+          ss -ltnp 2>/dev/null | grep -E ':(3004|3005|3006)[[:space:]]' || true
+
+          for port in 3004 3006; do
+            echo "=== PORT $port ==="
+            for path in /health / /openapi.json /docs /api /search /api/search; do
+              code=$(curl -sS -o /tmp/retriever-body -w '%{http_code}' --max-time 4 "http://127.0.0.1:${port}${path}" 2>/dev/null || true)
+              printf 'GET %s -> %s ' "$path" "$code"
+              head -c 500 /tmp/retriever-body 2>/dev/null | tr '\n' ' '; echo
+            done
+          done
+
+          echo '=== PROCESS SOURCE HEADS ==='
+          pm2 jlist | python3 - <<'PY'
+          import json, os, sys
+          data=json.load(sys.stdin)
+          for p in data:
+              if p.get('name') not in {'tavily-search','perplexica-research'}: continue
+              env=p.get('pm2_env') or {}
+              path=env.get('pm_exec_path')
+              print('SERVICE',p.get('name'),'EXEC',path)
+              if path and os.path.isfile(path):
+                  try:
+                      text=open(path,errors='replace').read(12000)
+                      for line in text.splitlines()[:220]:
+                          if any(x in line.lower() for x in ('app.', 'route', 'search', 'listen', 'post(', 'get(', 'query', 'body')):
+                              print(line[:500])
+                  except Exception as exc: print('READ_ERROR',exc)
+          PY
+
+          echo '=== LIVE AUTO MARKERS ==='
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          code=con.execute("select content from function where id='atlas-auto'").fetchone()[0]
+          for marker in ['ATLAS AUTO DIRECT WEB ROUTING v1.4','ATLAS AUTO PERFORMANCE HARDENING v1.5','ATLAS AUTO PUBLIC FOOTPRINT ROUTING v1.6']:
+              print(marker, marker in code)
+          print('code_chars',len(code))
+          PY
+          REMOTE
