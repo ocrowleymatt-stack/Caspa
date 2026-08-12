@@ -22,6 +22,7 @@ export interface RouterFailoverAttempt {
   error: string;
   billingFailure: boolean;
   skipped?: boolean;
+  durationMs?: number;
 }
 
 export interface RouterFailoverResult {
@@ -29,6 +30,8 @@ export interface RouterFailoverResult {
   model: string;
   provider: AtlasProvider;
   attempts: RouterFailoverAttempt[];
+  durationMs: number;
+  providerDurationMs: number;
 }
 
 export interface RouterFailoverOptions extends RoutedCallOptions {
@@ -52,6 +55,7 @@ export async function routeAtlasPrompt(
   prompt: string,
   opts: RouterFailoverOptions = {},
 ): Promise<RouterFailoverResult> {
+  const routeStartedAt = Date.now();
   const mode: IntelligenceMode = normaliseMode(opts.mode);
   const task: TaskKind = opts.task || classifyTask(prompt, opts);
   const primary = String(opts.primaryProvider || '').trim();
@@ -72,7 +76,7 @@ export async function routeAtlasPrompt(
   if (webRequired) {
     for (const provider of unfilteredPreferred) {
       if (!providerSupportsWebSearch(provider)) {
-        attempts.push({ provider, error: 'Skipped: provider has no wired Atlas web-search tool', billingFailure: false, skipped: true });
+        attempts.push({ provider, error: 'Skipped: provider has no wired Atlas web-search tool', billingFailure: false, skipped: true, durationMs: 0 });
       }
     }
   }
@@ -85,21 +89,29 @@ export async function routeAtlasPrompt(
 
   if (!anyConfigured) {
     for (const provider of preferred) {
-      attempts.push({ provider, error: webRequired ? 'Search-capable provider not configured' : 'Provider not configured', billingFailure: false, skipped: true });
+      attempts.push({ provider, error: webRequired ? 'Search-capable provider not configured' : 'Provider not configured', billingFailure: false, skipped: true, durationMs: 0 });
     }
   }
 
   for (const providerName of ordered) {
     const provider = providerName as CloudProvider;
+    const providerStartedAt = Date.now();
     try {
       const result = await callCloudProvider(provider, prompt, { ...opts, mode, task });
+      const providerDurationMs = Date.now() - providerStartedAt;
       sharedCircuitBreaker.recordSuccess(provider);
-      return { ...result, attempts };
+      return {
+        ...result,
+        attempts,
+        durationMs: Date.now() - routeStartedAt,
+        providerDurationMs,
+      };
     } catch (error: any) {
+      const durationMs = Date.now() - providerStartedAt;
       const message = String(error?.message || error || 'Unknown provider failure');
       const billingFailure = isBillingFailure(error);
       sharedCircuitBreaker.recordFailure(provider, billingFailure ? BILLING_COOLDOWN_MS : TRANSIENT_COOLDOWN_MS);
-      attempts.push({ provider, error: message, billingFailure });
+      attempts.push({ provider, error: message, billingFailure, durationMs });
     }
   }
 
