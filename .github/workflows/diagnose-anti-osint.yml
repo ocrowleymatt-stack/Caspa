@@ -33,7 +33,7 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Print timeout valves
+      - name: Print finalisation paths
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
@@ -41,6 +41,6 @@ jobs:
           con=sqlite3.connect('/app/backend/data/webui.db')
           row=con.execute("select content from function where id='atlas-deep-research-v21'").fetchone()
           lines=str(row[0] or '').splitlines()
-          for i in range(1,min(140,len(lines))+1):
+          for i in range(455,min(590,len(lines))+1):
               print(f'{i}: {lines[i-1]}')
           PY
