@@ -1,2 +1,2 @@
-deploy requested 2026-08-12T10:52:41Z
-reason: enforce real web-search capability for search-required Atlas routing and prohibit non-search/local fallback
+deploy requested 2026-08-12T11:16:38Z
+reason: make Atlas web-search contract live across canonical routing and all custom OpenWebUI models
