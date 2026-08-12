@@ -93,6 +93,19 @@ jobs:
           export ATLAS_ROUTER_MAX_BODY_BYTES=2000000
           export ATLAS_ROUTER_MAX_INFLIGHT=16
 
+          # Parallel research depends on the host-local Tavily wrapper, not a guessed
+          # historic service name/port. Verify its actual API contract before replacing
+          # the currently running AtlasRouter process.
+          curl -fsS --max-time 3 http://127.0.0.1:3006/ >/tmp/atlas-tavily-local.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-tavily-local.json'))
+          assert d.get('service') == 'Tavily Search Omni Tool', d
+          endpoints=set(d.get('endpoints') or [])
+          assert '/search' in endpoints, d
+          print('atlas_tavily_local_contract=true')
+          PY
+
           # Keep AtlasRouter private. The bridge name is derived at deploy time so
           # recreating the Docker network cannot silently strand OpenWebUI again.
           if ! ufw status | grep -Fq "$ATLAS_GATEWAY 3014/tcp on $ATLAS_BRIDGE"; then
@@ -117,7 +130,13 @@ jobs:
           assert d.get('caspaDependency') is False, d
           assert d.get('localFallbackOwner') == 'atlas-openwebui', d
           assert int(d.get('maxInflight') or 0) == 16, d
-          print('atlas_router_health=true', 'version='+str(d.get('version')), 'maxInflight='+str(d.get('maxInflight')))
+          pr=d.get('parallelRetrieval') or {}
+          assert pr.get('version') == 'v1', d
+          assert pr.get('enabled') is True, d
+          assert pr.get('tavilyUrl') == 'http://127.0.0.1:3006/search', d
+          assert int(pr.get('maxQueries') or 0) == 4, d
+          assert int(pr.get('minSources') or 0) == 3, d
+          print('atlas_router_health=true', 'version='+str(d.get('version')), 'maxInflight='+str(d.get('maxInflight')), 'parallelRetrieval='+str(pr.get('version')))
           PY
 
           # Production direction: OpenWebUI container -> host AtlasRouter.
@@ -128,7 +147,9 @@ jobs:
           assert d.get('service') == 'AtlasRouter', d
           assert d.get('version') == '1.1.0', d
           assert d.get('caspaDependency') is False, d
-          print('openwebui_to_atlas_router=true')
+          pr=d.get('parallelRetrieval') or {}
+          assert pr.get('version') == 'v1' and pr.get('enabled') is True, d
+          print('openwebui_to_atlas_router=true', 'parallelRetrieval='+str(pr.get('version')))
           PY
 
           curl -fsS --max-time 40 \
@@ -147,8 +168,8 @@ jobs:
           print('atlas_router_cloud_smoke=true', d.get('provider'), d.get('model'), 'ms='+str(d.get('requestDurationMs')))
           PY
 
-          # Web-enabled production-direction gate. Ordinary web search must not
-          # require X search and must return a substantive, sourced result.
+          # Web-enabled production-direction gate. Ordinary web search must return
+          # substantive output and report which retrieval path was used.
           docker exec -i atlas-openwebui python3 - <<'PY'
           import json, urllib.request
           payload=json.dumps({
@@ -158,16 +179,21 @@ jobs:
               'useXSearch':False,
               'intelligenceMode':'speed',
               'maxTokens':500,
+              'taskHint':'factual',
           }).encode()
           req=urllib.request.Request('http://172.19.0.1:3014/api/ai/call', data=payload, headers={'Content-Type':'application/json'})
           with urllib.request.urlopen(req, timeout=75) as r:
               d=json.load(r)
           result=str(d.get('result') or '')
+          retrieval=d.get('retrieval') or {}
           assert d.get('service') == 'AtlasRouter', d
           assert d.get('provider') in {'grok','gemini','venice'}, d
           assert len(result) > 80, d
           assert 'cannot access the internet' not in result.lower(), d
-          print('openwebui_to_atlas_router_web_search=true', d.get('provider'), d.get('model'), 'ms='+str(d.get('requestDurationMs')))
+          assert retrieval.get('mode') in {'parallel-tavily-prefetch','native-provider-web-fallback','native-provider-web-recovery'}, d
+          if retrieval.get('mode') == 'parallel-tavily-prefetch':
+              assert int(retrieval.get('sourceCount') or 0) >= 3, d
+          print('openwebui_to_atlas_router_web_search=true', d.get('provider'), d.get('model'), 'retrieval='+str(retrieval.get('mode')), 'ms='+str(d.get('requestDurationMs')))
           PY
 
           docker cp /root/AtlasRouter/rewire-openwebui.py atlas-openwebui:/tmp/rewire-openwebui.py
@@ -190,5 +216,5 @@ jobs:
           print('atlas_frontier_isolated=true')
           PY
 
-          rm -f /tmp/atlas-router-health.json /tmp/atlas-router-smoke.json
+          rm -f /tmp/atlas-tavily-local.json /tmp/atlas-router-health.json /tmp/atlas-router-smoke.json
           REMOTE
