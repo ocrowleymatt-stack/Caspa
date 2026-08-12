@@ -1,0 +1,186 @@
+name: Deploy Atlas Router
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'atlas-router/**'
+      - 'src/services/routerFallbackBridge.ts'
+      - 'src/services/routerFailover.ts'
+      - 'src/services/cloudModelRouter.ts'
+      - 'src/services/aiRouterPolicy.ts'
+      - 'src/services/freeModelPool.ts'
+      - 'src/services/unifiedRouter.ts'
+      - '.github/workflows/deploy-atlas-router.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build standalone Atlas router
+        shell: bash
+        run: |
+          npm ci
+          mkdir -p dist-atlas-router
+          npx esbuild atlas-router/server.ts \
+            --bundle \
+            --platform=node \
+            --target=node22 \
+            --format=cjs \
+            --sourcemap \
+            --outfile=dist-atlas-router/atlas-router.cjs
+          node --check dist-atlas-router/atlas-router.cjs
+          test -s dist-atlas-router/atlas-router.cjs
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Install Atlas-owned router service
+        shell: bash
+        run: |
+          scp -i ~/.ssh/id_ed25519 dist-atlas-router/atlas-router.cjs "${ATLAS_USER}@${ATLAS_HOST}:/tmp/atlas-router.cjs"
+          scp -i ~/.ssh/id_ed25519 atlas-router/rewire-openwebui.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/rewire-openwebui.py"
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          install -d -m 755 /root/AtlasRouter
+          install -d -m 700 /root/.atlas-secrets
+          install -m 644 /tmp/atlas-router.cjs /root/AtlasRouter/atlas-router.cjs
+
+          # One-time provider-secret migration into Atlas-owned storage. Prefer the
+          # existing Atlas env; use Caspa only to fill provider keys Atlas never had.
+          if [ ! -s /root/.atlas-secrets/atlas-router.env ]; then
+            python3 - <<'PY' >/tmp/atlas-router.env
+          from pathlib import Path
+          allowed = [
+              'GROK_API_KEY','XAI_API_KEY','VITE_GROK_API_KEY',
+              'GEMINI_API_KEY','VITE_GEMINI_API_KEY',
+              'OPENAI_API_KEY','VITE_OPENAI_API_KEY',
+              'ANTHROPIC_API_KEY','VITE_ANTHROPIC_API_KEY',
+              'VENICE_API_KEY','VITE_VENICE_API_KEY',
+              'AI_PROVIDER_COOLDOWN_MS','AI_BILLING_COOLDOWN_MS',
+          ]
+          values = {}
+          for filename in ('/root/atlas-v0.11/.env', '/root/Caspa/.env'):
+              p = Path(filename)
+              if not p.exists():
+                  continue
+              for raw in p.read_text(errors='ignore').splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith('#') or '=' not in line:
+                      continue
+                  key, value = line.split('=', 1)
+                  key = key.strip()
+                  if key in allowed and key not in values and value.strip():
+                      values[key] = value
+          for key in allowed:
+              if key in values:
+                  print(f'{key}={values[key]}')
+          print('OLLAMA_DISABLED=true')
+          PY
+            test -s /tmp/atlas-router.env
+            install -m 600 /tmp/atlas-router.env /root/.atlas-secrets/atlas-router.env
+            rm -f /tmp/atlas-router.env
+          fi
+
+          set -a
+          . /root/.atlas-secrets/atlas-router.env
+          set +a
+          export NODE_ENV=production
+          export ATLAS_ROUTER_HOST=172.19.0.1
+          export ATLAS_ROUTER_PORT=3014
+          export ATLAS_ROUTER_MAX_BODY_BYTES=2000000
+          pm2 delete atlas-router >/dev/null 2>&1 || true
+          pm2 start /root/AtlasRouter/atlas-router.cjs --name atlas-router --time --update-env
+          pm2 save >/dev/null
+
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://172.19.0.1:3014/health >/tmp/atlas-router-health.json 2>/dev/null; then break; fi
+            sleep 1
+          done
+          cat /tmp/atlas-router-health.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-router-health.json'))
+          assert d.get('service') == 'AtlasRouter', d
+          assert d.get('caspaDependency') is False, d
+          PY
+
+          # The Atlas OpenWebUI container must be able to reach the internal router.
+          docker exec atlas-openwebui python3 - <<'PY'
+          import json, urllib.request
+          d=json.load(urllib.request.urlopen('http://172.19.0.1:3014/health', timeout=5))
+          assert d.get('service') == 'AtlasRouter', d
+          print('openwebui_to_atlas_router=true')
+          PY
+
+          # Small strict-provider smoke proves the new service owns cloud routing.
+          curl -fsS --max-time 40 \
+            -H 'Content-Type: application/json' \
+            -d '{"prompt":"Return exactly ATLAS_ROUTER_OK","providerOverride":"grok","strictProvider":true,"intelligenceMode":"speed","maxTokens":40}' \
+            http://172.19.0.1:3014/api/ai/call >/tmp/atlas-router-smoke.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-router-smoke.json'))
+          assert d.get('service') == 'AtlasRouter', d
+          assert d.get('provider') == 'grok', d
+          assert 'ATLAS_ROUTER_OK' in str(d.get('result','')), d
+          print('atlas_router_cloud_smoke=true', d.get('provider'), d.get('model'))
+          PY
+
+          # Cut the only active OpenWebUI Caspa dependency over to AtlasRouter.
+          docker cp /tmp/rewire-openwebui.py atlas-openwebui:/tmp/rewire-openwebui.py
+          docker exec atlas-openwebui python3 /tmp/rewire-openwebui.py
+          docker restart atlas-openwebui >/dev/null
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3002/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:3002/health
+
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          row=con.execute("select content,is_active from function where id='atlas-frontier-failover'").fetchone()
+          assert row and int(row[1]) == 1
+          code=str(row[0] or '')
+          assert 'http://172.19.0.1:3014/api/ai/call' in code
+          assert 'caspa.ocrowley.com/api/ai/call' not in code
+          print('atlas_frontier_isolated=true')
+          PY
+
+          # Caspa remains healthy, but Atlas no longer depends on it for model routing.
+          curl -fsS --max-time 5 http://127.0.0.1:3000/api/doctor >/tmp/caspa-doctor.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/caspa-doctor.json'))
+          assert d.get('data',{}).get('service') == 'Caspa', d
+          print('caspa_still_independent_and_healthy=true')
+          PY
+
+          rm -f /tmp/atlas-router.cjs /tmp/rewire-openwebui.py
+          REMOTE
