@@ -1,1 +1,2 @@
-deploy requested 2026-08-12T14:49:00Z\nreason: reduce live-search latency by avoiding duplicate retrieval and reserving Grok multi-agent for deep research\n
+deploy requested 2026-08-12T14:50:30Z
+reason: deploy live-search latency fix: single retrieval for ordinary search, provider corroboration only for Sol/deep research
