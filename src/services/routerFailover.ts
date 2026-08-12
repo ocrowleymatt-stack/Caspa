@@ -43,6 +43,18 @@ const BILLING_COOLDOWN_MS = Number(process.env.AI_BILLING_COOLDOWN_MS) || 15 * 6
 const TRANSIENT_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 60_000;
 
 /**
+ * Providers that have a real web-search tool binding in cloudModelRouter.ts.
+ * This is deliberately explicit: a provider being able to answer a prompt is
+ * not the same thing as being able to satisfy a web-required request.
+ */
+export const WEB_SEARCH_CAPABLE_PROVIDERS = ['gemini', 'grok'] as const;
+const WEB_SEARCH_CAPABLE_PROVIDER_SET = new Set<string>(WEB_SEARCH_CAPABLE_PROVIDERS);
+
+export function providerSupportsWebSearch(provider: string): boolean {
+  return WEB_SEARCH_CAPABLE_PROVIDER_SET.has(String(provider || '').toLowerCase());
+}
+
+/**
  * Canonical Atlas failover path.
  *
  * - Only configured, healthy cloud providers are attempted.
@@ -50,8 +62,10 @@ const TRANSIENT_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 60_
  * - Successful providers are immediately restored to healthy state.
  * - Explicit strict-provider requests still enter this router, but are constrained
  *   to the requested cloud provider and never silently switch elsewhere.
+ * - Web-required calls are capability-gated: only providers with a wired search
+ *   tool may participate, and local Ollama fallback is forbidden.
  * - If every cloud provider is unavailable, Atlas enters the dynamic Ollama pool
- *   unless local fallback was disabled or strict-provider routing was requested.
+ *   only for non-search work unless local fallback was otherwise disabled.
  */
 export async function callWithProviderFailover(
   prompt: string,
@@ -60,10 +74,34 @@ export async function callWithProviderFailover(
   const mode: IntelligenceMode = normaliseMode(opts.mode);
   const task: TaskKind = opts.task || classifyTask(prompt, opts);
   const primary = String(opts.primaryProvider || '').trim();
-  const preferred = opts.strictProvider && primary
+  const unfilteredPreferred = opts.strictProvider && primary
     ? [primary]
     : providerOrder(primary, mode, task, Boolean(opts.sensitive));
   const attempts: RouterFailoverAttempt[] = [];
+  const webRequired = Boolean(opts.useSearch);
+
+  if (webRequired && opts.strictProvider && primary && !providerSupportsWebSearch(primary)) {
+    throw new Error(
+      `Atlas web retrieval unavailable — strict provider "${primary}" has no wired web-search capability.`,
+    );
+  }
+
+  const preferred = webRequired
+    ? unfilteredPreferred.filter((provider) => providerSupportsWebSearch(provider))
+    : unfilteredPreferred;
+
+  if (webRequired) {
+    for (const provider of unfilteredPreferred) {
+      if (!providerSupportsWebSearch(provider)) {
+        attempts.push({
+          provider,
+          error: 'Skipped: provider has no wired Atlas web-search tool',
+          billingFailure: false,
+          skipped: true,
+        });
+      }
+    }
+  }
 
   const { attempt: ordered, anyConfigured } = selectAttemptOrder(
     preferred,
@@ -75,7 +113,7 @@ export async function callWithProviderFailover(
     for (const provider of preferred) {
       attempts.push({
         provider,
-        error: 'Provider not configured',
+        error: webRequired ? 'Search-capable provider not configured' : 'Provider not configured',
         billingFailure: false,
         skipped: true,
       });
@@ -99,7 +137,9 @@ export async function callWithProviderFailover(
     }
   }
 
-  if (!opts.disableLocalFallback && !opts.strictProvider) {
+  // A web-required request must never silently degrade into a non-search local
+  // answer. If all real search lanes fail, surface retrieval failure explicitly.
+  if (!webRequired && !opts.disableLocalFallback && !opts.strictProvider) {
     try {
       const local = await callOllamaModelHunt(prompt, {
         json: opts.json,
@@ -124,5 +164,6 @@ export async function callWithProviderFailover(
   const summary = attempts
     .map((attempt) => `${attempt.provider}${attempt.skipped ? ' skipped' : ''}: ${attempt.error.slice(0, 180)}`)
     .join(' | ');
-  throw new Error(`Atlas model pool exhausted${summary ? ` — ${summary}` : ''}`);
+  const prefix = webRequired ? 'Atlas web retrieval unavailable' : 'Atlas model pool exhausted';
+  throw new Error(`${prefix}${summary ? ` — ${summary}` : ''}`);
 }
