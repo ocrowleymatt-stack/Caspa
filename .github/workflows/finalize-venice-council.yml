@@ -23,6 +23,7 @@ jobs:
       - name: Upgrade Council Venice candidates
         shell: bash
         run: |
+          git pull --ff-only origin main
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/services/cloudModelRouter.ts')
@@ -30,8 +31,12 @@ jobs:
           old="if (provider === 'venice') return ['openai-gpt-oss-120b', 'qwen3-6-27b'];"
           new="if (provider === 'venice') return mode === 'god' ? ['deepseek-v4-pro', 'qwen-3-6-plus'] : ['qwen-3-6-plus', 'deepseek-v4-pro'];"
           if old not in s:
-              raise SystemExit('Council Venice anchor not found')
-          p.write_text(s.replace(old,new,1))
+              if new in s:
+                  print('Council Venice candidates already upgraded')
+              else:
+                  raise SystemExit('Council Venice anchor not found')
+          else:
+              p.write_text(s.replace(old,new,1))
           PY
       - run: npm ci
       - run: node --import tsx --test tests/routerCostPolicy.test.ts
@@ -42,5 +47,10 @@ jobs:
           git config user.name 'ocrowleymatt-stack'
           git config user.email 'ocrowley.matt@gmail.com'
           git add src/services/cloudModelRouter.ts
+          if git diff --cached --quiet; then
+            echo 'No Council source change required.'
+            exit 0
+          fi
           git commit -m 'Use stronger Venice models for Council seats'
+          git pull --rebase origin main
           git push origin HEAD:main
