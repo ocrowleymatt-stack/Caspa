@@ -1,0 +1,257 @@
+name: Migrate Atlas Repository
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-migrate-atlas-repository.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OWNER: ocrowleymatt-stack
+      NEW_REPO: Atlas
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      CANDIDATE_GH_PAT: ${{ secrets.GH_PAT }}
+      CANDIDATE_GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+      CANDIDATE_PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      CANDIDATE_REPO_PAT: ${{ secrets.REPO_PAT }}
+      CANDIDATE_PAT: ${{ secrets.PAT }}
+      CANDIDATE_GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      CANDIDATE_GITHUB_ADMIN_TOKEN: ${{ secrets.GITHUB_ADMIN_TOKEN }}
+      CANDIDATE_REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Select repository-management credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=''
+          for name in CANDIDATE_GH_PAT CANDIDATE_GITHUB_PAT CANDIDATE_PERSONAL_ACCESS_TOKEN CANDIDATE_REPO_PAT CANDIDATE_PAT CANDIDATE_GH_TOKEN CANDIDATE_GITHUB_ADMIN_TOKEN CANDIDATE_REPO_TOKEN; do
+            if [ -n "${!name:-}" ]; then token="${!name}"; break; fi
+          done
+          if [ -z "$token" ]; then
+            echo 'No repository-management PAT is configured in Caspa Actions secrets.' >&2
+            exit 41
+          fi
+          echo "::add-mask::$token"
+          printf 'GH_ADMIN_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
+          login="$(curl -fsS -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' https://api.github.com/user | python3 -c 'import json,sys; print(json.load(sys.stdin).get("login", ""))')"
+          test "$login" = "$OWNER"
+          echo "repo_admin_identity=$login"
+
+      - name: Create dedicated Atlas repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /tmp/atlas-repo.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_ADMIN_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$OWNER/$NEW_REPO")"
+          if [ "$code" = 404 ]; then
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $GH_ADMIN_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              https://api.github.com/user/repos \
+              -d '{"name":"Atlas","description":"Atlas AI routing, live research and OpenWebUI integration","private":false,"has_issues":true,"has_projects":false,"has_wiki":false,"auto_init":false}' \
+              >/tmp/atlas-repo.json
+            echo 'atlas_repository_created=true'
+          elif [ "$code" = 200 ]; then
+            echo 'atlas_repository_already_exists=true'
+          else
+            cat /tmp/atlas-repo.json >&2
+            exit 42
+          fi
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-repo.json'))
+          assert d.get('full_name') == 'ocrowleymatt-stack/Atlas', d
+          print('atlas_repo='+d.get('html_url',''))
+          PY
+
+      - name: Seed SSH deployment secret in Atlas
+        shell: bash
+        env:
+          GH_TOKEN: ${{ env.GH_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATEKEY2"
+          printf '%s' "$PRIVATEKEY2" | gh secret set PRIVATEKEY2 --repo "$OWNER/$NEW_REPO"
+          echo 'atlas_privatekey2_secret_seeded=true'
+
+      - name: Build clean Atlas repository tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/Atlas
+          mkdir -p /tmp/Atlas/.github/workflows /tmp/Atlas/legacy/workflows /tmp/Atlas/scripts
+
+          # Standalone production runtime.
+          cp -a atlas-router /tmp/Atlas/
+
+          # Atlas-owned repair/maintenance scripts.
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            mkdir -p "/tmp/Atlas/$(dirname "$f")"
+            cp -a "$f" "/tmp/Atlas/$f"
+          done < <(git ls-files 'scripts/*atlas*' 'scripts/*Atlas*')
+
+          # Production deploy remains active. Historical repair workflows are
+          # preserved as reference but intentionally cannot auto-fire on migration.
+          cp -a .github/workflows/deploy-atlas-router.yml /tmp/Atlas/.github/workflows/deploy-atlas-router.yml
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            [ "$f" = '.github/workflows/deploy-atlas-router.yml' ] && continue
+            cp -a "$f" "/tmp/Atlas/legacy/workflows/$(basename "$f")"
+          done < <(git ls-files '.github/workflows/*atlas*' '.github/workflows/*Atlas*')
+
+          cat > /tmp/Atlas/README.md <<'EOF'
+          # Atlas
+
+          Atlas is the standalone AI routing, live-research and OpenWebUI integration service for `atlas.ocrowley.com`.
+
+          ## Production components
+
+          - `atlas-router/` — standalone AtlasRouter service and provider routing.
+          - `atlas-router/src/researchPrefetch.ts` — parallel Tavily retrieval and evidence-pack synthesis path.
+          - `.github/workflows/deploy-atlas-router.yml` — production deployment and live direction/health gates.
+          - `scripts/` — Atlas OpenWebUI repair and maintenance scripts.
+          - `legacy/workflows/` — preserved historical repair workflows; intentionally non-executable from GitHub Actions.
+
+          AtlasRouter has no runtime dependency on Caspa. Production provider credentials remain server-side in `/root/.atlas-secrets/atlas-router.env` and are not stored in this repository.
+          EOF
+
+          cat > /tmp/Atlas/.gitignore <<'EOF'
+          node_modules/
+          dist/
+          *.env
+          .env*
+          !.env.example
+          EOF
+
+          find /tmp/Atlas -type f | sort
+          test -s /tmp/Atlas/atlas-router/server.ts
+          test -s /tmp/Atlas/atlas-router/src/researchPrefetch.ts
+          test -s /tmp/Atlas/.github/workflows/deploy-atlas-router.yml
+
+      - name: Push Atlas source to dedicated repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/Atlas
+          git init -b main
+          git config user.name 'Atlas Migration'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'Initial standalone Atlas repository'
+          git remote add origin "https://x-access-token:${GH_ADMIN_TOKEN}@github.com/${OWNER}/${NEW_REPO}.git"
+          git push -u origin main
+          echo 'atlas_source_pushed=true'
+
+      - name: Wait for Atlas production deploy to pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=''
+          for i in $(seq 1 45); do
+            runs="$(curl -fsS \
+              -H "Authorization: Bearer $GH_ADMIN_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$OWNER/$NEW_REPO/actions/workflows/deploy-atlas-router.yml/runs?branch=main&per_page=5")"
+            run_id="$(printf '%s' "$runs" | python3 -c 'import json,sys; rs=json.load(sys.stdin).get("workflow_runs",[]); print(rs[0]["id"] if rs else "")')"
+            [ -n "$run_id" ] && break
+            sleep 2
+          done
+          test -n "$run_id"
+          echo "atlas_deploy_run_id=$run_id"
+
+          for i in $(seq 1 90); do
+            run="$(curl -fsS \
+              -H "Authorization: Bearer $GH_ADMIN_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$OWNER/$NEW_REPO/actions/runs/$run_id")"
+            status="$(printf '%s' "$run" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))')"
+            conclusion="$(printf '%s' "$run" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("conclusion") or "")')"
+            echo "atlas_deploy_status=$status conclusion=$conclusion"
+            if [ "$status" = completed ]; then
+              test "$conclusion" = success
+              printf '%s' "$run" >/tmp/atlas-deploy-run.json
+              break
+            fi
+            sleep 4
+          done
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-deploy-run.json'))
+          assert d.get('conclusion') == 'success', d
+          print('atlas_new_repo_deploy_pass=true')
+          print('atlas_deploy_url='+d.get('html_url',''))
+          PY
+
+      - name: Verify live Atlas after new-repo deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H 116.202.24.63 >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@116.202.24.63 'python3 -' <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen('http://172.19.0.1:3014/health', timeout=8) as r:
+              h=json.load(r)
+          assert h.get('service') == 'AtlasRouter', h
+          assert h.get('caspaDependency') is False, h
+          pr=h.get('parallelRetrieval') or {}
+          assert pr.get('enabled') is True and pr.get('version') == 'v1', h
+          with urllib.request.urlopen('http://127.0.0.1:3002/health', timeout=8) as r:
+              ow=json.load(r)
+          assert ow.get('status') is True, ow
+          print('atlas_live_after_repo_move=true')
+          PY
+
+      - name: Remove migrated Atlas-owned files from Caspa
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Atlas Migration'
+          git config user.email 'actions@users.noreply.github.com'
+
+          git rm -r atlas-router
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            git rm -f "$f"
+          done < <(git ls-files 'scripts/*atlas*' 'scripts/*Atlas*')
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            git rm -f "$f"
+          done < <(git ls-files '.github/workflows/*atlas*' '.github/workflows/*Atlas*')
+
+          git commit -m 'Move Atlas to dedicated repository'
+          git remote set-url origin "https://x-access-token:${GH_ADMIN_TOKEN}@github.com/${OWNER}/Caspa.git"
+          git push origin HEAD:main
+          echo 'caspa_atlas_files_removed=true'
+
+      - name: Verify repository separation
+        shell: bash
+        run: |
+          set -euo pipefail
+          atlas_code="$(curl -sS -o /tmp/atlas-server.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_ADMIN_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$OWNER/$NEW_REPO/contents/atlas-router/server.ts")"
+          test "$atlas_code" = 200
+          caspa_code="$(curl -sS -o /tmp/caspa-old.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_ADMIN_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$OWNER/Caspa/contents/atlas-router/server.ts")"
+          test "$caspa_code" = 404
+          echo 'atlas_repository_separation_verified=true'
