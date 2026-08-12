@@ -15,14 +15,14 @@ import time
 
 DB = "/app/backend/data/webui.db"
 FUNCTION_ID = "atlas-frontier-failover"
-MARKER = "ATLAS MULTI-PROVIDER FRONTIER v2.1"
+MARKER = "ATLAS MULTI-PROVIDER FRONTIER v2.2"
 BACKUP_DIR = "/app/backend/data/atlas-function-backups"
 
 NEW_CODE = r'''"""
 title: Atlas Frontier Multi-Provider
 author: Atlas
-version: 2.1.0
-description: Venice-primary multi-provider Atlas frontier bridge with canonical cloud failover and local Qwen as final fail-soft.
+version: 2.2.0
+description: Multi-provider Atlas frontier bridge with mandatory provider-native live search whenever web retrieval is requested and local Qwen as final fail-soft.
 """
 
 from __future__ import annotations
@@ -38,7 +38,8 @@ from pydantic import BaseModel, Field
 from open_webui.models.users import Users
 from open_webui.utils.chat import generate_chat_completion
 
-# ATLAS MULTI-PROVIDER FRONTIER v2.1
+# ATLAS MULTI-PROVIDER FRONTIER v2.2
+# ATLAS RESEARCH WEB EXECUTION v1
 
 class Pipe:
     class Valves(BaseModel):
@@ -189,17 +190,28 @@ class Pipe:
         mode = self._mode(selected)
         features = body.get("features") if isinstance(body.get("features"), dict) else {}
         use_web = bool(features.get("web_search"))
-        # OpenWebUI has already performed SearXNG retrieval when web_search is enabled.
-        # Avoid paying the latency cost twice for Luna/Terra; Sol keeps provider-native
-        # search as a corroborating second retrieval pass.
-        provider_web = bool(use_web and selected.endswith("sol"))
+        # ATLAS RESEARCH WEB EXECUTION v1
+        # Do not assume OpenWebUI retrieval has already executed. A requested web
+        # search must reach AtlasRouter, whose capability gate restricts execution
+        # to Venice/Grok/Gemini. This makes Terra/Research genuinely live as well
+        # as Sol/Deep Research.
+        provider_web = bool(use_web)
         prompt = self._prompt(body)
+        if use_web:
+            prompt = (
+                "[ATLAS LIVE-RETRIEVAL CONTRACT]\n"
+                "Current/public-source web retrieval is required for this request. "
+                "Use the provider-native search path and base material claims on retrieved sources. "
+                "Do not claim that web/OSINT tools are unavailable merely because unrelated tool schemas are present. "
+                "If retrieval itself fails, state that as an execution failure rather than substituting model memory.\n\n"
+                + prompt
+            )
         if not prompt:
             raise ValueError("Atlas Frontier Multi-Provider received no usable prompt content.")
 
         await self._emit(
             __event_emitter__,
-            f"Atlas {selected.rsplit('-', 1)[-1].title()} · Venice primary · multi-provider failover" + (" · live retrieval" if use_web else "") + (" · provider corroboration" if provider_web else ""),
+            f"Atlas {selected.rsplit('-', 1)[-1].title()} · Venice primary · multi-provider failover" + (" · live retrieval" if use_web else "") + (" · provider live search" if provider_web else ""),
         )
 
         payload = {
@@ -263,7 +275,8 @@ except Exception:
     meta_obj = {}
 if not isinstance(meta_obj, dict):
     meta_obj = {}
-meta_obj["atlas_multi_provider_frontier"] = "v2"
+meta_obj["atlas_multi_provider_frontier"] = "v2.2"
+meta_obj["atlas_research_web_execution"] = "v1"
 meta_obj["atlas_multi_provider_updated_at"] = int(time.time())
 
 con.execute(
@@ -275,6 +288,9 @@ verify = con.execute("SELECT content FROM function WHERE id=?", (FUNCTION_ID,)).
 code = str(verify[0] or "")
 assert MARKER in code
 assert 'PRIMARY_PROVIDER: str = Field(default="venice")' in code
+assert 'ATLAS RESEARCH WEB EXECUTION v1' in code
+assert 'provider_web = bool(use_web)' in code
+assert 'provider_web = bool(use_web and selected.endswith("sol"))' not in code
 assert 'ROUTER_URL: str = Field(default="http://172.19.0.1:3014/api/ai/call")' in code
 print("patched=true")
 print("marker=true")
