@@ -39,9 +39,12 @@ function latestUserText(prompt: string): string {
 }
 
 function normaliseQuery(line: string): string {
+  // Preserve search-engine phrase quotes. Earlier normalisation stripped a leading
+  // double quote from queries such as "Full Name" Nottingham, leaving malformed
+  // Full Name" Nottingham strings and reducing identity-search precision.
   return String(line || '')
     .replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '')
-    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/^`+|`+$/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 280);
