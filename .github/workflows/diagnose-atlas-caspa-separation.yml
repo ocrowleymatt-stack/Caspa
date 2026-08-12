@@ -33,25 +33,25 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect live service boundaries
+      - name: Inspect live Atlas API services
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -u
-          echo '=== PM2 ==='
-          pm2 jlist 2>/dev/null | python3 -c "import sys,json; a=json.load(sys.stdin); [print(x.get('name'), x.get('pm2_env',{}).get('status'), x.get('pm2_env',{}).get('pm_cwd'), x.get('pm2_env',{}).get('pm_exec_path')) for x in a]" || pm2 ls || true
-          echo '=== DOCKER ==='
-          docker ps --format '{{.Names}}|{{.Image}}|{{.Ports}}' || true
-          echo '=== LISTENERS ==='
-          ss -lntp | grep -E ':(80|443|3000|3001|3002|3003|8000|8080|11434)\b' || true
-          echo '=== NGINX SERVER NAMES / PROXIES ==='
-          nginx -T 2>/dev/null | grep -nE 'server_name|proxy_pass|listen 443|listen 80' | head -n 240 || true
-          echo '=== CERTBOT ==='
-          certbot certificates 2>/dev/null | grep -E 'Certificate Name:|Domains:' || true
-          echo '=== ROOT DIRECTORIES ==='
-          find /root -maxdepth 2 -type d \( -iname '*caspa*' -o -iname '*atlas*' \) -print 2>/dev/null | sort || true
-          echo '=== CASPA REMOTE ==='
-          if [ -d /root/Caspa/.git ]; then cd /root/Caspa && git remote -v && git branch --show-current && git rev-parse HEAD; fi
-          echo '=== OPENWEBUI NETWORK ==='
-          docker inspect atlas-openwebui --format '{{json .NetworkSettings.Networks}}' 2>/dev/null || true
+          echo '=== ATLAS NGINX BLOCK ==='
+          nginx -T 2>/dev/null | awk '/server_name atlas\.ocrowley\.com;/{show=1;start=NR-3} show{print NR ":" $0; depth+=gsub(/\{/ ,"{"); depth-=gsub(/\}/,"}"); if (show && depth<=0 && NR>start+3) exit}' | head -n 180 || true
+          echo '=== 3003 PROCESS ==='
+          pid=$(ss -lntp 2>/dev/null | sed -n 's/.*127\.0\.0\.1:3003.*pid=\([0-9]*\).*/\1/p' | head -n1)
+          if [ -n "${pid:-}" ]; then ps -fp "$pid"; tr '\0' ' ' < "/proc/$pid/cmdline"; echo; readlink -f "/proc/$pid/cwd"; fi
+          echo '=== 3004/3005 LISTENERS ==='
+          ss -lntp | grep -E ':(3003|3004|3005|3006)\b' || true
+          echo '=== ATLAS SERVICE FILES ==='
+          for d in /root/atlas-styling /root/atlas-v0.11 /root/atlas-init /root/atlas-legal /root/atlas-ingestion; do
+            echo "--- $d"; find "$d" -maxdepth 2 -type f 2>/dev/null | head -n 80; done
+          echo '=== LIKELY 3003 REFERENCES ==='
+          grep -RIl --exclude='*.db' --exclude='*.sqlite*' --exclude='*.log' -E '3003|3004|3005' /root/atlas-* /etc/systemd/system /etc/nginx 2>/dev/null | head -n 100 || true
+          echo '=== CASPA AI ROUTER HEALTH ==='
+          curl -fsS --max-time 5 http://127.0.0.1:3000/api/doctor | head -c 1500 || true; echo
+          echo '=== ATLAS LOCAL ENDPOINT HEALTHS ==='
+          for p in 3002 3003 3004 3005; do echo "-- $p"; curl -sS --max-time 4 -o /tmp/a.$$ -w '%{http_code}\n' "http://127.0.0.1:$p/health" || true; head -c 500 /tmp/a.$$ 2>/dev/null || true; echo; done
           REMOTE
