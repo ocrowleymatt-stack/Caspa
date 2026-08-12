@@ -74,7 +74,7 @@ export default function ChapterSourceDock() {
   const panelStyle: React.CSSProperties = {
     position: 'fixed',
     right: 'max(12px, env(safe-area-inset-right))',
-    bottom: 'max(76px, calc(env(safe-area-inset-bottom) + 64px))',
+    bottom: 'max(18px, env(safe-area-inset-bottom))',
     width: 'min(420px, calc(100vw - 24px))',
     maxHeight: 'min(72vh, 720px)',
     overflow: 'hidden',
@@ -168,31 +168,35 @@ export default function ChapterSourceDock() {
         </aside>
       )}
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          position: 'fixed',
-          right: 'max(12px, env(safe-area-inset-right))',
-          bottom: 'max(12px, env(safe-area-inset-bottom))',
-          zIndex: 1001,
-          minHeight: 48,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 8,
-          border: '1px solid rgba(212,166,255,.35)',
-          borderRadius: 999,
-          padding: '10px 15px',
-          background: 'linear-gradient(180deg, #ead6ff, #c994f3)',
-          color: '#1a1021',
-          fontWeight: 850,
-          boxShadow: '0 12px 34px rgba(0,0,0,.36)',
-          cursor: 'pointer',
-        }}
-      >
-        {open ? <X size={17} /> : <BookOpen size={17} />}
-        {open ? 'Close' : 'Chapters & sources'}
-      </button>
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Open chapters and sources"
+          title="Chapters & sources"
+          style={{
+            position: 'fixed',
+            right: 'max(4px, env(safe-area-inset-right))',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 901,
+            width: 42,
+            height: 52,
+            display: 'grid',
+            placeItems: 'center',
+            border: '1px solid rgba(212,166,255,.30)',
+            borderRight: 0,
+            borderRadius: '12px 0 0 12px',
+            padding: 0,
+            background: 'linear-gradient(180deg, rgba(234,214,255,.96), rgba(201,148,243,.96))',
+            color: '#1a1021',
+            boxShadow: '0 8px 24px rgba(0,0,0,.24)',
+            cursor: 'pointer',
+          }}
+        >
+          <BookOpen size={19} />
+        </button>
+      )}
     </>
   );
 }
