@@ -57,9 +57,10 @@ jobs:
           code=str(row[0] or '')
           assert 'ATLAS MULTI-PROVIDER FRONTIER v2.1' in code
           assert 'PRIMARY_PROVIDER: str = Field(default="venice")' in code
-          assert 'ROUTER_URL: str = Field(default="https://caspa.ocrowley.com/api/ai/call")' in code
+          assert 'ROUTER_URL: str = Field(default="http://172.19.0.1:3014/api/ai/call")' in code
+          assert 'caspa.ocrowley.com/api/ai/call' not in code
           assert 'provider_web = bool(use_web and selected.endswith("sol"))' in code
-          print('frontier_multi_provider_live=v2.1')
+          print('frontier_multi_provider_live=v2.1_atlas_router')
           PY
           rm -f /tmp/repair-atlas-frontier-multiprovider.py
           REMOTE
