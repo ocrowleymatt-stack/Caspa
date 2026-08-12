@@ -155,6 +155,7 @@ function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: Intellig
   if (provider === 'grok') {
     if (task === 'creative' && mode !== 'speed') return ['grok-4.5'];
     if (task === 'fast') return ['grok-4.20-0309-non-reasoning'];
+    if (task === 'factual' && mode !== 'god') return ['grok-4.20-0309-non-reasoning', 'grok-4.20-0309-reasoning'];
   }
   if (provider === 'gemini') {
     if (task === 'fast') return ['gemini-3.5-flash-lite', 'gemini-3.6-flash'];
