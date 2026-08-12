@@ -66,3 +66,5 @@ jobs:
           PY
           rm -f /tmp/repair-atlas-frontier-multiprovider.py
           REMOTE
+
+# v2.2 redeploy trigger: keep live OpenWebUI function aligned with persistent source.
