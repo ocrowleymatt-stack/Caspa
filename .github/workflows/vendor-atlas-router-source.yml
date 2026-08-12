@@ -78,10 +78,7 @@ jobs:
             return WEB_SEARCH_CAPABLE_PROVIDER_SET.has(String(provider || '').toLowerCase());
           }
 
-          /**
-           * Atlas-owned cloud failover. Local model fallback deliberately does not
-           * exist in this service: atlas-openwebui owns the local Qwen fail-soft.
-           */
+          /** Atlas-owned cloud failover. Local fail-soft belongs to OpenWebUI. */
           export async function routeAtlasPrompt(
             prompt: string,
             opts: RouterFailoverOptions = {},
@@ -96,9 +93,7 @@ jobs:
             const webRequired = Boolean(opts.useSearch);
 
             if (webRequired && opts.strictProvider && primary && !providerSupportsWebSearch(primary)) {
-              throw new Error(
-                `Atlas web retrieval unavailable — strict provider "${primary}" has no wired web-search capability.`,
-              );
+              throw new Error(`Atlas web retrieval unavailable — strict provider "${primary}" has no wired web-search capability.`);
             }
 
             const preferred = webRequired
@@ -108,12 +103,7 @@ jobs:
             if (webRequired) {
               for (const provider of unfilteredPreferred) {
                 if (!providerSupportsWebSearch(provider)) {
-                  attempts.push({
-                    provider,
-                    error: 'Skipped: provider has no wired Atlas web-search tool',
-                    billingFailure: false,
-                    skipped: true,
-                  });
+                  attempts.push({ provider, error: 'Skipped: provider has no wired Atlas web-search tool', billingFailure: false, skipped: true });
                 }
               }
             }
@@ -126,12 +116,7 @@ jobs:
 
             if (!anyConfigured) {
               for (const provider of preferred) {
-                attempts.push({
-                  provider,
-                  error: webRequired ? 'Search-capable provider not configured' : 'Provider not configured',
-                  billingFailure: false,
-                  skipped: true,
-                });
+                attempts.push({ provider, error: webRequired ? 'Search-capable provider not configured' : 'Provider not configured', billingFailure: false, skipped: true });
               }
             }
 
@@ -144,17 +129,12 @@ jobs:
               } catch (error: any) {
                 const message = String(error?.message || error || 'Unknown provider failure');
                 const billingFailure = isBillingFailure(error);
-                sharedCircuitBreaker.recordFailure(
-                  provider,
-                  billingFailure ? BILLING_COOLDOWN_MS : TRANSIENT_COOLDOWN_MS,
-                );
+                sharedCircuitBreaker.recordFailure(provider, billingFailure ? BILLING_COOLDOWN_MS : TRANSIENT_COOLDOWN_MS);
                 attempts.push({ provider, error: message, billingFailure });
               }
             }
 
-            const summary = attempts
-              .map((attempt) => `${attempt.provider}${attempt.skipped ? ' skipped' : ''}: ${attempt.error.slice(0, 180)}`)
-              .join(' | ');
+            const summary = attempts.map((attempt) => `${attempt.provider}${attempt.skipped ? ' skipped' : ''}: ${attempt.error.slice(0, 180)}`).join(' | ');
             const prefix = webRequired ? 'Atlas web retrieval unavailable' : 'Atlas model pool exhausted';
             throw new Error(`${prefix}${summary ? ` — ${summary}` : ''}`);
           }
@@ -181,9 +161,7 @@ jobs:
               "build": "esbuild server.ts --bundle --platform=node --target=node22 --format=cjs --sourcemap --outfile=dist/atlas-router.cjs",
               "check": "npm run build && node --check dist/atlas-router.cjs"
             },
-            "dependencies": {
-              "@google/genai": "^1.50.1"
-            },
+            "dependencies": { "@google/genai": "^1.50.1" },
             "devDependencies": {
               "@types/node": "^22.14.0",
               "esbuild": "^0.28.0",
@@ -213,9 +191,9 @@ jobs:
           Provider credentials live on the host in `/root/.atlas-secrets/atlas-router.env`; never commit them.
           MD
 
-          # Prove the subtree has no relative imports escaping atlas-router.
-          if grep -RInE "from ['\"]\.\./|from ['\"]\.\./\.\./|/root/Caspa|caspa\.ocrowley\.com" atlas-router --include='*.ts' --include='*.js' --include='*.py'; then
-            echo 'Atlas router still contains a Caspa/source-tree dependency.' >&2
+          # Executable router source must not import or call outside Atlas Router.
+          if grep -RInE "from ['\"]\.\./|/root/Caspa|caspa\.ocrowley\.com" atlas-router/server.ts atlas-router/src --include='*.ts' --include='*.js'; then
+            echo 'Executable Atlas router still contains a Caspa/source-tree dependency.' >&2
             exit 1
           fi
 
