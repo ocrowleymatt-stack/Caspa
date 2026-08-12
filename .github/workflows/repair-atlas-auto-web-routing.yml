@@ -88,5 +88,76 @@ jobs:
           assert 'return result' in code
           print('atlas_auto_web_routing_live=v1.6_public_footprint')
           PY
+
+          # Semantic regression gate: the James-style wording must route directly to
+          # AtlasRouter even though it does not contain "search", "OSINT" or "current".
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import asyncio, json, sqlite3, sys, types
+
+          users_mod=types.ModuleType('open_webui.models.users')
+          class DummyUsers:
+              @staticmethod
+              async def get_user_by_id(_):
+                  return object()
+          users_mod.Users=DummyUsers
+
+          chat_mod=types.ModuleType('open_webui.utils.chat')
+          async def forbidden_local_completion(*args, **kwargs):
+              raise AssertionError('public-footprint query leaked to local/OpenWebUI tool lane')
+          chat_mod.generate_chat_completion=forbidden_local_completion
+          sys.modules['open_webui.models.users']=users_mod
+          sys.modules['open_webui.utils.chat']=chat_mod
+
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          code=con.execute("select content from function where id='atlas-auto'").fetchone()[0]
+          ns={}
+          exec(compile(code,'<live-atlas-auto-v16>','exec'),ns)
+
+          captured=[]
+          class FakeResponse:
+              status_code=200
+              text='{"result":"ROUTED_PUBLIC_FOOTPRINT_OK"}'
+              def json(self):
+                  return {
+                      'result':'ROUTED_PUBLIC_FOOTPRINT_OK',
+                      'provider':'grok',
+                      'model':'regression-test',
+                      'requestDurationMs':1,
+                  }
+          class FakeAsyncClient:
+              def __init__(self,*args,**kwargs): pass
+              async def __aenter__(self): return self
+              async def __aexit__(self,*args): return False
+              async def post(self,url,json=None,**kwargs):
+                  captured.append((url,json))
+                  return FakeResponse()
+          ns['httpx'].AsyncClient=FakeAsyncClient
+
+          statuses=[]
+          async def emitter(evt): statuses.append(evt)
+          body={
+              'model':'atlas-auto',
+              'messages':[{
+                  'role':'user',
+                  'content':"What can we find out about James's social media activity and local community involvement in Telford or Shropshire?",
+              }],
+          }
+
+          async def main():
+              result=await ns['Pipe']().pipe(body, {'id':'regression-user'}, None, emitter)
+              assert result == 'ROUTED_PUBLIC_FOOTPRINT_OK', result
+              assert len(captured) == 1, captured
+              url,payload=captured[0]
+              assert url == 'http://172.19.0.1:3014/api/ai/call', url
+              assert payload.get('useWebSearch') is True, payload
+              assert payload.get('useXSearch') is True, payload
+              assert payload.get('intelligenceMode') == 'speed', payload
+              status_text=' '.join(str(s) for s in statuses).lower()
+              assert 'public-footprint live research' in status_text, statuses
+              assert 'direct live retrieval' in status_text, statuses
+              print('atlas_auto_public_footprint_semantic_regression=true')
+          asyncio.run(main())
+          PY
+
           rm -f /tmp/repair-atlas-auto-web-routing.py /tmp/repair-atlas-auto-performance-v15.py /tmp/repair-atlas-auto-public-footprint-v16.py
           REMOTE
