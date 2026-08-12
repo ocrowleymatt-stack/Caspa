@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/repair-atlas-frontier-multiprovider.yml'
+      - 'scripts/repair-atlas-frontier-multiprovider.py'
 
 permissions:
   contents: read
@@ -54,10 +55,11 @@ jobs:
           row=con.execute("SELECT content,is_active FROM function WHERE id='atlas-frontier-failover'").fetchone()
           assert row and int(row[1]) == 1
           code=str(row[0] or '')
-          assert 'ATLAS MULTI-PROVIDER FRONTIER v2' in code
+          assert 'ATLAS MULTI-PROVIDER FRONTIER v2.1' in code
           assert 'PRIMARY_PROVIDER: str = Field(default="venice")' in code
           assert 'ROUTER_URL: str = Field(default="https://caspa.ocrowley.com/api/ai/call")' in code
-          print('frontier_multi_provider_live=true')
+          assert 'provider_web = bool(use_web and selected.endswith("sol"))' in code
+          print('frontier_multi_provider_live=v2.1')
           PY
           rm -f /tmp/repair-atlas-frontier-multiprovider.py
           REMOTE
