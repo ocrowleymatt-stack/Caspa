@@ -1,6 +1,5 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
-import { routeAtlasPrompt } from '../src/services/routerFallbackBridge';
-import { classifyTask, normaliseMode } from '../src/services/cloudModelRouter';
+import { routeAtlasPrompt, classifyTask, normaliseMode } from './src/router';
 
 const HOST = process.env.ATLAS_ROUTER_HOST || '172.19.0.1';
 const PORT = Number(process.env.ATLAS_ROUTER_PORT || 3014);
@@ -93,7 +92,6 @@ const server = http.createServer(async (req, res) => {
       mode,
       task: taskHint || classifyTask(prompt, { json: Boolean(json), maxTokens, useSearch: webRequired }),
       // Atlas OpenWebUI owns the local fail-soft. This service is cloud routing only.
-      disableLocalFallback: true,
     });
 
     return sendJson(res, 200, {
