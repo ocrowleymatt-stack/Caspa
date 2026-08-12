@@ -57,22 +57,9 @@ jobs:
               s = s.replace(old_text, new_text, 1)
           p.write_text(s)
 
-          # 3) Make the persistent live-repair workflow self-trigger when its script changes
-          # and verify the new marker/duplicate-search split.
-          p = Path('.github/workflows/repair-atlas-frontier-multiprovider.yml')
-          s = p.read_text()
-          old_paths = """    paths:\n      - '.github/workflows/repair-atlas-frontier-multiprovider.yml'\n"""
-          new_paths = """    paths:\n      - '.github/workflows/repair-atlas-frontier-multiprovider.yml'\n      - 'scripts/repair-atlas-frontier-multiprovider.py'\n"""
-          if old_paths not in s:
-              raise SystemExit('repair workflow paths anchor not found')
-          s = s.replace(old_paths, new_paths, 1)
-          s = s.replace("assert 'ATLAS MULTI-PROVIDER FRONTIER v2' in code", "assert 'ATLAS MULTI-PROVIDER FRONTIER v2.1' in code", 1)
-          s = s.replace("assert 'ROUTER_URL: str = Field(default=\"https://caspa.ocrowley.com/api/ai/call\")' in code", "assert 'ROUTER_URL: str = Field(default=\"https://caspa.ocrowley.com/api/ai/call\")' in code\n          assert 'provider_web = bool(use_web and selected.endswith(\"sol\"))' in code", 1)
-          p.write_text(s)
-
-          # 4) Trigger canonical production deploy from the same commit.
+          # 3) Trigger canonical production deploy from the same commit.
           Path('.deploy-atlas-trigger').write_text(
-              'deploy requested 2026-08-12T14:45:00Z\\n'
+              'deploy requested 2026-08-12T14:49:00Z\\n'
               'reason: reduce live-search latency by avoiding duplicate retrieval and reserving Grok multi-agent for deep research\\n'
           )
           PY
@@ -85,6 +72,6 @@ jobs:
         run: |
           git config user.name 'ocrowleymatt-stack'
           git config user.email 'ocrowley.matt@gmail.com'
-          git add src/services/cloudModelRouter.ts scripts/repair-atlas-frontier-multiprovider.py .github/workflows/repair-atlas-frontier-multiprovider.yml .deploy-atlas-trigger
+          git add src/services/cloudModelRouter.ts scripts/repair-atlas-frontier-multiprovider.py .deploy-atlas-trigger
           git commit -m 'Accelerate Atlas live search routing'
           git push origin HEAD:main
