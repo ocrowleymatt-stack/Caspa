@@ -12,7 +12,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
@@ -33,45 +33,13 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect live refusal paths and recent chats
+      - name: Print live Atlas Auto
         shell: bash
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          echo '=== OPENWEBUI HEALTH ==='
-          curl -fsS --max-time 5 http://127.0.0.1:3002/health || true
-          echo
-          echo '=== RECENT OPENWEBUI LOG MATCHES ==='
-          docker logs --since 35m atlas-openwebui 2>&1 | grep -Eai 'osint|refus|safety|policy|not allowed|cannot assist|privacy|personal data|error|403|400|422|500' | tail -n 260 || true
-          echo '=== LIVE FUNCTION POLICY/REFUSAL STRINGS ==='
-          docker exec -i atlas-openwebui python3 - <<'PY'
-          import sqlite3,re,json
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
+          import sqlite3
           con=sqlite3.connect('/app/backend/data/webui.db')
-          for fid in ['atlas-public-source-research','atlas-frontier-failover','atlas-council','atlas-deep-research-v2','atlas-deep-research-v21']:
-              row=con.execute('select content,is_active from function where id=?',(fid,)).fetchone()
-              if not row:
-                  print(f'--- {fid}: MISSING ---')
-                  continue
-              code=str(row[0] or '')
-              print(f'--- {fid}: active={row[1]} chars={len(code)} ---')
-              for i,line in enumerate(code.splitlines(),1):
-                  if re.search(r'osint|public.source|refus|safety|policy|privacy|personal data|dox|harass|stalk|illegal|allowed|prohibit|cannot assist|web_search|research',line,re.I):
-                      print(f'{i}: {line[:900]}')
-          print('=== DB TABLES ===')
-          tables=[r[0] for r in con.execute("select name from sqlite_master where type='table' order by name")]
-          print(','.join(tables))
-          if 'chat' in tables:
-              cols=[r[1] for r in con.execute('pragma table_info(chat)')]
-              print('chat_cols='+','.join(cols))
-              rows=con.execute('select * from chat order by updated_at desc limit 12').fetchall()
-              for row in rows:
-                  d=dict(zip(cols,row))
-                  raw=str(d.get('chat') or d.get('messages') or d.get('data') or '')
-                  if re.search(r'osint|cannot|assist|policy|privacy|personal|public.source|refus|not allowed|error',raw,re.I):
-                      print('CHAT_MATCH id='+str(d.get('id'))+' updated='+str(d.get('updated_at')))
-                      print(raw[-8000:])
-          con.close()
+          row=con.execute("select content,is_active from function where id='atlas-auto'").fetchone()
+          print('active=', row[1] if row else None)
+          print(row[0] if row else 'MISSING')
           PY
-          echo '=== CASPA PM2 RECENT ERRORS ==='
-          pm2 logs --nostream --lines 220 2>&1 | grep -Eai 'osint|refus|safety|policy|venice|grok|gemini|error|403|400|422|500' | tail -n 260 || true
-          REMOTE
