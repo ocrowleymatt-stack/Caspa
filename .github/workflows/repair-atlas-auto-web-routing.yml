@@ -35,7 +35,7 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Install live Auto web-aware routing
+      - name: Install live Auto direct web routing
         shell: bash
         run: |
           scp -i ~/.ssh/id_ed25519 scripts/repair-atlas-auto-web-routing.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/repair-atlas-auto-web-routing.py"
@@ -55,11 +55,15 @@ jobs:
           row=con.execute("select content,is_active from function where id='atlas-auto'").fetchone()
           assert row and int(row[1]) == 1
           code=str(row[0] or '')
-          assert 'ATLAS AUTO WEB-AWARE ROUTING v1.3' in code
-          assert 'default="atlas-research"' in code
-          assert 'default="atlas-deep-research"' in code
-          assert 'routed_features["web_search"] = True' in code
-          print('atlas_auto_web_routing_live=v1.3')
+          assert 'ATLAS AUTO DIRECT WEB ROUTING v1.4' in code
+          assert 'ROUTER_URL: str = Field' in code
+          assert 'http://172.19.0.1:3014/api/ai/call' in code
+          assert 'WEB_PRIMARY_PROVIDER: str = Field' in code
+          assert 'default="grok"' in code
+          assert '"useWebSearch": True' in code
+          assert 'return result' in code
+          assert 'direct live retrieval' in code
+          print('atlas_auto_web_routing_live=v1.4_direct_router')
           PY
           rm -f /tmp/repair-atlas-auto-web-routing.py
           REMOTE
