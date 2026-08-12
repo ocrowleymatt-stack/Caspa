@@ -4,11 +4,13 @@ on:
   push:
     paths:
       - '.github/workflows/final-router-smoke.yml'
+      - 'scripts/final-router-smoke.mjs'
 
-# Final Council polish validation: 2026-08-09T13:14Z
+# Validates production routing, including hard web-search capability enforcement.
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - name: Exercise final production router
