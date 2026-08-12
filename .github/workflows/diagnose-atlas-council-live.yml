@@ -34,27 +34,21 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect Big Brother identity profile path
+      - name: Inspect OSINT research fast path
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -e
           docker exec -i atlas-openwebui python3 - <<'PY'
-          import re, sqlite3
+          import sqlite3
           con=sqlite3.connect('/app/backend/data/webui.db')
           row=con.execute("SELECT content FROM function WHERE id='atlas-council'").fetchone()
-          if not row: raise SystemExit('atlas-council function missing')
-          lines=str(row[0]).splitlines()
-          wanted={'_bb_profile_scan','_bigbrother_target'}
-          for start,line in enumerate(lines):
-              m=re.match(r'^\s*(?:async\s+)?def\s+([A-Za-z0-9_]+)\b', line)
-              if not m or m.group(1) not in wanted: continue
-              name=m.group(1); indent=len(line)-len(line.lstrip()); end=min(len(lines),start+180)
-              for j in range(start+1,end):
-                  stripped=lines[j].strip(); ci=len(lines[j])-len(lines[j].lstrip()) if stripped else indent+1
-                  if stripped and ci <= indent and re.match(r'(?:async\s+)?def\s+|class\s+', stripped): end=j; break
-              print(f'=== {name} ===')
-              for j in range(start,end): print(f'{j+1:04d} {lines[j]}')
+          code=str(row[0] or '')
+          lines=code.splitlines()
+          hits=[i for i,line in enumerate(lines) if 'if osint_active and profile == "research":' in line]
+          if not hits: raise SystemExit('OSINT research fast path missing')
+          start=max(0,hits[0]-8); end=min(len(lines),hits[0]+58)
+          for i in range(start,end): print(f'{i+1:04d} {lines[i]}')
           con.close()
           PY
           REMOTE
