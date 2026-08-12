@@ -1,0 +1,142 @@
+name: Audit Atlas Custom Models
+
+on:
+  push:
+    paths:
+      - '.github/workflows/audit-atlas-custom-models.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Audit live OpenWebUI custom models and functions
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3, json, hashlib, re
+
+          DB='/app/backend/data/webui.db'
+          con=sqlite3.connect(DB)
+          con.row_factory=sqlite3.Row
+
+          def table_exists(name):
+              return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+          def columns(name):
+              return [r[1] for r in con.execute(f'PRAGMA table_info("{name}")')]
+
+          def parse_jsonish(v):
+              if isinstance(v, (dict, list)): return v
+              if not isinstance(v, str) or not v.strip(): return None
+              try: return json.loads(v)
+              except Exception: return None
+
+          print('=== LIVE CUSTOM MODEL AUDIT ===')
+          print(json.dumps({'db': DB, 'tables': [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='function' OR name='model' OR name LIKE '%model%' OR name LIKE '%function%') ORDER BY name")]}))
+
+          if table_exists('function'):
+              print('=== FUNCTIONS ===')
+              cols=columns('function')
+              rows=con.execute('SELECT * FROM "function" ORDER BY id').fetchall()
+              print(json.dumps({'count': len(rows), 'columns': cols}))
+              for row in rows:
+                  d=dict(row)
+                  code=str(d.get('content') or '')
+                  low=code.lower()
+                  endpoints=sorted(set(re.findall(r'https?://[^\s\"\'<>]+', code)))
+                  endpoint_hosts=[]
+                  for u in endpoints:
+                      # redact path/query; host-level output is enough for routing audit
+                      m=re.match(r'https?://([^/]+)', u)
+                      if m: endpoint_hosts.append(m.group(1))
+                  endpoint_hosts=sorted(set(endpoint_hosts))
+                  record={
+                      'id': d.get('id'),
+                      'name': d.get('name'),
+                      'type': d.get('type'),
+                      'is_active': d.get('is_active'),
+                      'updated_at': d.get('updated_at'),
+                      'sha256_12': hashlib.sha256(code.encode()).hexdigest()[:12],
+                      'lines': len(code.splitlines()),
+                      'pipe_model': ('class Pipe' in code or 'def pipe(' in code or 'def pipes(' in code),
+                      'canonical_ai_call': ('/api/ai/call' in code or 'routeAtlasPrompt' in code or 'callWithProviderFailover' in code),
+                      'web_flag': ('useWebSearch' in code or 'use_search' in low or 'useSearch' in code),
+                      'provider_web_tool': ('web_search' in low or 'x_search' in low or 'googleSearch' in code or 'google_search' in low),
+                      'self_hosted_search': any(x in low for x in ('searx', 'searxng', 'spiderfoot', 'bbot', 'intelowl', 'active_osint', '/api/search')),
+                      'direct_ollama': ('ollama' in low or '11434' in code),
+                      'direct_openai': ('api.openai.com' in low or 'openai(' in low),
+                      'direct_grok_xai': ('api.x.ai' in low or 'x.ai/v1' in low),
+                      'direct_gemini': ('generativelanguage.googleapis.com' in low),
+                      'direct_anthropic': ('api.anthropic.com' in low),
+                      'http_client': any(x in low for x in ('httpx.', 'requests.', 'aiohttp.', 'urllib.request', 'client.get(', 'client.post(')),
+                      'endpoint_hosts': endpoint_hosts[:20],
+                  }
+                  # Conservative risk labelling. Direct providers/Ollama or a custom model with a web flag but
+                  # neither canonical routing nor a visible search implementation deserves inspection.
+                  risks=[]
+                  if record['direct_ollama']: risks.append('DIRECT_OLLAMA')
+                  if any(record[k] for k in ('direct_openai','direct_grok_xai','direct_gemini','direct_anthropic')) and not record['canonical_ai_call']:
+                      risks.append('DIRECT_PROVIDER_BYPASS')
+                  if record['web_flag'] and not (record['canonical_ai_call'] or record['provider_web_tool'] or record['self_hosted_search']):
+                      risks.append('WEB_FLAG_WITHOUT_VISIBLE_SEARCH_PATH')
+                  if record['pipe_model'] and not (record['canonical_ai_call'] or record['provider_web_tool'] or record['self_hosted_search']) and record['http_client']:
+                      risks.append('CUSTOM_PIPE_NONCANONICAL_HTTP')
+                  record['risks']=risks
+                  print(json.dumps(record, sort_keys=True))
+
+          if table_exists('model'):
+              print('=== MODEL TABLE ===')
+              cols=columns('model')
+              rows=con.execute('SELECT * FROM "model" ORDER BY id').fetchall()
+              print(json.dumps({'count': len(rows), 'columns': cols}))
+              for row in rows:
+                  d=dict(row)
+                  meta=parse_jsonish(d.get('meta'))
+                  params=parse_jsonish(d.get('params'))
+                  safe={
+                      'id': d.get('id'),
+                      'name': d.get('name'),
+                      'base_model_id': d.get('base_model_id'),
+                      'is_active': d.get('is_active'),
+                      'updated_at': d.get('updated_at'),
+                      'meta_keys': sorted(meta.keys()) if isinstance(meta,dict) else [],
+                      'params_keys': sorted(params.keys()) if isinstance(params,dict) else [],
+                  }
+                  # expose only routing-ish metadata, never prompt bodies/tokens/secrets
+                  if isinstance(meta, dict):
+                      for k in ('model_ids','filter_ids','function_ids','tool_ids','profile_image_url'):
+                          if k in meta: safe[f'meta_{k}']=meta.get(k)
+                  print(json.dumps(safe, sort_keys=True))
+
+          print('=== SERVER CONTAINERS ===')
+          con.close()
+          PY
+          docker ps --format '{{.Names}}\t{{.Status}}' | grep -E 'atlas|caspa|openwebui|ollama|router|osint' || true
+          REMOTE
