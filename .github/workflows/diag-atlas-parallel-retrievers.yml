@@ -12,7 +12,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
@@ -33,66 +33,41 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Probe retriever contracts and source
+      - name: Benchmark live retrievers
         shell: bash
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          echo '=== PM2 SERVICE MAP ==='
-          pm2 jlist > /tmp/pm2.json
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/pm2.json'))
-          for p in data:
-              if p.get('name') in {'fortune-agent','tavily-search','perplexica-research','spiderfoot-osint'}:
-                  env=p.get('pm2_env') or {}
-                  print({'name':p.get('name'),'pid':p.get('pid'),'exec':env.get('pm_exec_path'),'cwd':env.get('pm_cwd')})
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'python3 -' <<'PY'
+          import concurrent.futures, json, time, urllib.request, urllib.error
+          q='osint search and create a background story with current info for stuart a Hardman previously of Nottingham, previous partner of Scott millard and now living in walsall with Adam Walsh'
+
+          def post(name,url,payload,timeout):
+              started=time.monotonic()
+              req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=timeout) as r:
+                      raw=r.read().decode(errors='replace')
+                      code=r.status
+              except Exception as e:
+                  return {'name':name,'ok':False,'ms':round((time.monotonic()-started)*1000),'error':repr(e)}
+              try: data=json.loads(raw)
+              except Exception: data={'raw':raw}
+              return {'name':name,'ok':200<=code<300,'ms':round((time.monotonic()-started)*1000),'code':code,'data':data}
+
+          tests=[
+              ('tavily-basic','http://127.0.0.1:3006/search',{'query':q},25),
+              ('tavily-advanced','http://127.0.0.1:3006/search/advanced',{'query':q,'include_answer':True,'include_sources':True},25),
+              ('perplexica','http://127.0.0.1:3008/research',{'query':q,'mode':'research'},55),
+          ]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+              futs=[ex.submit(post,*t) for t in tests]
+              rows=[f.result() for f in futs]
+          for row in rows:
+              data=row.pop('data',None)
+              print('RESULT',json.dumps(row,ensure_ascii=False))
+              if data is not None:
+                  txt=json.dumps(data,ensure_ascii=False)
+                  print('BODY',row['name'],txt[:12000])
+          print('=== LISTENER 3008 ===')
+          import subprocess
+          print(subprocess.run("ss -ltnp 2>/dev/null | grep -E ':(3006|3008)[[:space:]]' || true",shell=True,text=True,capture_output=True).stdout)
           PY
-
-          echo '=== LISTENERS ==='
-          ss -ltnp 2>/dev/null | grep -E ':(3004|3005|3006)[[:space:]]' || true
-
-          for port in 3004 3005 3006; do
-            echo "=== PORT $port ROOT ==="
-            curl -sS --max-time 4 "http://127.0.0.1:${port}/" || true; echo
-            echo "=== PORT $port OPENAPI PATHS ==="
-            curl -sS --max-time 4 "http://127.0.0.1:${port}/openapi.json" -o "/tmp/openapi-${port}.json" || true
-            python3 - "$port" <<'PY'
-          import json,sys
-          port=sys.argv[1]
-          try:
-              d=json.load(open('/tmp/openapi-'+port+'.json'))
-          except Exception as e:
-              print('OPENAPI_ERROR',e); raise SystemExit
-          print('title=',(d.get('info') or {}).get('title'))
-          for path,methods in (d.get('paths') or {}).items():
-              print(path, sorted(methods.keys()))
-              for method,spec in methods.items():
-                  rb=(spec or {}).get('requestBody') or {}
-                  schemas=[]
-                  for ctype,val in (rb.get('content') or {}).items():
-                      schemas.append((ctype,(val or {}).get('schema')))
-                  if schemas: print(' request=',schemas)
-          PY
-          done
-
-          echo '=== LIVE SOURCE CONTRACTS ==='
-          for f in /root/enhanced-omni-tools/tavily-search.py /root/enhanced-omni-tools/perplexica-research.py /root/enhanced-omni-tools/fortune-agent.py; do
-            echo "--- $f ---"
-            if [ -f "$f" ]; then
-              grep -nE '(@app\.|def |class |PORT|port=|uvicorn|query|search|research|httpx|requests|return )' "$f" | head -n 220 || true
-            else
-              echo MISSING
-            fi
-          done
-
-          echo '=== LIVE AUTO MARKERS ==='
-          docker exec -i atlas-openwebui python3 - <<'PY'
-          import sqlite3
-          con=sqlite3.connect('/app/backend/data/webui.db')
-          code=con.execute("select content from function where id='atlas-auto'").fetchone()[0]
-          for marker in ['ATLAS AUTO DIRECT WEB ROUTING v1.4','ATLAS AUTO PERFORMANCE HARDENING v1.5','ATLAS AUTO PUBLIC FOOTPRINT ROUTING v1.6']:
-              print(marker, marker in code)
-          print('code_chars',len(code))
-          PY
-          REMOTE
