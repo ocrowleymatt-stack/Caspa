@@ -21,6 +21,7 @@ export interface RouterFailoverAttempt {
   provider: string;
   error: string;
   billingFailure: boolean;
+  configurationFailure?: boolean;
   skipped?: boolean;
   durationMs?: number;
 }
@@ -41,6 +42,7 @@ export interface RouterFailoverOptions extends RoutedCallOptions {
 }
 
 const BILLING_COOLDOWN_MS = Number(process.env.AI_BILLING_COOLDOWN_MS) || 15 * 60_000;
+const AUTH_COOLDOWN_MS = Number(process.env.AI_PROVIDER_AUTH_COOLDOWN_MS) || 60 * 60_000;
 const TRANSIENT_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 60_000;
 
 export const WEB_SEARCH_CAPABLE_PROVIDERS = ['venice', 'gemini', 'grok'] as const;
@@ -48,6 +50,11 @@ const WEB_SEARCH_CAPABLE_PROVIDER_SET = new Set<string>(WEB_SEARCH_CAPABLE_PROVI
 
 export function providerSupportsWebSearch(provider: string): boolean {
   return WEB_SEARCH_CAPABLE_PROVIDER_SET.has(String(provider || '').toLowerCase());
+}
+
+function isProviderConfigurationFailure(error: unknown): boolean {
+  const message = String((error as any)?.message || error || '');
+  return /api key (?:is )?not valid|invalid api key|incorrect api key|invalid_api_key|authentication failed|unauthori[sz]ed|HTTP 401\b/i.test(message);
 }
 
 /** Atlas-owned cloud failover. Local fail-soft belongs to OpenWebUI. */
@@ -110,8 +117,14 @@ export async function routeAtlasPrompt(
       const durationMs = Date.now() - providerStartedAt;
       const message = String(error?.message || error || 'Unknown provider failure');
       const billingFailure = isBillingFailure(error);
-      sharedCircuitBreaker.recordFailure(provider, billingFailure ? BILLING_COOLDOWN_MS : TRANSIENT_COOLDOWN_MS);
-      attempts.push({ provider, error: message, billingFailure, durationMs });
+      const configurationFailure = isProviderConfigurationFailure(error);
+      const cooldownMs = configurationFailure
+        ? AUTH_COOLDOWN_MS
+        : billingFailure
+          ? BILLING_COOLDOWN_MS
+          : TRANSIENT_COOLDOWN_MS;
+      sharedCircuitBreaker.recordFailure(provider, cooldownMs);
+      attempts.push({ provider, error: message, billingFailure, configurationFailure, durationMs });
     }
   }
 
