@@ -1,0 +1,97 @@
+name: Test Atlas Auto End to End
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/test-atlas-auto-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Exercise atlas-auto via OpenWebUI API
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== VERIFY LIVE V2.2 BEFORE TEST ==='
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          code=con.execute("select content from function where id='atlas-frontier-failover'").fetchone()[0]
+          assert 'ATLAS MULTI-PROVIDER FRONTIER v2.2' in code
+          assert 'provider_web = bool(use_web)' in code
+          assert 'provider_web = bool(use_web and selected.endswith("sol"))' not in code
+          print('live_frontier_v22=true')
+          PY
+          echo '=== DISCOVER USER API KEY WITHOUT PRINTING IT ==='
+          TOKEN=$(docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db'); con.row_factory=sqlite3.Row
+          cols=[r['name'] for r in con.execute('pragma table_info(user)').fetchall()]
+          print('' if 'api_key' not in cols else (con.execute("select api_key from user where id='606f792f-8462-4216-9f81-3e7f3e3f3507'").fetchone()[0] or ''))
+          PY
+          )
+          if [ -z "$TOKEN" ]; then
+            echo 'user_api_key_present=false'
+            exit 3
+          fi
+          echo 'user_api_key_present=true'
+          cat >/tmp/atlas-auto-e2e.json <<'JSON'
+          {
+            "model":"atlas-auto",
+            "messages":[{"role":"user","content":"OSINT search current public web sources for Stuart A Hardman previously of Nottingham, previous partner of Scott Millard and now living in Walsall with Adam Walsh. Return a concise evidence-led background with citations, and distinguish identity matches from collisions."}],
+            "stream":false
+          }
+          JSON
+          START=$(date +%s)
+          curl -fsS --max-time 180 \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/atlas-auto-e2e.json \
+            http://127.0.0.1:3002/api/chat/completions >/tmp/atlas-auto-e2e-response.json
+          END=$(date +%s)
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-auto-e2e-response.json'))
+          text=''
+          try: text=d['choices'][0]['message']['content'] or ''
+          except Exception: pass
+          print('response_keys=',list(d.keys()))
+          print('has_choices=',bool(d.get('choices')))
+          print('content_chars=',len(text))
+          print('content_preview=',text[:3500].replace('\n',' '))
+          low=text.lower()
+          bad=('cannot access the internet','can\'t access the internet','no web search','available functions don\'t support osint')
+          assert text, d
+          assert not any(x in low for x in bad), text[:1000]
+          assert ('http://' in text or 'https://' in text or '[[' in text or 'source' in low), text[:1800]
+          print('atlas_auto_e2e_live_search=true')
+          PY
+          echo "elapsed_seconds=$((END-START))"
+          rm -f /tmp/atlas-auto-e2e.json /tmp/atlas-auto-e2e-response.json
+          REMOTE
