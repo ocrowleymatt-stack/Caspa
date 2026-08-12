@@ -33,43 +33,58 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Probe retriever contracts and live Auto
+      - name: Probe retriever contracts and source
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          echo '=== PM2 RETRIEVERS ==='
-          pm2 jlist | python3 -c 'import json,sys; d=json.load(sys.stdin); [print({"name":p.get("name"),"cwd":p.get("pm2_env",{}).get("pm_cwd"),"exec":p.get("pm2_env",{}).get("pm_exec_path"),"args":p.get("pm2_env",{}).get("args")}) for p in d if p.get("name") in {"tavily-search","perplexica-research","spiderfoot-osint"}]'
+          echo '=== PM2 SERVICE MAP ==='
+          pm2 jlist > /tmp/pm2.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/pm2.json'))
+          for p in data:
+              if p.get('name') in {'fortune-agent','tavily-search','perplexica-research','spiderfoot-osint'}:
+                  env=p.get('pm2_env') or {}
+                  print({'name':p.get('name'),'pid':p.get('pid'),'exec':env.get('pm_exec_path'),'cwd':env.get('pm_cwd')})
+          PY
 
           echo '=== LISTENERS ==='
           ss -ltnp 2>/dev/null | grep -E ':(3004|3005|3006)[[:space:]]' || true
 
-          for port in 3004 3006; do
-            echo "=== PORT $port ==="
-            for path in /health / /openapi.json /docs /api /search /api/search; do
-              code=$(curl -sS -o /tmp/retriever-body -w '%{http_code}' --max-time 4 "http://127.0.0.1:${port}${path}" 2>/dev/null || true)
-              printf 'GET %s -> %s ' "$path" "$code"
-              head -c 500 /tmp/retriever-body 2>/dev/null | tr '\n' ' '; echo
-            done
+          for port in 3004 3005 3006; do
+            echo "=== PORT $port ROOT ==="
+            curl -sS --max-time 4 "http://127.0.0.1:${port}/" || true; echo
+            echo "=== PORT $port OPENAPI PATHS ==="
+            curl -sS --max-time 4 "http://127.0.0.1:${port}/openapi.json" -o "/tmp/openapi-${port}.json" || true
+            python3 - "$port" <<'PY'
+          import json,sys
+          port=sys.argv[1]
+          try:
+              d=json.load(open('/tmp/openapi-'+port+'.json'))
+          except Exception as e:
+              print('OPENAPI_ERROR',e); raise SystemExit
+          print('title=',(d.get('info') or {}).get('title'))
+          for path,methods in (d.get('paths') or {}).items():
+              print(path, sorted(methods.keys()))
+              for method,spec in methods.items():
+                  rb=(spec or {}).get('requestBody') or {}
+                  schemas=[]
+                  for ctype,val in (rb.get('content') or {}).items():
+                      schemas.append((ctype,(val or {}).get('schema')))
+                  if schemas: print(' request=',schemas)
+          PY
           done
 
-          echo '=== PROCESS SOURCE HEADS ==='
-          pm2 jlist | python3 - <<'PY'
-          import json, os, sys
-          data=json.load(sys.stdin)
-          for p in data:
-              if p.get('name') not in {'tavily-search','perplexica-research'}: continue
-              env=p.get('pm2_env') or {}
-              path=env.get('pm_exec_path')
-              print('SERVICE',p.get('name'),'EXEC',path)
-              if path and os.path.isfile(path):
-                  try:
-                      text=open(path,errors='replace').read(12000)
-                      for line in text.splitlines()[:220]:
-                          if any(x in line.lower() for x in ('app.', 'route', 'search', 'listen', 'post(', 'get(', 'query', 'body')):
-                              print(line[:500])
-                  except Exception as exc: print('READ_ERROR',exc)
-          PY
+          echo '=== LIVE SOURCE CONTRACTS ==='
+          for f in /root/enhanced-omni-tools/tavily-search.py /root/enhanced-omni-tools/perplexica-research.py /root/enhanced-omni-tools/fortune-agent.py; do
+            echo "--- $f ---"
+            if [ -f "$f" ]; then
+              grep -nE '(@app\.|def |class |PORT|port=|uvicorn|query|search|research|httpx|requests|return )' "$f" | head -n 220 || true
+            else
+              echo MISSING
+            fi
+          done
 
           echo '=== LIVE AUTO MARKERS ==='
           docker exec -i atlas-openwebui python3 - <<'PY'
