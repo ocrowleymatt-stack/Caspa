@@ -24,18 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare repair script for container runtime
+      - name: Validate repair script syntax
         shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/repair-atlas-council-osint.py')
-          text = path.read_text(encoding='utf-8')
-          start = text.index('namespace = {}')
-          end = text.index('required_markers = (')
-          replacement = '''# The complete Function has already passed compile(). A bare docker-exec\n# interpreter does not expose OpenWebUI's application import path, so do not\n# exec the whole Function here; OpenWebUI itself will compile it after restart.\nprint("function_syntax_check=PASS")\n\n'''
-          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
-          PY
+        run: python -m py_compile scripts/repair-atlas-council-osint.py
 
       - name: Select SSH key
         shell: bash
@@ -80,11 +71,18 @@ jobs:
           assert row, 'atlas-council missing after restart'
           code=row[0] or ''
           meta=json.loads(row[1] or '{}')
-          assert 'Atlas Council v3.9.4' in code
+          assert 'Atlas Council v3.9.5' in code
+          assert 'substantive payload required for OSINT quorum' in code
+          assert 'substantive_progressive_quorum' in code
+          assert '"validated_profiles": {' in code
           assert 'Council OSINT target unresolved — no broad search launched.' in code
           assert 'SELF-HOSTED PUBLIC WEB SEARCH: skipped — explicit OSINT requested but no bounded target was resolved.' in code
+          assert 'no false quorum declared' in code
+          assert 'status-only false quorum' in str(meta.get('description',''))
           assert 'never falls through' in str(meta.get('description',''))
-          print('live_version=v3.9.4')
+          print('live_version=v3.9.5')
+          print('substantive_quorum=PASS')
+          print('identity_compaction=PASS')
           print('verification=PASS')
           con.close()
           PY
