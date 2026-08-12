@@ -1,0 +1,85 @@
+name: Diagnose Atlas Post-v2.2 Result
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diag-atlas-post-v22-result.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect latest Atlas result and router activity
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== LIVE FRONTIER ==='
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          code=con.execute("select content from function where id='atlas-frontier-failover'").fetchone()[0]
+          print('v22=', 'ATLAS MULTI-PROVIDER FRONTIER v2.2' in code)
+          for line in code.splitlines():
+              if 'provider_web =' in line or 'useWebSearch' in line or 'ROUTER_URL:' in line:
+                  print(line.strip())
+          PY
+          echo '=== RECENT STUART CHATS ==='
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3,json,time
+          con=sqlite3.connect('/app/backend/data/webui.db'); con.row_factory=sqlite3.Row
+          rows=con.execute("select id,title,created_at,updated_at,chat from chat where lower(title) like '%stuart%hardman%' order by updated_at desc limit 5").fetchall()
+          print('count',len(rows))
+          for r in rows:
+              print('\nCHAT',r['id'],r['title'],'created',r['created_at'],'updated',r['updated_at'])
+              try: d=json.loads(r['chat'] or '{}')
+              except Exception as e: print('parse_err',e); continue
+              hist=((d.get('history') or {}).get('messages') or {})
+              msgs=list(hist.values())
+              msgs.sort(key=lambda x: x.get('timestamp') or 0)
+              for m in msgs[-8:]:
+                  print('MSG',m.get('role'),m.get('id'),'done=',m.get('done'),'ts=',m.get('timestamp'))
+                  print(' status=',json.dumps(m.get('statusHistory') or [],ensure_ascii=False)[:2000])
+                  out=m.get('output') or []
+                  text=[]
+                  for o in out:
+                      if not isinstance(o,dict): continue
+                      if o.get('type')=='reasoning':
+                          for c in o.get('content') or []:
+                              if isinstance(c,dict) and c.get('text'): text.append('[REASONING] '+str(c.get('text')))
+                      elif o.get('content'):
+                          text.append('[OUTPUT] '+str(o.get('content')))
+                  if m.get('content'): text.append('[CONTENT] '+str(m.get('content')))
+                  joined='\n'.join(text)
+                  print(joined[:12000])
+          PY
+          echo '=== OPENWEBUI LOGS SINCE V22 ==='
+          docker logs atlas-openwebui --since '2026-08-12T19:31:00Z' 2>&1 | grep -Ei 'atlas-auto|atlas-research|frontier|web_search|tool|error|exception|timeout|gpt-5.6-terra' | tail -n 700 || true
+          echo '=== ROUTER LOGS ==='
+          tail -n 800 /root/.pm2/logs/AtlasRouter-out.log 2>/dev/null || true
+          tail -n 300 /root/.pm2/logs/AtlasRouter-error.log 2>/dev/null || true
+          REMOTE
