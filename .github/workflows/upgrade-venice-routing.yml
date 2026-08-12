@@ -1,0 +1,42 @@
+name: Upgrade Venice Routing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/upgrade-venice-routing.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply routing upgrade
+        run: python3 scripts/upgrade-venice-routing-source.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Run router regression tests
+        run: node --import tsx --test tests/routerCostPolicy.test.ts
+      - name: Build
+        run: npm run build
+      - name: Commit source changes
+        shell: bash
+        run: |
+          git config user.name 'ocrowleymatt-stack'
+          git config user.email 'ocrowley.matt@gmail.com'
+          git add src/services/cloudModelRouter.ts src/services/routerFailover.ts tests/routerCostPolicy.test.ts scripts/final-router-smoke.mjs
+          if git diff --cached --quiet; then
+            echo 'No source changes required.'
+            exit 0
+          fi
+          git commit -m 'Make Venice a first-class search and synthesis provider'
+          git push origin HEAD:main
