@@ -1,0 +1,33 @@
+name: Probe Atlas Cloud Providers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-cloud-providers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe strict provider lanes
+        shell: bash
+        run: |
+          node <<'JS'
+          const endpoint='https://caspa.ocrowley.com/api/ai/call';
+          async function probe(provider, extra={}) {
+            const started=Date.now();
+            try {
+              const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt:'Reply exactly PROVIDER_OK',providerOverride:provider,strictProvider:true,intelligenceMode:'balanced',taskHint:'reasoning',maxTokens:40,...extra}),signal:AbortSignal.timeout(45000)});
+              const d=await r.json().catch(()=>({}));
+              console.log(JSON.stringify({provider,status:r.status,ok:r.ok,ms:Date.now()-started,winningProvider:d.provider||null,model:d.model||null,sample:String(d.result||d.error||d.message||'').slice(0,260)}));
+            } catch(e) {
+              console.log(JSON.stringify({provider,status:0,ok:false,ms:Date.now()-started,error:String(e?.message||e).slice(0,260)}));
+            }
+          }
+          for (const p of ['venice','grok','gemini','openai','claude']) await probe(p);
+          JS
