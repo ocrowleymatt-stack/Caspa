@@ -1,0 +1,68 @@
+name: Diagnose Atlas tool leak
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diag-atlas-tool-leak.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          test -n "$PRIVATEKEY2"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect live Atlas OpenWebUI function
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
+          import sqlite3, json, re
+          db='/app/backend/data/webui.db'
+          con=sqlite3.connect(db)
+          con.row_factory=sqlite3.Row
+          print('TABLES', [r[0] for r in con.execute("select name from sqlite_master where type='table'")])
+          hits=[]
+          for trow in con.execute("select name from sqlite_master where type='table'"):
+              table=trow[0]
+              try:
+                  cols=[r[1] for r in con.execute(f'pragma table_info("{table}")')]
+              except Exception:
+                  continue
+              textcols=[]
+              for c in cols:
+                  textcols.append(c)
+              if not textcols: continue
+              try:
+                  rows=con.execute(f'select * from "{table}"').fetchall()
+              except Exception:
+                  continue
+              for row in rows:
+                  for c in textcols:
+                      v=row[c]
+                      if not isinstance(v,str): continue
+                      low=v.lower()
+                      if 'atlas auto' in low or 'search_calendar_events' in low or 'calendar-related' in low or 'public footprint' in low:
+                          hits.append((table,c,str(row[0])[:80],v))
+          print('HIT_COUNT', len(hits))
+          for table,c,rid,v in hits[:20]:
+              print('\nHIT', table, c, rid, 'LEN', len(v))
+              for needle in ['ATLAS AUTO','search_calendar_events','calendar-related','public footprint','web research','social media']:
+                  i=v.lower().find(needle.lower())
+                  if i>=0:
+                      s=max(0,i-500); e=min(len(v),i+1500)
+                      print('CONTEXT', needle, v[s:e].replace('\x00',' '))
+          PY
