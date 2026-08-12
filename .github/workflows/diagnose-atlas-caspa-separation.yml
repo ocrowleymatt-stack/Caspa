@@ -12,7 +12,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 6
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
@@ -33,25 +33,25 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect live Atlas API services
+      - name: Find active OpenWebUI Caspa dependencies
         shell: bash
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set -u
-          echo '=== ATLAS NGINX BLOCK ==='
-          nginx -T 2>/dev/null | awk '/server_name atlas\.ocrowley\.com;/{show=1;start=NR-3} show{print NR ":" $0; depth+=gsub(/\{/ ,"{"); depth-=gsub(/\}/,"}"); if (show && depth<=0 && NR>start+3) exit}' | head -n 180 || true
-          echo '=== 3003 PROCESS ==='
-          pid=$(ss -lntp 2>/dev/null | sed -n 's/.*127\.0\.0\.1:3003.*pid=\([0-9]*\).*/\1/p' | head -n1)
-          if [ -n "${pid:-}" ]; then ps -fp "$pid"; tr '\0' ' ' < "/proc/$pid/cmdline"; echo; readlink -f "/proc/$pid/cwd"; fi
-          echo '=== 3004/3005 LISTENERS ==='
-          ss -lntp | grep -E ':(3003|3004|3005|3006)\b' || true
-          echo '=== ATLAS SERVICE FILES ==='
-          for d in /root/atlas-styling /root/atlas-v0.11 /root/atlas-init /root/atlas-legal /root/atlas-ingestion; do
-            echo "--- $d"; find "$d" -maxdepth 2 -type f 2>/dev/null | head -n 80; done
-          echo '=== LIKELY 3003 REFERENCES ==='
-          grep -RIl --exclude='*.db' --exclude='*.sqlite*' --exclude='*.log' -E '3003|3004|3005' /root/atlas-* /etc/systemd/system /etc/nginx 2>/dev/null | head -n 100 || true
-          echo '=== CASPA AI ROUTER HEALTH ==='
-          curl -fsS --max-time 5 http://127.0.0.1:3000/api/doctor | head -c 1500 || true; echo
-          echo '=== ATLAS LOCAL ENDPOINT HEALTHS ==='
-          for p in 3002 3003 3004 3005; do echo "-- $p"; curl -sS --max-time 4 -o /tmp/a.$$ -w '%{http_code}\n' "http://127.0.0.1:$p/health" || true; head -c 500 /tmp/a.$$ 2>/dev/null || true; echo; done
-          REMOTE
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          rows=con.execute("select id,name,is_active,content from function where is_active=1 order by id").fetchall()
+          hits=[]
+          for fid,name,active,content in rows:
+              text=str(content or '')
+              if 'caspa.ocrowley.com' in text.lower() or '/root/Caspa' in text or 'CASPA' in text:
+                  lines=[]
+                  for i,line in enumerate(text.splitlines(),1):
+                      if 'caspa' in line.lower():
+                          lines.append(f'{i}: {line[:300]}')
+                  hits.append((fid,name,lines[:20]))
+          print('active_function_count=',len(rows))
+          print('caspa_coupled_function_count=',len(hits))
+          for fid,name,lines in hits:
+              print('\n###',fid,'|',name)
+              for line in lines: print(line)
+          PY
