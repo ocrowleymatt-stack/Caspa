@@ -1,4 +1,4 @@
-name: Diagnose Atlas Post-v2.2 Result
+name: Diagnose Atlas Router Network
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
@@ -33,16 +33,31 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect Atlas Auto live code
+      - name: Inspect host and container route to AtlasRouter
         shell: bash
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
-          import sqlite3
-          con=sqlite3.connect('/app/backend/data/webui.db')
-          code=con.execute("select content from function where id='atlas-auto'").fetchone()[0]
-          lines=code.splitlines()
-          print('LINES',len(lines))
-          for i,line in enumerate(lines,1):
-              if 1 <= i <= 190:
-                  print(f'{i:03d}: {line}')
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== HOST LISTEN ==='
+          ss -ltnp | grep ':3014' || true
+          echo '=== HOST ADDRESSES ==='
+          ip -4 addr show
+          echo '=== OPENWEBUI NETWORKS ==='
+          docker inspect atlas-openwebui --format '{{json .NetworkSettings.Networks}}'
+          echo '=== CONTAINER ROUTE ==='
+          docker exec atlas-openwebui sh -lc 'ip route 2>/dev/null || cat /proc/net/route'
+          echo '=== CONTAINER RESOLV ==='
+          docker exec atlas-openwebui sh -lc 'getent hosts host.docker.internal || true'
+          echo '=== CANDIDATE HEALTH ==='
+          docker exec atlas-openwebui python3 - <<'PY'
+          import urllib.request, json, socket
+          candidates=['172.19.0.1','172.18.0.1','172.20.0.1','172.21.0.1','172.17.0.1','host.docker.internal']
+          for host in candidates:
+              url=f'http://{host}:3014/health'
+              try:
+                  with urllib.request.urlopen(url,timeout=3) as r:
+                      print(host,'OK',r.status,r.read(500).decode(errors='replace'))
+              except Exception as e:
+                  print(host,'FAIL',type(e).__name__,str(e))
           PY
+          REMOTE
