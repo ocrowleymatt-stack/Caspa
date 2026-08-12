@@ -17,39 +17,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Make persistent Atlas repair point only to Atlas Router
+      - name: Point persistent Atlas repair script only to Atlas Router
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          old='https://caspa.ocrowley.com/api/ai/call'
-          new='http://172.19.0.1:3014/api/ai/call'
-          files=[
-              Path('scripts/repair-atlas-frontier-multiprovider.py'),
-              Path('.github/workflows/repair-atlas-frontier-multiprovider.yml'),
-          ]
-          for p in files:
-              s=p.read_text()
-              if old not in s:
-                  print(p, 'already clean')
-                  continue
-              s=s.replace(old,new)
-              s=s.replace("multi-provider bridge to Caspa's canonical router.", "multi-provider bridge to Atlas's internal canonical router.")
-              p.write_text(s)
-              print(p, 'patched')
+          p=Path('scripts/repair-atlas-frontier-multiprovider.py')
+          s=p.read_text()
+          s=s.replace('https://caspa.ocrowley.com/api/ai/call','http://172.19.0.1:3014/api/ai/call')
+          s=s.replace("multi-provider bridge to Caspa's canonical router.", "multi-provider bridge to Atlas's internal canonical router.")
+          p.write_text(s)
           PY
-          ! grep -F 'https://caspa.ocrowley.com/api/ai/call' scripts/repair-atlas-frontier-multiprovider.py .github/workflows/repair-atlas-frontier-multiprovider.yml
+          ! grep -F 'https://caspa.ocrowley.com/api/ai/call' scripts/repair-atlas-frontier-multiprovider.py
           grep -F 'http://172.19.0.1:3014/api/ai/call' scripts/repair-atlas-frontier-multiprovider.py
-          grep -F 'ROUTER_URL: str = Field(default="http://172.19.0.1:3014/api/ai/call")' .github/workflows/repair-atlas-frontier-multiprovider.yml
-      - name: Commit clean separation
+      - name: Commit script cleanup
         shell: bash
         run: |
           set -euo pipefail
           git config user.name atlas-automation
           git config user.email atlas-automation@users.noreply.github.com
-          git add scripts/repair-atlas-frontier-multiprovider.py .github/workflows/repair-atlas-frontier-multiprovider.yml
+          git add scripts/repair-atlas-frontier-multiprovider.py
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Keep Atlas frontier repair independent of Caspa'
+          git commit -m 'Keep Atlas frontier repair script independent of Caspa'
           git pull --rebase origin main
           git push origin HEAD:main
