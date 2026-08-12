@@ -1,0 +1,30 @@
+name: Benchmark Atlas Search Latency
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/benchmark-search-latency.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Compare ordinary and deep search routing
+        shell: bash
+        run: |
+          node <<'JS'
+          const endpoint='https://caspa.ocrowley.com/api/ai/call';
+          async function run(name,prompt){
+            const started=Date.now();
+            const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt,intelligenceMode:'balanced',taskHint:'factual',maxTokens:120,primaryProvider:'venice',useWebSearch:true}),signal:AbortSignal.timeout(60000)});
+            const d=await r.json().catch(()=>({}));
+            console.log(JSON.stringify({name,status:r.status,ok:r.ok,ms:Date.now()-started,provider:d.provider||null,model:d.model||null,sample:String(d.result||d.error||'').slice(0,220)}));
+          }
+          await run('ORDINARY_SEARCH','Use web search and state the current UTC date in one short sentence with a source.');
+          await run('DEEP_SEARCH','Deep search the web and state the current UTC date in one short sentence with a source.');
+          JS
