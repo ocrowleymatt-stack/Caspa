@@ -1,0 +1,428 @@
+name: Install Atlas OIDC Deployer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-install-atlas-oidc-deployer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+    steps:
+      - name: Install OIDC receiver and trusted deploy script
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATEKEY2"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          install -d -m 700 /root/AtlasDeploy /root/AtlasDeploy/inbox /root/AtlasDeploy/backups
+
+          cat > /root/AtlasDeploy/receiver.mjs <<'NODE'
+          import http from 'node:http';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          import { spawnSync } from 'node:child_process';
+
+          const HOST = '127.0.0.1';
+          const PORT = 3015;
+          const DEPLOY_PATH = '/__atlas_deploy/v1';
+          const HEALTH_PATH = '/health';
+          const MAX_BODY = 8 * 1024 * 1024;
+          const ISSUER = 'https://token.actions.githubusercontent.com';
+          const JWKS_URL = 'https://token.actions.githubusercontent.com/.well-known/jwks';
+          const AUDIENCE = 'atlas-deploy';
+          const REPOSITORY = 'ocrowleymatt-stack/atlas';
+          const REPOSITORY_ID = '1332513899';
+          const OWNER_ID = '274130919';
+          const REF = 'refs/heads/main';
+          const WORKFLOW_REF = 'ocrowleymatt-stack/atlas/.github/workflows/deploy-atlas-router.yml@refs/heads/main';
+          const WORKFLOW_NAME = 'Deploy Atlas Router';
+          const EXPECTED_SUB = 'repo:ocrowleymatt-stack@274130919/atlas@1332513899:ref:refs/heads/main';
+          const USED_JTI_FILE = '/root/AtlasDeploy/used-jti.json';
+
+          let jwksCache = { expires: 0, keys: [] };
+
+          function b64urlToBuffer(s) {
+            s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+            while (s.length % 4) s += '=';
+            return Buffer.from(s, 'base64');
+          }
+
+          function parseJsonPart(s) {
+            return JSON.parse(b64urlToBuffer(s).toString('utf8'));
+          }
+
+          async function getJwks() {
+            const now = Date.now();
+            if (jwksCache.expires > now && jwksCache.keys.length) return jwksCache.keys;
+            const ac = new AbortController();
+            const timer = setTimeout(() => ac.abort(), 5000);
+            try {
+              const r = await fetch(JWKS_URL, { signal: ac.signal, headers: { 'User-Agent': 'AtlasOIDCDeploy/1.0' } });
+              if (!r.ok) throw new Error(`jwks_http_${r.status}`);
+              const d = await r.json();
+              if (!Array.isArray(d.keys) || !d.keys.length) throw new Error('jwks_empty');
+              jwksCache = { expires: now + 10 * 60 * 1000, keys: d.keys };
+              return d.keys;
+            } finally {
+              clearTimeout(timer);
+            }
+          }
+
+          function audienceMatches(aud) {
+            return aud === AUDIENCE || (Array.isArray(aud) && aud.includes(AUDIENCE));
+          }
+
+          async function verifyToken(token) {
+            const parts = String(token || '').split('.');
+            if (parts.length !== 3) throw new Error('jwt_shape');
+            const [h, p, s] = parts;
+            const header = parseJsonPart(h);
+            const claims = parseJsonPart(p);
+            if (header.alg !== 'RS256' || !header.kid) throw new Error('jwt_header');
+            const keys = await getJwks();
+            const jwk = keys.find(k => k.kid === header.kid && k.kty === 'RSA');
+            if (!jwk) throw new Error('jwt_kid');
+            const key = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+            const valid = crypto.verify('RSA-SHA256', Buffer.from(`${h}.${p}`), key, b64urlToBuffer(s));
+            if (!valid) throw new Error('jwt_signature');
+
+            const now = Math.floor(Date.now() / 1000);
+            if (claims.iss !== ISSUER) throw new Error('claim_iss');
+            if (!audienceMatches(claims.aud)) throw new Error('claim_aud');
+            if (!Number.isFinite(Number(claims.exp)) || Number(claims.exp) < now - 15) throw new Error('claim_exp');
+            if (!Number.isFinite(Number(claims.nbf)) || Number(claims.nbf) > now + 30) throw new Error('claim_nbf');
+            if (!Number.isFinite(Number(claims.iat)) || Number(claims.iat) > now + 30) throw new Error('claim_iat');
+            if (claims.repository !== REPOSITORY) throw new Error('claim_repository');
+            if (String(claims.repository_id) !== REPOSITORY_ID) throw new Error('claim_repository_id');
+            if (String(claims.repository_owner_id) !== OWNER_ID) throw new Error('claim_owner_id');
+            if (claims.repository_visibility !== 'private') throw new Error('claim_visibility');
+            if (claims.ref !== REF || claims.ref_type !== 'branch') throw new Error('claim_ref');
+            if (claims.workflow_ref !== WORKFLOW_REF) throw new Error('claim_workflow_ref');
+            if (claims.workflow !== WORKFLOW_NAME) throw new Error('claim_workflow');
+            if (!['push', 'workflow_dispatch'].includes(claims.event_name)) throw new Error('claim_event');
+            if (claims.sub !== EXPECTED_SUB) throw new Error('claim_sub');
+            if (!/^[0-9a-f]{40}$/i.test(String(claims.sha || ''))) throw new Error('claim_sha');
+            if (!claims.jti || String(claims.jti).length < 16) throw new Error('claim_jti');
+            return claims;
+          }
+
+          function consumeJti(jti, exp) {
+            const now = Math.floor(Date.now() / 1000);
+            let rows = [];
+            try { rows = JSON.parse(fs.readFileSync(USED_JTI_FILE, 'utf8')); } catch {}
+            if (!Array.isArray(rows)) rows = [];
+            rows = rows.filter(x => x && Number(x.exp) > now);
+            if (rows.some(x => x.jti === jti)) throw new Error('jwt_replay');
+            rows.push({ jti, exp: Number(exp) });
+            fs.writeFileSync(USED_JTI_FILE, JSON.stringify(rows), { mode: 0o600 });
+          }
+
+          function sha256(buf) {
+            return crypto.createHash('sha256').update(buf).digest('hex');
+          }
+
+          function send(res, status, data) {
+            const body = Buffer.from(JSON.stringify(data));
+            res.writeHead(status, {
+              'Content-Type': 'application/json',
+              'Content-Length': String(body.length),
+              'Cache-Control': 'no-store',
+              'X-Content-Type-Options': 'nosniff',
+            });
+            res.end(body);
+          }
+
+          async function readBody(req) {
+            return await new Promise((resolve, reject) => {
+              const chunks = [];
+              let size = 0;
+              req.on('data', chunk => {
+                size += chunk.length;
+                if (size > MAX_BODY) {
+                  reject(new Error('body_too_large'));
+                  req.destroy();
+                  return;
+                }
+                chunks.push(chunk);
+              });
+              req.on('end', () => resolve(Buffer.concat(chunks)));
+              req.on('error', reject);
+            });
+          }
+
+          const server = http.createServer(async (req, res) => {
+            try {
+              if (req.method === 'GET' && req.url === HEALTH_PATH) {
+                return send(res, 200, { ok: true, service: 'AtlasOIDCDeployReceiver', version: '1.0.0' });
+              }
+              if (req.url !== DEPLOY_PATH) return send(res, 404, { ok: false, error: 'not_found' });
+              if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'method_not_allowed' });
+              if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
+                return send(res, 415, { ok: false, error: 'content_type' });
+              }
+              const auth = String(req.headers.authorization || '');
+              if (!auth.startsWith('Bearer ')) return send(res, 401, { ok: false, error: 'missing_bearer' });
+              const claims = await verifyToken(auth.slice(7));
+              consumeJti(String(claims.jti), Number(claims.exp));
+
+              const raw = await readBody(req);
+              const body = JSON.parse(raw.toString('utf8'));
+              const commitSha = String(body.sha || '');
+              if (commitSha !== String(claims.sha)) throw new Error('payload_sha_mismatch');
+              if (!/^[0-9a-f]{40}$/i.test(commitSha)) throw new Error('payload_sha');
+
+              const router = Buffer.from(String(body.routerB64 || ''), 'base64');
+              const rewire = Buffer.from(String(body.rewireB64 || ''), 'base64');
+              if (!router.length || router.length > 4 * 1024 * 1024) throw new Error('router_size');
+              if (!rewire.length || rewire.length > 1024 * 1024) throw new Error('rewire_size');
+              if (sha256(router) !== String(body.routerSha256 || '').toLowerCase()) throw new Error('router_hash');
+              if (sha256(rewire) !== String(body.rewireSha256 || '').toLowerCase()) throw new Error('rewire_hash');
+              if (!router.toString('utf8', 0, Math.min(router.length, 200000)).includes('AtlasRouter')) throw new Error('router_marker');
+
+              const dir = path.join('/root/AtlasDeploy/inbox', commitSha);
+              fs.rmSync(dir, { recursive: true, force: true });
+              fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+              const routerPath = path.join(dir, 'atlas-router.cjs');
+              const rewirePath = path.join(dir, 'rewire-openwebui.py');
+              fs.writeFileSync(routerPath, router, { mode: 0o644 });
+              fs.writeFileSync(rewirePath, rewire, { mode: 0o644 });
+
+              const proc = spawnSync('/root/AtlasDeploy/deploy.sh', [commitSha, routerPath, rewirePath], {
+                encoding: 'utf8', timeout: 210000, maxBuffer: 2 * 1024 * 1024,
+                env: { PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' },
+              });
+              const stdout = String(proc.stdout || '');
+              const stderr = String(proc.stderr || '');
+              if (proc.error) throw new Error(`deploy_spawn:${proc.error.message}`);
+              if (proc.status !== 0) {
+                return send(res, 500, {
+                  ok: false,
+                  error: 'deploy_failed',
+                  status: proc.status,
+                  stdout: stdout.slice(-12000),
+                  stderr: stderr.slice(-12000),
+                });
+              }
+              return send(res, 200, {
+                ok: true,
+                deployedSha: commitSha,
+                runId: String(claims.run_id || ''),
+                stdout: stdout.slice(-12000),
+              });
+            } catch (e) {
+              console.error(new Date().toISOString(), e?.stack || e);
+              const msg = String(e?.message || 'request_failed');
+              const authish = msg.startsWith('jwt_') || msg.startsWith('claim_');
+              return send(res, authish ? 401 : 400, { ok: false, error: msg });
+            }
+          });
+
+          server.headersTimeout = 10000;
+          server.requestTimeout = 240000;
+          server.listen(PORT, HOST, () => console.log(`Atlas OIDC deploy receiver listening on ${HOST}:${PORT}`));
+          NODE
+          chmod 600 /root/AtlasDeploy/receiver.mjs
+
+          cat > /root/AtlasDeploy/deploy.sh <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          SHA="${1:?sha}"
+          NEW_ROUTER="${2:?router}"
+          NEW_REWIRE="${3:?rewire}"
+          ATLAS_DIR=/root/AtlasRouter
+          CRED=/root/.atlas-secrets/atlas-router.env
+          BACKUP="/root/AtlasDeploy/backups/${SHA}-$(date -u +%Y%m%dT%H%M%SZ)"
+          deployed=0
+
+          test "$NEW_ROUTER" != "$ATLAS_DIR/atlas-router.cjs"
+          test -s "$NEW_ROUTER" && test -s "$NEW_REWIRE"
+          test -s "$CRED"
+          grep -aq 'AtlasRouter' "$NEW_ROUTER"
+
+          ATLAS_NETWORK='atlas_atlas-core-net'
+          ATLAS_NETWORK_ID="$(docker network inspect -f '{{.Id}}' "$ATLAS_NETWORK")"
+          ATLAS_GATEWAY="$(docker network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "$ATLAS_NETWORK")"
+          ATLAS_SUBNET="$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$ATLAS_NETWORK")"
+          ATLAS_BRIDGE="br-${ATLAS_NETWORK_ID:0:12}"
+          test "$ATLAS_GATEWAY" = '172.19.0.1'
+          ip link show "$ATLAS_BRIDGE" >/dev/null
+
+          curl -fsS --max-time 3 http://127.0.0.1:3006/ >/tmp/atlas-tavily-local.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-tavily-local.json'))
+          assert d.get('service') == 'Tavily Search Omni Tool', d
+          assert '/search' in set(d.get('endpoints') or []), d
+          PY
+
+          install -d -m 755 "$ATLAS_DIR" "$BACKUP"
+          [ -f "$ATLAS_DIR/atlas-router.cjs" ] && cp -a "$ATLAS_DIR/atlas-router.cjs" "$BACKUP/atlas-router.cjs"
+          [ -f "$ATLAS_DIR/rewire-openwebui.py" ] && cp -a "$ATLAS_DIR/rewire-openwebui.py" "$BACKUP/rewire-openwebui.py"
+
+          rollback() {
+            rc=$?
+            if [ "$rc" -ne 0 ] && [ "$deployed" -eq 1 ] && [ -s "$BACKUP/atlas-router.cjs" ]; then
+              echo "deployment_failed_rolling_back=true" >&2
+              cp -a "$BACKUP/atlas-router.cjs" "$ATLAS_DIR/atlas-router.cjs"
+              [ -s "$BACKUP/rewire-openwebui.py" ] && cp -a "$BACKUP/rewire-openwebui.py" "$ATLAS_DIR/rewire-openwebui.py"
+              set -a; . "$CRED"; set +a
+              export NODE_ENV=production ATLAS_ROUTER_HOST="$ATLAS_GATEWAY" ATLAS_ROUTER_PORT=3014 ATLAS_ROUTER_MAX_BODY_BYTES=2000000 ATLAS_ROUTER_MAX_INFLIGHT=16
+              pm2 delete atlas-router >/dev/null 2>&1 || true
+              pm2 start "$ATLAS_DIR/atlas-router.cjs" --name atlas-router --time --update-env --max-memory-restart 350M >/dev/null || true
+              pm2 save >/dev/null || true
+            fi
+            exit "$rc"
+          }
+          trap rollback EXIT
+
+          install -m 644 "$NEW_ROUTER" "$ATLAS_DIR/atlas-router.cjs"
+          install -m 644 "$NEW_REWIRE" "$ATLAS_DIR/rewire-openwebui.py"
+          deployed=1
+
+          chmod 600 "$CRED"
+          set -a; . "$CRED"; set +a
+          export NODE_ENV=production ATLAS_ROUTER_HOST="$ATLAS_GATEWAY" ATLAS_ROUTER_PORT=3014 ATLAS_ROUTER_MAX_BODY_BYTES=2000000 ATLAS_ROUTER_MAX_INFLIGHT=16
+
+          pm2 delete atlas-router >/dev/null 2>&1 || true
+          pm2 start "$ATLAS_DIR/atlas-router.cjs" --name atlas-router --time --update-env --max-memory-restart 350M >/dev/null
+          pm2 save >/dev/null
+
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 "http://$ATLAS_GATEWAY:3014/health" >/tmp/atlas-router-health.json 2>/dev/null; then break; fi
+            sleep 1
+          done
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-router-health.json'))
+          assert d.get('service') == 'AtlasRouter', d
+          assert d.get('version') == '1.1.0', d
+          assert d.get('caspaDependency') is False, d
+          assert d.get('localFallbackOwner') == 'atlas-openwebui', d
+          assert int(d.get('maxInflight') or 0) == 16, d
+          pr=d.get('parallelRetrieval') or {}
+          assert pr.get('version') == 'v1' and pr.get('enabled') is True, d
+          assert pr.get('tavilyUrl') == 'http://127.0.0.1:3006/search', d
+          assert int(pr.get('maxQueries') or 0) == 4, d
+          assert int(pr.get('minSources') or 0) == 3, d
+          print('atlas_router_health=true')
+          PY
+
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen('http://172.19.0.1:3014/health', timeout=5) as r: d=json.load(r)
+          assert d.get('service') == 'AtlasRouter' and d.get('caspaDependency') is False, d
+          pr=d.get('parallelRetrieval') or {}
+          assert pr.get('version') == 'v1' and pr.get('enabled') is True, d
+          print('openwebui_to_atlas_router=true')
+          PY
+
+          curl -fsS --max-time 45 -H 'Content-Type: application/json' \
+            -d '{"prompt":"Return exactly ATLAS_ROUTER_OK","providerOverride":"grok","strictProvider":true,"intelligenceMode":"speed","maxTokens":40}' \
+            "http://$ATLAS_GATEWAY:3014/api/ai/call" >/tmp/atlas-router-smoke.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-router-smoke.json'))
+          assert d.get('service') == 'AtlasRouter' and d.get('provider') == 'grok', d
+          assert 'ATLAS_ROUTER_OK' in str(d.get('result','')), d
+          print('atlas_router_cloud_smoke=true')
+          PY
+
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import json, urllib.request
+          payload=json.dumps({'prompt':'Use live web search. State today UTC date and include at least one retrieved source URL.','primaryProvider':'grok','useWebSearch':True,'useXSearch':False,'intelligenceMode':'speed','maxTokens':500,'taskHint':'factual'}).encode()
+          req=urllib.request.Request('http://172.19.0.1:3014/api/ai/call', data=payload, headers={'Content-Type':'application/json'})
+          with urllib.request.urlopen(req, timeout=75) as r: d=json.load(r)
+          result=str(d.get('result') or '')
+          retrieval=d.get('retrieval') or {}
+          assert d.get('service') == 'AtlasRouter' and len(result) > 80, d
+          assert retrieval.get('mode') in {'parallel-tavily-prefetch','native-provider-web-fallback','native-provider-web-recovery'}, d
+          if retrieval.get('mode') == 'parallel-tavily-prefetch': assert int(retrieval.get('sourceCount') or 0) >= 3, d
+          print('atlas_live_web_gate=true', retrieval.get('mode'))
+          PY
+
+          docker cp "$ATLAS_DIR/rewire-openwebui.py" atlas-openwebui:/tmp/rewire-openwebui.py
+          docker exec atlas-openwebui python3 /tmp/rewire-openwebui.py >/dev/null
+          docker restart atlas-openwebui >/dev/null
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 3 http://127.0.0.1:3002/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:3002/health >/dev/null
+
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import sqlite3
+          con=sqlite3.connect('/app/backend/data/webui.db')
+          row=con.execute("select content,is_active from function where id='atlas-frontier-failover'").fetchone()
+          assert row and int(row[1]) == 1
+          code=str(row[0] or '')
+          assert 'http://172.19.0.1:3014/api/ai/call' in code
+          assert 'caspa.ocrowley.com/api/ai/call' not in code
+          print('atlas_frontier_isolated=true')
+          PY
+
+          printf '%s\n' "$SHA" > "$ATLAS_DIR/deployed-source-sha"
+          chmod 644 "$ATLAS_DIR/deployed-source-sha"
+          echo "atlas_oidc_deploy_success=true sha=$SHA"
+          deployed=0
+          trap - EXIT
+          rm -f /tmp/atlas-tavily-local.json /tmp/atlas-router-health.json /tmp/atlas-router-smoke.json
+          BASH
+          chmod 700 /root/AtlasDeploy/deploy.sh
+
+          # Patch only the live Atlas server block. Keep a timestamped rollback copy.
+          NGINX=/etc/nginx/conf.d/auth-gateway.conf
+          cp -a "$NGINX" "$NGINX.pre-atlas-oidc-$(date -u +%Y%m%dT%H%M%SZ).bak"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/etc/nginx/conf.d/auth-gateway.conf')
+          s=p.read_text()
+          marker='# Atlas OIDC deployment receiver'
+          if marker not in s:
+              needle='    server_name atlas.ocrowley.com;\n'
+              assert needle in s
+              block='''    server_name atlas.ocrowley.com;\n\n    # Atlas OIDC deployment receiver\n    location = /__atlas_deploy/v1 {\n        proxy_pass http://127.0.0.1:3015/__atlas_deploy/v1;\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_set_header Authorization $http_authorization;\n        proxy_connect_timeout 5s;\n        proxy_read_timeout 240s;\n        proxy_send_timeout 240s;\n        client_max_body_size 8M;\n    }\n'''
+              s=s.replace(needle, block, 1)
+              p.write_text(s)
+          print('atlas_oidc_nginx_marker=true')
+          PY
+          nginx -t
+
+          pm2 delete atlas-deploy-receiver >/dev/null 2>&1 || true
+          pm2 start /root/AtlasDeploy/receiver.mjs --name atlas-deploy-receiver --time --max-memory-restart 120M >/dev/null
+          pm2 save >/dev/null
+          nginx -s reload
+
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 2 http://127.0.0.1:3015/health >/tmp/atlas-deploy-health.json 2>/dev/null; then break; fi
+            sleep 1
+          done
+          cat /tmp/atlas-deploy-health.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/atlas-deploy-health.json'))
+          assert d.get('ok') is True and d.get('service') == 'AtlasOIDCDeployReceiver', d
+          print('atlas_oidc_receiver_local=true')
+          PY
+
+          code="$(curl -sS -o /tmp/atlas-oidc-noauth.json -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' https://atlas.ocrowley.com/__atlas_deploy/v1 -d '{}')"
+          test "$code" = 401
+          grep -q 'missing_bearer' /tmp/atlas-oidc-noauth.json
+          echo 'atlas_oidc_receiver_public_auth_gate=true'
+          ss -lntp | grep -F '127.0.0.1:3015'
+          echo 'atlas_oidc_receiver_install_pass=true'
+          REMOTE
