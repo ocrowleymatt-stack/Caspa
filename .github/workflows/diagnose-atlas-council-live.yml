@@ -34,7 +34,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect exact Council OSINT quorum methods
+      - name: Inspect exact Council OSINT fabric path
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
@@ -45,30 +45,19 @@ jobs:
           row=con.execute("SELECT content FROM function WHERE id='atlas-council'").fetchone()
           if not row: raise SystemExit('atlas-council function missing')
           lines=str(row[0]).splitlines()
-          names=(
-              '_osint_deterministic_brief',
-              '_osint_fast_result',
-              '_active_osint_packet',
-              '_bigbrother_packet',
-              '_spiderfoot_packet',
-              '_bbot_packet',
-              '_intelowl_packet',
-              '_cc_retrieve_context',
-              '_evidence_packet',
-          )
-          print('=== VERSION MARKERS ===')
-          for n,line in enumerate(lines,1):
-              if 'Atlas Council v3.' in line or 'initial useful quorum' in line or 'No substantive specialist' in line:
-                  print(f'{n:04d} {line}')
-          for name in names:
-              pattern=re.compile(r'^\s*(?:async\s+)?def\s+'+re.escape(name)+r'\b')
-              starts=[i for i,line in enumerate(lines) if pattern.search(line)]
-              if not starts:
-                  print(f'=== {name}: NOT FOUND ===')
+          defs=[]
+          for i,line in enumerate(lines):
+              m=re.match(r'^\s*(?:async\s+)?def\s+([A-Za-z0-9_]+)\b', line)
+              if m and any(k in m.group(1).lower() for k in ('osint','bigbrother','broker','fabric')):
+                  defs.append((i,m.group(1)))
+          print('=== MATCHED METHODS ===')
+          print(', '.join(name for _,name in defs))
+          wanted={'_osint_fabric_packet','_osint_fabric_target','_osint_broker_target','_bigbrother_target','_bigbrother_packet','_build_evidence_packet'}
+          for start,name in defs:
+              if name not in wanted:
                   continue
-              start=starts[0]
               indent=len(lines[start])-len(lines[start].lstrip())
-              end=min(len(lines), start+140)
+              end=min(len(lines),start+180)
               for j in range(start+1,end):
                   stripped=lines[j].strip()
                   current_indent=len(lines[j])-len(lines[j].lstrip()) if stripped else indent+1
