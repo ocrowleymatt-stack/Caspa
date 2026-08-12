@@ -37,17 +37,28 @@ jobs:
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
-          import asyncio, sqlite3
+          import asyncio, sqlite3, sys, types
+
+          # Stub only OpenWebUI imports that are irrelevant to the direct web branch.
+          # This avoids bootstrapping the whole authenticated app in a standalone test.
+          users_mod=types.ModuleType('open_webui.models.users')
+          class DummyUsers:
+              @staticmethod
+              async def get_user_by_id(_):
+                  return object()
+          users_mod.Users=DummyUsers
+          chat_mod=types.ModuleType('open_webui.utils.chat')
+          async def unused_generate_chat_completion(*args,**kwargs):
+              raise AssertionError('direct web smoke unexpectedly recursed into generate_chat_completion')
+          chat_mod.generate_chat_completion=unused_generate_chat_completion
+          sys.modules['open_webui.models.users']=users_mod
+          sys.modules['open_webui.utils.chat']=chat_mod
+
           con=sqlite3.connect('/app/backend/data/webui.db')
           code=con.execute("select content from function where id='atlas-auto'").fetchone()[0]
           assert 'ATLAS AUTO DIRECT WEB ROUTING v1.4' in code
           ns={}
           exec(compile(code,'<live-atlas-auto>','exec'),ns)
-          class DummyUsers:
-              @staticmethod
-              async def get_user_by_id(_):
-                  return object()
-          ns['Users']=DummyUsers
           Pipe=ns['Pipe']
           statuses=[]
           async def emitter(evt):
