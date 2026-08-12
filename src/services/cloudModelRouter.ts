@@ -363,7 +363,14 @@ export async function callCloudProvider(provider: CloudProvider, prompt: string,
   const mode = normaliseMode(opts.mode);
   const task = opts.task || classifyTask(prompt, opts);
 
-  if (provider === 'grok' && mode !== 'speed' && opts.useSearch && ['factual', 'long', 'synthesis'].includes(task)) {
+  const explicitDeepSearch = /\b(deep[- ]?(?:search|research)|multi[- ]agent|exhaustive research)\b/i.test(prompt);
+  const useGrokMultiAgent = provider === 'grok'
+    && mode !== 'speed'
+    && opts.useSearch
+    && ['factual', 'long', 'synthesis'].includes(task)
+    && (mode === 'god' || task === 'long' || task === 'synthesis' || explicitDeepSearch);
+
+  if (useGrokMultiAgent) {
     try { return await callGrokMultiAgent(prompt, { ...opts, task, mode }); } catch (error) {
       if (isBillingFailure(error)) throw error;
     }

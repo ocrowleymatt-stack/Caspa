@@ -1,2 +1,1 @@
-deploy requested 2026-08-12T11:52:20Z
-reason: deploy Grok multi-agent for balanced research, Gemini Council retry, and retain Venice-first automatic use when funded
+deploy requested 2026-08-12T14:49:00Z\nreason: reduce live-search latency by avoiding duplicate retrieval and reserving Grok multi-agent for deep research\n

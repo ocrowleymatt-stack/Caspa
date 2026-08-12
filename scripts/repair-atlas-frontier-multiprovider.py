@@ -15,13 +15,13 @@ import time
 
 DB = "/app/backend/data/webui.db"
 FUNCTION_ID = "atlas-frontier-failover"
-MARKER = "ATLAS MULTI-PROVIDER FRONTIER v2"
+MARKER = "ATLAS MULTI-PROVIDER FRONTIER v2.1"
 BACKUP_DIR = "/app/backend/data/atlas-function-backups"
 
 NEW_CODE = r'''"""
 title: Atlas Frontier Multi-Provider
 author: Atlas
-version: 2.0.0
+version: 2.1.0
 description: Venice-primary multi-provider Atlas frontier bridge with canonical cloud failover and local Qwen as final fail-soft.
 """
 
@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field
 from open_webui.models.users import Users
 from open_webui.utils.chat import generate_chat_completion
 
-# ATLAS MULTI-PROVIDER FRONTIER v2
+# ATLAS MULTI-PROVIDER FRONTIER v2.1
 
 class Pipe:
     class Valves(BaseModel):
@@ -189,13 +189,17 @@ class Pipe:
         mode = self._mode(selected)
         features = body.get("features") if isinstance(body.get("features"), dict) else {}
         use_web = bool(features.get("web_search"))
+        # OpenWebUI has already performed SearXNG retrieval when web_search is enabled.
+        # Avoid paying the latency cost twice for Luna/Terra; Sol keeps provider-native
+        # search as a corroborating second retrieval pass.
+        provider_web = bool(use_web and selected.endswith("sol"))
         prompt = self._prompt(body)
         if not prompt:
             raise ValueError("Atlas Frontier Multi-Provider received no usable prompt content.")
 
         await self._emit(
             __event_emitter__,
-            f"Atlas {selected.rsplit('-', 1)[-1].title()} · Venice primary · multi-provider failover" + (" · web required" if use_web else ""),
+            f"Atlas {selected.rsplit('-', 1)[-1].title()} · Venice primary · multi-provider failover" + (" · live retrieval" if use_web else "") + (" · provider corroboration" if provider_web else ""),
         )
 
         payload = {
@@ -203,7 +207,7 @@ class Pipe:
             "intelligenceMode": mode,
             "maxTokens": self._max_tokens(body, selected),
             "primaryProvider": self.valves.PRIMARY_PROVIDER,
-            "useWebSearch": use_web,
+            "useWebSearch": provider_web,
             "json": self._json_requested(body),
         }
         timeout = self._timeout(selected)
