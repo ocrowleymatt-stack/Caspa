@@ -1,6 +1,7 @@
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { routeAtlasPrompt, classifyTask, normaliseMode } from './src/router';
+import { prefetchResearchEvidence, parallelRetrievalConfig } from './src/researchPrefetch';
 
 const HOST = process.env.ATLAS_ROUTER_HOST || '172.19.0.1';
 const PORT = Number(process.env.ATLAS_ROUTER_PORT || 3014);
@@ -42,6 +43,12 @@ function clampMaxTokens(value: unknown): number | undefined {
   return Math.min(12_000, Math.max(32, Math.floor(parsed)));
 }
 
+function synthesisLooksUsable(text: string): boolean {
+  const value = String(text || '').trim();
+  if (value.length < 160) return false;
+  return !/\b(?:cannot access the internet|can't access the internet|unable to access the internet|cannot browse the web|no internet access|i should search|i should use tools)\b/i.test(value);
+}
+
 function doctor() {
   return {
     status: 'ok',
@@ -55,6 +62,7 @@ function doctor() {
     completedRequests,
     localFallbackOwner: 'atlas-openwebui',
     caspaDependency: false,
+    parallelRetrieval: { version: 'v1', ...parallelRetrievalConfig() },
     providers: {
       venice: Boolean(process.env.VENICE_API_KEY || process.env.VITE_VENICE_API_KEY),
       grok: Boolean(process.env.GROK_API_KEY || process.env.XAI_API_KEY || process.env.VITE_GROK_API_KEY),
@@ -117,18 +125,72 @@ const server = http.createServer(async (req, res) => {
     const webRequired = Boolean(useSearch || useWebSearch);
     const mode = normaliseMode(intelligenceMode);
     const routedMaxTokens = clampMaxTokens(maxTokens);
-    const routed = await routeAtlasPrompt(prompt, {
-      json: Boolean(json),
-      maxTokens: routedMaxTokens,
-      requestedModel: model,
-      primaryProvider: providerOverride || primaryProvider,
-      strictProvider: Boolean(strictProvider && providerOverride),
-      useSearch: webRequired,
-      useXSearch: Boolean(useXSearch),
-      mode,
-      task: taskHint || classifyTask(prompt, { json: Boolean(json), maxTokens: routedMaxTokens, useSearch: webRequired }),
-      // Atlas OpenWebUI owns the local fail-soft. This service is cloud routing only.
-    });
+    const task = taskHint || classifyTask(prompt, { json: Boolean(json), maxTokens: routedMaxTokens, useSearch: webRequired });
+    const primary = providerOverride || primaryProvider;
+    const prefetchConfig = parallelRetrievalConfig();
+
+    let routedPrompt = prompt;
+    let routedUseSearch = webRequired;
+    let retrieval: Record<string, any> = { mode: webRequired ? 'native-provider-web' : 'none' };
+    let prefetched = false;
+
+    // Ordinary factual web research uses a two-stage fast path:
+    // small Grok query planner -> parallel Tavily retrieval -> one Grok synthesis.
+    // Deep/God, X-search and JSON calls retain provider-native search semantics.
+    if (webRequired && prefetchConfig.enabled && mode === 'speed' && task === 'factual' && !Boolean(useXSearch) && !Boolean(json)) {
+      const prefetch = await prefetchResearchEvidence(prompt);
+      retrieval = {
+        mode: prefetch.usable ? 'parallel-tavily-prefetch' : 'native-provider-web-fallback',
+        queries: prefetch.queries,
+        sourceCount: prefetch.sources.length,
+        prefetchDurationMs: prefetch.durationMs,
+        plannerDurationMs: prefetch.plannerDurationMs,
+        retrievalDurationMs: prefetch.retrievalDurationMs,
+        errors: prefetch.errors,
+      };
+      if (prefetch.usable) {
+        routedPrompt = prefetch.evidencePrompt;
+        routedUseSearch = false;
+        prefetched = true;
+      }
+    }
+
+    let routed;
+    try {
+      routed = await routeAtlasPrompt(routedPrompt, {
+        json: Boolean(json),
+        maxTokens: routedMaxTokens,
+        requestedModel: model,
+        primaryProvider: primary,
+        strictProvider: Boolean(strictProvider && providerOverride),
+        useSearch: routedUseSearch,
+        useXSearch: Boolean(useXSearch),
+        mode,
+        task,
+        // Atlas OpenWebUI owns the local fail-soft. This service is cloud routing only.
+      });
+      if (prefetched && !synthesisLooksUsable(routed.text)) {
+        throw new Error('Parallel retrieval synthesis was unusable; retrying with provider-native web search');
+      }
+    } catch (prefetchError: any) {
+      if (!prefetched) throw prefetchError;
+      retrieval = {
+        ...retrieval,
+        mode: 'native-provider-web-recovery',
+        synthesisFallback: String(prefetchError?.message || prefetchError || 'parallel synthesis failed').slice(0, 300),
+      };
+      routed = await routeAtlasPrompt(prompt, {
+        json: Boolean(json),
+        maxTokens: routedMaxTokens,
+        requestedModel: model,
+        primaryProvider: primary,
+        strictProvider: Boolean(strictProvider && providerOverride),
+        useSearch: true,
+        useXSearch: Boolean(useXSearch),
+        mode,
+        task,
+      });
+    }
 
     completedRequests += 1;
     return sendJson(res, 200, {
@@ -137,6 +199,7 @@ const server = http.createServer(async (req, res) => {
       model: routed.model,
       attempts: routed.attempts,
       mode,
+      retrieval,
       durationMs: routed.durationMs,
       providerDurationMs: routed.providerDurationMs,
       requestDurationMs: Date.now() - requestStartedAt,
