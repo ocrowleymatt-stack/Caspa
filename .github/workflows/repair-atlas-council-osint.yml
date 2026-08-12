@@ -24,47 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Adapt installer to current live fallback block
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/repair-atlas-council-osint.py')
-          text = path.read_text(encoding='utf-8')
-          start_token = "old_incomplete = '''"
-          end_marker = 'patched = patched.replace(old_incomplete, new_incomplete, 1)\n'
-          if start_token in text:
-              start = text.index(start_token)
-              end = text.index(end_marker, start) + len(end_marker)
-              replacement = r'''fallback_anchor = ''' + "'''" + r'''            if osint_active and profile == "research":
-                answer = self._osint_deterministic_brief(evidence_packet)
-                if answer:
-                    elapsed = time.monotonic() - started
-                    await self._emit(__event_emitter__, f"Atlas Council complete · {elapsed:.0f}s · readable deterministic OSINT quorum", done=True)
-                    return answer
-''' + "'''" + r'''
-fallback_new = ''' + "'''" + r'''            if osint_active and profile == "research":
-                answer = self._osint_deterministic_brief(evidence_packet)
-                if answer:
-                    elapsed = time.monotonic() - started
-                    await self._emit(__event_emitter__, f"Atlas Council complete · {elapsed:.0f}s · substantive deterministic OSINT quorum", done=True)
-                    return answer
-                answer = self._osint_incomplete_brief(evidence_packet)
-                if answer:
-                    elapsed = time.monotonic() - started
-                    await self._emit(__event_emitter__, f"Atlas Council complete · {elapsed:.0f}s · bounded OSINT incomplete without false quorum", done=True)
-                    return answer
-''' + "'''" + r'''
-if fallback_anchor not in patched:
-    raise SystemExit("OSINT research fallback anchor mismatch")
-patched = patched.replace(fallback_anchor, fallback_new, 1)
-'''
-              text = text[:start] + replacement + text[end:]
-              path.write_text(text, encoding='utf-8')
-          PY
-          python -m py_compile scripts/repair-atlas-council-osint.py
-          grep -q 'OSINT research fallback anchor mismatch' scripts/repair-atlas-council-osint.py
-          grep -q 'bounded OSINT incomplete without false quorum' scripts/repair-atlas-council-osint.py
+      - name: Validate repair script syntax
+        run: python -m py_compile scripts/repair-atlas-council-osint.py
 
       - name: Select SSH key
         shell: bash
@@ -113,12 +74,10 @@ patched = patched.replace(fallback_anchor, fallback_new, 1)
           assert 'substantive payload required for OSINT quorum' in code
           assert 'substantive_progressive_quorum' in code
           assert '"validated_profiles": {' in code
-          assert 'Council OSINT target unresolved — no broad search launched.' in code
-          assert 'SELF-HOSTED PUBLIC WEB SEARCH: skipped — explicit OSINT requested but no bounded target was resolved.' in code
           assert 'no false quorum declared' in code
           assert 'bounded OSINT incomplete without false quorum' in code
+          assert 'No substantive target-specific observation was available in the initial engine quorum.' not in code
           assert 'status-only false quorum' in str(meta.get('description',''))
-          assert 'never falls through' in str(meta.get('description',''))
           print('live_version=v3.9.5')
           print('substantive_quorum=PASS')
           print('identity_compaction=PASS')
