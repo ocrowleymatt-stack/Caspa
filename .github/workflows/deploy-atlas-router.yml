@@ -60,13 +60,14 @@ jobs:
       - name: Install Atlas-owned router service
         shell: bash
         run: |
-          scp -i ~/.ssh/id_ed25519 atlas-router/dist/atlas-router.cjs "${ATLAS_USER}@${ATLAS_HOST}:/tmp/atlas-router.cjs"
-          scp -i ~/.ssh/id_ed25519 atlas-router/rewire-openwebui.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/rewire-openwebui.py"
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'install -d -m 755 /root/AtlasRouter'
+          scp -i ~/.ssh/id_ed25519 atlas-router/dist/atlas-router.cjs "${ATLAS_USER}@${ATLAS_HOST}:/root/AtlasRouter/atlas-router.cjs"
+          scp -i ~/.ssh/id_ed25519 atlas-router/rewire-openwebui.py "${ATLAS_USER}@${ATLAS_HOST}:/root/AtlasRouter/rewire-openwebui.py"
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -euo pipefail
           install -d -m 755 /root/AtlasRouter
           install -d -m 700 /root/.atlas-secrets
-          install -m 644 /tmp/atlas-router.cjs /root/AtlasRouter/atlas-router.cjs
+          chmod 644 /root/AtlasRouter/atlas-router.cjs /root/AtlasRouter/rewire-openwebui.py
 
           if [ ! -s /root/.atlas-secrets/atlas-router.env ]; then
             echo 'Atlas Router credential file missing: /root/.atlas-secrets/atlas-router.env' >&2
@@ -169,7 +170,7 @@ jobs:
           print('openwebui_to_atlas_router_web_search=true', d.get('provider'), d.get('model'), 'ms='+str(d.get('requestDurationMs')))
           PY
 
-          docker cp /tmp/rewire-openwebui.py atlas-openwebui:/tmp/rewire-openwebui.py
+          docker cp /root/AtlasRouter/rewire-openwebui.py atlas-openwebui:/tmp/rewire-openwebui.py
           docker exec atlas-openwebui python3 /tmp/rewire-openwebui.py
           docker restart atlas-openwebui >/dev/null
           for i in $(seq 1 40); do
@@ -189,5 +190,5 @@ jobs:
           print('atlas_frontier_isolated=true')
           PY
 
-          rm -f /tmp/atlas-router.cjs /tmp/rewire-openwebui.py /tmp/atlas-router-health.json /tmp/atlas-router-smoke.json
+          rm -f /tmp/atlas-router-health.json /tmp/atlas-router-smoke.json
           REMOTE
