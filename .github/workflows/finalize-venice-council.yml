@@ -1,0 +1,46 @@
+name: Finalize Venice Council Models
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-venice-council.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Upgrade Council Venice candidates
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/services/cloudModelRouter.ts')
+          s=p.read_text()
+          old="if (provider === 'venice') return ['openai-gpt-oss-120b', 'qwen3-6-27b'];"
+          new="if (provider === 'venice') return mode === 'god' ? ['deepseek-v4-pro', 'qwen-3-6-plus'] : ['qwen-3-6-plus', 'deepseek-v4-pro'];"
+          if old not in s:
+              raise SystemExit('Council Venice anchor not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+      - run: npm ci
+      - run: node --import tsx --test tests/routerCostPolicy.test.ts
+      - run: npm run build
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name 'ocrowleymatt-stack'
+          git config user.email 'ocrowley.matt@gmail.com'
+          git add src/services/cloudModelRouter.ts
+          git commit -m 'Use stronger Venice models for Council seats'
+          git push origin HEAD:main
