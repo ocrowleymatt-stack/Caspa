@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-atlas-router
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -64,8 +68,6 @@ jobs:
           install -d -m 700 /root/.atlas-secrets
           install -m 644 /tmp/atlas-router.cjs /root/AtlasRouter/atlas-router.cjs
 
-          # Atlas credentials are independently owned. Missing credentials are an
-          # Atlas configuration error and must never fall back to another product.
           if [ ! -s /root/.atlas-secrets/atlas-router.env ]; then
             echo 'Atlas Router credential file missing: /root/.atlas-secrets/atlas-router.env' >&2
             exit 2
@@ -74,24 +76,35 @@ jobs:
           set -a
           . /root/.atlas-secrets/atlas-router.env
           set +a
+
+          ATLAS_NETWORK='atlas_atlas-core-net'
+          ATLAS_NETWORK_ID="$(docker network inspect -f '{{.Id}}' "$ATLAS_NETWORK")"
+          ATLAS_GATEWAY="$(docker network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "$ATLAS_NETWORK")"
+          ATLAS_SUBNET="$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$ATLAS_NETWORK")"
+          ATLAS_BRIDGE="br-${ATLAS_NETWORK_ID:0:12}"
+          test "$ATLAS_GATEWAY" = '172.19.0.1'
+          ip link show "$ATLAS_BRIDGE" >/dev/null
+          echo "atlas_network=$ATLAS_NETWORK gateway=$ATLAS_GATEWAY subnet=$ATLAS_SUBNET bridge=$ATLAS_BRIDGE"
+
           export NODE_ENV=production
-          export ATLAS_ROUTER_HOST=172.19.0.1
+          export ATLAS_ROUTER_HOST="$ATLAS_GATEWAY"
           export ATLAS_ROUTER_PORT=3014
           export ATLAS_ROUTER_MAX_BODY_BYTES=2000000
+          export ATLAS_ROUTER_MAX_INFLIGHT=16
 
-          # AtlasRouter is intentionally not public. Allow only containers on the
-          # Atlas core bridge to reach the host-bound router. UFW otherwise drops
-          # container -> host traffic even though the process is listening.
-          if ! ufw status | grep -q '172.19.0.1 3014/tcp'; then
-            ufw allow in on br-74b93aa39fe1 from 172.19.0.0/16 to 172.19.0.1 port 3014 proto tcp comment 'AtlasRouter private bridge'
+          # Keep AtlasRouter private. The bridge name is derived at deploy time so
+          # recreating the Docker network cannot silently strand OpenWebUI again.
+          if ! ufw status | grep -Fq "$ATLAS_GATEWAY 3014/tcp on $ATLAS_BRIDGE"; then
+            ufw allow in on "$ATLAS_BRIDGE" from "$ATLAS_SUBNET" to "$ATLAS_GATEWAY" port 3014 proto tcp comment 'AtlasRouter private bridge'
           fi
+          ufw status | grep -F "$ATLAS_GATEWAY 3014/tcp on $ATLAS_BRIDGE"
 
           pm2 delete atlas-router >/dev/null 2>&1 || true
-          pm2 start /root/AtlasRouter/atlas-router.cjs --name atlas-router --time --update-env
+          pm2 start /root/AtlasRouter/atlas-router.cjs --name atlas-router --time --update-env --max-memory-restart 350M
           pm2 save >/dev/null
 
           for i in $(seq 1 30); do
-            if curl -fsS --max-time 2 http://172.19.0.1:3014/health >/tmp/atlas-router-health.json 2>/dev/null; then break; fi
+            if curl -fsS --max-time 2 "http://$ATLAS_GATEWAY:3014/health" >/tmp/atlas-router-health.json 2>/dev/null; then break; fi
             sleep 1
           done
           cat /tmp/atlas-router-health.json
@@ -99,19 +112,20 @@ jobs:
           import json
           d=json.load(open('/tmp/atlas-router-health.json'))
           assert d.get('service') == 'AtlasRouter', d
+          assert d.get('version') == '1.1.0', d
           assert d.get('caspaDependency') is False, d
           assert d.get('localFallbackOwner') == 'atlas-openwebui', d
-          print('atlas_router_health=true')
+          assert int(d.get('maxInflight') or 0) == 16, d
+          print('atlas_router_health=true', 'version='+str(d.get('version')), 'maxInflight='+str(d.get('maxInflight')))
           PY
 
-          # Real production-direction check: OpenWebUI container -> host AtlasRouter.
-          # -i is essential; without it the heredoc is not passed into python and the
-          # check can falsely succeed without executing any assertion.
+          # Production direction: OpenWebUI container -> host AtlasRouter.
           docker exec -i atlas-openwebui python3 - <<'PY'
           import json, urllib.request
           with urllib.request.urlopen('http://172.19.0.1:3014/health', timeout=5) as r:
               d=json.load(r)
           assert d.get('service') == 'AtlasRouter', d
+          assert d.get('version') == '1.1.0', d
           assert d.get('caspaDependency') is False, d
           print('openwebui_to_atlas_router=true')
           PY
@@ -119,24 +133,28 @@ jobs:
           curl -fsS --max-time 40 \
             -H 'Content-Type: application/json' \
             -d '{"prompt":"Return exactly ATLAS_ROUTER_OK","providerOverride":"grok","strictProvider":true,"intelligenceMode":"speed","maxTokens":40}' \
-            http://172.19.0.1:3014/api/ai/call >/tmp/atlas-router-smoke.json
+            "http://$ATLAS_GATEWAY:3014/api/ai/call" >/tmp/atlas-router-smoke.json
           python3 - <<'PY'
           import json
           d=json.load(open('/tmp/atlas-router-smoke.json'))
           assert d.get('service') == 'AtlasRouter', d
           assert d.get('provider') == 'grok', d
           assert 'ATLAS_ROUTER_OK' in str(d.get('result','')), d
-          print('atlas_router_cloud_smoke=true', d.get('provider'), d.get('model'))
+          assert isinstance(d.get('requestId'), str) and d['requestId'], d
+          assert isinstance(d.get('requestDurationMs'), int), d
+          assert isinstance(d.get('providerDurationMs'), int), d
+          print('atlas_router_cloud_smoke=true', d.get('provider'), d.get('model'), 'ms='+str(d.get('requestDurationMs')))
           PY
 
-          # Also execute a web-enabled request from inside OpenWebUI, proving the
-          # exact network direction used by Atlas Auto/Research can invoke search.
+          # Web-enabled production-direction gate. Ordinary web search must not
+          # require X search and must return a substantive, sourced result.
           docker exec -i atlas-openwebui python3 - <<'PY'
           import json, urllib.request
           payload=json.dumps({
               'prompt':'Use live web search. State today UTC date and include at least one retrieved source URL.',
               'primaryProvider':'grok',
               'useWebSearch':True,
+              'useXSearch':False,
               'intelligenceMode':'speed',
               'maxTokens':500,
           }).encode()
@@ -146,8 +164,9 @@ jobs:
           result=str(d.get('result') or '')
           assert d.get('service') == 'AtlasRouter', d
           assert d.get('provider') in {'grok','gemini','venice'}, d
-          assert len(result) > 40, d
-          print('openwebui_to_atlas_router_web_search=true', d.get('provider'), d.get('model'))
+          assert len(result) > 80, d
+          assert 'cannot access the internet' not in result.lower(), d
+          print('openwebui_to_atlas_router_web_search=true', d.get('provider'), d.get('model'), 'ms='+str(d.get('requestDurationMs')))
           PY
 
           docker cp /tmp/rewire-openwebui.py atlas-openwebui:/tmp/rewire-openwebui.py
