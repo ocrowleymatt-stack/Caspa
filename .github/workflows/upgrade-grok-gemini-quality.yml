@@ -1,0 +1,52 @@
+name: Upgrade Grok Gemini Quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/upgrade-grok-gemini-quality.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply quality routing changes
+        shell: bash
+        run: |
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/services/cloudModelRouter.ts')
+          s=p.read_text()
+          old="const limit = task === 'council' ? 1 : mode === 'speed' || task === 'fast' ? 2 : mode === 'god' ? 4 : 3;"
+          new="const limit = task === 'council' ? 2 : mode === 'speed' || task === 'fast' ? 2 : mode === 'god' ? 4 : 3;"
+          if old not in s: raise SystemExit('Council attempt-limit anchor not found')
+          s=s.replace(old,new,1)
+          old="if (provider === 'grok' && mode === 'god' && opts.useSearch && ['factual', 'long', 'synthesis'].includes(task)) {"
+          new="if (provider === 'grok' && mode !== 'speed' && opts.useSearch && ['factual', 'long', 'synthesis'].includes(task)) {"
+          if old not in s: raise SystemExit('Grok multi-agent anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - run: npm ci
+      - run: node --import tsx --test tests/routerCostPolicy.test.ts
+      - run: npm run build
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name 'ocrowleymatt-stack'
+          git config user.email 'ocrowley.matt@gmail.com'
+          git add src/services/cloudModelRouter.ts
+          git commit -m 'Use Grok multi-agent for balanced research and retry Gemini Council'
+          git pull --rebase origin main
+          git push origin HEAD:main
