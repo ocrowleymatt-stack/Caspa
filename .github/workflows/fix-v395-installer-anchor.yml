@@ -1,0 +1,48 @@
+name: Fix Council v3.9.5 Installer Anchor
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-v395-installer-anchor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Replace stale incomplete-path anchor
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/repair-atlas-council-osint.py')
+          text = path.read_text(encoding='utf-8')
+          start = text.index("old_incomplete = '''")
+          end_marker = 'patched = patched.replace(old_incomplete, new_incomplete, 1)\n'
+          end = text.index(end_marker, start) + len(end_marker)
+          replacement = r'''fallback_anchor = ''' + "'''" + r'''            if osint_active and profile == \"research\":\n                answer = self._osint_deterministic_brief(evidence_packet)\n                if answer:\n                    elapsed = time.monotonic() - started\n                    await self._emit(__event_emitter__, f\"Atlas Council complete · {elapsed:.0f}s · readable deterministic OSINT quorum\", done=True)\n                    return answer\n''' + "'''" + r'''
+fallback_new = ''' + "'''" + r'''            if osint_active and profile == \"research\":\n                answer = self._osint_deterministic_brief(evidence_packet)\n                if answer:\n                    elapsed = time.monotonic() - started\n                    await self._emit(__event_emitter__, f\"Atlas Council complete · {elapsed:.0f}s · substantive deterministic OSINT quorum\", done=True)\n                    return answer\n                answer = self._osint_incomplete_brief(evidence_packet)\n                if answer:\n                    elapsed = time.monotonic() - started\n                    await self._emit(__event_emitter__, f\"Atlas Council complete · {elapsed:.0f}s · bounded OSINT incomplete without false quorum\", done=True)\n                    return answer\n''' + "'''" + r'''
+if fallback_anchor not in patched:
+    raise SystemExit("OSINT research fallback anchor mismatch")
+patched = patched.replace(fallback_anchor, fallback_new, 1)
+'''
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
+          python -m py_compile scripts/repair-atlas-council-osint.py
+          grep -q 'OSINT research fallback anchor mismatch' scripts/repair-atlas-council-osint.py
+          grep -q 'bounded OSINT incomplete without false quorum' scripts/repair-atlas-council-osint.py
+      - name: Commit installer repair
+        shell: bash
+        run: |
+          git config user.name 'atlas-council-repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add scripts/repair-atlas-council-osint.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix v3.9.5 live fallback anchor'
+          git push origin HEAD:main
