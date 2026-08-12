@@ -34,7 +34,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Audit live OpenWebUI custom models and functions
+      - name: Audit live OpenWebUI custom models and web retrieval plumbing
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
@@ -45,25 +45,21 @@ jobs:
           DB='/app/backend/data/webui.db'
           con=sqlite3.connect(DB)
           con.row_factory=sqlite3.Row
-
           def exists(name):
-              return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+              return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(name,)).fetchone() is not None
           def parse(v):
               if isinstance(v,(dict,list)): return v
               if not isinstance(v,str) or not v.strip(): return None
               try: return json.loads(v)
               except Exception: return None
 
-          print('=== LIVE CUSTOM MODEL AUDIT V2 ===')
+          print('=== LIVE CUSTOM MODEL AUDIT V3 ===')
+          functions={}
           if exists('function'):
               rows=con.execute('SELECT * FROM "function" ORDER BY id').fetchall()
               print(json.dumps({'function_count':len(rows)}))
               for row in rows:
-                  d=dict(row); code=str(d.get('content') or ''); low=code.lower()
-                  hosts=[]
-                  for u in re.findall(r'https?://[^\s\"\'<>]+',code):
-                      m=re.match(r'https?://([^/]+)',u)
-                      if m: hosts.append(m.group(1))
+                  d=dict(row); code=str(d.get('content') or ''); functions[str(d.get('id'))]=code; low=code.lower()
                   rec={
                     'id':d.get('id'),'name':d.get('name'),'type':d.get('type'),'active':d.get('is_active'),
                     'sha12':hashlib.sha256(code.encode()).hexdigest()[:12],'lines':len(code.splitlines()),
@@ -73,40 +69,72 @@ jobs:
                     'web_tool':('web_search' in low or 'x_search' in low or 'googleSearch' in code or 'google_search' in low),
                     'self_search':any(x in low for x in ('searx','spiderfoot','bbot','intelowl','active_osint','perplexica')),
                     'ollama':('ollama' in low or '11434' in code),
-                    'hosts':sorted(set(hosts))[:20],
                   }
                   print(json.dumps(rec,sort_keys=True))
 
-              print('=== ROUTING SOURCE EXCERPTS ===')
-              wanted={'atlas-auto','atlas-frontier-failover','atlas-deep-research-v2','atlas-deep-research-v21','atlas-council'}
-              pattern=re.compile(r'(generate_chat_completion|model_id|model\b|ollama|11434|web_search|use.?search|google.?search|searx|spiderfoot|bbot|intelowl|perplexica|api/ai/call|httpx|requests\.|client\.(get|post)|taskhint|strictprovider|provider)',re.I)
-              for row in rows:
-                  d=dict(row)
-                  if d.get('id') not in wanted: continue
-                  print(f"--- {d.get('id')} ---")
-                  lines=str(d.get('content') or '').splitlines()
-                  shown=0
-                  for i,line in enumerate(lines,1):
-                      if pattern.search(line):
-                          clean=re.sub(r'([A-Za-z0-9_]*(?:KEY|TOKEN|SECRET)[A-Za-z0-9_]*)\s*=\s*[\"\'][^\"\']+[\"\']',r'\1=<redacted>',line,flags=re.I)
-                          print(f'{i:04d} {clean[:500]}')
-                          shown+=1
-                          if shown>=90: break
+              for fid,a,b in [('atlas-auto',88,128),('atlas-frontier-failover',115,190),('atlas-deep-research-v21',155,230)]:
+                  print(f'=== FORWARDING EXCERPT {fid} ===')
+                  lines=functions.get(fid,'').splitlines()
+                  for i in range(max(0,a-1),min(len(lines),b)):
+                      line=lines[i]
+                      if re.search(r'(forwarded|primary|features|model|generate_chat_completion|web_search|fallback|bypass|request)',line,re.I):
+                          print(f'{i+1:04d} {line[:500]}')
 
           if exists('model'):
               print('=== MODEL CAPABILITIES ===')
               rows=con.execute('SELECT * FROM "model" ORDER BY id').fetchall()
-              print(json.dumps({'model_count':len(rows)}))
               for row in rows:
                   d=dict(row); meta=parse(d.get('meta')); params=parse(d.get('params'))
-                  rec={
+                  print(json.dumps({
                     'id':d.get('id'),'name':d.get('name'),'base_model_id':d.get('base_model_id'),'active':d.get('is_active'),
                     'capabilities':meta.get('capabilities') if isinstance(meta,dict) else None,
                     'toolIds':meta.get('toolIds') if isinstance(meta,dict) else None,
                     'defaultFeatureIds':meta.get('defaultFeatureIds') if isinstance(meta,dict) else None,
                     'param_keys':sorted(params.keys()) if isinstance(params,dict) else [],
-                  }
-                  print(json.dumps(rec,sort_keys=True))
+                  },sort_keys=True))
+
+          print('=== OPENWEBUI WEB CONFIG ===')
+          if exists('config'):
+              cols=[r[1] for r in con.execute('PRAGMA table_info("config")')]
+              print(json.dumps({'config_columns':cols}))
+              rows=con.execute('SELECT * FROM "config"').fetchall()
+              def walk(obj,path=''):
+                  if isinstance(obj,dict):
+                      for k,v in obj.items():
+                          p=f'{path}.{k}' if path else str(k)
+                          kl=str(k).lower()
+                          if any(s in kl for s in ('key','token','secret','password')):
+                              if any(s in p.lower() for s in ('web','search','searx')): print(json.dumps({'path':p,'value':'<redacted>'}))
+                              continue
+                          if any(s in p.lower() for s in ('web_search','web.search','search.engine','searx','search_result','search_concurrent','search.domain','search.query','search.loader')) and not isinstance(v,(dict,list)):
+                              print(json.dumps({'path':p,'value':v}))
+                          walk(v,p)
+                  elif isinstance(obj,list):
+                      for i,v in enumerate(obj[:20]): walk(v,f'{path}[{i}]')
+              for row in rows:
+                  for col,val in dict(row).items():
+                      obj=parse(val)
+                      if obj is not None: walk(obj,col)
+          else:
+              print('config table missing')
           con.close()
+          PY
+
+          echo '=== SEARCH SERVICE HEALTH ==='
+          for url in \
+            'http://127.0.0.1:3002/health' \
+            'http://127.0.0.1:8080/healthz'; do
+            printf '%s ' "$url"
+            curl -sS -o /tmp/probe -w 'http=%{http_code}\n' --max-time 5 "$url" || true
+            head -c 240 /tmp/probe 2>/dev/null | tr '\n' ' '; echo
+          done
+          docker exec atlas-openwebui python3 - <<'PY'
+          import urllib.request
+          for u in ('http://atlas-searxng:8080/search?q=OpenAI&format=json','http://atlas-osint-broker:8811/health'):
+              try:
+                  with urllib.request.urlopen(u,timeout=8) as r:
+                      data=r.read(300).decode('utf-8','replace').replace('\n',' ')
+                      print(u, 'http='+str(r.status), data)
+              except Exception as e: print(u,'ERROR',type(e).__name__,str(e)[:200])
           PY
           REMOTE
