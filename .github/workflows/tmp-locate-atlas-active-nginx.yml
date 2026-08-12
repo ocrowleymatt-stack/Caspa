@@ -1,0 +1,42 @@
+name: Locate Active Atlas Nginx
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp-locate-atlas-active-nginx.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      ATLAS_HOST: 116.202.24.63
+    steps:
+      - name: Locate active Atlas nginx config
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATEKEY2"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== ENABLED SITES ==='
+          for f in /etc/nginx/sites-enabled/*; do [ -e "$f" ] || continue; printf '%s -> %s\n' "$f" "$(readlink -f "$f")"; done
+          echo '=== ACTIVE FILES CONTAINING ATLAS SERVER NAME ==='
+          for f in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+            [ -f "$f" ] || continue
+            if grep -Eq 'server_name[[:space:]]+atlas\.ocrowley\.com([[:space:];]|$)' "$f"; then
+              real="$(readlink -f "$f")"
+              echo "ACTIVE_FILE=$real"
+              grep -n -B5 -A80 -E 'server_name[[:space:]]+atlas\.ocrowley\.com([[:space:];]|$)' "$real" | head -n 100
+            fi
+          done
+          REMOTE
