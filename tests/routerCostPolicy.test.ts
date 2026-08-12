@@ -14,21 +14,21 @@ test('balanced factual and OSINT work prefers economical analysis lanes', () => 
   assert.equal(classifyTask('Expand this OSINT evidence bundle and identify new pivots'), 'factual');
   assert.deepEqual(
     providerOrder('', 'balanced', 'factual'),
-    ['gemini', 'venice', 'grok', 'openai', 'claude'],
+    ['venice', 'grok', 'gemini', 'openai', 'claude'],
   );
 });
 
 test('balanced heavy reasoning uses cheap heavyweight lane before premium providers', () => {
   assert.deepEqual(
     providerOrder('', 'balanced', 'reasoning'),
-    ['venice', 'gemini', 'grok', 'openai', 'claude'],
+    ['venice', 'grok', 'gemini', 'openai', 'claude'],
   );
 });
 
 test('god mode keeps maximum-capability ordering for deep reasoning', () => {
   assert.deepEqual(
     providerOrder('', 'god', 'reasoning'),
-    ['grok', 'gemini', 'venice', 'openai', 'claude'],
+    ['venice', 'grok', 'gemini', 'openai', 'claude'],
   );
 });
 
@@ -37,10 +37,10 @@ test('explicit provider override remains first', () => {
 });
 
 test('web search capability is limited to providers with real tool bindings', () => {
-  assert.deepEqual([...WEB_SEARCH_CAPABLE_PROVIDERS], ['gemini', 'grok']);
+  assert.deepEqual([...WEB_SEARCH_CAPABLE_PROVIDERS], ['venice', 'gemini', 'grok']);
   assert.equal(providerSupportsWebSearch('gemini'), true);
   assert.equal(providerSupportsWebSearch('grok'), true);
-  assert.equal(providerSupportsWebSearch('venice'), false);
+  assert.equal(providerSupportsWebSearch('venice'), true);
   assert.equal(providerSupportsWebSearch('openai'), false);
   assert.equal(providerSupportsWebSearch('claude'), false);
   assert.equal(providerSupportsWebSearch('ollama'), false);
@@ -48,8 +48,8 @@ test('web search capability is limited to providers with real tool bindings', ()
 
 test('web-required provider order cannot silently include a non-search lane', () => {
   const factual = providerOrder('', 'balanced', 'factual').filter(providerSupportsWebSearch);
-  assert.deepEqual(factual, ['gemini', 'grok']);
+  assert.deepEqual(factual, ['venice', 'grok', 'gemini']);
 
   const grokFirst = providerOrder('grok', 'balanced', 'factual').filter(providerSupportsWebSearch);
-  assert.deepEqual(grokFirst, ['grok', 'gemini']);
+  assert.deepEqual(grokFirst, ['grok', 'venice', 'gemini']);
 });

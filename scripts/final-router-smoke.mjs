@@ -43,7 +43,7 @@ const webRequired = await invoke('WEB_REQUIRED', {
   useWebSearch: true,
 }, 45000);
 console.log(JSON.stringify(webRequired));
-if (!webRequired.ok || !['gemini', 'grok'].includes(webRequired.provider)) {
+if (!webRequired.ok || !['venice', 'gemini', 'grok'].includes(webRequired.provider)) {
   console.error('WEB_REQUIRED invariant failed: search request escaped the wired search-capable provider pool.');
   process.exitCode = 1;
 }
@@ -53,7 +53,7 @@ const strictNonSearch = await invoke('WEB_STRICT_NON_SEARCH_BLOCKED', {
   intelligenceMode: 'balanced',
   taskHint: 'factual',
   maxTokens: 80,
-  providerOverride: 'venice',
+  providerOverride: 'claude',
   strictProvider: true,
   useWebSearch: true,
 }, 15000);

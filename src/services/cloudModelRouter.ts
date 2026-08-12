@@ -136,9 +136,11 @@ const MODEL_PREFERENCES: Record<CloudProvider, Record<IntelligenceMode, string[]
     god: ['claude-opus-5', 'claude-sonnet-5', 'claude-opus-4-8'],
   },
   venice: {
-    speed: ['qwen3-6-27b', 'openai-gpt-oss-120b', 'mistral-small-2603'],
-    balanced: ['openai-gpt-oss-120b', 'qwen3-6-27b', 'deepseek-v4-flash', 'llama-3.3-70b'],
-    god: ['deepseek-v4-flash', 'openai-gpt-oss-120b', 'qwen3-6-27b', 'minimax-m27'],
+    // Venice changes its catalogue quickly. Prefer the strongest current reasoning
+    // models first, while retaining cheaper fallbacks for latency/cost resilience.
+    speed: ['qwen3-6-27b', 'deepseek-v4-flash', 'openai-gpt-oss-120b'],
+    balanced: ['deepseek-v4-pro', 'qwen-3-6-plus', 'qwen3-5-397b-a17b', 'openai-gpt-oss-120b'],
+    god: ['deepseek-v4-pro', 'qwen-3-6-plus', 'claude-opus-4-7-fast', 'openai-gpt-55-pro'],
   },
 };
 
@@ -159,9 +161,16 @@ function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: Intellig
     if ((task === 'reasoning' || task === 'legal' || task === 'long' || task === 'synthesis') && mode === 'god') return ['gemini-3.1-pro-preview'];
   }
   if (provider === 'venice') {
-    if (task === 'fast') return ['qwen3-6-27b'];
-    if (task === 'factual') return mode === 'god' ? ['deepseek-v4-flash', 'openai-gpt-oss-120b'] : ['openai-gpt-oss-120b', 'qwen3-6-27b'];
-    if (task === 'reasoning' || task === 'legal') return mode === 'god' ? ['deepseek-v4-flash', 'openai-gpt-oss-120b'] : ['openai-gpt-oss-120b', 'qwen3-6-27b'];
+    if (task === 'fast') return ['qwen3-6-27b', 'deepseek-v4-flash'];
+    if (task === 'council') return mode === 'god' ? ['deepseek-v4-pro'] : ['qwen-3-6-plus'];
+    if (task === 'creative') return mode === 'god'
+      ? ['qwen-3-6-plus', 'deepseek-v4-pro', 'e2ee-venice-uncensored-24b-p']
+      : ['qwen-3-6-plus', 'qwen3-5-397b-a17b', 'e2ee-venice-uncensored-24b-p'];
+    if (task === 'factual' || task === 'reasoning' || task === 'legal' || task === 'synthesis' || task === 'long') {
+      return mode === 'god'
+        ? ['deepseek-v4-pro', 'qwen-3-6-plus', 'claude-opus-4-7-fast']
+        : ['deepseek-v4-pro', 'qwen-3-6-plus', 'qwen3-5-397b-a17b'];
+    }
   }
   if (provider === 'openai' && task === 'fast') return ['gpt-5.4-mini', 'gpt-5.4-nano'];
   if (provider === 'claude' && task === 'fast') return ['claude-fable-5', 'claude-haiku-4-5-20251001'];
@@ -302,6 +311,14 @@ async function callVenice(prompt: string, model: string, opts: RoutedCallOptions
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
     max_tokens: opts.maxTokens || 4096,
+    venice_parameters: {
+      strip_thinking_response: true,
+      ...(opts.useSearch ? {
+        enable_web_search: 'on',
+        enable_web_citations: true,
+        return_search_results_as_documents: false,
+      } : {}),
+    },
   }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
   return String(data?.choices?.[0]?.message?.content || '').trim();
 }
@@ -388,16 +405,16 @@ export function providerOrder(primary: string, mode: IntelligenceMode, task: Tas
     ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
   } else if (mode === 'god') {
     if (sensitive || task === 'creative') ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
-    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['grok', 'gemini', 'venice', 'openai', 'claude'];
-    else if (task === 'factual') ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
-    else ordered = ['grok', 'venice', 'gemini', 'openai', 'claude'];
+    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
+    else if (task === 'factual') ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
+    else ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
   } else {
     if (task === 'fast') ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
-    else if (task === 'factual') ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
+    else if (task === 'factual') ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
     else if (task === 'creative') ordered = sensitive
       ? ['venice', 'gemini', 'grok', 'openai', 'claude']
       : ['gemini', 'venice', 'grok', 'openai', 'claude'];
-    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['venice', 'gemini', 'grok', 'openai', 'claude'];
+    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
     else ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
   }
   if (primary && ordered.includes(primary)) ordered = [primary, ...ordered.filter((p) => p !== primary)];

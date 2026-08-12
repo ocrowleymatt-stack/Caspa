@@ -47,7 +47,7 @@ const TRANSIENT_COOLDOWN_MS = Number(process.env.AI_PROVIDER_COOLDOWN_MS) || 60_
  * This is deliberately explicit: a provider being able to answer a prompt is
  * not the same thing as being able to satisfy a web-required request.
  */
-export const WEB_SEARCH_CAPABLE_PROVIDERS = ['gemini', 'grok'] as const;
+export const WEB_SEARCH_CAPABLE_PROVIDERS = ['venice', 'gemini', 'grok'] as const;
 const WEB_SEARCH_CAPABLE_PROVIDER_SET = new Set<string>(WEB_SEARCH_CAPABLE_PROVIDERS);
 
 export function providerSupportsWebSearch(provider: string): boolean {
