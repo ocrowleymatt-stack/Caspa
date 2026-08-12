@@ -26,34 +26,70 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect live Atlas Auto function
+      - name: Inspect exact leaked message tree and model flags
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
-          import sqlite3, json
+          import sqlite3, json, re
           db='/app/backend/data/webui.db'
           con=sqlite3.connect(db)
           con.row_factory=sqlite3.Row
-          cols=[r[1] for r in con.execute('pragma table_info("function")')]
-          print('FUNCTION_COLUMNS', cols)
-          rows=con.execute('select * from "function"').fetchall()
-          print('FUNCTION_COUNT', len(rows))
-          for row in rows:
+          needle='Okay, the user is asking if I can dig deeper into public social media connections or tagged posts linking Stuart A Hardman to Scott Millard or Adam Walsh.'
+
+          # Find only the chat(s) containing the exact leaked reasoning text and print the local tree.
+          for row in con.execute('select id, title, chat, updated_at from chat where chat like ?', ('%'+needle+'%',)):
+              print('CHAT_MATCH', row['id'], row['title'], row['updated_at'])
+              obj=json.loads(row['chat']) if isinstance(row['chat'],str) else row['chat']
+              hist=((obj or {}).get('history') or {}).get('messages') or {}
+              matches=[]
+              for mid,m in hist.items():
+                  blob=json.dumps(m,ensure_ascii=False)
+                  if needle in blob:
+                      matches.append(mid)
+              print('MATCH_MESSAGE_IDS', matches)
+              seen=set()
+              def show(mid, depth=0):
+                  if not mid or mid in seen or mid not in hist or depth>4: return
+                  seen.add(mid); m=hist[mid]
+                  out=m.get('output') or []
+                  print('NODE', mid, 'depth', depth, 'role', m.get('role'), 'parent', m.get('parentId'), 'children', m.get('childrenIds'), 'done', m.get('done'), 'model', m.get('model'), 'content_len', len(str(m.get('content') or '')), 'output_types', [x.get('type') for x in out if isinstance(x,dict)])
+                  for x in out:
+                      if isinstance(x,dict) and x.get('type')=='reasoning':
+                          text=' '.join(str(y.get('text') or '') for y in (x.get('content') or []) if isinstance(y,dict))
+                          print('REASONING_STATUS', x.get('status'), 'TEXT', text[:1200].replace('\n',' '))
+                      if isinstance(x,dict) and x.get('type')=='message':
+                          text=' '.join(str(y.get('text') or '') for y in (x.get('content') or []) if isinstance(y,dict))
+                          print('MESSAGE_STATUS', x.get('status'), 'TEXT', text[:1200].replace('\n',' '))
+                  c=str(m.get('content') or '')
+                  if c: print('CONTENT', c[:1200].replace('\n',' '))
+                  for child in m.get('childrenIds') or []: show(child, depth+1)
+              for mid in matches:
+                  p=hist.get(mid,{}).get('parentId')
+                  gp=hist.get(p,{}).get('parentId') if p else None
+                  show(gp or p or mid)
+
+          # Inspect model rows relevant to Atlas and any reasoning/tool settings.
+          cols=[r[1] for r in con.execute('pragma table_info("model")')]
+          print('MODEL_COLUMNS', cols)
+          for row in con.execute('select * from model'):
               vals={c:row[c] for c in cols}
               joined='\n'.join(v for v in vals.values() if isinstance(v,str))
-              if 'atlas' not in joined.lower():
-                  continue
-              print('\nFUNCTION_ROW')
-              for c,v in vals.items():
-                  if not isinstance(v,str):
-                      print(c, repr(v)); continue
-                  if c.lower() in {'content','valves','meta','params'} or len(v)>300:
-                      print(c, 'LEN', len(v))
-                  else:
-                      print(c, v)
-              for needle in ['class Pipe','def pipe','atlas-auto','atlas-research','_router_prompt','generate_chat_completion','reasoning','<think>','statusHistory','native tools','search_calendar_events']:
-                  i=joined.lower().find(needle.lower())
-                  if i>=0:
-                      s=max(0,i-1000); e=min(len(joined),i+3500)
-                      print('CONTEXT', needle, joined[s:e].replace('\x00',' '))
+              if any(k in joined.lower() for k in ['atlas-auto','atlas-research','atlas-local']):
+                  print('MODEL_ROW_BEGIN')
+                  for c,v in vals.items():
+                      if isinstance(v,str) and len(v)>2500: print(c, 'LEN', len(v), v[:2500])
+                      else: print(c, v)
+                  print('MODEL_ROW_END')
+
+          # Print config keys/values only when relevant to reasoning/tool display.
+          for table in ['config','config_old']:
+              try:
+                  cols=[r[1] for r in con.execute(f'pragma table_info("{table}")')]
+                  for row in con.execute(f'select * from "{table}"'):
+                      vals={c:row[c] for c in cols}
+                      joined='\n'.join(v for v in vals.values() if isinstance(v,str))
+                      if any(k in joined.lower() for k in ['reasoning','think','tool','function_call']):
+                          print('CONFIG_RELEVANT', table, {c:(v[:5000] if isinstance(v,str) else v) for c,v in vals.items()})
+              except Exception as e:
+                  print('CONFIG_ERR',table,type(e).__name__,e)
           PY
