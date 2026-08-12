@@ -33,31 +33,33 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect host and container route to AtlasRouter
+      - name: Test bridge path and firewall
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          echo '=== HOST LISTEN ==='
-          ss -ltnp | grep ':3014' || true
-          echo '=== HOST ADDRESSES ==='
-          ip -4 addr show
-          echo '=== OPENWEBUI NETWORKS ==='
-          docker inspect atlas-openwebui --format '{{json .NetworkSettings.Networks}}'
-          echo '=== CONTAINER ROUTE ==='
-          docker exec atlas-openwebui sh -lc 'ip route 2>/dev/null || cat /proc/net/route'
-          echo '=== CONTAINER RESOLV ==='
-          docker exec atlas-openwebui sh -lc 'getent hosts host.docker.internal || true'
-          echo '=== CANDIDATE HEALTH ==='
-          docker exec atlas-openwebui python3 - <<'PY'
-          import urllib.request, json, socket
-          candidates=['172.19.0.1','172.18.0.1','172.20.0.1','172.21.0.1','172.17.0.1','host.docker.internal']
-          for host in candidates:
-              url=f'http://{host}:3014/health'
+          echo '=== HOST HEALTH ==='
+          curl -sS --max-time 3 http://172.19.0.1:3014/health || true
+          echo
+          echo '=== CONTAINER SOCKET/HTTP ==='
+          docker exec -i atlas-openwebui python3 - <<'PY'
+          import socket,urllib.request
+          for host in ['172.19.0.1','172.28.0.1','172.30.0.1','192.168.0.1']:
               try:
-                  with urllib.request.urlopen(url,timeout=3) as r:
-                      print(host,'OK',r.status,r.read(500).decode(errors='replace'))
+                  s=socket.create_connection((host,3014),timeout=3); s.close(); print(host,'TCP_OK')
               except Exception as e:
-                  print(host,'FAIL',type(e).__name__,str(e))
+                  print(host,'TCP_FAIL',type(e).__name__,str(e))
+              try:
+                  with urllib.request.urlopen(f'http://{host}:3014/health',timeout=3) as r:
+                      print(host,'HTTP_OK',r.status,r.read(400).decode(errors='replace'))
+              except Exception as e:
+                  print(host,'HTTP_FAIL',type(e).__name__,str(e))
           PY
+          echo '=== IPTABLES INPUT/DOCKER-USER ==='
+          iptables -S INPUT 2>/dev/null || true
+          iptables -S DOCKER-USER 2>/dev/null || true
+          echo '=== NFT FILTER RELEVANT ==='
+          nft list ruleset 2>/dev/null | grep -Ei -C 3 '3014|docker|br-74b93aa39fe1|172\.19' | head -n 300 || true
+          echo '=== UFW ==='
+          ufw status verbose 2>/dev/null || true
           REMOTE
