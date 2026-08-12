@@ -55,12 +55,14 @@ jobs:
           row=con.execute("SELECT content,is_active FROM function WHERE id='atlas-frontier-failover'").fetchone()
           assert row and int(row[1]) == 1
           code=str(row[0] or '')
-          assert 'ATLAS MULTI-PROVIDER FRONTIER v2.1' in code
+          assert 'ATLAS MULTI-PROVIDER FRONTIER v2.2' in code
+          assert 'ATLAS RESEARCH WEB EXECUTION v1' in code
           assert 'PRIMARY_PROVIDER: str = Field(default="venice")' in code
           assert 'ROUTER_URL: str = Field(default="http://172.19.0.1:3014/api/ai/call")' in code
           assert 'caspa.ocrowley.com/api/ai/call' not in code
-          assert 'provider_web = bool(use_web and selected.endswith("sol"))' in code
-          print('frontier_multi_provider_live=v2.1_atlas_router')
+          assert 'provider_web = bool(use_web)' in code
+          assert 'provider_web = bool(use_web and selected.endswith("sol"))' not in code
+          print('frontier_multi_provider_live=v2.2_atlas_router_web_all_tiers')
           PY
           rm -f /tmp/repair-atlas-frontier-multiprovider.py
           REMOTE
