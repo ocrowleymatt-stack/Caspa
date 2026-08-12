@@ -7,6 +7,7 @@ on:
       - '.github/workflows/repair-atlas-auto-web-routing.yml'
       - 'scripts/repair-atlas-auto-web-routing.py'
       - 'scripts/repair-atlas-auto-performance-v15.py'
+      - 'scripts/repair-atlas-auto-public-footprint-v16.py'
 
 permissions:
   contents: read
@@ -40,17 +41,20 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Install live Auto direct web routing and performance layer
+      - name: Install live Auto direct web routing, performance and public-footprint layers
         shell: bash
         run: |
           scp -i ~/.ssh/id_ed25519 scripts/repair-atlas-auto-web-routing.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/repair-atlas-auto-web-routing.py"
           scp -i ~/.ssh/id_ed25519 scripts/repair-atlas-auto-performance-v15.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/repair-atlas-auto-performance-v15.py"
+          scp -i ~/.ssh/id_ed25519 scripts/repair-atlas-auto-public-footprint-v16.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/repair-atlas-auto-public-footprint-v16.py"
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -euo pipefail
           docker cp /tmp/repair-atlas-auto-web-routing.py atlas-openwebui:/tmp/repair-atlas-auto-web-routing.py
           docker cp /tmp/repair-atlas-auto-performance-v15.py atlas-openwebui:/tmp/repair-atlas-auto-performance-v15.py
+          docker cp /tmp/repair-atlas-auto-public-footprint-v16.py atlas-openwebui:/tmp/repair-atlas-auto-public-footprint-v16.py
           docker exec atlas-openwebui python3 /tmp/repair-atlas-auto-web-routing.py
           docker exec atlas-openwebui python3 /tmp/repair-atlas-auto-performance-v15.py
+          docker exec atlas-openwebui python3 /tmp/repair-atlas-auto-public-footprint-v16.py
           docker restart atlas-openwebui >/dev/null
           for i in $(seq 1 40); do
             if curl -fsS --max-time 3 http://127.0.0.1:3002/health >/dev/null 2>&1; then break; fi
@@ -65,6 +69,7 @@ jobs:
           code=str(row[0] or '')
           assert 'ATLAS AUTO DIRECT WEB ROUTING v1.4' in code
           assert 'ATLAS AUTO PERFORMANCE HARDENING v1.5' in code
+          assert 'ATLAS AUTO PUBLIC FOOTPRINT ROUTING v1.6' in code
           assert 'http://172.19.0.1:3014/api/ai/call' in code
           assert 'WEB_PRIMARY_PROVIDER: str = Field' in code
           assert 'default="grok"' in code
@@ -74,9 +79,14 @@ jobs:
           assert '"useWebSearch": True' in code
           assert '"useXSearch": self._wants_x_search(body)' in code
           assert '"taskHint": "factual"' in code
+          assert 'public_footprint_web = bool(re.search(' in code
+          assert 'social[- ]media activity' in code
+          assert 'online presence' in code
+          assert 'community involvement' in code
+          assert 'public-footprint live research' in code
           assert 'unusable meta-output' in code
           assert 'return result' in code
-          print('atlas_auto_web_routing_live=v1.5_performance_hardened')
+          print('atlas_auto_web_routing_live=v1.6_public_footprint')
           PY
-          rm -f /tmp/repair-atlas-auto-web-routing.py /tmp/repair-atlas-auto-performance-v15.py
+          rm -f /tmp/repair-atlas-auto-web-routing.py /tmp/repair-atlas-auto-performance-v15.py /tmp/repair-atlas-auto-public-footprint-v16.py
           REMOTE
