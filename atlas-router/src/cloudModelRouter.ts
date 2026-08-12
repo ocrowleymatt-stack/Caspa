@@ -8,6 +8,7 @@ export interface RoutedCallOptions {
   json?: boolean;
   maxTokens?: number;
   useSearch?: boolean;
+  useXSearch?: boolean;
   mode?: IntelligenceMode;
   task?: TaskKind;
   requestedModel?: string;
@@ -19,7 +20,7 @@ export interface RoutedCloudResult {
   provider: CloudProvider;
 }
 
-const CATALOG_TTL_MS = 10 * 60_000;
+const CATALOG_TTL_MS = 30 * 60_000;
 const catalogCache = new Map<CloudProvider, { at: number; ids: string[] }>();
 
 const SYSTEM_BASE = 'You are a high-precision literary, analytical and drafting engine. Follow the user task exactly, preserve factual boundaries, avoid filler, and prefer concrete useful output over generic commentary.';
@@ -89,7 +90,7 @@ function parseModelIds(data: any): string[] {
 }
 
 async function fetchJson(url: string, headers: Record<string, string> = {}): Promise<any> {
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(2500) });
   if (!response.ok) throw new Error(`Model catalogue ${response.status}`);
   return response.json();
 }
@@ -274,7 +275,7 @@ async function callGrok(prompt: string, model: string, opts: RoutedCallOptions):
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
     max_output_tokens: opts.maxTokens || 4096,
-    ...(opts.useSearch ? { tools: [{ type: 'web_search' }, { type: 'x_search' }] } : {}),
+    ...(opts.useSearch ? { tools: [{ type: 'web_search' }, ...(opts.useXSearch ? [{ type: 'x_search' as const }] : [])] } : {}),
   }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
   const text = outputTextFromResponses(data);
   if (!text) throw new Error(`Grok/${model} returned empty output`);
@@ -294,7 +295,7 @@ async function callGrokMultiAgent(prompt: string, opts: RoutedCallOptions): Prom
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
     max_output_tokens: opts.maxTokens || 4096,
-    ...(opts.useSearch ? { tools: [{ type: 'web_search' }, { type: 'x_search' }] } : {}),
+    ...(opts.useSearch ? { tools: [{ type: 'web_search' }, ...(opts.useXSearch ? [{ type: 'x_search' as const }] : [])] } : {}),
   }, { Authorization: `Bearer ${key}` }, timeoutMs(opts.maxTokens, 'god'));
   const text = outputTextFromResponses(data);
   if (!text) throw new Error('Grok multi-agent returned an empty response');
@@ -360,6 +361,12 @@ async function callGemini(prompt: string, model: string, opts: RoutedCallOptions
   return String(response.text || '').trim();
 }
 
+function searchOutputLooksUsable(text: string): boolean {
+  const t = String(text || '').trim();
+  if (t.length < 80) return false;
+  return !/\b(?:i (?:cannot|can't|can not) access the internet|i (?:cannot|can't|can not) browse|unable to (?:access|browse) (?:the )?(?:internet|web)|i should (?:use tools|search|browse)|no internet access)\b/i.test(t);
+}
+
 export async function callCloudProvider(provider: CloudProvider, prompt: string, opts: RoutedCallOptions = {}): Promise<RoutedCloudResult> {
   const mode = normaliseMode(opts.mode);
   const task = opts.task || classifyTask(prompt, opts);
@@ -389,6 +396,7 @@ export async function callCloudProvider(provider: CloudProvider, prompt: string,
       else if (provider === 'claude') text = await callClaude(prompt, model, { ...opts, task, mode });
       else text = await callVenice(prompt, model, { ...opts, task, mode });
       if (!text) throw new Error(`${provider}/${model} returned empty output`);
+      if (opts.useSearch && !searchOutputLooksUsable(text)) throw new Error(`${provider}/${model} returned unusable search output`);
       if (opts.json) text = requireValidJson(text);
       return { text, model, provider };
     } catch (error: any) {
