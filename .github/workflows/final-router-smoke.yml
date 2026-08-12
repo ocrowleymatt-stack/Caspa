@@ -6,7 +6,7 @@ on:
       - '.github/workflows/final-router-smoke.yml'
       - 'scripts/final-router-smoke.mjs'
 
-# Validates production routing, including Venice/Gemini/Grok hard web-search capability enforcement.
+# Validates production routing, Venice-first failover, Grok multi-agent research and Gemini Council retry.
 jobs:
   smoke:
     runs-on: ubuntu-latest
