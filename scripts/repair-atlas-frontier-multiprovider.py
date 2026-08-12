@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Replace the live OpenWebUI atlas-frontier-failover pipe with a Venice-primary
-multi-provider bridge to Caspa's canonical router.
+multi-provider bridge to Atlas's internal canonical router.
 
 The public manifold IDs remain unchanged so all existing Atlas custom model
 records continue to work. Local Qwen remains the final fail-soft only after the
@@ -42,7 +42,7 @@ from open_webui.utils.chat import generate_chat_completion
 
 class Pipe:
     class Valves(BaseModel):
-        ROUTER_URL: str = Field(default="https://caspa.ocrowley.com/api/ai/call")
+        ROUTER_URL: str = Field(default="http://172.19.0.1:3014/api/ai/call")
         PRIMARY_PROVIDER: str = Field(default="venice")
         LOCAL_FALLBACK_MODEL: str = Field(default="atlas-local")
         QUALITY_LOCAL_FALLBACK_MODEL: str = Field(default="atlas-god-mode")
@@ -275,7 +275,7 @@ verify = con.execute("SELECT content FROM function WHERE id=?", (FUNCTION_ID,)).
 code = str(verify[0] or "")
 assert MARKER in code
 assert 'PRIMARY_PROVIDER: str = Field(default="venice")' in code
-assert 'ROUTER_URL: str = Field(default="https://caspa.ocrowley.com/api/ai/call")' in code
+assert 'ROUTER_URL: str = Field(default="http://172.19.0.1:3014/api/ai/call")' in code
 print("patched=true")
 print("marker=true")
 print("venice_primary=true")
