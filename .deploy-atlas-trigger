@@ -1,2 +1,2 @@
-deploy requested 2026-08-11T12:21:00Z
-reason: redeploy committed Publication Studio UI after removing obsolete deploy-time patch step
+deploy requested 2026-08-12T10:52:41Z
+reason: enforce real web-search capability for search-required Atlas routing and prohibit non-search/local fallback
