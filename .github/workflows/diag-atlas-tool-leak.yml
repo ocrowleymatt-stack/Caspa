@@ -43,4 +43,5 @@ jobs:
       - name: Run exact routing regressions
         shell: bash
         run: |
+          # Regression harness supplies a test-only WEBUI_SECRET_KEY internally.
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker cp /root/repair-atlas-auto-v17.py atlas-openwebui:/tmp/repair-atlas-auto-v17.py && docker exec atlas-openwebui python3 /tmp/repair-atlas-auto-v17.py --test'
