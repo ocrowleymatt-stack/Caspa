@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import shutil
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -115,6 +116,9 @@ async def run_regression() -> None:
     con.close()
     if 'ATLAS AUTO SOCIAL/RESEARCH CONTINUATION ROUTING v1.7' not in source:
         raise SystemExit('v1.7 marker missing')
+    backend = '/app/backend'
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
     ns: dict = {}
     exec(compile(source, 'atlas-auto-live-v17', 'exec'), ns)
 
