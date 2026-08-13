@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/diag-atlas-tool-leak.yml'
+      - 'scripts/repair-atlas-auto-social-continuation-v17.py'
 
 permissions:
   contents: read
