@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import shutil
 import sqlite3
 import sys
@@ -116,6 +117,13 @@ async def run_regression() -> None:
     con.close()
     if 'ATLAS AUTO SOCIAL/RESEARCH CONTINUATION ROUTING v1.7' not in source:
         raise SystemExit('v1.7 marker missing')
+    # The regression imports OpenWebUI modules outside the normal server process.
+    # Supply a test-only secret so its authentication configuration can import;
+    # this does not alter the running container/server environment.
+    os.environ.setdefault(
+        'WEBUI_SECRET_KEY',
+        'atlas-regression-harness-only-secret-not-used-by-production-2026',
+    )
     backend = '/app/backend'
     if backend not in sys.path:
         sys.path.insert(0, backend)
