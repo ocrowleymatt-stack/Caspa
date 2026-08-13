@@ -1,4 +1,4 @@
-name: Diagnose Atlas tool leak
+name: Repair Atlas Auto social continuation
 
 on:
   push:
@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       ATLAS_HOST: 116.202.24.63
@@ -26,70 +26,116 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect exact leaked message tree and model flags
+      - name: Patch live Atlas Auto and regression test exact follow-up
         shell: bash
         run: |
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
-          import sqlite3, json, re
+          import sqlite3, time, shutil, os
+          db='/app/backend/data/webui.db'
+          backup=f'/app/backend/data/webui.db.bak-atlas-auto-v17-{int(time.time())}'
+          shutil.copy2(db, backup)
+          con=sqlite3.connect(db)
+          row=con.execute('select content from function where id=?',('atlas-auto',)).fetchone()
+          if not row: raise SystemExit('atlas-auto function missing')
+          s=row[0]
+          old_header='version: 1.6.0'
+          if old_header in s:
+              s=s.replace(old_header,'version: 1.7.0',1)
+          old='''        public_footprint_web = bool(re.search(
+            r"\\b(?:social[- ]media activity|social[- ]media accounts?|social profiles?|online presence|online activity|digital footprint|public profiles?|public posts?|facebook|instagram|linkedin|tiktok|twitter|x\\.com|reddit|community involvement|local community involvement|community groups?|local groups?|volunteer(?:ing)?|charit(?:y|ies) involvement)\\b",
+            lowered,
+        ))
+        web_search = bool((features.get("web_search") or explicit_web or public_footprint_web) and not explicit_no_web)
+'''
+          new='''        # ATLAS AUTO SOCIAL/RESEARCH CONTINUATION ROUTING v1.7
+        # A follow-up does not need to repeat the words "OSINT" or "web search".
+        # Bare social-media relationship/tag language is itself a public-source
+        # retrieval request, and terse continuation cues inherit recent research
+        # context instead of falling back to the local tool-schema model.
+        public_footprint_web = bool(re.search(
+            r"\\b(?:social[- ]media(?: activity| accounts?| connections?| profiles?| posts?)?|social profiles?|online presence|online activity|digital footprint|public profiles?|public posts?|tagged (?:posts?|photos?|content)|mutual connections?|profile connections?|facebook|instagram|linkedin|tiktok|twitter|x\\.com|reddit|community involvement|local community involvement|community groups?|local groups?|volunteer(?:ing)?|charit(?:y|ies) involvement)\\b",
+            lowered,
+        ))
+        prior_messages = [m for m in (body.get("messages") or [])[:-1] if isinstance(m, dict)]
+        prior_text = " ".join(
+            self._text_from_content(m.get("content")) for m in prior_messages[-6:]
+        ).lower()
+        continuation_cue = bool(re.search(
+            r"\\b(?:dig deeper|keep digging|go deeper|look further|keep looking|search further|continue(?: searching| researching)?|more(?: on this)?|what else|anything else|take another look|go on)\\b",
+            lowered,
+        ))
+        prior_research_context = bool(re.search(
+            r"(?:\\bosint\\b|public[- ]source|live research|web research|social[- ]media|facebook|instagram|linkedin|tiktok|twitter|x\\.com|https?://)",
+            prior_text,
+        ))
+        continuation_web = bool(continuation_cue and prior_research_context)
+        web_search = bool((features.get("web_search") or explicit_web or public_footprint_web or continuation_web) and not explicit_no_web)
+'''
+          if old not in s:
+              raise SystemExit('expected v1.6 public-footprint routing block not found; refusing blind patch')
+          s=s.replace(old,new,1)
+          old_marker='''            bad_meta = (
+                "cannot access the internet",
+                "can't access the internet",
+                "unable to access the internet",
+                "cannot browse the web",
+                "i should use tools",
+                "i should search",
+            )
+'''
+          new_marker='''            bad_meta = (
+                "cannot access the internet",
+                "can't access the internet",
+                "unable to access the internet",
+                "cannot browse the web",
+                "i should use tools",
+                "i should search",
+                "my capabilities are limited to the tools",
+                "do not include public social media",
+                "no function related to social media",
+            )
+'''
+          if old_marker in s:
+              s=s.replace(old_marker,new_marker,1)
+          compile(s,'atlas-auto-v17','exec')
+          con.execute('update function set content=?, updated_at=? where id=?',(s,int(time.time()),'atlas-auto'))
+          con.commit()
+          print('BACKUP',backup)
+          print('PATCHED_ATLAS_AUTO_V17=true')
+          print('HAS_SOCIAL_CONNECTIONS', 'connections?' in s)
+          print('HAS_TAGGED_POSTS', 'tagged (?:posts?' in s)
+          print('HAS_CONTINUATION_WEB', 'continuation_web' in s)
+          PY
+
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker restart atlas-openwebui >/dev/null && for i in $(seq 1 45); do curl -fsS http://127.0.0.1:3002/health >/dev/null && exit 0; sleep 2; done; exit 1'
+
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
+          import sqlite3, asyncio, json
           db='/app/backend/data/webui.db'
           con=sqlite3.connect(db)
-          con.row_factory=sqlite3.Row
-          needle='Okay, the user is asking if I can dig deeper into public social media connections or tagged posts linking Stuart A Hardman to Scott Millard or Adam Walsh.'
+          source=con.execute('select content from function where id=?',('atlas-auto',)).fetchone()[0]
+          ns={}
+          exec(compile(source,'atlas-auto-live-v17','exec'),ns)
+          async def fake_user(uid): return object()
+          ns['Users'].get_user_by_id = staticmethod(fake_user)
+          async def local_sentinel(*args,**kwargs): return 'LOCAL_PATH_SELECTED'
+          ns['generate_chat_completion'] = local_sentinel
+          pipe=ns['Pipe']()
+          prior='OSINT-derived background narrative with public web sources: https://example.com/source and public profile findings.'
+          exact='Can you dig deeper into any public social media connections or tagged posts linking Stuart A Hardman to Scott Millard or Adam Walsh?'
+          body={'messages':[{'role':'assistant','content':prior},{'role':'user','content':exact}], 'features':{}}
+          result=asyncio.run(pipe.pipe(body,{'id':'regression-user'},None,None))
+          print('EXACT_RESULT_PREFIX', str(result)[:1200].replace('\n',' '))
+          assert result != 'LOCAL_PATH_SELECTED', 'exact social follow-up still routed local'
+          low=str(result).lower()
+          for bad in ['my capabilities are limited to the tools','no function related to social media','search_calendar_events','calendar-related tasks']:
+              assert bad not in low, bad
+          assert len(str(result))>120
+          print('EXACT_SOCIAL_FOLLOWUP_ROUTES_WEB=true')
 
-          # Find only the chat(s) containing the exact leaked reasoning text and print the local tree.
-          for row in con.execute('select id, title, chat, updated_at from chat where chat like ?', ('%'+needle+'%',)):
-              print('CHAT_MATCH', row['id'], row['title'], row['updated_at'])
-              obj=json.loads(row['chat']) if isinstance(row['chat'],str) else row['chat']
-              hist=((obj or {}).get('history') or {}).get('messages') or {}
-              matches=[]
-              for mid,m in hist.items():
-                  blob=json.dumps(m,ensure_ascii=False)
-                  if needle in blob:
-                      matches.append(mid)
-              print('MATCH_MESSAGE_IDS', matches)
-              seen=set()
-              def show(mid, depth=0):
-                  if not mid or mid in seen or mid not in hist or depth>4: return
-                  seen.add(mid); m=hist[mid]
-                  out=m.get('output') or []
-                  print('NODE', mid, 'depth', depth, 'role', m.get('role'), 'parent', m.get('parentId'), 'children', m.get('childrenIds'), 'done', m.get('done'), 'model', m.get('model'), 'content_len', len(str(m.get('content') or '')), 'output_types', [x.get('type') for x in out if isinstance(x,dict)])
-                  for x in out:
-                      if isinstance(x,dict) and x.get('type')=='reasoning':
-                          text=' '.join(str(y.get('text') or '') for y in (x.get('content') or []) if isinstance(y,dict))
-                          print('REASONING_STATUS', x.get('status'), 'TEXT', text[:1200].replace('\n',' '))
-                      if isinstance(x,dict) and x.get('type')=='message':
-                          text=' '.join(str(y.get('text') or '') for y in (x.get('content') or []) if isinstance(y,dict))
-                          print('MESSAGE_STATUS', x.get('status'), 'TEXT', text[:1200].replace('\n',' '))
-                  c=str(m.get('content') or '')
-                  if c: print('CONTENT', c[:1200].replace('\n',' '))
-                  for child in m.get('childrenIds') or []: show(child, depth+1)
-              for mid in matches:
-                  p=hist.get(mid,{}).get('parentId')
-                  gp=hist.get(p,{}).get('parentId') if p else None
-                  show(gp or p or mid)
-
-          # Inspect model rows relevant to Atlas and any reasoning/tool settings.
-          cols=[r[1] for r in con.execute('pragma table_info("model")')]
-          print('MODEL_COLUMNS', cols)
-          for row in con.execute('select * from model'):
-              vals={c:row[c] for c in cols}
-              joined='\n'.join(v for v in vals.values() if isinstance(v,str))
-              if any(k in joined.lower() for k in ['atlas-auto','atlas-research','atlas-local']):
-                  print('MODEL_ROW_BEGIN')
-                  for c,v in vals.items():
-                      if isinstance(v,str) and len(v)>2500: print(c, 'LEN', len(v), v[:2500])
-                      else: print(c, v)
-                  print('MODEL_ROW_END')
-
-          # Print config keys/values only when relevant to reasoning/tool display.
-          for table in ['config','config_old']:
-              try:
-                  cols=[r[1] for r in con.execute(f'pragma table_info("{table}")')]
-                  for row in con.execute(f'select * from "{table}"'):
-                      vals={c:row[c] for c in cols}
-                      joined='\n'.join(v for v in vals.values() if isinstance(v,str))
-                      if any(k in joined.lower() for k in ['reasoning','think','tool','function_call']):
-                          print('CONFIG_RELEVANT', table, {c:(v[:5000] if isinstance(v,str) else v) for c,v in vals.items()})
-              except Exception as e:
-                  print('CONFIG_ERR',table,type(e).__name__,e)
+          short_body={'messages':[{'role':'assistant','content':prior},{'role':'user','content':'Keep digging.'}], 'features':{}}
+          short=asyncio.run(pipe.pipe(short_body,{'id':'regression-user'},None,None))
+          print('SHORT_RESULT_PREFIX', str(short)[:500].replace('\n',' '))
+          assert short != 'LOCAL_PATH_SELECTED', 'research continuation still routed local'
+          print('TERSE_RESEARCH_CONTINUATION_ROUTES_WEB=true')
           PY
