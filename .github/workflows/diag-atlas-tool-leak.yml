@@ -18,6 +18,7 @@ jobs:
       ATLAS_HOST: 116.202.24.63
       ATLAS_USER: root
     steps:
+      - uses: actions/checkout@v4
       - name: Select SSH key
         shell: bash
         run: |
@@ -26,116 +27,19 @@ jobs:
           printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Patch live Atlas Auto and regression test exact follow-up
+      - name: Copy repair script
         shell: bash
         run: |
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
-          import sqlite3, time, shutil, os
-          db='/app/backend/data/webui.db'
-          backup=f'/app/backend/data/webui.db.bak-atlas-auto-v17-{int(time.time())}'
-          shutil.copy2(db, backup)
-          con=sqlite3.connect(db)
-          row=con.execute('select content from function where id=?',('atlas-auto',)).fetchone()
-          if not row: raise SystemExit('atlas-auto function missing')
-          s=row[0]
-          old_header='version: 1.6.0'
-          if old_header in s:
-              s=s.replace(old_header,'version: 1.7.0',1)
-          old='''        public_footprint_web = bool(re.search(
-            r"\\b(?:social[- ]media activity|social[- ]media accounts?|social profiles?|online presence|online activity|digital footprint|public profiles?|public posts?|facebook|instagram|linkedin|tiktok|twitter|x\\.com|reddit|community involvement|local community involvement|community groups?|local groups?|volunteer(?:ing)?|charit(?:y|ies) involvement)\\b",
-            lowered,
-        ))
-        web_search = bool((features.get("web_search") or explicit_web or public_footprint_web) and not explicit_no_web)
-'''
-          new='''        # ATLAS AUTO SOCIAL/RESEARCH CONTINUATION ROUTING v1.7
-        # A follow-up does not need to repeat the words "OSINT" or "web search".
-        # Bare social-media relationship/tag language is itself a public-source
-        # retrieval request, and terse continuation cues inherit recent research
-        # context instead of falling back to the local tool-schema model.
-        public_footprint_web = bool(re.search(
-            r"\\b(?:social[- ]media(?: activity| accounts?| connections?| profiles?| posts?)?|social profiles?|online presence|online activity|digital footprint|public profiles?|public posts?|tagged (?:posts?|photos?|content)|mutual connections?|profile connections?|facebook|instagram|linkedin|tiktok|twitter|x\\.com|reddit|community involvement|local community involvement|community groups?|local groups?|volunteer(?:ing)?|charit(?:y|ies) involvement)\\b",
-            lowered,
-        ))
-        prior_messages = [m for m in (body.get("messages") or [])[:-1] if isinstance(m, dict)]
-        prior_text = " ".join(
-            self._text_from_content(m.get("content")) for m in prior_messages[-6:]
-        ).lower()
-        continuation_cue = bool(re.search(
-            r"\\b(?:dig deeper|keep digging|go deeper|look further|keep looking|search further|continue(?: searching| researching)?|more(?: on this)?|what else|anything else|take another look|go on)\\b",
-            lowered,
-        ))
-        prior_research_context = bool(re.search(
-            r"(?:\\bosint\\b|public[- ]source|live research|web research|social[- ]media|facebook|instagram|linkedin|tiktok|twitter|x\\.com|https?://)",
-            prior_text,
-        ))
-        continuation_web = bool(continuation_cue and prior_research_context)
-        web_search = bool((features.get("web_search") or explicit_web or public_footprint_web or continuation_web) and not explicit_no_web)
-'''
-          if old not in s:
-              raise SystemExit('expected v1.6 public-footprint routing block not found; refusing blind patch')
-          s=s.replace(old,new,1)
-          old_marker='''            bad_meta = (
-                "cannot access the internet",
-                "can't access the internet",
-                "unable to access the internet",
-                "cannot browse the web",
-                "i should use tools",
-                "i should search",
-            )
-'''
-          new_marker='''            bad_meta = (
-                "cannot access the internet",
-                "can't access the internet",
-                "unable to access the internet",
-                "cannot browse the web",
-                "i should use tools",
-                "i should search",
-                "my capabilities are limited to the tools",
-                "do not include public social media",
-                "no function related to social media",
-            )
-'''
-          if old_marker in s:
-              s=s.replace(old_marker,new_marker,1)
-          compile(s,'atlas-auto-v17','exec')
-          con.execute('update function set content=?, updated_at=? where id=?',(s,int(time.time()),'atlas-auto'))
-          con.commit()
-          print('BACKUP',backup)
-          print('PATCHED_ATLAS_AUTO_V17=true')
-          print('HAS_SOCIAL_CONNECTIONS', 'connections?' in s)
-          print('HAS_TAGGED_POSTS', 'tagged (?:posts?' in s)
-          print('HAS_CONTINUATION_WEB', 'continuation_web' in s)
-          PY
-
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker restart atlas-openwebui >/dev/null && for i in $(seq 1 45); do curl -fsS http://127.0.0.1:3002/health >/dev/null && exit 0; sleep 2; done; exit 1'
-
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker exec -i atlas-openwebui python3 -' <<'PY'
-          import sqlite3, asyncio, json
-          db='/app/backend/data/webui.db'
-          con=sqlite3.connect(db)
-          source=con.execute('select content from function where id=?',('atlas-auto',)).fetchone()[0]
-          ns={}
-          exec(compile(source,'atlas-auto-live-v17','exec'),ns)
-          async def fake_user(uid): return object()
-          ns['Users'].get_user_by_id = staticmethod(fake_user)
-          async def local_sentinel(*args,**kwargs): return 'LOCAL_PATH_SELECTED'
-          ns['generate_chat_completion'] = local_sentinel
-          pipe=ns['Pipe']()
-          prior='OSINT-derived background narrative with public web sources: https://example.com/source and public profile findings.'
-          exact='Can you dig deeper into any public social media connections or tagged posts linking Stuart A Hardman to Scott Millard or Adam Walsh?'
-          body={'messages':[{'role':'assistant','content':prior},{'role':'user','content':exact}], 'features':{}}
-          result=asyncio.run(pipe.pipe(body,{'id':'regression-user'},None,None))
-          print('EXACT_RESULT_PREFIX', str(result)[:1200].replace('\n',' '))
-          assert result != 'LOCAL_PATH_SELECTED', 'exact social follow-up still routed local'
-          low=str(result).lower()
-          for bad in ['my capabilities are limited to the tools','no function related to social media','search_calendar_events','calendar-related tasks']:
-              assert bad not in low, bad
-          assert len(str(result))>120
-          print('EXACT_SOCIAL_FOLLOWUP_ROUTES_WEB=true')
-
-          short_body={'messages':[{'role':'assistant','content':prior},{'role':'user','content':'Keep digging.'}], 'features':{}}
-          short=asyncio.run(pipe.pipe(short_body,{'id':'regression-user'},None,None))
-          print('SHORT_RESULT_PREFIX', str(short)[:500].replace('\n',' '))
-          assert short != 'LOCAL_PATH_SELECTED', 'research continuation still routed local'
-          print('TERSE_RESEARCH_CONTINUATION_ROUTES_WEB=true')
-          PY
+          scp -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 scripts/repair-atlas-auto-social-continuation-v17.py "${ATLAS_USER}@${ATLAS_HOST}:/root/repair-atlas-auto-v17.py"
+      - name: Patch live OpenWebUI database
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker cp /root/repair-atlas-auto-v17.py atlas-openwebui:/tmp/repair-atlas-auto-v17.py && docker exec atlas-openwebui python3 /tmp/repair-atlas-auto-v17.py'
+      - name: Restart OpenWebUI and verify health
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker restart atlas-openwebui >/dev/null; for i in $(seq 1 45); do curl -fsS http://127.0.0.1:3002/health >/dev/null && exit 0; sleep 2; done; exit 1'
+      - name: Run exact routing regressions
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'docker cp /root/repair-atlas-auto-v17.py atlas-openwebui:/tmp/repair-atlas-auto-v17.py && docker exec atlas-openwebui python3 /tmp/repair-atlas-auto-v17.py --test'
