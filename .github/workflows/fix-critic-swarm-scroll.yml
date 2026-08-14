@@ -1,0 +1,39 @@
+name: Fix Critic Swarm scrolling
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-critic-swarm-scroll.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix flex/grid scroll containment
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/components/CriticSwarm.tsx')
+          s=p.read_text()
+          replacements={
+            'className="h-full flex flex-col gap-1.5" style={{ minHeight: 0 }}': 'className="h-full min-h-0 flex flex-col gap-1.5 overflow-hidden"',
+            'className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-2 overflow-hidden"\n        style={{ minHeight: 0 }}': 'className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-2 overflow-hidden"',
+            'className="lg:col-span-2 overflow-y-auto overscroll-contain space-y-2 pr-2 custom-scrollbar pb-32"': 'className="lg:col-span-2 min-h-0 h-full overflow-y-auto overscroll-contain touch-pan-y space-y-2 pr-2 custom-scrollbar pb-32"',
+            'className="bg-brand-dark text-text-primary rounded-md p-3 flex flex-col gap-1.5 shadow-[0_50px_100px_rgba(0,0,0,0.5)] border border-border-subtle relative overflow-y-auto overscroll-contain custom-scrollbar group"': 'className="bg-brand-dark text-text-primary rounded-md p-3 min-h-0 h-full flex flex-col gap-1.5 shadow-[0_50px_100px_rgba(0,0,0,0.5)] border border-border-subtle relative overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar group"'
+          }
+          changed=0
+          for old,new in replacements.items():
+              if old in s:
+                  s=s.replace(old,new); changed+=1
+          if changed != len(replacements):
+              raise SystemExit(f'Expected {len(replacements)} scroll fixes, applied {changed}')
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/CriticSwarm.tsx
+          git commit -m 'Fix Critic Swarm scrolling'
+          git push
