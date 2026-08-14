@@ -1,0 +1,71 @@
+name: Live Caspa UI Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-caspa-ui-diagnostics.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HOST: 116.202.24.63
+      USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Inspect live UI, jobs and errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -u
+          BASE='http://127.0.0.1:3000'
+          echo '=== HEALTH ==='
+          curl -sS "$BASE/health"; echo
+          echo '=== DOCTOR ==='
+          curl -sS "$BASE/api/doctor"; echo
+          echo '=== PUBLICATION STATUS ==='
+          curl -sS "$BASE/api/caspa/gold/publication-studio/status"; echo
+          echo '=== RECOVERED JOB ==='
+          curl -sS "$BASE/api/caspa/gold/jobs/5afbd817-fee6-46cd-aa26-2274bee58052"; echo
+          echo '=== RECENT JOB SUMMARY ==='
+          curl -sS "$BASE/api/caspa/gold/jobs" > /tmp/caspa-jobs-live.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/caspa-jobs-live.json'))
+          jobs=(d.get('data') or {}).get('jobs',[])
+          for j in jobs[:30]:
+              print(json.dumps({k:j.get(k) for k in ['id','type','status','stage','progress','error','updatedAt']},ensure_ascii=False))
+          PY
+          echo '=== ASSISTANT SMOKE ==='
+          curl -sS -w '\nHTTP %{http_code}\n' -X POST "$BASE/api/assist/assist" -H 'Content-Type: application/json' --data '{"action":"summarize","content":"Caspa smoke test. Reply briefly."}' || true
+          echo '=== ROUTER SMOKE ==='
+          curl -sS -w '\nHTTP %{http_code}\n' -X POST "$BASE/api/ai/call" -H 'Content-Type: application/json' --data '{"prompt":"Reply exactly OK","maxTokens":32,"intelligenceMode":"speed"}' || true
+          echo '=== QUOTA/CREDIT LINES PM2 ==='
+          pm2 logs caspa-server --lines 1200 --nostream 2>&1 | grep -Ei 'quota|credit|billing|insufficient|resource.exhaust|429|402|out of' | tail -n 160 || true
+          echo '=== RECENT SERVER ERRORS ==='
+          pm2 logs caspa-server --lines 600 --nostream 2>&1 | grep -Ei 'error|exception|failed|404|500' | tail -n 180 || true
+          echo '=== PUBLIC INDEX ==='
+          curl -sS https://caspa.ocrowley.com/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -n 5 || true
+          echo '=== LOCAL INDEX ==='
+          grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' /root/Caspa/dist/index.html | head -n 5 || true
+          echo '=== BUILT BUNDLE STALE ENDPOINT/QUOTA STRINGS ==='
+          grep -RaoE 'publication-studio/(progress|status)|quota exceeded|out of quota|no credits remaining|credit balance[^"<]{0,120}' /root/Caspa/dist/assets/*.js 2>/dev/null | head -n 100 || true
+          echo '=== NGINX RECENT API FAILURES ==='
+          for f in /var/log/nginx/access.log /var/log/nginx/error.log; do
+            [ -f "$f" ] || continue
+            echo "-- $f --"
+            tail -n 800 "$f" | grep -Ei 'caspa|/api/' | grep -E ' 4[0-9][0-9] | 5[0-9][0-9] |error|upstream' | tail -n 120 || true
+          done
+          REMOTE
