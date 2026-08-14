@@ -589,7 +589,7 @@ export default function StudioToolBridge({
             {notice}
           </div>
         )}
-        <div style={{ background: 'rgba(255,255,255,0.55)', borderRadius: 24, border: '1px solid #eadfce', padding: 8 }}>
+        <div style={{ background: 'rgba(255,255,255,0.55)', borderRadius: 24, border: '1px solid #eadfce', padding: 8, ...(tool === 'swarm' ? { height: 'clamp(620px, calc(100vh - 250px), 900px)', minHeight: 0, overflow: 'hidden' } : {}) }}>
           {body}
         </div>
       </div>
