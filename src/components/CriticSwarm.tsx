@@ -145,7 +145,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
   const sortedCritiques = [...localCritiques].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   return (
-    <div className="h-full flex flex-col gap-1.5" style={{ minHeight: 0 }}>
+    <div className="h-full min-h-0 flex flex-col gap-1.5 overflow-hidden">
       <header className="flex items-center justify-between ethereal-panel p-3 rounded-md border border-border-subtle shadow-2xl relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
         <div className="flex items-center gap-1.5 relative z-10">
@@ -183,11 +183,10 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
       </header>
 
       <div 
-        className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-2 overflow-hidden"
-        style={{ minHeight: 0 }}
+        className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-2 overflow-hidden"
       >
         {/* Critique Cards */}
-        <div className="lg:col-span-2 overflow-y-auto overscroll-contain space-y-2 pr-2 custom-scrollbar pb-32">
+        <div className="lg:col-span-2 min-h-0 h-full overflow-y-auto overscroll-contain touch-pan-y space-y-2 pr-2 custom-scrollbar pb-32">
           <AnimatePresence mode="popLayout">
             {sortedCritiques.length > 0 ? sortedCritiques.map((c, i) => (
               <motion.div 
@@ -333,7 +332,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
         </div>
 
         {/* System Summary Sidebar */}
-        <div className="bg-brand-dark text-text-primary rounded-md p-3 flex flex-col gap-1.5 shadow-[0_50px_100px_rgba(0,0,0,0.5)] border border-border-subtle relative overflow-y-auto overscroll-contain custom-scrollbar group">
+        <div className="bg-brand-dark text-text-primary rounded-md p-3 min-h-0 h-full flex flex-col gap-1.5 shadow-[0_50px_100px_rgba(0,0,0,0.5)] border border-border-subtle relative overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar group">
            <div className="absolute -top-3 -right-10 p-3 opacity-[0.02] pointer-events-none text-brand-primary group-hover:opacity-5 transition-opacity duration-1000">
               <Zap size={300} />
            </div>
