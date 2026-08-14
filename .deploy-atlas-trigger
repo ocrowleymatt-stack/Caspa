@@ -1,2 +1,2 @@
-CASPA emergency restart trigger 2026-08-14T04:59Z
-Reason: production service reported down; force clean origin/main rebuild, PM2 restart and public health verification.
+CASPA deploy trigger 2026-08-14T05:39Z
+Reason: route around exhausted OpenAI/Anthropic balances so provider quota cannot strand user-facing requests.
