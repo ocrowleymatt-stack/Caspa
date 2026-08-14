@@ -15,7 +15,6 @@ import {
   setPersistence,
 } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from './firestoreUtils';
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
   getScopedCloudSessionItem,
@@ -33,8 +32,7 @@ const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch
   console.warn('Firebase auth persistence setup failed:', error);
 });
 
-// FORCED FIX: Explicitly nullify tenantId to escape the invalid-tenant-id error loop.
-// Some SDK versions or environments might persist this or pick it up from env vars automatically.
+// Explicitly nullify tenantId to escape invalid-tenant-id loops from stale config.
 function clearTenantId() {
   if ((auth as any).tenantId) {
     console.log(`Clearing existing tenant ID: ${(auth as any).tenantId}`);
@@ -42,13 +40,6 @@ function clearTenantId() {
   }
 }
 clearTenantId();
-
-// Support for multi-tenancy - DISABLED COMPLETELY to fix auth/invalid-tenant-id
-// const tenantId = (import.meta as any).env.VITE_FIREBASE_TENANT_ID;
-// if (tenantId && tenantId !== 'undefined' && tenantId !== 'null' && typeof tenantId === 'string' && tenantId.trim() !== '') {
-//   auth.tenantId = tenantId.trim();
-//   console.log(`Firebase Tenant ID set to: ${tenantId}`);
-// }
 
 // Plain Google login provider: keep ordinary account sign-in lightweight.
 export const googleProvider = new GoogleAuthProvider();
@@ -89,7 +80,7 @@ function normaliseAuthError(error: any): Error {
   }
 
   if (code === 'auth/popup-blocked') {
-    return new Error('The browser blocked the Google sign-in popup. Atlas will use redirect sign-in instead.');
+    return new Error('The browser blocked the Google sign-in popup. Caspa will use redirect sign-in instead.');
   }
 
   if (code === 'auth/popup-closed-by-user') {
@@ -117,13 +108,11 @@ const GOOGLE_REDIRECT_INTENT_KEY = 'caspa_google_redirect_intent';
 
 type GoogleRedirectIntent = 'login' | 'drive';
 
-// Keep the Google API token only for the mounted Atlas user's browser session.
-// A different Atlas UID cannot inherit this token on a shared browser.
+// Keep the Google API token only for the mounted Caspa user's browser session.
 export const setCachedAccessToken = (token: string | null) => {
   if (typeof window === 'undefined') return;
   if (token) {
     setScopedCloudSessionItem(DRIVE_TOKEN_KEY, token);
-    // This hint lives inside the mounted per-user workspace envelope.
     window.localStorage.setItem('ls_gdrive_connected', 'true');
   } else {
     removeScopedCloudSessionItem(DRIVE_TOKEN_KEY);
@@ -136,7 +125,8 @@ export const getCachedAccessToken = (): string | null => {
   return getScopedCloudSessionItem(DRIVE_TOKEN_KEY);
 };
 
-// Connection test as required by instructions
+// Connection test as required by instructions. This is diagnostic only and must
+// never gate application startup.
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
@@ -146,6 +136,8 @@ async function testConnection() {
       console.log('Firebase connectivity verified (Permission Denied as expected).');
     } else if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error('Please check your Firebase configuration: client is offline.');
+    } else {
+      console.warn('Firestore diagnostic unavailable; Caspa will continue:', error);
     }
   }
 }
@@ -177,7 +169,6 @@ export async function loginWithGoogle() {
     await authPersistenceReady;
     clearTenantId();
 
-    // Safari/iOS are less reliable with popup auth, so use redirect there.
     if (isAppleWebKit()) {
       console.log('Apple WebKit browser detected; using redirect sign-in.');
       return await startRedirect(googleProvider, 'login');
@@ -214,35 +205,35 @@ export async function loginWithGoogle() {
 }
 
 export async function connectGoogleDrive() {
-  console.log('Attempting Google Drive connection for the current Atlas user...');
+  console.log('Attempting Google Drive connection for the current Caspa user...');
   try {
     await authPersistenceReady;
     clearTenantId();
 
-    const atlasUser = auth.currentUser;
-    if (!atlasUser) {
-      throw new Error('Sign in to an Atlas account before connecting Google Drive.');
+    const caspaUser = auth.currentUser;
+    if (!caspaUser) {
+      throw new Error('Sign in to a Caspa account before connecting Google Drive.');
     }
-    const expectedUid = atlasUser.uid;
+    const expectedUid = caspaUser.uid;
     setScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY, expectedUid);
-    const alreadyGoogleLinked = atlasUser.providerData.some((provider) => provider.providerId === 'google.com');
+    const alreadyGoogleLinked = caspaUser.providerData.some((provider) => provider.providerId === 'google.com');
 
     if (isAppleWebKit()) {
       if (typeof window !== 'undefined') window.sessionStorage.setItem(GOOGLE_REDIRECT_INTENT_KEY, 'drive');
       if (alreadyGoogleLinked) {
-        await reauthenticateWithRedirect(atlasUser, googleDriveProvider);
+        await reauthenticateWithRedirect(caspaUser, googleDriveProvider);
       } else {
-        await linkWithRedirect(atlasUser, googleDriveProvider);
+        await linkWithRedirect(caspaUser, googleDriveProvider);
       }
       return null;
     }
 
     try {
       const result = alreadyGoogleLinked
-        ? await reauthenticateWithPopup(atlasUser, googleDriveProvider)
-        : await linkWithPopup(atlasUser, googleDriveProvider);
+        ? await reauthenticateWithPopup(caspaUser, googleDriveProvider)
+        : await linkWithPopup(caspaUser, googleDriveProvider);
       if (result.user.uid !== expectedUid) {
-        throw new Error('Google Drive authorisation returned a different Atlas identity. Connection refused.');
+        throw new Error('Google Drive authorisation returned a different Caspa identity. Connection refused.');
       }
       removeScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
       return await completeGoogleResult(result, true);
@@ -258,9 +249,9 @@ export async function connectGoogleDrive() {
       if (fallbackCodes.has(popupError.code)) {
         if (typeof window !== 'undefined') window.sessionStorage.setItem(GOOGLE_REDIRECT_INTENT_KEY, 'drive');
         if (alreadyGoogleLinked) {
-          await reauthenticateWithRedirect(atlasUser, googleDriveProvider);
+          await reauthenticateWithRedirect(caspaUser, googleDriveProvider);
         } else {
-          await linkWithRedirect(atlasUser, googleDriveProvider);
+          await linkWithRedirect(caspaUser, googleDriveProvider);
         }
         return null;
       }
@@ -290,7 +281,7 @@ export async function handleRedirectLogin() {
         const expectedUid = getScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
         if (!expectedUid || result.user.uid !== expectedUid) {
           removeScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
-          throw new Error('Google Drive authorisation did not return to the same Atlas user. Connection refused.');
+          throw new Error('Google Drive authorisation did not return to the same Caspa user. Connection refused.');
         }
         removeScopedCloudSessionItem(DRIVE_EXPECTED_UID_KEY);
       }
@@ -301,7 +292,6 @@ export async function handleRedirectLogin() {
       return user;
     }
 
-    // No redirect result means there is no OAuth result left to consume.
     if (typeof window !== 'undefined' && intent) {
       window.sessionStorage.removeItem(GOOGLE_REDIRECT_INTENT_KEY);
     }
@@ -316,37 +306,41 @@ export async function handleRedirectLogin() {
   }
 }
 
+/**
+ * Authentication and profile synchronisation are deliberately decoupled.
+ * Firebase Auth can be healthy while Firestore is rate-limited or temporarily
+ * unavailable. A profile-sync failure must therefore never turn a successful
+ * sign-in into a broken Caspa session.
+ */
 async function handleUserSync(user: any) {
-  if (user) {
-    const userRef = doc(db, 'users', user.uid);
-    let userSnap;
-    try {
-      userSnap = await getDoc(userRef);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
-      throw error;
-    }
+  if (!user) return user;
 
-    const userData = {
-      email: user.email || '',
-      displayName: user.displayName || '',
-      photoURL: user.photoURL || '',
-      lastLoginAt: Date.now(),
-    };
+  const userRef = doc(db, 'users', user.uid);
+  const userData = {
+    email: user.email || '',
+    displayName: user.displayName || '',
+    photoURL: user.photoURL || '',
+    lastLoginAt: Date.now(),
+  };
 
-    try {
-      if (!userSnap || !userSnap.exists()) {
-        await setDoc(userRef, {
-          ...userData,
-          createdAt: Date.now(),
-        });
-      } else {
-        await setDoc(userRef, userData, { merge: true });
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+  try {
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+      await setDoc(userRef, {
+        ...userData,
+        createdAt: Date.now(),
+      });
+    } else {
+      await setDoc(userRef, userData, { merge: true });
     }
+  } catch (error: any) {
+    const code = String(error?.code || '');
+    const message = String(error?.message || error || 'unknown Firestore error');
+    console.warn(
+      `Firestore user-profile sync skipped (${code || 'unknown'}): ${message}. Authentication remains valid.`,
+    );
   }
+
   return user;
 }
 
