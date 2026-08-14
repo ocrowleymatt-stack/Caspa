@@ -1,10 +1,13 @@
 /**
  * Caspa Assistant Routes
- * Handles all interactive writing assistant endpoints
+ * Handles all interactive writing assistant endpoints.
+ *
+ * All model calls go through the canonical server AI helper so provider quota,
+ * model retirement and transient provider faults cannot strand the UI.
  */
 
 import { Router, Request, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import { callServerAi } from '../services/serverAiHelper';
 
 const router = Router();
 
@@ -16,54 +19,24 @@ interface AssistantRequest {
   stream?: boolean;
 }
 
-interface AssistantResponse {
-  status: 'success' | 'error';
-  action: string;
-  result?: string;
-  error?: string;
-  timestamp: string;
-}
+async function callAssistant(prompt: string, context: string = ''): Promise<string> {
+  const fullPrompt = context
+    ? `You are Caspa's prize-calibre literary assistant. Literary context:\n${context}\n\nTask:\n${prompt}`
+    : `You are Caspa's prize-calibre literary assistant.\n\nTask:\n${prompt}`;
 
-function getGeminiClient(): GoogleGenAI {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-  if (!geminiKey) throw new Error('GEMINI_API_KEY not configured');
-  return new GoogleGenAI({ apiKey: geminiKey });
-}
-
-async function callGeminiAssistant(prompt: string, context: string = ''): Promise<string> {
-  const ai = getGeminiClient();
-
-  const fullPrompt = context 
-    ? `You are a prize-calibre literary assistant. Literary context:\n${context}\n\nTask:\n${prompt}`
-    : `You are a prize-calibre literary assistant.\n\nTask:\n${prompt}`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: fullPrompt,
-      config: {
-        systemInstruction: 'You are a snobbish, excellence-obsessed literary editor. Provide raw, high-fidelity suggestions that elevate prose.',
-        temperature: 0.8,
-        maxOutputTokens: 1500,
-      },
-    });
-
-    return response.text || 'No response generated';
-  } catch (err: any) {
-    throw new Error(`Gemini error: ${err.message}`);
-  }
+  return callServerAi(fullPrompt, false, { maxTokens: 1500, timeoutMs: 90_000 });
 }
 
 // Main assistant endpoint
 router.post('/assist', async (req: Request, res: Response) => {
   try {
-    const { action, chapterTitle, content, context, stream } = req.body as AssistantRequest;
+    const { action, content, context, stream } = req.body as AssistantRequest;
 
     if (!action) {
-      return res.status(400).json({ 
-        status: 'error', 
+      return res.status(400).json({
+        status: 'error',
         error: 'Action required',
-        timestamp: new Date().toISOString() 
+        timestamp: new Date().toISOString(),
       });
     }
 
@@ -95,22 +68,20 @@ router.post('/assist', async (req: Request, res: Response) => {
         break;
 
       default:
-        return res.status(400).json({ 
-          status: 'error', 
+        return res.status(400).json({
+          status: 'error',
           error: `Unknown action: ${action}`,
-          timestamp: new Date().toISOString() 
+          timestamp: new Date().toISOString(),
         });
     }
 
-    const result = await callGeminiAssistant(prompt, context || '');
+    const result = await callAssistant(prompt, context || '');
 
     if (stream) {
-      // For real-time streaming (SSE), send headers and chunked response
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Send result in chunks
       const words = result.split(' ');
       let chunk = '';
       for (const word of words) {
@@ -124,7 +95,6 @@ router.post('/assist', async (req: Request, res: Response) => {
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      // Standard JSON response
       res.json({
         status: 'success',
         action,
@@ -157,7 +127,7 @@ Provide a brief assessment of:
 3. Pacing concerns
 4. Top 3 editorial recommendations`;
 
-    const result = await callGeminiAssistant(prompt);
+    const result = await callAssistant(prompt);
 
     res.json({
       status: 'success',
@@ -175,7 +145,7 @@ Provide a brief assessment of:
 });
 
 // Quick suggestions endpoint (for UI hints)
-router.get('/suggestions', (req: Request, res: Response) => {
+router.get('/suggestions', (_req: Request, res: Response) => {
   const suggestions = [
     {
       type: 'Scene suggestion',
