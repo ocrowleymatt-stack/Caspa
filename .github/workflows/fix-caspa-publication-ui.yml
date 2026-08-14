@@ -1,0 +1,81 @@
+name: Fix Caspa Publication UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-caspa-publication-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HOST: 116.202.24.63
+      USER: root
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Correct Publication Studio endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/components/CaspaRedesign.tsx')
+          s=p.read_text()
+          old="/api/caspa/gold/publication-studio/progress"
+          new="/api/caspa/gold/publication-studio/status"
+          if old not in s:
+              print('Endpoint already corrected')
+          else:
+              p.write_text(s.replace(old,new))
+              print('Corrected Publication Studio polling endpoint')
+          PY
+          git config user.name 'Caspa Repair Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/components/CaspaRedesign.tsx
+          if ! git diff --cached --quiet; then
+            git commit -m 'Fix Publication Studio progress polling endpoint'
+            git push origin HEAD:main
+          fi
+
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy corrected UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /root/Caspa
+          git fetch origin
+          git reset --hard origin/main
+          git clean -fd -e data -e .env -e exports -e backups -e .caspa_snapshots
+          export NODE_ENV=production
+          export CASPA_DATA_DIR=/root/Caspa/data
+          export CASPA_GIT_SHA=$(git rev-parse HEAD)
+          export CASPA_GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD || echo main)
+          export CASPA_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          npm ci
+          npm run build
+          pm2 restart caspa-server --update-env
+          sleep 3
+          echo '--- health ---'
+          curl -fsS http://127.0.0.1:3000/health; echo
+          echo '--- publication status ---'
+          curl -fsS http://127.0.0.1:3000/api/caspa/gold/publication-studio/status; echo
+          REMOTE
