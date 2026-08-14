@@ -1,0 +1,2 @@
+CASPA emergency restart trigger 2026-08-14T04:59Z
+Reason: production service reported down; force clean origin/main rebuild, PM2 restart and public health verification.
