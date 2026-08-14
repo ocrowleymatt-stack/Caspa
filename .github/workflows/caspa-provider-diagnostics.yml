@@ -1,0 +1,78 @@
+name: Caspa Provider Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.caspa-provider-diagnostics-trigger'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      HOST: 116.202.24.63
+      USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Probe live providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          BASE=http://127.0.0.1:3000
+          mkdir -p /tmp/caspa-provider-diag
+          curl -fsS "$BASE/health" > /tmp/caspa-provider-diag/health.json
+          curl -fsS "$BASE/api/ai/router" > /tmp/caspa-provider-diag/router.json
+          for p in grok gemini openai claude venice; do
+            code=$(curl -sS -o "/tmp/caspa-provider-diag/$p.json" -w '%{http_code}' -X POST "$BASE/api/ai/call" \
+              -H 'Content-Type: application/json' \
+              --data "{\"prompt\":\"Reply with exactly OK\",\"providerOverride\":\"$p\",\"strictProvider\":true,\"maxTokens\":32,\"intelligenceMode\":\"speed\",\"skipLocalFallback\":true}" || true)
+            echo "$code" > "/tmp/caspa-provider-diag/$p.code"
+          done
+          python3 - <<'PY' > /tmp/caspa-provider-diag/summary.txt
+          import json, pathlib
+          root=pathlib.Path('/tmp/caspa-provider-diag')
+          print('HEALTH', json.load(open(root/'health.json')))
+          router=json.load(open(root/'router.json'))
+          print('ROUTER_CLOUD', router.get('cloud'))
+          for p in ['grok','gemini','openai','claude','venice']:
+              code=(root/f'{p}.code').read_text().strip()
+              try: data=json.load(open(root/f'{p}.json'))
+              except Exception: data={'raw':(root/f'{p}.json').read_text(errors='replace')}
+              print('\nPROVIDER',p,'HTTP',code)
+              print(json.dumps(data,ensure_ascii=False)[:4000])
+          PY
+          cat /tmp/caspa-provider-diag/summary.txt
+          REMOTE
+
+      - name: Copy diagnostics
+        shell: bash
+        run: |
+          scp -i ~/.ssh/id_ed25519 "$USER@$HOST:/tmp/caspa-provider-diag/summary.txt" ./summary.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caspa-provider-diagnostics
+          path: summary.txt
+          retention-days: 7
