@@ -44,7 +44,7 @@ jobs:
           curl -fsS http://127.0.0.1:3000/health >/dev/null
           curl -fsS "$BASE/jobs" > /tmp/caspa-jobs-live.json
           python3 - <<'PY' >/tmp/candidate.env
-          import json, datetime
+          import json, shlex
           d=json.load(open('/tmp/caspa-jobs-live.json'))
           jobs=(d.get('data') or {}).get('jobs') or []
           commissions=[j for j in jobs if j.get('type')=='commission']
@@ -52,13 +52,13 @@ jobs:
           active=[j for j in commissions if j.get('status') in ('running','queued') and j.get('input')]
           failed=[j for j in commissions if j.get('status')=='failed' and j.get('input')]
           candidate=max(active,key=ts) if active else (max(failed,key=ts) if failed else None)
-          if not candidate:
-              print('JOB_ID=')
-          else:
-              print('JOB_ID='+str(candidate.get('id')))
-              print('JOB_STATUS='+str(candidate.get('status')))
-              print('JOB_STAGE='+str(candidate.get('stage') or ''))
-              print('JOB_TITLE='+str(((candidate.get('input') or {}).get('brief') or {}).get('title') or '').replace('\n',' '))
+          vals={
+              'JOB_ID': '' if not candidate else str(candidate.get('id') or ''),
+              'JOB_STATUS': '' if not candidate else str(candidate.get('status') or ''),
+              'JOB_STAGE': '' if not candidate else str(candidate.get('stage') or ''),
+              'JOB_TITLE': '' if not candidate else str((((candidate.get('input') or {}).get('brief') or {}).get('title') or '')).replace('\n',' '),
+          }
+          for k,v in vals.items(): print(f'{k}={shlex.quote(v)}')
           PY
           cat /tmp/candidate.env
           . /tmp/candidate.env
@@ -79,13 +79,19 @@ jobs:
           last=''
           for n in $(seq 1 720); do
             curl -fsS "$BASE/jobs/$JOB_ID" >/tmp/job.json
-            read status stage progress words error < <(python3 - <<'PY'
+            eval "$(python3 - <<'PY'
           import json, shlex
           j=json.load(open('/tmp/job.json'))['data']
-          vals=[j.get('status',''),j.get('stage',''),j.get('progress',''),(j.get('result') or {}).get('words',''),j.get('error') or '']
-          print(' '.join(shlex.quote(str(v)) for v in vals))
+          vals={
+            'status':j.get('status',''),
+            'stage':j.get('stage',''),
+            'progress':j.get('progress',''),
+            'words':(j.get('result') or {}).get('words',''),
+            'error':j.get('error') or '',
+          }
+          for k,v in vals.items(): print(f'{k}={shlex.quote(str(v))}')
           PY
-            )
+            )"
             now="$status|$stage|$progress|$words|$error"
             if [ "$now" != "$last" ]; then
               echo "STATUS=$status STAGE=$stage PROGRESS=$progress WORDS=$words ERROR=$error"
@@ -93,11 +99,11 @@ jobs:
             fi
             if [ "$status" = "complete" ]; then
               mkdir -p /root/Caspa/exports/recovered
-              python3 - <<'PY'
-          import json, pathlib, re
+              JOB_TITLE="$JOB_TITLE" python3 - <<'PY'
+          import json, pathlib, re, os
           j=json.load(open('/tmp/job.json'))['data']
           result=j.get('result') or {}
-          title=(((j.get('input') or {}).get('brief') or {}).get('title') or 'Recovered Publication')
+          title=os.environ.get('JOB_TITLE') or 'Recovered Publication'
           safe=re.sub(r'[^A-Za-z0-9._-]+','_',title).strip('_') or 'Recovered_Publication'
           out=pathlib.Path('/root/Caspa/exports/recovered')/(safe+'_'+j['id']+'.md')
           out.write_text(result.get('artefact') or result.get('finalText') or '',encoding='utf-8')
