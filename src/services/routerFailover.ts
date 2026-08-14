@@ -37,6 +37,13 @@ export interface RouterFailoverOptions extends RoutedCallOptions {
   sensitive?: boolean;
   disableLocalFallback?: boolean;
   strictProvider?: boolean;
+  /**
+   * User-facing requests should not die merely because a selected provider has
+   * exhausted its account credit. Keep this true by default so Atlas can move to
+   * another healthy provider. Set false only for provider diagnostics/tests that
+   * genuinely require a hard single-provider result.
+   */
+  allowBillingFailover?: boolean;
 }
 
 const BILLING_COOLDOWN_MS = Number(process.env.AI_BILLING_COOLDOWN_MS) || 15 * 60_000;
@@ -60,8 +67,10 @@ export function providerSupportsWebSearch(provider: string): boolean {
  * - Only configured, healthy cloud providers are attempted.
  * - Billing/quota failures quarantine a provider for longer than transient errors.
  * - Successful providers are immediately restored to healthy state.
- * - Explicit strict-provider requests still enter this router, but are constrained
- *   to the requested cloud provider and never silently switch elsewhere.
+ * - Explicit strict-provider requests remain strict for ordinary model/runtime
+ *   failures, but billing exhaustion automatically falls through to another
+ *   healthy provider unless allowBillingFailover is explicitly false. A dead
+ *   credit balance must not take the whole Caspa application down.
  * - Web-required calls are capability-gated: only providers with a wired search
  *   tool may participate, and local Ollama fallback is forbidden.
  * - If every cloud provider is unavailable, Atlas enters the dynamic Ollama pool
@@ -135,6 +144,30 @@ export async function callWithProviderFailover(
       );
       attempts.push({ provider, error: message, billingFailure });
     }
+  }
+
+  // A user may have explicitly selected a provider in the UI. Keep that provider
+  // strict for normal errors, but do not strand the request when the account has
+  // no credit. Re-run once through the normal provider pool, removing any model
+  // pin that belongs to the exhausted provider. The circuit breaker above keeps
+  // the depleted provider out of the retry path.
+  const strictBillingFailure = Boolean(
+    opts.strictProvider
+      && primary
+      && attempts.some((attempt) => attempt.provider === primary && attempt.billingFailure),
+  );
+  if (strictBillingFailure && opts.allowBillingFailover !== false) {
+    const fallback = await callWithProviderFailover(prompt, {
+      ...opts,
+      strictProvider: false,
+      primaryProvider: '',
+      requestedModel: undefined,
+      allowBillingFailover: false,
+    });
+    return {
+      ...fallback,
+      attempts: [...attempts, ...fallback.attempts],
+    };
   }
 
   // A web-required request must never silently degrade into a non-search local
