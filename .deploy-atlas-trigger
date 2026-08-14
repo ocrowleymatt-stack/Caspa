@@ -1,2 +1,2 @@
-CASPA deploy trigger 2026-08-14T06:05Z
-Reason: deploy durable Publication Studio polling fix after confirming UI was calling nonexistent /publication-studio/progress instead of /publication-studio/status.
+CASPA deploy trigger 2026-08-14T06:13Z
+Reason: deploy canonical assistant failover and make Firestore profile-sync quota non-fatal so quota exhaustion cannot brick the Caspa UI.
