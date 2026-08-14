@@ -1,0 +1,41 @@
+name: Export recovered manuscript
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-recovered-manuscript.yml'
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HOST: 116.202.24.63
+      USER: root
+    steps:
+      - name: Prepare SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Download recovered manuscript from Caspa
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes \
+            "$USER@$HOST:/root/Caspa/exports/recovered/Recovered_manuscript_repaired_edition_5afbd817-fee6-46cd-aa26-2274bee58052.md" \
+            "Recovered_manuscript_repaired_edition_5afbd817-fee6-46cd-aa26-2274bee58052.md"
+          test -s "Recovered_manuscript_repaired_edition_5afbd817-fee6-46cd-aa26-2274bee58052.md"
+          wc -w "Recovered_manuscript_repaired_edition_5afbd817-fee6-46cd-aa26-2274bee58052.md"
+      - name: Upload recovered manuscript
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovered-manuscript-5afbd817
+          path: Recovered_manuscript_repaired_edition_5afbd817-fee6-46cd-aa26-2274bee58052.md
+          if-no-files-found: error
+          retention-days: 7
