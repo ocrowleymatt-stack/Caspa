@@ -1,0 +1,112 @@
+name: Export modern slavery project
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-modern-slavery-project.yml'
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HOST: 116.202.24.63
+      USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Locate and package modern slavery project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          OUT=/tmp/modern-slavery-recovery
+          rm -rf "$OUT"
+          mkdir -p "$OUT/files"
+
+          python3 - <<'PY'
+          import os, re, json, shutil, pathlib
+
+          roots=[pathlib.Path('/root/Caspa/data'), pathlib.Path('/root/Caspa/exports'), pathlib.Path('/root/Caspa/backups'), pathlib.Path('/root/Caspa/snapshots')]
+          out=pathlib.Path('/tmp/modern-slavery-recovery')
+          patterns=[
+              r'modern slavery', r'human trafficking', r'forced labour', r'forced labor',
+              r'exploitation', r'traffick', r'survivor', r'nrm', r'clinical.*slavery', r'slavery.*clinical'
+          ]
+          rx=re.compile('|'.join(patterns), re.I|re.S)
+          ext_ok={'.md','.txt','.json','.docx','.pdf','.rtf','.csv','.yaml','.yml'}
+          matches=[]
+
+          def safe_name(p):
+              return str(p).replace('/','__').lstrip('_')
+
+          for root in roots:
+              if not root.exists():
+                  continue
+              for p in root.rglob('*'):
+                  try:
+                      if not p.is_file():
+                          continue
+                      st=p.stat()
+                      if st.st_size>25_000_000:
+                          continue
+                      name_hit=bool(rx.search(p.name))
+                      content_hit=False
+                      snippet=''
+                      if p.suffix.lower() in {'.md','.txt','.json','.rtf','.csv','.yaml','.yml'}:
+                          try:
+                              data=p.read_text(encoding='utf-8', errors='ignore')
+                              m=rx.search(data)
+                              if m:
+                                  content_hit=True
+                                  a=max(0,m.start()-500); b=min(len(data),m.end()+1500)
+                                  snippet=data[a:b]
+                          except Exception:
+                              pass
+                      if name_hit or content_hit:
+                          dest=out/'files'/safe_name(p)
+                          try:
+                              shutil.copy2(p,dest)
+                          except Exception:
+                              pass
+                          matches.append({
+                              'path':str(p),'size':st.st_size,'mtime':st.st_mtime,
+                              'name_hit':name_hit,'content_hit':content_hit,'snippet':snippet[:2500]
+                          })
+                  except Exception:
+                      pass
+
+          matches.sort(key=lambda x:x['mtime'], reverse=True)
+          (out/'matches.json').write_text(json.dumps(matches,indent=2,ensure_ascii=False),encoding='utf-8')
+          with (out/'README.txt').open('w',encoding='utf-8') as f:
+              f.write('Modern slavery project recovery candidates from Caspa server\n\n')
+              for m in matches[:100]:
+                  f.write(f"{m['path']}\n  size={m['size']} name_hit={m['name_hit']} content_hit={m['content_hit']}\n")
+                  if m['snippet']:
+                      f.write('  snippet: '+m['snippet'].replace('\n',' ')[:600]+'\n')
+          print(f'MATCHES={len(matches)}')
+          for m in matches[:30]:
+              print(m['path'])
+          PY
+
+          tar -C /tmp -czf /tmp/modern-slavery-recovery.tar.gz modern-slavery-recovery
+          REMOTE
+          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "$USER@$HOST:/tmp/modern-slavery-recovery.tar.gz" recovery/
+
+      - name: Upload recovery bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: modern-slavery-project-recovery
+          path: recovery/modern-slavery-recovery.tar.gz
+          retention-days: 7
