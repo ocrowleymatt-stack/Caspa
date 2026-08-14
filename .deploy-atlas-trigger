@@ -1,2 +1,2 @@
-CASPA deploy trigger 2026-08-14T05:39Z
-Reason: route around exhausted OpenAI/Anthropic balances so provider quota cannot strand user-facing requests.
+CASPA deploy trigger 2026-08-14T06:05Z
+Reason: deploy durable Publication Studio polling fix after confirming UI was calling nonexistent /publication-studio/progress instead of /publication-studio/status.
