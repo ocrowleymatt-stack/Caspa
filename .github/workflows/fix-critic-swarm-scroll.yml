@@ -10,10 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fix flex/grid scroll containment
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fix Critic Swarm scroll containment
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           p=Path('src/components/CriticSwarm.tsx')
           s=p.read_text()
           replacements={
@@ -26,14 +31,34 @@ jobs:
           for old,new in replacements.items():
               if old in s:
                   s=s.replace(old,new); changed+=1
-          if changed != len(replacements):
-              raise SystemExit(f'Expected {len(replacements)} scroll fixes, applied {changed}')
+          # The first hotfix may already have applied these classes; that is fine.
           p.write_text(s)
+
+          q=Path('src/components/StudioToolBridge.tsx')
+          b=q.read_text()
+          old="<div style={{ background: 'rgba(255,255,255,0.55)', borderRadius: 24, border: '1px solid #eadfce', padding: 8 }}>"
+          new="<div style={{ background: 'rgba(255,255,255,0.55)', borderRadius: 24, border: '1px solid #eadfce', padding: 8, ...(tool === 'swarm' ? { height: 'clamp(620px, calc(100vh - 250px), 900px)', minHeight: 0, overflow: 'hidden' } : {}) }}>"
+          if old in b:
+              b=b.replace(old,new,1)
+          elif "tool === 'swarm' ? { height: 'clamp(620px, calc(100vh - 250px), 900px)'" not in b:
+              raise SystemExit('StudioToolBridge scroll-container pattern not found')
+          q.write_text(b)
           PY
-      - name: Commit fix
+
+      - name: Validate production build
         run: |
+          npm ci
+          npm run build
+
+      - name: Commit fix and request production deploy
+        run: |
+          printf 'CASPA deploy trigger %s\nReason: deploy Critic Swarm bounded scrolling fix.\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-atlas-trigger
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/CriticSwarm.tsx
-          git commit -m 'Fix Critic Swarm scrolling'
-          git push
+          git add src/components/CriticSwarm.tsx src/components/StudioToolBridge.tsx .deploy-atlas-trigger
+          if git diff --cached --quiet; then
+            echo 'No source changes required.'
+            exit 0
+          fi
+          git commit -m 'Fix Critic Swarm bounded scrolling'
+          git push origin HEAD:main
