@@ -1,2 +1,2 @@
-CASPA deploy trigger 2026-08-14T06:13Z
-Reason: deploy canonical assistant failover and make Firestore profile-sync quota non-fatal so quota exhaustion cannot brick the Caspa UI.
+CASPA deploy trigger 2026-08-14T13:36Z
+Reason: deploy Critic Swarm scrolling hotfix.
