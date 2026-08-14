@@ -112,7 +112,7 @@ export default function CaspaRedesign(props: Props) {
     let cancelled = false;
     const load = async () => {
       try {
-        const response = await fetch('/api/caspa/gold/publication-studio/progress', { cache: 'no-store' });
+        const response = await fetch('/api/caspa/gold/publication-studio/status', { cache: 'no-store' });
         const payload = await response.json();
         if (!response.ok || payload?.success === false) throw new Error(payload?.message || ('HTTP ' + response.status));
         if (!cancelled) {
