@@ -1,0 +1,73 @@
+name: Caspa Recovery Report
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.recover-report-trigger'
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      HOST: 116.202.24.63
+      USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Capture recovery state
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 "$USER@$HOST" 'python3 - <<'"'"'PY'"'"'
+          import json, urllib.request, pathlib
+          base="http://127.0.0.1:3000/api/caspa/gold"
+          d=json.load(urllib.request.urlopen(base+"/jobs"))
+          jobs=(d.get("data") or {}).get("jobs") or []
+          cs=[j for j in jobs if j.get("type")=="commission"]
+          cs.sort(key=lambda j: str(j.get("updatedAt") or j.get("createdAt") or ""), reverse=True)
+          latest=cs[0] if cs else {}
+          report={
+            "jobId": latest.get("id"),
+            "status": latest.get("status"),
+            "stage": latest.get("stage"),
+            "progress": latest.get("progress"),
+            "words": (latest.get("result") or {}).get("words"),
+            "targetWords": (latest.get("result") or {}).get("targetWords"),
+            "error": latest.get("error"),
+            "updatedAt": latest.get("updatedAt"),
+            "recentCommissionJobs": [
+              {"id":j.get("id"),"status":j.get("status"),"stage":j.get("stage"),"progress":j.get("progress"),"words":(j.get("result") or {}).get("words"),"error":j.get("error"),"updatedAt":j.get("updatedAt")}
+              for j in cs[:8]
+            ],
+            "recoveredExports": [str(p) for p in sorted(pathlib.Path("/root/Caspa/exports/recovered").glob("*.md"), key=lambda p:p.stat().st_mtime, reverse=True)[:8]] if pathlib.Path("/root/Caspa/exports/recovered").exists() else []
+          }
+          print(json.dumps(report, indent=2))
+          PY' > recovery-report.json
+          cat recovery-report.json
+
+      - name: Upload recovery report
+        uses: actions/upload-artifact@v4
+        with:
+          name: caspa-recovery-report
+          path: recovery-report.json
+          retention-days: 7
