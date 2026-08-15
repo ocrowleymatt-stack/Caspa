@@ -1,2 +1,2 @@
-CASPA deploy trigger 2026-08-15T18:19:10Z
-Reason: deploy Commission failover, QA-hold manuscript preservation, diagnostics and stability fixes.
+CASPA deploy trigger 2026-08-15T18:24:30Z
+Reason: deploy stale-job reaper after Commission stability diagnostics.
