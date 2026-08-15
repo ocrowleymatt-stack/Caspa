@@ -13,77 +13,42 @@ jobs:
     timeout-minutes: 8
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       ATLAS_HOST: 116.202.24.63
       ATLAS_USER: root
     steps:
-      - name: Inspect live Commission jobs and service health
+      - name: Select SSH key
         shell: bash
         run: |
           set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name}" ]; then key="${!name}"; echo "Using $name"; break; fi
+          done
+          test -n "$key"
           mkdir -p ~/.ssh
-          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set -u
-          echo '=== HOST ==='
-          uptime || true
-          free -h || true
-          df -h / || true
-          echo
-          echo '=== PM2 ==='
-          pm2 jlist 2>/dev/null | python3 - <<'PY' || true
-import json,sys
-try:
-    data=json.load(sys.stdin)
-except Exception as e:
-    print('pm2-json-unavailable', e)
-    raise SystemExit
-for p in data:
-    env=p.get('pm2_env') or {}
-    mon=p.get('monit') or {}
-    print(json.dumps({
-      'name':p.get('name'),'pid':p.get('pid'),'status':env.get('status'),'restarts':env.get('restart_time'),
-      'uptime':env.get('pm_uptime'),'memory':mon.get('memory'),'cpu':mon.get('cpu')
-    }))
-PY
-          echo
-          echo '=== RECENT COMMISSION JOBS ==='
-          python3 - <<'PY'
-import json, pathlib
-p=pathlib.Path('/root/Caspa/data/caspa-jobs.json')
-if not p.exists():
-    print('missing', p)
-    raise SystemExit
-obj=json.loads(p.read_text())
-jobs=obj.get('jobs',[]) if isinstance(obj,dict) else obj
-for j in sorted([x for x in jobs if x.get('type')=='commission'], key=lambda x:x.get('updatedAt',''), reverse=True)[:12]:
-    cp=j.get('checkpoint') or {}
-    ch=cp.get('chapters') or []
-    cpwords=sum(len((c.get('content') or '').split()) for c in ch)
-    result=j.get('result') or {}
-    inp=j.get('input') or {}
-    print(json.dumps({
-      'id':j.get('id'),'status':j.get('status'),'progress':j.get('progress'),'stage':j.get('stage'),
-      'updatedAt':j.get('updatedAt'),'createdAt':j.get('createdAt'),'error':j.get('error'),
-      'checkpointPhase':cp.get('phase'),'checkpointChapters':len(ch),'checkpointWords':cpwords,
-      'resultWords':result.get('words'),'targetWords':result.get('targetWords'),
-      'publicationReady':result.get('publicationReady'),'qaHold':result.get('qaHold'),
-      'repairOnly':inp.get('repairOnly'),'repairSourceJobId':inp.get('repairSourceJobId')
-    }))
-PY
-          echo
-          echo '=== RECENT APP ERRORS ==='
-          for f in /root/.pm2/logs/*error*.log; do
-            [ -f "$f" ] || continue
-            echo "--- $f ---"
-            tail -n 80 "$f" | grep -E -i 'error|exception|timeout|abort|heap|memory|failed|ECONN|429|5[0-9][0-9]|commission|qa' | tail -n 40 || true
-          done
-          echo
-          echo '=== RECENT APP OUTPUT ==='
-          for f in /root/.pm2/logs/*out*.log; do
-            [ -f "$f" ] || continue
-            echo "--- $f ---"
-            tail -n 80 "$f" | grep -E -i 'commission|qa|job|timeout|failed|restart|ready|listening' | tail -n 40 || true
-          done
-          REMOTE
+
+      - name: Host and process health
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "echo '=== HOST ==='; uptime; free -h; df -h /; echo '=== PM2 ==='; pm2 status || true; echo '=== DOCTOR ==='; curl -fsS http://127.0.0.1:3000/api/doctor || true; echo"
+
+      - name: Recent Commission jobs
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "python3 -c \"import json,pathlib; p=pathlib.Path('/root/Caspa/data/caspa-jobs.json'); o=json.loads(p.read_text()); jobs=o.get('jobs',[]) if isinstance(o,dict) else o; rows=[];\nfor j in sorted([x for x in jobs if x.get('type')=='commission'], key=lambda x:x.get('updatedAt',''), reverse=True)[:12]:\n cp=j.get('checkpoint') or {}; ch=cp.get('chapters') or []; r=j.get('result') or {}; inp=j.get('input') or {}; rows.append({'id':j.get('id'),'status':j.get('status'),'progress':j.get('progress'),'stage':j.get('stage'),'updatedAt':j.get('updatedAt'),'error':j.get('error'),'checkpointPhase':cp.get('phase'),'checkpointChapters':len(ch),'checkpointWords':sum(len((c.get('content') or '').split()) for c in ch),'resultWords':r.get('words'),'targetWords':r.get('targetWords'),'publicationReady':r.get('publicationReady'),'qaHold':r.get('qaHold'),'repairOnly':inp.get('repairOnly'),'repairSourceJobId':inp.get('repairSourceJobId')});\nprint('\\n'.join(json.dumps(x) for x in rows))\""
+
+      - name: Recent app errors
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "echo '=== ERROR LOGS ==='; for f in /root/.pm2/logs/*error*.log; do [ -f \"\$f\" ] || continue; echo --- \"\$f\" ---; tail -n 120 \"\$f\" | grep -E -i 'error|exception|timeout|abort|heap|memory|failed|ECONN|429|5[0-9][0-9]|commission|qa' | tail -n 60 || true; done; echo '=== OUTPUT LOGS ==='; for f in /root/.pm2/logs/*out*.log; do [ -f \"\$f\" ] || continue; echo --- \"\$f\" ---; tail -n 120 \"\$f\" | grep -E -i 'commission|qa|job|timeout|failed|restart|ready|listening' | tail -n 60 || true; done"
