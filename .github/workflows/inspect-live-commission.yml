@@ -47,6 +47,12 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
             "cd /root/Caspa && node -e 'const fs=require(\"fs\"); const o=JSON.parse(fs.readFileSync(\"data/caspa-jobs.json\",\"utf8\")); const jobs=Array.isArray(o)?o:(o.jobs||[]); const rows=jobs.filter(j=>j.type===\"commission\").sort((a,b)=>String(b.updatedAt||\"\").localeCompare(String(a.updatedAt||\"\"))).slice(0,12).map(j=>{const cp=j.checkpoint||{}, ch=cp.chapters||[], r=j.result||{}, inp=j.input||{}; return {id:j.id,status:j.status,progress:j.progress,stage:j.stage,updatedAt:j.updatedAt,error:j.error,checkpointPhase:cp.phase,checkpointChapters:ch.length,checkpointWords:ch.reduce((n,c)=>n+String(c.content||\"\").trim().split(/\\s+/).filter(Boolean).length,0),resultWords:r.words,targetWords:r.targetWords,publicationReady:r.publicationReady,qaHold:r.qaHold,repairOnly:inp.repairOnly,repairSourceJobId:inp.repairSourceJobId};}); for(const x of rows) console.log(JSON.stringify(x));'"
 
+      - name: All queued or running jobs
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "cd /root/Caspa && node -e 'const fs=require(\"fs\"); const o=JSON.parse(fs.readFileSync(\"data/caspa-jobs.json\",\"utf8\")); const jobs=Array.isArray(o)?o:(o.jobs||[]); const now=Date.now(); for(const j of jobs.filter(x=>x.status===\"queued\"||x.status===\"running\").sort((a,b)=>String(a.updatedAt||\"\").localeCompare(String(b.updatedAt||\"\")))) { const ts=Date.parse(j.updatedAt||j.createdAt||0); console.log(JSON.stringify({id:j.id,type:j.type,status:j.status,stage:j.stage,progress:j.progress,createdAt:j.createdAt,updatedAt:j.updatedAt,ageHours:Number.isFinite(ts)?Math.round((now-ts)/36000)/100:null,hasInput:Boolean(j.input),hasCheckpoint:Boolean(j.checkpoint)})); }'"
+
       - name: Recent app errors
         if: always()
         shell: bash
