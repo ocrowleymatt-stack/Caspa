@@ -7,6 +7,7 @@ import type { CaspaJobRecord, JobAuditSnapshot } from '../types/gold';
 import { loadJobStore, persistJobStore } from './jobStoreService';
 
 const MAX_COMPLETED = 100;
+const DEFAULT_STALE_ACTIVE_MS = 12 * 60 * 60 * 1000;
 
 function store(): Map<string, CaspaJobRecord> {
   return loadJobStore();
@@ -55,6 +56,39 @@ export function listRecentJobs(limit = 20): CaspaJobRecord[] {
   return [...store().values()]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, limit);
+}
+
+/**
+ * Clear zombie jobs left behind by legacy workers/restarts only when they are
+ * genuinely unrecoverable: queued/running, untouched for a long period, and
+ * carrying neither resumable input nor a checkpoint. Jobs with either input or
+ * a checkpoint are deliberately preserved for their owning recovery path.
+ */
+export function reapStaleJobs(maxAgeMs = DEFAULT_STALE_ACTIVE_MS): number {
+  const jobs = store();
+  const now = Date.now();
+  const stamp = new Date().toISOString();
+  let reaped = 0;
+
+  for (const job of jobs.values()) {
+    if (job.status !== 'queued' && job.status !== 'running') continue;
+    if (job.input || job.checkpoint) continue;
+    const updated = new Date(job.updatedAt || job.createdAt).getTime();
+    if (!Number.isFinite(updated) || now - updated < maxAgeMs) continue;
+
+    job.status = 'failed';
+    job.stage = 'stale-reaped';
+    job.error = `Stale persisted job cleared after ${Math.round((now - updated) / 3_600_000)} hours with no resumable input or checkpoint.`;
+    job.updatedAt = stamp;
+    jobs.set(job.id, job);
+    reaped += 1;
+  }
+
+  if (reaped) {
+    pruneCompleted(jobs);
+    save(jobs);
+  }
+  return reaped;
 }
 
 function pruneCompleted(jobs: Map<string, CaspaJobRecord>): void {
