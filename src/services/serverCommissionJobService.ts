@@ -542,11 +542,36 @@ export async function runServerCommission(jobId: string): Promise<void> {
       checkpoint: undefined,
     });
   } catch (error) {
-    updateJob(jobId, {
-      status: 'failed',
-      stage: 'failed',
-      error: error instanceof Error ? error.message : 'Server commission failed',
-    });
+    const latest = getJob(jobId);
+    const checkpoint = latest?.checkpoint as unknown as Checkpoint | undefined;
+    const message = error instanceof Error ? error.message : 'Server commission failed';
+    if (checkpoint?.chapters?.length) {
+      const held = [...checkpoint.chapters].sort((a, b) => a.order - b.order);
+      const artefact = held.map((c) => `# ${c.title}\n\n${c.content || ''}`).join('\n\n---\n\n');
+      const words = totalWords(held);
+      updateJob(jobId, {
+        status: 'complete',
+        progress: 100,
+        stage: `complete-with-qa-hold:${words}-words`,
+        error: message,
+        result: {
+          finalText: artefact,
+          artefact,
+          chapters: held,
+          words,
+          targetWords: targetWords((latest?.input as unknown as ServerCommissionPayload)?.brief || (job.input as unknown as ServerCommissionPayload).brief),
+          publicationReady: false,
+          qaHold: true,
+          qaHoldReason: message,
+        } as any,
+      });
+    } else {
+      updateJob(jobId, {
+        status: 'failed',
+        stage: 'failed',
+        error: message,
+      });
+    }
   } finally {
     activeWorkers.delete(jobId);
   }
