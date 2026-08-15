@@ -1,0 +1,35 @@
+name: Preserve Commission manuscript on QA hold
+on:
+  push:
+    paths:
+      - '.github/workflows/preserve-commission-manuscript-on-qa-hold.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preserve retrievable manuscript when QA blocks publication
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/services/serverCommissionJobService.ts')
+          s=p.read_text()
+          old='''  } catch (error) {\n    updateJob(jobId, {\n      status: 'failed',\n      stage: 'failed',\n      error: error instanceof Error ? error.message : 'Server commission failed',\n    });\n  } finally {'''
+          new='''  } catch (error) {\n    const latest = getJob(jobId);\n    const checkpoint = latest?.checkpoint as unknown as Checkpoint | undefined;\n    const message = error instanceof Error ? error.message : 'Server commission failed';\n    if (checkpoint?.chapters?.length) {\n      const held = [...checkpoint.chapters].sort((a, b) => a.order - b.order);\n      const artefact = held.map((c) => `# ${c.title}\\n\\n${c.content || ''}`).join('\\n\\n---\\n\\n');\n      const words = totalWords(held);\n      updateJob(jobId, {\n        status: 'complete',\n        progress: 100,\n        stage: `complete-with-qa-hold:${words}-words`,\n        error: message,\n        result: {\n          finalText: artefact,\n          artefact,\n          chapters: held,\n          words,\n          targetWords: targetWords((latest?.input as unknown as ServerCommissionPayload)?.brief || (job.input as unknown as ServerCommissionPayload).brief),\n          publicationReady: false,\n          qaHold: true,\n          qaHoldReason: message,\n        } as any,\n      });\n    } else {\n      updateJob(jobId, {\n        status: 'failed',\n        stage: 'failed',\n        error: message,\n      });\n    }\n  } finally {'''
+          if old not in s:
+              raise SystemExit('Expected catch block not found')
+          p.write_text(s.replace(old,new))
+          PY
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/services/serverCommissionJobService.ts
+          git commit -m 'Preserve manuscript when publication QA holds a job'
+          git push
