@@ -6,14 +6,16 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { GOLD_PASSES, runGoldPipeline } from '../services/goldPipelineService';
-import { createJob, getJob, getJobAudit, listRecentJobs, updateJob } from '../services/jobQueueService';
+import { createJob, getJob, getJobAudit, listRecentJobs, reapStaleJobs, updateJob } from '../services/jobQueueService';
 import { queueServerCommission, resumePersistedCommissionJobs, runServerCommission } from '../services/serverCommissionJobService';
 import { ensureOneShotRecoveredBookRepair, queueRepairFromCompletedJob } from '../services/commissionRepairService';
 import type { GoldPipelineProgressEvent } from '../types/gold';
 
 const router = express.Router();
 
-// Recover any long Commission runs that were queued/running when Atlas restarted.
+// Clear legacy zombie jobs which have neither resumable input nor a checkpoint,
+// then recover genuine persisted Commission work.
+setTimeout(() => reapStaleJobs(), 100);
 setTimeout(() => resumePersistedCommissionJobs(), 250);
 // One-shot recovery for the retained completed manuscript. Guarded by a durable
 // marker in CASPA_DATA_DIR, so repeated deploys cannot create duplicate repairs.
