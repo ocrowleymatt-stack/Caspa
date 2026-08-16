@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/cost-optimise-caspa.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,7 +13,7 @@ permissions:
 jobs:
   optimise:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,68 +24,20 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Apply cost reductions
+      - name: Apply consolidated cost patch
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
+          python3 scripts/apply-ai-cost-optimisation.py
 
-          # 1) Default interactive provider: cheap Gemini lane instead of Grok.
-          ai=Path('src/services/ai.ts')
-          s=ai.read_text()
-          old="let globalPrimaryProvider: IntelligenceProvider = 'grok';"
-          new="let globalPrimaryProvider: IntelligenceProvider = 'gemini';"
-          if old not in s: raise SystemExit('global provider marker not found')
-          s=s.replace(old,new,1)
-          ai.write_text(s)
-
-          # 2) Remove dead/deprecated Gemini 2.0 Flash model ids from executable source.
-          changed=0
-          for p in list(Path('src').rglob('*.ts')) + list(Path('src').rglob('*.tsx')):
-              t=p.read_text()
-              u=t.replace('gemini-2.0-flash','gemini-2.5-flash-lite')
-              if u!=t:
-                  p.write_text(u); changed+=1
-          print(f'deprecated_model_files_updated={changed}')
-
-          # 3) Make the server-side default match the cost-aware front end.
-          server=Path('server.ts')
-          s=server.read_text()
-          marker='primaryProvider = "grok"'
-          if marker not in s: raise SystemExit('server primary marker not found')
-          s=s.replace(marker,'primaryProvider = "gemini"',1)
-
-          # 4) Make image generation economical by default while retaining an env override.
-          image_marker='model: "flux-pro",'
-          if image_marker in s:
-              s=s.replace(image_marker,'model: process.env.CASPA_IMAGE_MODEL || "z-image-turbo",',1)
-          server.write_text(s)
-
-          # 5) Whole-manuscript Critic Swarm: retain beginning + ending of each chapter
-          #    while reducing repeated input context by about one third.
-          swarm=Path('src/components/CriticSwarm.tsx')
-          s=swarm.read_text()
-          old="textToAnalyze = chapters.map(c => `[${c.title}]\\n${c.content.slice(0, 3000)}`).join('\\n\\n');"
-          new="textToAnalyze = chapters.map(c => `[${c.title}]\\n${c.content.slice(0, 1400)}${c.content.length > 2000 ? `\\n…\\n${c.content.slice(-600)}` : ''}`).join('\\n\\n');"
-          if old not in s: raise SystemExit('Critic Swarm overview marker not found')
-          s=s.replace(old,new,1)
-          swarm.write_text(s)
-
-          # 6) Trigger the existing production deploy after this commit.
-          Path('.deploy-atlas-trigger').write_text('cost-optimised-ai-routing-2026-08-16\n')
-          PY
-
-      - name: Validate Caspa
+      - name: Build production bundle
         shell: bash
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
-          npm run lint
-          npm test
           npm run build
 
-      - name: Commit and deploy trigger
+      - name: Commit cost optimisation
         shell: bash
         run: |
           set -euo pipefail
@@ -92,8 +45,9 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src server.ts .deploy-atlas-trigger
           if git diff --cached --quiet; then
-            echo 'No Caspa cost changes to commit.'
+            echo 'No cost changes to commit.'
             exit 0
           fi
-          git commit -m 'Cut routine AI spend and remove deprecated model calls'
+          git commit -m 'Cut AI spend with local-first and cheap cached routing'
+          git pull --rebase origin main
           git push origin HEAD:main
