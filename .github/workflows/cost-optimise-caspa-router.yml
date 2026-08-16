@@ -1,0 +1,147 @@
+name: Cost optimise Caspa router
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cost-optimise-caspa-router.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  optimise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply local-first and low-cost cloud routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('src/services/cloudModelRouter.ts')
+          s=p.read_text()
+          replacements=[
+            ("speed: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'],\n    balanced: ['gemini-3.6-flash', 'gemini-3.1-pro-preview', 'gemini-3.5-flash'],",
+             "speed: ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'],\n    balanced: ['gemini-2.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.1-pro-preview'],"),
+            ("speed: ['qwen3-6-27b', 'deepseek-v4-flash', 'openai-gpt-oss-120b'],\n    balanced: ['deepseek-v4-pro', 'qwen-3-6-plus', 'qwen3-5-397b-a17b', 'openai-gpt-oss-120b'],",
+             "speed: ['deepseek-v4-flash', 'e2ee-gpt-oss-20b-p', 'openai-gpt-oss-120b'],\n    balanced: ['deepseek-v4-flash', 'deepseek-v4-pro', 'qwen-3-6-plus', 'openai-gpt-oss-120b'],"),
+            ("if (provider === 'gemini') return ['gemini-3.6-flash', 'gemini-3.5-flash'];",
+             "if (provider === 'gemini') return ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'];"),
+            ("if (provider === 'venice') return mode === 'god' ? ['deepseek-v4-pro', 'qwen-3-6-plus'] : ['qwen-3-6-plus', 'deepseek-v4-pro'];",
+             "if (provider === 'venice') return mode === 'god' ? ['deepseek-v4-pro', 'qwen-3-6-plus'] : ['deepseek-v4-flash', 'deepseek-v4-pro'];"),
+            ("if (task === 'fast') return ['gemini-3.5-flash-lite', 'gemini-3.6-flash'];",
+             "if (task === 'fast') return ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'];"),
+            ("if (task === 'fast') return ['qwen3-6-27b', 'deepseek-v4-flash'];",
+             "if (task === 'fast') return ['deepseek-v4-flash', 'e2ee-gpt-oss-20b-p'];"),
+            ("if (task === 'creative') return mode === 'god'\n      ? ['qwen-3-6-plus', 'deepseek-v4-pro', 'e2ee-venice-uncensored-24b-p']\n      : ['qwen-3-6-plus', 'qwen3-5-397b-a17b', 'e2ee-venice-uncensored-24b-p'];",
+             "if (task === 'creative') return mode === 'god'\n      ? ['qwen-3-6-plus', 'deepseek-v4-pro', 'e2ee-venice-uncensored-24b-p']\n      : ['deepseek-v4-flash', 'qwen-3-6-plus', 'e2ee-venice-uncensored-24b-p'];"),
+            ("return mode === 'god'\n        ? ['deepseek-v4-pro', 'qwen-3-6-plus', 'claude-opus-4-7-fast']\n        : ['deepseek-v4-pro', 'qwen-3-6-plus', 'qwen3-5-397b-a17b'];",
+             "return mode === 'god'\n        ? ['deepseek-v4-pro', 'qwen-3-6-plus', 'claude-opus-4-7-fast']\n        : ['deepseek-v4-flash', 'deepseek-v4-pro', 'qwen-3-6-plus'];"),
+            ("&& (mode === 'god' || task === 'long' || task === 'synthesis' || explicitDeepSearch);",
+             "&& (mode === 'god' || explicitDeepSearch);"),
+            (": ['gemini', 'venice', 'grok', 'openai', 'claude'];\n    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];",
+             ": ['venice', 'gemini', 'grok', 'openai', 'claude'];\n    else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];"),
+          ]
+          for old,new in replacements:
+              if old not in s: raise SystemExit('router pattern missing:\n'+old)
+              s=s.replace(old,new,1)
+
+          om="    max_output_tokens: opts.maxTokens || 4096,\n  }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));"
+          on="    max_output_tokens: opts.maxTokens || 4096,\n    prompt_cache_key: `caspa:${opts.task || 'general'}:${mode}`,\n    store: false,\n  }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));"
+          if om not in s: raise SystemExit('OpenAI cache marker missing')
+          s=s.replace(om,on,1)
+
+          gm="    max_output_tokens: opts.maxTokens || 4096,\n    ...(opts.useSearch ? { tools: [{ type: 'web_search' }, { type: 'x_search' }] } : {}),"
+          gn="    max_output_tokens: opts.maxTokens || 4096,\n    prompt_cache_key: `caspa:${opts.task || 'general'}:${mode}`,\n    ...(opts.useSearch ? { tools: [{ type: 'web_search' }, { type: 'x_search' }] } : {}),"
+          if gm not in s: raise SystemExit('Grok cache marker missing')
+          s=s.replace(gm,gn,1)
+          p.write_text(s)
+
+          # Local Ollama is zero marginal API cost. Use it first for speed/fast/council
+          # work, with immediate cloud fallback if the local pool cannot satisfy it.
+          f=Path('src/services/routerFailover.ts')
+          s=f.read_text()
+          marker="  const attempts: RouterFailoverAttempt[] = [];\n  const webRequired = Boolean(opts.useSearch);"
+          replacement="  const attempts: RouterFailoverAttempt[] = [];\n  const webRequired = Boolean(opts.useSearch);\n  let localAttempted = false;"
+          if marker not in s: raise SystemExit('failover attempts marker missing')
+          s=s.replace(marker,replacement,1)
+
+          insert_after="  if (webRequired && opts.strictProvider && primary && !providerSupportsWebSearch(primary)) {\n    throw new Error(\n      `Atlas web retrieval unavailable — strict provider \"${primary}\" has no wired web-search capability.`,\n    );\n  }\n"
+          local_block="""
+
+  const localFirst = !webRequired
+    && !opts.disableLocalFallback
+    && !opts.strictProvider
+    && process.env.AI_LOCAL_FIRST !== 'false'
+    && (mode === 'speed' || task === 'fast' || task === 'council');
+
+  if (localFirst) {
+    localAttempted = true;
+    try {
+      const local = await callOllamaModelHunt(prompt, {
+        json: opts.json,
+        maxTokens: opts.maxTokens,
+        mode,
+      });
+      return {
+        text: local.text,
+        model: local.model,
+        provider: 'ollama',
+        attempts,
+      };
+    } catch (error: any) {
+      attempts.push({
+        provider: 'ollama',
+        error: String(error?.message || error || 'Local model pool failure'),
+        billingFailure: false,
+      });
+    }
+  }
+"""
+          if insert_after not in s: raise SystemExit('local-first insertion marker missing')
+          s=s.replace(insert_after,insert_after+local_block,1)
+
+          old_fallback="if (!webRequired && !opts.disableLocalFallback && !opts.strictProvider) {"
+          new_fallback="if (!webRequired && !opts.disableLocalFallback && !opts.strictProvider && !localAttempted) {"
+          if old_fallback not in s: raise SystemExit('local fallback marker missing')
+          s=s.replace(old_fallback,new_fallback,1)
+          f.write_text(s)
+
+          Path('.deploy-atlas-trigger').write_text('local-first-cost-router-2026-08-16\n')
+          print('caspa_cost_router_applied=true')
+          PY
+
+      - name: Validate Caspa
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Commit and deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/services/cloudModelRouter.ts src/services/routerFailover.ts .deploy-atlas-trigger
+          if git diff --cached --quiet; then
+            echo 'No router cost changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Use local-first and lowest-cost healthy AI lanes'
+          git push origin HEAD:main
