@@ -60,7 +60,7 @@ export default function IntelligenceView({
 
       const response = await AIService.callAI({
         prompt,
-        model: 'gemini-2.0-flash'
+        model: 'gemini-2.5-flash-lite'
       });
 
       if (response) {

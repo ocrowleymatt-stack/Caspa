@@ -31,7 +31,7 @@ async function generateImage(prompt: string): Promise<string | null> {
       const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
       if (!key) return null;
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${key}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-exp-image-generation:generateContent?key=${key}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

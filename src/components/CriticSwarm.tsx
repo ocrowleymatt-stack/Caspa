@@ -90,7 +90,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
     try {
       let textToAnalyze = "";
       if (selectedChapId === 'all') {
-        textToAnalyze = chapters.map(c => `[${c.title}]\n${c.content.slice(0, 3000)}`).join('\n\n');
+        textToAnalyze = chapters.map(c => `[${c.title}]\n${c.content.slice(0, 1400)}${c.content.length > 2000 ? `\n…\n${c.content.slice(-600)}` : ''}`).join('\n\n');
       } else {
         const chap = chapters.find(c => c.id === selectedChapId);
         if (!chap || !chap.content) {

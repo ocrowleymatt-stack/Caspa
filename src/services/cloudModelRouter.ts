@@ -121,8 +121,8 @@ const MODEL_PREFERENCES: Record<CloudProvider, Record<IntelligenceMode, string[]
     god: ['grok-4.20-0309-reasoning', 'grok-4.5', 'grok-4.20-0309-non-reasoning'],
   },
   gemini: {
-    speed: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'],
-    balanced: ['gemini-3.6-flash', 'gemini-3.1-pro-preview', 'gemini-3.5-flash'],
+    speed: ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'],
+    balanced: ['gemini-2.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.1-pro-preview'],
     god: ['gemini-3.1-pro-preview', 'gemini-3.6-flash', 'gemini-3.5-flash'],
   },
   openai: {
@@ -138,8 +138,8 @@ const MODEL_PREFERENCES: Record<CloudProvider, Record<IntelligenceMode, string[]
   venice: {
     // Venice changes its catalogue quickly. Prefer the strongest current reasoning
     // models first, while retaining cheaper fallbacks for latency/cost resilience.
-    speed: ['qwen3-6-27b', 'deepseek-v4-flash', 'openai-gpt-oss-120b'],
-    balanced: ['deepseek-v4-pro', 'qwen-3-6-plus', 'qwen3-5-397b-a17b', 'openai-gpt-oss-120b'],
+    speed: ['deepseek-v4-flash', 'e2ee-gpt-oss-20b-p', 'openai-gpt-oss-120b'],
+    balanced: ['deepseek-v4-flash', 'deepseek-v4-pro', 'qwen-3-6-plus', 'openai-gpt-oss-120b'],
     god: ['deepseek-v4-pro', 'qwen-3-6-plus', 'claude-opus-4-7-fast', 'openai-gpt-55-pro'],
   },
 };
@@ -147,8 +147,8 @@ const MODEL_PREFERENCES: Record<CloudProvider, Record<IntelligenceMode, string[]
 function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: IntelligenceMode): string[] {
   if (task === 'council') {
     if (provider === 'grok') return ['grok-4.5', 'grok-4.20-0309-non-reasoning'];
-    if (provider === 'gemini') return ['gemini-3.6-flash', 'gemini-3.5-flash'];
-    if (provider === 'venice') return mode === 'god' ? ['deepseek-v4-pro', 'qwen-3-6-plus'] : ['qwen-3-6-plus', 'deepseek-v4-pro'];
+    if (provider === 'gemini') return ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'];
+    if (provider === 'venice') return mode === 'god' ? ['deepseek-v4-pro', 'qwen-3-6-plus'] : ['deepseek-v4-flash', 'deepseek-v4-pro'];
     if (provider === 'openai') return ['gpt-5.4-mini', 'gpt-5.5'];
     if (provider === 'claude') return ['claude-sonnet-5', 'claude-fable-5'];
   }
@@ -158,19 +158,19 @@ function taskAdjustments(provider: CloudProvider, task: TaskKind, mode: Intellig
     if (task === 'factual' && mode !== 'god') return ['grok-4.20-0309-non-reasoning', 'grok-4.20-0309-reasoning'];
   }
   if (provider === 'gemini') {
-    if (task === 'fast') return ['gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+    if (task === 'fast') return ['gemini-2.5-flash-lite', 'gemini-3.1-flash-lite'];
     if ((task === 'reasoning' || task === 'legal' || task === 'long' || task === 'synthesis') && mode === 'god') return ['gemini-3.1-pro-preview'];
   }
   if (provider === 'venice') {
-    if (task === 'fast') return ['qwen3-6-27b', 'deepseek-v4-flash'];
+    if (task === 'fast') return ['deepseek-v4-flash', 'e2ee-gpt-oss-20b-p'];
     if (task === 'council') return mode === 'god' ? ['deepseek-v4-pro'] : ['qwen-3-6-plus'];
     if (task === 'creative') return mode === 'god'
       ? ['qwen-3-6-plus', 'deepseek-v4-pro', 'e2ee-venice-uncensored-24b-p']
-      : ['qwen-3-6-plus', 'qwen3-5-397b-a17b', 'e2ee-venice-uncensored-24b-p'];
+      : ['deepseek-v4-flash', 'qwen-3-6-plus', 'e2ee-venice-uncensored-24b-p'];
     if (task === 'factual' || task === 'reasoning' || task === 'legal' || task === 'synthesis' || task === 'long') {
       return mode === 'god'
         ? ['deepseek-v4-pro', 'qwen-3-6-plus', 'claude-opus-4-7-fast']
-        : ['deepseek-v4-pro', 'qwen-3-6-plus', 'qwen3-5-397b-a17b'];
+        : ['deepseek-v4-flash', 'deepseek-v4-pro', 'qwen-3-6-plus'];
     }
   }
   if (provider === 'openai' && task === 'fast') return ['gpt-5.4-mini', 'gpt-5.4-nano'];
@@ -257,6 +257,8 @@ async function callOpenAI(prompt: string, model: string, opts: RoutedCallOptions
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
     max_output_tokens: opts.maxTokens || 4096,
+    prompt_cache_key: `caspa:${opts.task || 'general'}:${mode}`,
+    store: false,
   }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
   const text = outputTextFromResponses(data);
   if (!text) throw new Error(`OpenAI/${model} returned empty output`);
@@ -274,6 +276,7 @@ async function callGrok(prompt: string, model: string, opts: RoutedCallOptions):
       { role: 'user', content: opts.json ? `${prompt}\n\nReturn ONLY valid JSON.` : prompt },
     ],
     max_output_tokens: opts.maxTokens || 4096,
+    prompt_cache_key: `caspa:${opts.task || 'general'}:${mode}`,
     ...(opts.useSearch ? { tools: [{ type: 'web_search' }, { type: 'x_search' }] } : {}),
   }, { Authorization: `Bearer ${key}` }, routedTimeoutMs(opts, mode));
   const text = outputTextFromResponses(data);
@@ -369,7 +372,7 @@ export async function callCloudProvider(provider: CloudProvider, prompt: string,
     && mode !== 'speed'
     && opts.useSearch
     && ['factual', 'long', 'synthesis'].includes(task)
-    && (mode === 'god' || task === 'long' || task === 'synthesis' || explicitDeepSearch);
+    && (mode === 'god' || explicitDeepSearch);
 
   if (useGrokMultiAgent) {
     try { return await callGrokMultiAgent(prompt, { ...opts, task, mode }); } catch (error) {
@@ -421,7 +424,7 @@ export function providerOrder(primary: string, mode: IntelligenceMode, task: Tas
     else if (task === 'factual') ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
     else if (task === 'creative') ordered = sensitive
       ? ['venice', 'gemini', 'grok', 'openai', 'claude']
-      : ['gemini', 'venice', 'grok', 'openai', 'claude'];
+      : ['venice', 'gemini', 'grok', 'openai', 'claude'];
     else if (['reasoning', 'legal', 'synthesis', 'long'].includes(task)) ordered = ['venice', 'grok', 'gemini', 'openai', 'claude'];
     else ordered = ['gemini', 'venice', 'grok', 'openai', 'claude'];
   }

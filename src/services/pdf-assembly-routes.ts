@@ -27,7 +27,7 @@ function getGrokService() {
 async function callGemini(prompt: string, json: boolean = false): Promise<string> {
   try {
     const response = await getGemini().models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash-lite',
       contents: prompt,
       config: {
         temperature: 0.7,

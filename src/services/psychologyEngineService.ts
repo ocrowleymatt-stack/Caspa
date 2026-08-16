@@ -90,7 +90,7 @@ Return JSON only:
   const raw = await AIService.callAI({
     prompt,
     json: true,
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash-lite',
     maxTokens: 4096,
   });
 

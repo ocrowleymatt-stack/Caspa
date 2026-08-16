@@ -88,11 +88,37 @@ export async function callWithProviderFailover(
     : providerOrder(primary, mode, task, Boolean(opts.sensitive));
   const attempts: RouterFailoverAttempt[] = [];
   const webRequired = Boolean(opts.useSearch);
+  let localAttempted = false;
 
   if (webRequired && opts.strictProvider && primary && !providerSupportsWebSearch(primary)) {
     throw new Error(
       `Atlas web retrieval unavailable — strict provider "${primary}" has no wired web-search capability.`,
     );
+  }
+
+
+  const localFirst = !webRequired
+    && !opts.disableLocalFallback
+    && !opts.strictProvider
+    && process.env.AI_LOCAL_FIRST !== 'false'
+    && (mode === 'speed' || task === 'fast' || task === 'council');
+
+  if (localFirst) {
+    localAttempted = true;
+    try {
+      const local = await callOllamaModelHunt(prompt, {
+        json: opts.json,
+        maxTokens: opts.maxTokens,
+        mode,
+      });
+      return { text: local.text, model: local.model, provider: 'ollama', attempts };
+    } catch (error: any) {
+      attempts.push({
+        provider: 'ollama',
+        error: String(error?.message || error || 'Local model pool failure'),
+        billingFailure: false,
+      });
+    }
   }
 
   const preferred = webRequired
@@ -172,7 +198,7 @@ export async function callWithProviderFailover(
 
   // A web-required request must never silently degrade into a non-search local
   // answer. If all real search lanes fail, surface retrieval failure explicitly.
-  if (!webRequired && !opts.disableLocalFallback && !opts.strictProvider) {
+  if (!webRequired && !opts.disableLocalFallback && !opts.strictProvider && !localAttempted) {
     try {
       const local = await callOllamaModelHunt(prompt, {
         json: opts.json,

@@ -45,7 +45,7 @@ export class BookMetadataService {
     userProvidedTitle?: string,
     userProvidedISBN?: string
   ): Promise<BookMetadata> {
-    const model = this.gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = this.gemini.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
     // Step 1: Extract core narrative elements
     const extractionPrompt = `You are a literary analyst. Analyze this manuscript excerpt and extract ONLY verifiable elements. Return JSON only.
@@ -192,7 +192,7 @@ Return ONLY the spine text, no explanation:`;
     backCopy: string,
     keyNouns: string[]
   ): Promise<ValidationResult> {
-    const model = this.gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = this.gemini.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
     // Check noun matching
     const nounMatches = keyNouns.filter((noun) =>

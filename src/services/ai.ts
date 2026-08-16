@@ -14,7 +14,7 @@ const XAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).e
 const CLAUDE_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_ANTHROPIC_API_KEY : undefined;
 const OPENAI_API_KEY = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env.VITE_OPENAI_API_KEY : undefined;
 
-let globalPrimaryProvider: IntelligenceProvider = 'grok';
+let globalPrimaryProvider: IntelligenceProvider = 'gemini';
 
 function safeParseJSON(text: string, fallback: any = {}) {
   try {
@@ -157,7 +157,7 @@ TEXT SAMPLE:
 Return ONLY the word "manuscript" or "plan".`;
 
     const { text: response } = await callCheapTask(prompt, () =>
-      callAI({ prompt, model: "gemini-2.0-flash" })
+      callAI({ prompt, model: "gemini-2.5-flash-lite" })
     );
     return response?.toLowerCase().includes('plan') ? 'plan' : 'manuscript';
   },
@@ -227,7 +227,7 @@ Return ONLY the word "manuscript" or "plan".`;
       
       Output should be professional, insightful, and strictly relevant to the provided genre and goal.`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-2.5-flash-lite" });
   },
 
   async generateCharacter(concept: string, type: ProjectType, research: ResearchNote[] = [], maturity = 'standard'): Promise<Character> {
@@ -255,7 +255,7 @@ Return ONLY the word "manuscript" or "plan".`;
       required: ["name", "role", "backstory", "traits", "goals", "fears", "motivations", "quirks", "archetype", "physicalDescription"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-flash-lite" });
     const data = safeParseJSON(text || "{}")
     return {
       name: (data.name && data.name !== 'Unknown' && data.name !== 'Unknown Character') ? data.name : `${concept.split(' ')[0] || 'Character'}_${Date.now().toString(36)}`,
@@ -326,7 +326,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
       required: ["nodes"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-flash-lite" });
     let data = safeParseJSON(text || "[]", []);
     
     if (!Array.isArray(data)) {
@@ -699,7 +699,7 @@ ${wordTargetBlock}`;
       prompt, 
       json: true, 
       schema, 
-      model: deep ? "gemini-2.5-pro" : "gemini-2.0-flash",
+      model: deep ? "gemini-2.5-pro" : "gemini-2.5-flash-lite",
       useWebSearch: deep,
     });
 
@@ -739,7 +739,7 @@ ${wordTargetBlock}`;
       required: ["topics"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-flash-lite" });
     const data = safeParseJSON(response || "{}");
     return Array.isArray(data.topics) ? data.topics : [];
   },
@@ -997,7 +997,7 @@ ${wordTargetBlock}`;
       required: ["beats"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-flash-lite" });
     const data = safeParseJSON(text || '[]', []);
     return Array.isArray(data) ? data : (data.beats || data.items || []);
   },
@@ -1022,7 +1022,7 @@ ${wordTargetBlock}`;
       [GRAMS/FX: Sound cues]
       [CHARACTER NAME]: [Dialogue with performance directions in brackets]`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-2.5-flash-lite" });
   },
 
   async generateCoverPrompt(project: Project, author: string, subtitle: string, basePrompt: string): Promise<string> {
@@ -1043,7 +1043,7 @@ ${wordTargetBlock}`;
       
       OUTPUT ONLY THE FINAL CONCATENATED PROMPT.`;
     
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-2.5-flash-lite" });
   },
 
   async generateAudiobookScript(project: Project, chapters: Chapter[]): Promise<string> {
@@ -1063,7 +1063,7 @@ ${wordTargetBlock}`;
       MANUSCRIPT SAMPLE:
       ${fullText}`;
 
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-2.5-flash-lite" });
   },
 
   async reconcileChapters(project: Project, plotNodes: PlotNode[], chapters: Chapter[], research: ResearchNote[] = []): Promise<{ title: string; summary: string; plotNodeIds: string[] }[]> {
@@ -1111,7 +1111,7 @@ ${wordTargetBlock}`;
       required: ["chapters"]
     };
 
-    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const text = await callAI({ prompt, json: true, schema, model: "gemini-2.5-flash-lite" });
     const data = safeParseJSON(text || '{"chapters":[]}', { chapters: [] });
     return (data.chapters || []).map((c: any) => ({
       ...c,
@@ -1277,7 +1277,7 @@ ${draftStageInfo}`;
   async critique(text: string): Promise<string> {
     const prompt = `Critique the following writing sample. Focus on: Show, Don't Tell, Pacing, and Character Voice.
       Writing Sample: "${text}"`;
-    return await callAI({ prompt, model: "gemini-2.0-flash" });
+    return await callAI({ prompt, model: "gemini-2.5-flash-lite" });
   },
 
   async analyzeProse(text: string, type: ProjectType, previousContext: string = "", externalReviews: ExternalReview[] = []): Promise<{ type: string; message: string; severity: 'low' | 'medium' | 'high' }[]> {
@@ -1330,7 +1330,7 @@ ${draftStageInfo}`;
       required: ["violations"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-flash-lite" });
     const data = safeParseJSON(response || "{}");
     return Array.isArray(data.violations) ? data.violations : [];
   },
@@ -1388,7 +1388,7 @@ ${draftStageInfo}`;
       required: ["turned", "score", "reasoning", "missing"]
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.0-flash" });
+    const response = await callAI({ prompt, json: true, schema, model: "gemini-2.5-flash-lite" });
     const data = safeParseJSON(response || "{}");
     return safeParseJSON(response || "{}");
   },
@@ -1535,7 +1535,7 @@ Return JSON:
       required: ['isComplete', 'completionScore', 'verdict', 'missingElements', 'nextAction', 'readyForScalpel']
     };
 
-    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.0-flash' });
+    const response = await callAI({ prompt, json: true, schema, model: 'gemini-2.5-flash-lite' });
     const data = safeParseJSON(response || '{}');
     return {
       isComplete: data.isComplete || false,

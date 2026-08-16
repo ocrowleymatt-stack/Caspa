@@ -266,7 +266,7 @@ ${inputType === 'plan' ? '- This is a PLAN not prose — recommend structure fix
     ],
   };
   const raw = await withAnalysisDeadline(
-    AIService.callAI({ prompt, json: true, model: 'gemini-2.0-flash', maxTokens: 4096 }),
+    AIService.callAI({ prompt, json: true, model: 'gemini-2.5-flash-lite', maxTokens: 4096 }),
     JSON.stringify(fallbackDiagnosis)
   );
   const parsed = safeParseJSON(raw, fallbackDiagnosis);

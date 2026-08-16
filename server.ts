@@ -153,7 +153,7 @@ app.get("/api/ai/router", async (_req, res) => {
 app.post("/api/ai/call", async (req, res) => {
   const {
     prompt, model, json = false, maxTokens, providerOverride, strictProvider = false,
-    useSearch = false, useWebSearch = false, primaryProvider = "grok",
+    useSearch = false, useWebSearch = false, primaryProvider = "gemini",
     intelligenceMode = 'balanced', taskHint, skipLocalFallback = false,
   } = req.body;
 
@@ -206,7 +206,7 @@ app.post("/api/ai/image", async (req, res) => {
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "flux-pro",
+        model: process.env.CASPA_IMAGE_MODEL || "z-image-turbo",
         prompt,
         width: 1024,
         height: 1024,
