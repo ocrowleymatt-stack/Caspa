@@ -53,7 +53,7 @@ export default function CoreStatusPanel() {
   };
 
   return (
-    <aside aria-label="Caspa server status" style={{ position: 'fixed', right: 16, bottom: 14, zIndex: 1000, width: open ? 330 : 210, border: '1px solid rgba(212,166,255,.35)', borderRadius: 15, background: 'rgba(24,17,32,.96)', color: '#f8f3fb', boxShadow: '0 14px 42px rgba(0,0,0,.28)', fontSize: 12 }}>
+    <aside aria-label="Caspa server status" style={{ position: 'fixed', right: 16, bottom: 'calc(138px + env(safe-area-inset-bottom))', zIndex: 1000, width: open ? 330 : 210, border: '1px solid rgba(212,166,255,.35)', borderRadius: 15, background: 'rgba(24,17,32,.96)', color: '#f8f3fb', boxShadow: '0 14px 42px rgba(0,0,0,.28)', fontSize: 12 }}>
       <button type="button" onClick={() => setOpen(!open)} style={{ width: '100%', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', fontWeight: 800 }}>
         <span>Core {active ? `${active.progress}%` : 'ready'}</span><span>{open ? '−' : '+'}</span>
       </button>
