@@ -53,6 +53,7 @@ import PsychologyStudio from './components/PsychologyStudio';
 import StoryCanvas from './components/StoryCanvas';
 import ProjectShelf from './components/ProjectShelf';
 import GoldRefinery from './components/GoldRefinery';
+import CoreStatusPanel from './components/CoreStatusPanel';
 import RedPenStudio from './components/RedPenStudio';
 import SettingsStudio from './components/SettingsStudio';
 import StoryBibleStudio from './components/StoryBibleStudio';
@@ -1915,6 +1916,7 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ user, loading: authLoading, signOut: handleSignOut }}>
       <CaspaUI />
+      <CoreStatusPanel />
     </AuthContext.Provider>
   );
 }

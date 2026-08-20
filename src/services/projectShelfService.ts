@@ -17,6 +17,7 @@ import {
   showBoxPieceCount,
   type ShowBoxState,
 } from './showBoxService';
+import { scheduleServerProjectSync } from './serverProjectSync';
 
 export type ProjectStatus = 'active' | 'complete';
 
@@ -135,7 +136,26 @@ function loadShelfIndex(): Record<string, ProjectSnapshot> {
 }
 
 function saveShelfIndex(index: Record<string, ProjectSnapshot>): void {
-  localStorage.setItem(SHELF_KEY, JSON.stringify(index));
+  try {
+    localStorage.setItem(SHELF_KEY, JSON.stringify(index));
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+    // The server is canonical. If the legacy all-project ledger no longer fits,
+    // retain a lightweight browser catalogue while the active project's normal
+    // keys remain available as the emergency recovery copy.
+    const compact = Object.fromEntries(Object.entries(index).map(([key, snapshot]) => [key, {
+      brief: snapshot.brief,
+      whitePage: '',
+      manuscriptSource: '',
+      commission: null,
+      showBox: null,
+      savedAt: snapshot.savedAt,
+      status: snapshot.status,
+    }]));
+    localStorage.setItem(SHELF_KEY, JSON.stringify(compact));
+    window.dispatchEvent(new CustomEvent('caspa-storage-compacted', { detail: { projects: Object.keys(index).length } }));
+  }
+  scheduleServerProjectSync(50);
 }
 
 function loadCommissionState(): CommissionState | null {
