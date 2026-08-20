@@ -49,7 +49,7 @@ router.post('/pdf', async (req, res) => {
     const page = await browser.newPage();
 
     try {
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+      await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
 
       const opts = pdfOptions(profile as PdfProfile);
       const buffer = await page.pdf(opts);

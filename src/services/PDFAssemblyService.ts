@@ -166,7 +166,7 @@ export class PDFAssemblyService {
     try {
       // Build HTML from content + illustrations
       const html = this.buildHTML(options, screenSpec);
-      await page.setContent(html, { waitUntil: 'networkidle2' });
+      await page.setContent(html, { waitUntil: 'load' });
 
       // Screen-friendly settings
       const buffer = Buffer.from(await page.pdf({
@@ -238,7 +238,7 @@ export class PDFAssemblyService {
 
     try {
       const html = this.buildHTML(options, printSpec);
-      await page.setContent(html, { waitUntil: 'networkidle2' });
+      await page.setContent(html, { waitUntil: 'load' });
 
       // Professional settings with bleeds and safety zones
       const bleedMm = printSpec.bleedSize;
@@ -442,7 +442,7 @@ export class PDFAssemblyService {
 
     const page = await browser.newPage();
     try {
-      await page.setContent(html, { waitUntil: 'networkidle2' });
+      await page.setContent(html, { waitUntil: 'load' });
       const buffer = Buffer.from(await page.pdf({
         format: 'A4',
         margin: { top: '20mm', bottom: '20mm', left: '25mm', right: '20mm' },

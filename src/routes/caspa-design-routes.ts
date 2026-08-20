@@ -344,11 +344,10 @@ router.post('/picture-book/pdf', async (req, res) => {
     const browser = await puppeteer.default.launch({
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+      await page.setContent(html, { waitUntil: 'load', timeout: 60000 });
       const width = facing ? plan.trim.widthIn * 2 : plan.trim.widthIn;
       const height = plan.trim.heightIn;
       const pdf = await page.pdf({

@@ -9,6 +9,8 @@
  * mounted before the UI renders.
  */
 
+import { scheduleServerProjectSync } from './serverProjectSync';
+
 const ACTIVE_SCOPE_KEY = 'atlas.activeUserDb';
 const USER_DB_PREFIX = 'atlas.userdb.';
 const DEVICE_SCOPE_KEY = 'atlas.deviceBackupScope';
@@ -79,6 +81,7 @@ export function persistActiveUserDatabase(): void {
   const scope = localStorage.getItem(ACTIVE_SCOPE_KEY);
   if (!scope) return;
   writeUserDatabase(scope, collectActiveWorkspaceEntries());
+  scheduleServerProjectSync();
 }
 
 /**
@@ -102,6 +105,7 @@ export function activateUserDatabase(uid: string): void {
   clearActiveWorkspace();
   mountEntries(readUserDatabase(target));
   localStorage.setItem(ACTIVE_SCOPE_KEY, target);
+  scheduleServerProjectSync(100);
 }
 
 /** Save the current user's work and unmount all workspace keys on sign-out. */
