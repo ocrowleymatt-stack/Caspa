@@ -4,9 +4,12 @@
 
 import { randomUUID } from 'crypto';
 import type { CaspaJobRecord, JobAuditSnapshot } from '../types/gold';
-import { loadJobStore, persistJobStore } from './jobStoreService';
+import { archiveJobRecord, loadArchivedJob, loadJobStore, persistJobStore } from './jobStoreService';
+import { currentUser } from './requestContext';
 
-const MAX_COMPLETED = 100;
+// Large book results can be several megabytes each. Keep the active ledger small
+// and archive older completed records individually without deleting user work.
+const MAX_COMPLETED = 3;
 const DEFAULT_STALE_ACTIVE_MS = 12 * 60 * 60 * 1000;
 
 function store(): Map<string, CaspaJobRecord> {
@@ -17,11 +20,19 @@ function save(jobs: Map<string, CaspaJobRecord>): void {
   persistJobStore(jobs);
 }
 
-export function createJob(type: CaspaJobRecord['type'], stage = 'queued'): CaspaJobRecord {
+export function createJob(type: CaspaJobRecord['type'], stage = 'queued', options: { projectId?: string; idempotencyKey?: string } = {}): CaspaJobRecord {
   const jobs = store();
+  const userId = currentUser()?.id || 'legacy-owner';
+  if (options.idempotencyKey) {
+    const existing = [...jobs.values()].find((item) => item.userId === userId && item.idempotencyKey === options.idempotencyKey);
+    if (existing) return existing;
+  }
   const now = new Date().toISOString();
   const job: CaspaJobRecord = {
     id: randomUUID(),
+    userId,
+    projectId: options.projectId,
+    idempotencyKey: options.idempotencyKey,
     type,
     status: 'queued',
     createdAt: now,
@@ -49,12 +60,31 @@ export function updateJob(
 }
 
 export function getJob(id: string): CaspaJobRecord | null {
-  return store().get(id) || null;
+  return store().get(id) || loadArchivedJob(id);
 }
 
 export function listRecentJobs(limit = 20): CaspaJobRecord[] {
   return [...store().values()]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, limit);
+}
+
+export function jobSummary(job: CaspaJobRecord): Omit<CaspaJobRecord, 'input' | 'checkpoint' | 'result'> & { resultAvailable: boolean; resumable: boolean } {
+  const { input, checkpoint, result, ...summary } = job;
+  return { ...summary, resultAvailable: result !== undefined, resumable: input !== undefined || checkpoint !== undefined };
+}
+
+export function getUserJob(userId: string, id: string): CaspaJobRecord | null {
+  const job = getJob(id);
+  if (!job || (job.userId || 'legacy-owner') !== userId) return null;
+  return job;
+}
+
+export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string): CaspaJobRecord[] {
+  return listRecentJobs(500)
+    .filter((job) => (job.userId || 'legacy-owner') === userId)
+    .filter((job) => !projectId || job.projectId === projectId)
+    .filter((job) => !status || job.status === status)
     .slice(0, limit);
 }
 
@@ -66,6 +96,7 @@ export function listRecentJobs(limit = 20): CaspaJobRecord[] {
  */
 export function reapStaleJobs(maxAgeMs = DEFAULT_STALE_ACTIVE_MS): number {
   const jobs = store();
+  const sizeBeforeMaintenance = jobs.size;
   const now = Date.now();
   const stamp = new Date().toISOString();
   let reaped = 0;
@@ -84,8 +115,10 @@ export function reapStaleJobs(maxAgeMs = DEFAULT_STALE_ACTIVE_MS): number {
     reaped += 1;
   }
 
-  if (reaped) {
-    pruneCompleted(jobs);
+  // Startup maintenance also compacts legacy oversized ledgers even when
+  // there are no zombie active jobs to reap.
+  pruneCompleted(jobs);
+  if (reaped || jobs.size !== sizeBeforeMaintenance) {
     save(jobs);
   }
   return reaped;
@@ -97,6 +130,7 @@ function pruneCompleted(jobs: Map<string, CaspaJobRecord>): void {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   if (completed.length <= MAX_COMPLETED) return;
   for (const job of completed.slice(MAX_COMPLETED)) {
+    archiveJobRecord(job);
     jobs.delete(job.id);
   }
 }

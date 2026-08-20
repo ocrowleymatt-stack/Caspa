@@ -111,6 +111,9 @@ export interface JobAuditSnapshot {
 
 export interface CaspaJobRecord {
   id: string;
+  userId?: string;
+  projectId?: string;
+  idempotencyKey?: string;
   type:
     | 'gold-pipeline'
     | 'quality-pass'
