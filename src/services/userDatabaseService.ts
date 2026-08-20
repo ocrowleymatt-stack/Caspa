@@ -68,7 +68,14 @@ function readUserDatabase(scope: string): Record<string, string> {
 }
 
 function writeUserDatabase(scope: string, entries: Record<string, string>): void {
-  localStorage.setItem(dbKey(scope), JSON.stringify(entries));
+  try {
+    localStorage.setItem(dbKey(scope), JSON.stringify(entries));
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+    const compact = { ...entries };
+    delete compact['caspa.shelf'];
+    localStorage.setItem(dbKey(scope), JSON.stringify(compact));
+  }
 }
 
 function mountEntries(entries: Record<string, string>): void {
