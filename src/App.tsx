@@ -617,6 +617,7 @@ function CaspaUI() {
   const [manuscriptSource, setManuscriptSource] = useState(() => localStorage.getItem('caspa.manuscriptSource') || '');
   const [projectStatus, setProjectStatus] = useState<'active' | 'complete'>(() => loadProjectStatus(loadBrief()));
   const [sidebarFastUploading, setSidebarFastUploading] = useState(false);
+  const [sidebarFastUploadError, setSidebarFastUploadError] = useState('');
   const sidebarFastUploadRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -709,11 +710,20 @@ function CaspaUI() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('caspa.whitePage', draftPage);
+    try {
+      localStorage.setItem('caspa.whitePage', draftPage);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+    }
   }, [draftPage]);
 
   useEffect(() => {
-    localStorage.setItem('caspa.manuscriptSource', manuscriptSource);
+    try {
+      localStorage.setItem('caspa.manuscriptSource', manuscriptSource);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+      setSidebarFastUploadError('The source is safely indexed on the Caspa server, but this browser is too full to keep another complete recovery copy.');
+    }
   }, [manuscriptSource]);
 
   const startProject = (mode: CreativeMode, idea: string, tone: string, output: string, audience: string, targetWordCount?: number) => {
@@ -822,7 +832,12 @@ function CaspaUI() {
     setDraftPage('');
     setManuscriptSource(combined);
     localStorage.setItem('caspa.whitePage', '');
-    localStorage.setItem('caspa.manuscriptSource', combined);
+    try {
+      localStorage.setItem('caspa.manuscriptSource', combined);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+      setSidebarFastUploadError('Ingest completed on the server. The working excerpt is open now, but this browser is too full to cache another complete copy.');
+    }
     localStorage.removeItem('caspa.commission');
     localStorage.removeItem('caspa.commission.tab');
     clearShowBox();
@@ -839,8 +854,11 @@ function CaspaUI() {
     const files = Array.from(list || []);
     if (!files.length) return;
     setSidebarFastUploading(true);
+    setSidebarFastUploadError('');
     try {
       await handleFastDataUpload(files);
+    } catch (error) {
+      setSidebarFastUploadError(error instanceof Error ? error.message : 'Data ingest failed. Please try the file again.');
     } finally {
       setSidebarFastUploading(false);
       if (sidebarFastUploadRef.current) sidebarFastUploadRef.current.value = '';
@@ -1092,6 +1110,11 @@ function CaspaUI() {
           <div style={{ color: '#8f8068', fontSize: 10, lineHeight: 1.35, marginTop: 6, padding: '0 4px', textAlign: 'center' }}>
             Any file type → extract/transcribe/index where possible
           </div>
+          {sidebarFastUploadError && (
+            <div role="alert" style={{ color: '#ffd6cf', background: '#4c211d', borderRadius: 10, fontSize: 11, lineHeight: 1.4, marginTop: 8, padding: '8px 10px' }}>
+              {sidebarFastUploadError}
+            </div>
+          )}
         </div>
 
         <div style={{ marginBottom: 12 }}>
