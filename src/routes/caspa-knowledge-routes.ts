@@ -1,12 +1,13 @@
 /**
  * User-scoped Atlas knowledge/corpus routes.
  */
-import express, { type Request } from 'express';
+import express, { type Request, type Response } from 'express';
 import multer from 'multer';
 import os from 'os';
 import fsp from 'fs/promises';
 import { createHash, randomUUID } from 'crypto';
 import { verifyFirebaseIdToken } from '../services/firebaseTokenVerifier';
+import { requestUser } from '../middleware/authenticatedUser';
 import {
   getKnowledgeStatus,
   ingestKnowledgeSource,
@@ -35,7 +36,16 @@ function validLocalScope(value: string): boolean {
   return /^[a-zA-Z0-9._-]{12,180}$/.test(value);
 }
 
-async function resolveScope(req: Request): Promise<string> {
+async function resolveScope(req: Request, res: Response): Promise<string> {
+  // The Caspa API middleware has already authenticated the reverse-proxy
+  // identity. Use that immutable identity for the canonical knowledge scope.
+  // Firebase/local headers below remain solely for older deployments.
+  try {
+    const user = requestUser(res);
+    if (user.id) return `authentik:${user.id}`;
+  } catch {
+    // Fall through to the legacy compatibility scopes.
+  }
   const auth = String(req.headers.authorization || '');
   if (auth.startsWith('Bearer ')) {
     const verified = await verifyFirebaseIdToken(auth.slice(7).trim());
@@ -49,7 +59,7 @@ async function resolveScope(req: Request): Promise<string> {
 async function withScope(req: Request, res: express.Response, fn: (scope: string) => Promise<any> | any) {
   let scope = '';
   try {
-    scope = await resolveScope(req);
+    scope = await resolveScope(req, res);
   } catch (error: any) {
     return res.status(401).json({ success: false, message: error?.message || 'Unauthorized knowledge scope' });
   }

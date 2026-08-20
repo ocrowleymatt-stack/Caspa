@@ -1,6 +1,3 @@
-import { getAuth } from 'firebase/auth';
-import { getActiveUserDatabaseScope, getDeviceBackupScope } from './userDatabaseService';
-
 export interface KnowledgeStatus {
   sources: number;
   aliases: number;
@@ -28,13 +25,10 @@ export interface CloudAutopilotStatus {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const scope = getActiveUserDatabaseScope();
-  if (scope && scope !== 'local-guest') {
-    const current = getAuth().currentUser;
-    if (!current) throw new Error('Your signed-in Atlas session is unavailable. Sign in again.');
-    return { Authorization: `Bearer ${await current.getIdToken()}` };
-  }
-  return { 'X-Atlas-Local-Scope': getDeviceBackupScope() };
+  // Caspa is protected by same-origin Authentik forward auth. The browser
+  // session cookie is sent automatically and nginx supplies the trusted user
+  // identity to the API; no second Firebase/device login is required.
+  return {};
 }
 
 async function readJson(response: Response): Promise<any> {
