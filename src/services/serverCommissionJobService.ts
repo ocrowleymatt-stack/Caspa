@@ -2,6 +2,7 @@ import type { Chapter } from '../types';
 import type { CommissionScope, Diagnosis } from '../types/commission';
 import type { StoryPromise } from '../types/promise';
 import { createJob, getJob, listRecentJobs, updateJob } from './jobQueueService';
+import { routeAtlasPrompt } from './routerFallbackBridge';
 
 export interface ServerCommissionBrief {
   title: string;
@@ -109,24 +110,22 @@ async function callAi(
   intelligenceMode: IntelligenceMode = 'balanced',
   taskHint: TaskHint = 'long',
 ): Promise<string> {
-  const port = Number(process.env.PORT) || 3000;
   const deadline = intelligenceMode === 'speed' ? SPEED_CALL_DEADLINE_MS : STANDARD_CALL_DEADLINE_MS;
-  const response = await fetch(`http://127.0.0.1:${port}/api/ai/call`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(deadline),
-    body: JSON.stringify({
-      prompt,
+  const routed = await Promise.race([
+    routeAtlasPrompt(prompt, {
       maxTokens,
-      intelligenceMode,
-      taskHint,
-      useWebSearch,
-      skipLocalFallback: true,
+      useSearch: useWebSearch,
+      mode: intelligenceMode,
+      task: taskHint,
+      disableLocalFallback: true,
     }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data?.result) throw new Error(data?.message || `AI worker failed (${response.status})`);
-  return String(data.result).trim();
+    new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('AI worker timed out')), deadline);
+      timer.unref?.();
+    }),
+  ]);
+  if (!routed.text?.trim()) throw new Error('AI worker returned no text');
+  return routed.text.trim();
 }
 
 async function callAiWithRetry(
