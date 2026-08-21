@@ -443,9 +443,11 @@ export async function executeCommission(
         return await pollServerJob(brief, remembered, onProgress, fallbackPromises);
       }
       if (existing?.status === 'failed') {
-        // Failed jobs retain their checkpoint server-side, but a fresh job is
-        // deliberately submitted from the latest client state on explicit retry.
-        forgetActiveJobId(brief);
+        const retry = await fetch(`/api/caspa/gold/jobs/${encodeURIComponent(remembered)}/retry`, { method: 'POST' });
+        const retryBody = await retry.json().catch(() => ({}));
+        if (!retry.ok) throw new Error(retryBody?.message || 'The saved Atlas finish job could not be restarted.');
+        onProgress({ phase: 'retry-queued', message: 'Atlas restarted the saved finish job from its retained input.', percent: Number(existing.progress || 1) });
+        return await pollServerJob(brief, remembered, onProgress, fallbackPromises);
       }
     } catch {
       // If status lookup itself fails, do not create a duplicate immediately.
