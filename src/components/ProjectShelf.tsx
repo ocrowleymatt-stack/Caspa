@@ -30,6 +30,7 @@ import {
   switchToProject,
   type ShelfProject,
 } from '../services/projectShelfService';
+import { syncProjectsFromServer } from '../services/serverProjectSync';
 
 type ShelfTab = 'open' | 'library';
 type ViewMode = 'grid' | 'list';
@@ -74,6 +75,20 @@ export default function ProjectShelf({
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    let active = true;
+    syncProjectsFromServer()
+      .then((downloaded) => {
+        if (!active) return;
+        setProjects(loadShelf());
+        if (downloaded > 0) setStatusMsg(`Library refreshed from the server (${downloaded} project${downloaded === 1 ? '' : 's'}).`);
+      })
+      .catch((error) => {
+        if (active) setStatusMsg(error instanceof Error ? error.message : 'Could not refresh the server Library.');
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     fetch('/api/jobs?limit=20&status=complete', { cache: 'no-store' })

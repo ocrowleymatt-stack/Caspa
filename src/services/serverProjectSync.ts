@@ -91,6 +91,33 @@ export async function syncProjectsToServer(): Promise<void> {
   return running;
 }
 
+/** Merge canonical server projects into the browser shelf. */
+export async function syncProjectsFromServer(): Promise<number> {
+  const remote = (await jsonRequest('/api/projects')).projects || [];
+  const local = shelf();
+  const map = mappings();
+  let changed = 0;
+
+  for (const project of remote) {
+    const key = String(project?.projectKey || '').trim();
+    if (!key || !project?.state || typeof project.state !== 'object') continue;
+    const localSavedAt = Date.parse(String(local[key]?.savedAt || '')) || 0;
+    const remoteSavedAt = Date.parse(String(project.state.savedAt || project.updatedAt || '')) || 0;
+    if (!local[key] || remoteSavedAt >= localSavedAt) {
+      local[key] = project.state;
+      changed += 1;
+    }
+    map[key] = { id: project.id, revision: project.revision, checksum: project.checksum };
+  }
+
+  if (changed) localStorage.setItem('caspa.shelf', JSON.stringify(local));
+  localStorage.setItem(MAP_KEY, JSON.stringify(map));
+  localStorage.setItem(MIGRATION_KEY, JSON.stringify({
+    status: 'verified', projects: Object.keys(map).length, downloaded: changed, at: new Date().toISOString(),
+  }));
+  return changed;
+}
+
 export function scheduleServerProjectSync(delayMs = 750): void {
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(() => { void syncProjectsToServer().catch((error) => console.warn('[ProjectSync]', error)); }, delayMs);
