@@ -25,6 +25,7 @@ import {
   loadShelf,
   pruneStaleProjects,
   recordProjectSnapshot,
+  recoverCompletedCommission,
   reopenProject,
   switchToProject,
   type ShelfProject,
@@ -59,6 +60,8 @@ export default function ProjectShelf({
   const [doctorStatus, setDoctorStatus] = useState<string | null>(null);
   const [checkingDoctor, setCheckingDoctor] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [finishedJobs, setFinishedJobs] = useState<Array<{ id: string; updatedAt: string; stage?: string }>>([]);
+  const [recoveringJob, setRecoveringJob] = useState('');
 
   const refresh = useCallback(() => {
     // Only snapshot when a real project is live — never overwrite library with empty state.
@@ -71,6 +74,31 @@ export default function ProjectShelf({
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    fetch('/api/jobs?limit=20&status=complete', { cache: 'no-store' })
+      .then((response) => response.json())
+      .then((body) => setFinishedJobs((body?.data?.jobs || []).filter((job: any) => job.type === 'commission' && job.resultAvailable)))
+      .catch(() => setFinishedJobs([]));
+  }, []);
+
+  const recoverFinishedJob = async (jobId: string) => {
+    setRecoveringJob(jobId);
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/result`, { cache: 'no-store' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.data?.result) throw new Error(body?.message || 'Could not retrieve the finished manuscript.');
+      recoverCompletedCommission(body.data.result);
+      refresh();
+      setTab('library');
+      setFinishedJobs((jobs) => jobs.filter((job) => job.id !== jobId));
+      setStatusMsg('Finished manuscript recovered into the Library. No new AI run was used.');
+    } catch (error) {
+      setStatusMsg(error instanceof Error ? error.message : 'Could not recover the finished manuscript.');
+    } finally {
+      setRecoveringJob('');
+    }
+  };
 
   const displayed = useMemo(() => {
     const base = tab === 'open' ? loadOpenProjects() : loadLibraryManuscripts();
@@ -185,6 +213,18 @@ export default function ProjectShelf({
           <div style={{ ...card, marginBottom: 16, padding: '12px 18px', fontSize: 14, color: '#5c5146' }}>
             {doctorStatus}
           </div>
+        )}
+
+        {finishedJobs.length > 0 && (
+          <article style={{ ...card, marginBottom: 16, padding: '14px 18px', background: '#fffbeb', borderColor: '#f3d27a' }}>
+            <strong>Finished run waiting for delivery</strong>
+            <p style={{ margin: '5px 0 10px', color: '#73695d' }}>Caspa completed this manuscript on the server. Recover it into the Library without running the AI again.</p>
+            {finishedJobs.map((job) => (
+              <button key={job.id} type="button" disabled={recoveringJob === job.id} onClick={() => void recoverFinishedJob(job.id)} style={primaryBtn}>
+                {recoveringJob === job.id ? <Loader size={16} className="spin" /> : <BookOpen size={16} />} Recover finished manuscript
+              </button>
+            ))}
+          </article>
         )}
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 20 }}>

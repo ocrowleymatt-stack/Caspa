@@ -536,7 +536,7 @@ export async function runServerCommission(jobId: string): Promise<void> {
       status: 'complete',
       progress: 100,
       stage: `complete:${words}/${fullTarget}-words`,
-      result: { finalText: artefact, artefact, chapters: working, words, targetWords: fullTarget, promises: payload.promises || [] },
+      result: { finalText: artefact, artefact, chapters: working, words, targetWords: fullTarget, promises: payload.promises || [], project: payload.brief },
       input: undefined,
       checkpoint: undefined,
     });

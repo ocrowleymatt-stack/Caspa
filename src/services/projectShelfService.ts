@@ -273,6 +273,47 @@ export function loadLibraryManuscripts(): ShelfProject[] {
   return loadShelf().filter((p) => p.status === 'complete');
 }
 
+export function recoverCompletedCommission(result: any): string {
+  const meta = result?.project || {};
+  const brief: ProjectBriefLike = {
+    title: String(meta.title || `Recovered manuscript ${new Date().toLocaleDateString()}`),
+    mode: String(meta.mode || 'novel'),
+    idea: String(meta.idea || 'Recovered from a completed Caspa Finish run.'),
+    tone: String(meta.tone || ''),
+    output: String(meta.output || 'Finished manuscript'),
+    audience: String(meta.audience || 'General reader'),
+    targetWordCount: Number(meta.targetWordCount || result?.targetWords || 0) || undefined,
+  };
+  const key = getProjectKey(brief);
+  const chapters = Array.isArray(result?.chapters) ? result.chapters : [];
+  const artefact = String(result?.artefact || result?.finalText || '');
+  if (!chapters.length || !artefact.trim()) throw new Error('The completed job has no recoverable manuscript payload.');
+  const commission: CommissionState = {
+    phase: 'complete',
+    rawInput: '',
+    chapters,
+    diagnosis: null,
+    promises: Array.isArray(result?.promises) ? result.promises : [],
+    selectedRecommendationIds: [],
+    scope: { type: 'whole' },
+    progress: null,
+    artefact,
+    error: null,
+  };
+  const index = loadShelfIndex();
+  index[key] = {
+    brief,
+    whitePage: artefact,
+    manuscriptSource: artefact,
+    commission,
+    showBox: null,
+    savedAt: new Date().toISOString(),
+    status: 'complete',
+  };
+  saveShelfIndex(index);
+  return key;
+}
+
 export function recordProjectSnapshot(brief: ProjectBriefLike): void {
   if (!briefFromStorage()) return;
 

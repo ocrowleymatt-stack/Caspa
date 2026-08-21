@@ -20,10 +20,21 @@ router.get('/:id', (req, res) => {
 });
 
 router.get('/:id/result', (req, res) => {
-  const job = getUserJob(requestUser(res).id, req.params.id);
+  const user = requestUser(res);
+  const job = getUserJob(user.id, req.params.id);
   if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
   if (job.status !== 'complete') return res.status(409).json({ success: false, message: 'Job is not complete', code: 'JOB_NOT_COMPLETE' });
-  return res.json({ success: true, data: { id: job.id, result: job.result } });
+  const result = { ...(job.result as Record<string, unknown> || {}) };
+  if (!result.project && job.type === 'commission') {
+    const created = new Date(job.createdAt).getTime();
+    const sibling = listUserJobs(user.id, 100).find((candidate) => {
+      const brief = (candidate.input as any)?.brief;
+      return candidate.id !== job.id && candidate.type === 'commission' && brief
+        && Math.abs(new Date(candidate.createdAt).getTime() - created) < 5 * 60 * 1000;
+    });
+    if ((sibling?.input as any)?.brief) result.project = (sibling!.input as any).brief;
+  }
+  return res.json({ success: true, data: { id: job.id, result } });
 });
 
 router.post('/:id/retry', (req, res) => {
