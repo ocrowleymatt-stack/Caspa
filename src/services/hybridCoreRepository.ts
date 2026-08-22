@@ -268,7 +268,7 @@ export async function saveDiagnosis(userId: string, projectId: string, input: {
   const result = await database().query(
     `INSERT INTO caspa_diagnoses(id,project_id,user_id,version_id,summary,findings)
      VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [id, projectId, userId, input.versionId || null, input.summary, input.findings],
+    [id, projectId, userId, input.versionId || null, input.summary, JSON.stringify(input.findings)],
   );
   await database().query(
     'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
@@ -302,7 +302,7 @@ export async function runExportPreflight(userId: string, projectId: string): Pro
   const id = randomUUID();
   const saved = await database().query(
     'INSERT INTO caspa_export_preflights(id,project_id,user_id,version_id,passed,checks) VALUES($1,$2,$3,$4,$5,$6) RETURNING created_at',
-    [id, projectId, userId, version.id, passed, checks],
+    [id, projectId, userId, version.id, passed, JSON.stringify(checks)],
   );
   return { id, projectId, versionId: version.id, passed, checks, createdAt: new Date(saved.rows[0].created_at).toISOString() };
 }
