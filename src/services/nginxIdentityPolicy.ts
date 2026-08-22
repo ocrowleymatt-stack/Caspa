@@ -66,6 +66,33 @@ function stripComments(text: string): string {
   }).join('\n');
 }
 
+function caspaServerBlocks(text: string): string {
+  const blocks: string[] = [];
+  const pattern = /\bserver\s*\{/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    const start = match.index;
+    let depth = 0;
+    let quote = '';
+    for (let index = text.indexOf('{', start); index < text.length; index += 1) {
+      const char = text[index];
+      if ((char === '"' || char === "'") && text[index - 1] !== '\\') {
+        quote = quote === char ? '' : quote || char;
+      }
+      if (quote) continue;
+      if (char === '{') depth += 1;
+      if (char === '}') depth -= 1;
+      if (depth === 0) {
+        const block = text.slice(start, index + 1);
+        if (/\bserver_name\s+[^;]*caspa[^;]*;/i.test(block)) blocks.push(block);
+        pattern.lastIndex = index + 1;
+        break;
+      }
+    }
+  }
+  return blocks.length ? blocks.join('\n') : text;
+}
+
 function headerKey(name: string): string {
   return name.trim().toLowerCase();
 }
@@ -165,6 +192,19 @@ function isLoopbackCaspaPass(value: string): boolean {
   }
 }
 
+function isAuthentikOutpostPass(value: string): boolean {
+  const raw = value.trim();
+  try {
+    const url = new URL(raw.includes('://') ? raw : `http://${raw}`);
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    return (host === '127.0.0.1' || host === 'localhost' || host === '::1')
+      && url.port === '9020'
+      && url.pathname.startsWith('/outpost.goauthentik.io');
+  } catch {
+    return false;
+  }
+}
+
 function allowedVarsFor(header: string): Set<string> | null {
   const key = headerKey(header);
   if (key === 'x-authentik-uid') return TRUSTED_UID_VARS;
@@ -185,21 +225,22 @@ function isTrustedIdentityValue(header: string, value: string, tainted: Set<stri
 export function evaluateNginxIdentityConfig(text: string): NginxIdentityResult {
   const errors: string[] = [];
   const notes: string[] = [];
-  const body = stripComments(String(text || ''));
+  const body = caspaServerBlocks(stripComments(String(text || '')));
   if (!body.trim()) {
     return { ok: false, errors: ['nginx configuration is empty'], notes };
   }
 
   const proxyPasses = collectDirectives(body, 'proxy_pass');
-  if (!proxyPasses.length) {
+  const caspaPasses = proxyPasses.filter(isLoopbackCaspaPass);
+  if (!caspaPasses.length) {
     errors.push('configuration must proxy_pass to Caspa on loopback:3000');
   }
   for (const value of proxyPasses) {
-    if (!isLoopbackCaspaPass(value)) {
+    if (!isLoopbackCaspaPass(value) && !isAuthentikOutpostPass(value)) {
       errors.push(`proxy_pass ${value} is not loopback:3000`);
     }
   }
-  if (proxyPasses.length && proxyPasses.every(isLoopbackCaspaPass)) {
+  if (caspaPasses.length) {
     notes.push('proxy_pass stays on loopback:3000');
   }
 

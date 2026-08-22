@@ -24,6 +24,13 @@ test('nginx configs that proxy off loopback are rejected', () => {
   assert.match(result.errors.join('\n'), /loopback:3000|10\.1\.2\.3/);
 });
 
+test('combined gateway configs audit only the Caspa server block', () => {
+  const otherService = `server { server_name atlas.example.test; location / { proxy_pass http://127.0.0.1:9999; } }`;
+  const caspa = fs.readFileSync(path.join(fixtures, 'safe.conf'), 'utf8');
+  const result = evaluateNginxIdentityConfig(`${otherService}\n${caspa}`);
+  assert.equal(result.ok, true, result.errors.join('; '));
+});
+
 test('empty or missing nginx identity config is rejected', () => {
   const empty = evaluateNginxIdentityConfig('');
   assert.equal(empty.ok, false);

@@ -76,9 +76,9 @@ jobs:
              export CASPA_BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
              unset NODE_ENV || true
              npm ci
-             PROXY_SECRET=\$(node -r dotenv/config -e \"process.stdout.write(process.env.CASPA_PROXY_SHARED_SECRET || '')\")
-             OPS_GROUPS=\$(node -r dotenv/config -e \"process.stdout.write(process.env.CASPA_OPS_GROUPS || '')\")
-             DATABASE_URL=\$(node -r dotenv/config -e \"process.stdout.write(process.env.CASPA_DATABASE_URL || '')\")
+             PROXY_SECRET=\$(node -e \"require('dotenv').config({path:['.env','.caspa-core.env'],quiet:true}); process.stdout.write(process.env.CASPA_PROXY_SHARED_SECRET || '')\")
+             OPS_GROUPS=\$(node -e \"require('dotenv').config({path:['.env','.caspa-core.env'],quiet:true}); process.stdout.write(process.env.CASPA_OPS_GROUPS || '')\")
+             DATABASE_URL=\$(node -e \"require('dotenv').config({path:['.env','.caspa-core.env'],quiet:true}); process.stdout.write(process.env.CASPA_DATABASE_URL || '')\")
              if [ -z \"\$PROXY_SECRET\" ]; then
                echo 'CASPA_PROXY_SHARED_SECRET is required; refusing deployment.' >&2
                exit 3
@@ -91,7 +91,7 @@ jobs:
                echo 'CASPA_DATABASE_URL is required; refusing deployment.' >&2
                exit 3
              fi
-             node -r dotenv/config -e \"const {Client}=require('pg'); const c=new Client({connectionString:process.env.CASPA_DATABASE_URL}); c.connect().then(()=>c.query('select 1')).then(()=>c.end()).catch((error)=>{console.error('PostgreSQL preflight failed:', error.message); process.exit(1)})\"
+             CASPA_DATABASE_URL=\"\$DATABASE_URL\" node -e \"const {Client}=require('pg'); const c=new Client({connectionString:process.env.CASPA_DATABASE_URL}); c.connect().then(()=>c.query('select 1')).then(()=>c.end()).catch((error)=>{console.error('PostgreSQL preflight failed:', error.message); process.exit(1)})\"
              bash scripts/verify-nginx-identity.sh
              npm run lint
              export NODE_ENV=production
