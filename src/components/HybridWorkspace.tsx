@@ -866,7 +866,7 @@ export default function HybridWorkspace() {
                     ))}
                     <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runPreflight()}>Run publish preflight</button>
                     {preflight?.passed && selected && <a className="desk-primary" href={`/api/v2/projects/${encodeURIComponent(selected.id)}/export.txt`}>Download verified manuscript</a>}
-                    <button type="button" className="desk-ghost" onClick={() => void openTool('design')}>Design</button>
+                    <button type="button" className="desk-ghost" onClick={() => void openTool('design')}>Imagine</button>
                   </section>
                 )}
 

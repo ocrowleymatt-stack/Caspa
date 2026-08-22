@@ -22,68 +22,37 @@ import {
   buildCoverPreviewHtml,
   type CoverFormat,
 } from '../services/illustratedBook/coverDesignEngine';
+import { generateImagineImage, IMAGINE_ASPECTS, IMAGINE_RESOLUTIONS, normaliseImagineRequest } from '../services/grokImagineClient';
 
 const router = express.Router();
 
-async function generateImage(prompt: string): Promise<string | null> {
-  const providers: Array<() => Promise<string | null>> = [
-    async () => {
-      const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-      if (!key) return null;
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-exp-image-generation:generateContent?key=${key}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-          }),
-          signal: AbortSignal.timeout(90000),
-        }
-      );
-      if (!res.ok) return null;
-      const data = await res.json();
-      const parts = data?.candidates?.[0]?.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData?.data) {
-          const mime = part.inlineData.mimeType || 'image/png';
-          return `data:${mime};base64,${part.inlineData.data}`;
-        }
-      }
-      return null;
-    },
-    async () => {
-      const key = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
-      if (!key) return null;
-      const res = await fetch('https://api.x.ai/v1/images/generations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model: 'grok-2-image',
-          prompt,
-          n: 1,
-          response_format: 'b64_json',
-        }),
-        signal: AbortSignal.timeout(90000),
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      const b64 = data?.data?.[0]?.b64_json;
-      return b64 ? `data:image/png;base64,${b64}` : data?.data?.[0]?.url || null;
-    },
-  ];
-
-  for (const fn of providers) {
-    try {
-      const url = await fn();
-      if (url) return url;
-    } catch (err) {
-      console.warn('[design/image]', err instanceof Error ? err.message : err);
-    }
+async function generateImage(prompt: string, aspectRatio = '3:4'): Promise<string | null> {
+  try {
+    const result = await generateImagineImage({ prompt, aspectRatio, resolution: '1k' });
+    return result.url;
+  } catch (err) {
+    console.warn('[design/image]', err instanceof Error ? err.message : err);
+    return null;
   }
-  return null;
 }
+
+router.post('/imagine', async (req, res) => {
+  const parsed = normaliseImagineRequest(req.body || {});
+  if (parsed.ok === false) {
+    return res.status(400).json({ success: false, message: parsed.message });
+  }
+  const job = createJob('imagine', 'imaging');
+  updateJob(job.id, { status: 'running', progress: 15 });
+  try {
+    const result = await generateImagineImage(parsed);
+    updateJob(job.id, { status: 'complete', progress: 100, stage: 'complete' });
+    return res.json({ success: true, jobId: job.id, data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Imagine failed';
+    updateJob(job.id, { status: 'failed', error: message });
+    return res.status(503).json({ success: false, message });
+  }
+});
 
 router.get('/catalog', (_req, res) => {
   res.json({
@@ -93,6 +62,7 @@ router.get('/catalog', (_req, res) => {
       artStyles: ART_STYLES,
       trims: TRIM_SPECS,
       coverFormats: ['front-only', 'wraparound', 'board-book', 'dust-jacket'],
+      imagine: { aspects: IMAGINE_ASPECTS, resolutions: IMAGINE_RESOLUTIONS, model: 'grok-imagine-image-2.0' },
     },
   });
 });
@@ -150,12 +120,12 @@ router.post('/cover/generate', async (req, res) => {
 
   try {
     const prompt = mode === 'wraparound' ? spec.wraparoundPrompt : spec.frontPrompt;
-    const imageUrl = await generateImage(prompt);
+    const imageUrl = await generateImage(prompt, mode === 'wraparound' ? '16:9' : '3:4');
     if (!imageUrl) {
       updateJob(job.id, { status: 'failed', error: 'No image provider available' });
       return res.status(503).json({
         success: false,
-        message: 'Image generation unavailable. Check GEMINI_API_KEY or GROK_API_KEY.',
+        message: 'Image generation unavailable. Check GROK_API_KEY or XAI_API_KEY.',
         data: { spec, prompt },
       });
     }
@@ -273,7 +243,7 @@ router.post('/picture-book/illustrate', async (req, res) => {
       stage: `page-${pages[i].pageNumber}`,
     });
     try {
-      const url = await generateImage(pages[i].illustrationPrompt);
+      const url = await generateImage(pages[i].illustrationPrompt, '3:4');
       if (url) pages[i] = { ...pages[i], imageUrl: url };
       else failures.push(`page ${pages[i].pageNumber}`);
     } catch {

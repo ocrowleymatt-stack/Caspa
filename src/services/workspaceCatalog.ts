@@ -45,7 +45,7 @@ export const WORKSPACE_TOOLS: WorkspaceTool[] = [
   { id: 'gold', label: 'Gold Refinery', help: 'Multi-pass polish. The refined text is a proposal until you accept an immutable version.', stages: ['Revise', 'Finish'] },
   { id: 'redpen', label: 'Red Pen', help: 'Fast quality scan of the current version. Advisory only.', stages: ['Workshop', 'Revise', 'Finish', 'Publish'] },
   { id: 'prizes', label: 'Prize Calibration', help: 'Craft-lens pressure test. Does not mutate the manuscript.', stages: ['Finish'] },
-  { id: 'design', label: 'Design', help: 'Cover and picture-book design for this project.', stages: ['Publish'] },
+  { id: 'design', label: 'Imagine', help: 'Grok Imagine stills, then cover and picture-book design.', stages: ['Publish'] },
   { id: 'preflight', label: 'Proof / preflight', help: 'Server publication checks against the current immutable version.', stages: ['Finish', 'Publish'] },
   { id: 'publish', label: 'Export and publishing', help: 'Download only the version that passed the latest preflight.', stages: ['Publish'] },
   { id: 'compare', label: 'Version compare', help: 'Read two immutable versions side by side. Restore creates a new snapshot.', stages: ['Revise', 'Finish'] },

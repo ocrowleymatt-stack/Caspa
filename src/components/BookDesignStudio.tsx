@@ -1,9 +1,11 @@
 /**
- * Book Design Studio — simple UI, powerful cover + picture-book layout under the hood.
+ * Book Design Studio — Grok Imagine first, cover + picture-book layout under the hood.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookImage, LayoutTemplate, Loader, Sparkles, Download, Image as ImageIcon, Check } from 'lucide-react';
+import { fetchWithTimeout, friendlyFetchError } from '../lib/fetchWithTimeout';
+import { IMAGINE_ASPECTS, type ImagineAspect, type ImagineQuality, type ImagineResolution } from '../services/grokImagineTypes';
 
 type Brief = {
   title: string;
@@ -20,12 +22,28 @@ type Props = {
   onDraftChange?: (text: string) => void;
 };
 
-type Tab = 'cover' | 'pages' | 'export';
+type Tab = 'imagine' | 'cover' | 'pages' | 'export';
+
+type ImagineTake = {
+  id: string;
+  url: string;
+  prompt: string;
+  aspectRatio: string;
+  model: string;
+  at: string;
+};
 
 const STORAGE_KEY = 'caspa.bookDesign';
+const MAX_STORED_IMAGE = 1_400_000;
 
 export default function BookDesignStudio({ brief, draftPage, authorName = '', onDraftChange }: Props) {
-  const [tab, setTab] = useState<Tab>('cover');
+  const [ready, setReady] = useState(false);
+  const [tab, setTab] = useState<Tab>('imagine');
+  const [prompt, setPrompt] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<ImagineAspect>('3:4');
+  const [resolution, setResolution] = useState<ImagineResolution>('1k');
+  const [quality, setQuality] = useState<ImagineQuality>('medium');
+  const [takes, setTakes] = useState<ImagineTake[]>([]);
   const [ageBand, setAgeBand] = useState('3-5');
   const [trimId, setTrimId] = useState('8x8');
   const [artStyle, setArtStyle] = useState('watercolor-picture-book');
@@ -57,18 +75,71 @@ export default function BookDesignStudio({ brief, draftPage, authorName = '', on
         if (saved.ageBand) setAgeBand(saved.ageBand);
         if (saved.trimId) setTrimId(saved.trimId);
         if (saved.artStyle) setArtStyle(saved.artStyle);
+        if (typeof saved.prompt === 'string') setPrompt(saved.prompt);
+        if (saved.aspectRatio) setAspectRatio(saved.aspectRatio);
+        if (saved.resolution === '1k' || saved.resolution === '2k') setResolution(saved.resolution);
+        if (saved.quality === 'low' || saved.quality === 'medium') setQuality(saved.quality);
+        if (Array.isArray(saved.takes)) {
+          setTakes(
+            saved.takes
+              .filter((take: ImagineTake) => take && typeof take.url === 'string' && take.url)
+              .slice(0, 12)
+          );
+        }
       }
     } catch {
       /* ignore */
     }
+    setReady(true);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ coverImage, plan, ageBand, trimId, artStyle, coverFormat })
-    );
-  }, [coverImage, plan, ageBand, trimId, artStyle, coverFormat]);
+    if (!ready) return;
+    const latest = coverImage && coverImage.length < MAX_STORED_IMAGE ? coverImage : '';
+    const storedTakes = takes.slice(0, 8).map((take, index) => ({
+      ...take,
+      url: index === 0 && take.url.length < MAX_STORED_IMAGE ? take.url : '',
+    }));
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          coverImage: latest,
+          plan,
+          ageBand,
+          trimId,
+          artStyle,
+          coverFormat,
+          prompt,
+          aspectRatio,
+          resolution,
+          quality,
+          takes: storedTakes,
+        })
+      );
+    } catch {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ plan, ageBand, trimId, artStyle, coverFormat, prompt, aspectRatio, resolution, quality, takes: [] })
+        );
+      } catch {
+        /* quota — keep working in memory */
+      }
+    }
+  }, [ready, coverImage, plan, ageBand, trimId, artStyle, coverFormat, prompt, aspectRatio, resolution, quality, takes]);
+
+  useEffect(() => {
+    if (!ready || prompt.trim()) return;
+    const seed = [
+      brief.title ? `Literary still for “${brief.title}”.` : 'Literary still.',
+      brief.idea ? brief.idea.slice(0, 280) : '',
+      brief.tone ? `Tone: ${brief.tone}.` : '',
+      `Art direction: ${artStyle.replace(/-/g, ' ')}.`,
+      'No logos, no barcode, no watermark. Typography only if it belongs in the image.',
+    ].filter(Boolean).join(' ');
+    setPrompt(seed);
+  }, [ready, brief.title, brief.idea, brief.tone, artStyle, prompt]);
 
   const characters = useMemo(
     () =>
@@ -78,12 +149,49 @@ export default function BookDesignStudio({ brief, draftPage, authorName = '', on
     [characterName, ageBand]
   );
 
+  const activeTake = takes.find((take) => take.url === coverImage);
+
+  const runImagine = async () => {
+    if (!prompt.trim()) {
+      setError('Write what you want to see.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setStatus(quality === 'low' ? 'Imagine is sketching…' : 'Grok Imagine is working…');
+    try {
+      const res = await fetchWithTimeout('/api/caspa/design/imagine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, aspectRatio, resolution, quality }),
+      }, 180_000);
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Imagine failed');
+      const take: ImagineTake = {
+        id: `${Date.now()}`,
+        url: json.data.url,
+        prompt: json.data.prompt,
+        aspectRatio: json.data.aspectRatio,
+        model: json.data.model,
+        at: new Date().toISOString(),
+      };
+      setTakes((current) => [take, ...current].slice(0, 12));
+      setCoverImage(json.data.url);
+      setStatus(json.data.model === 'grok-imagine-image-2.0' ? 'Imagine 2.0 ready.' : `Ready · ${json.data.model}`);
+      setTab('imagine');
+    } catch (err) {
+      setError(friendlyFetchError(err, 'Imagine failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const generateCover = async (mode: 'front' | 'wraparound' = 'front') => {
     setBusy(true);
     setError('');
     setStatus(mode === 'wraparound' ? 'Generating wraparound jacket…' : 'Generating cover…');
     try {
-      const res = await fetch('/api/caspa/design/cover/generate', {
+      const res = await fetchWithTimeout('/api/caspa/design/cover/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -100,15 +208,15 @@ export default function BookDesignStudio({ brief, draftPage, authorName = '', on
           mood: brief.tone,
           mode,
         }),
-      });
+      }, 180_000);
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Cover failed');
       setCoverImage(json.data.imageUrl);
       setCoverHtml(json.data.htmlPreview || '');
       setStatus('Cover ready.');
       setTab('cover');
-    } catch (err: any) {
-      setError(err.message || 'Cover generation failed');
+    } catch (err) {
+      setError(friendlyFetchError(err, 'Cover generation failed'));
     } finally {
       setBusy(false);
     }
@@ -141,8 +249,6 @@ export default function BookDesignStudio({ brief, draftPage, authorName = '', on
       setPlan(json.data.plan);
       setPagesHtml(json.data.html || '');
       if (json.data.adaptedText && onDraftChange && json.data.adaptedText !== draftPage) {
-        // Keep adapted picture-book text available but don't force overwrite silently —
-        // only sync if original was the short premise.
         if (!draftPage.trim() || draftPage.trim() === brief.idea.trim()) {
           onDraftChange(json.data.adaptedText);
         }
@@ -194,82 +300,191 @@ export default function BookDesignStudio({ brief, draftPage, authorName = '', on
   };
 
   const page = plan?.pages?.[selectedPage];
+  const bookControls = (
+    <section style={{ ...card, marginTop: tab === 'imagine' ? 0 : 16 }}>
+      <div style={controls}>
+        <Field label="Age band">
+          <select value={ageBand} onChange={(e) => setAgeBand(e.target.value)} style={input}>
+            {(catalog?.ageBands || defaultAges).map((a: any) => (
+              <option key={a.id} value={a.id}>
+                {a.label || a.id}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Trim">
+          <select value={trimId} onChange={(e) => setTrimId(e.target.value)} style={input}>
+            {(catalog?.trims || defaultTrims).map((t: any) => (
+              <option key={t.id} value={t.id}>
+                {t.label || t.id}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Art style">
+          <select value={artStyle} onChange={(e) => setArtStyle(e.target.value)} style={input}>
+            {(catalog?.artStyles || defaultStyles).map((s: any) => (
+              <option key={s.id} value={s.id}>
+                {s.label || s.id}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Hero character (lock)">
+          <input
+            value={characterName}
+            onChange={(e) => setCharacterName(e.target.value)}
+            placeholder="e.g. Pip the fox"
+            style={input}
+          />
+        </Field>
+      </div>
+    </section>
+  );
 
   return (
-    <div style={{ padding: '32px clamp(20px, 4vw, 56px)', maxWidth: 1200, margin: '0 auto' }}>
-      <header style={{ marginBottom: 28 }}>
-        <div style={{ color: '#8a6a28', fontSize: 12, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' }}>
-          Design
+    <div style={tab === 'imagine' ? imagineShell : paperShell}>
+      <header style={{ marginBottom: tab === 'imagine' ? 18 : 28 }}>
+        <div style={{ color: tab === 'imagine' ? '#d4b36a' : '#8a6a28', fontSize: 12, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+          Grok Imagine
         </div>
-        <h1 style={{ margin: '6px 0 8px', fontSize: 34, letterSpacing: -1 }}>Cover &amp; pages</h1>
-        <p style={{ margin: 0, color: '#6d6255', maxWidth: 640, lineHeight: 1.5 }}>
-          One room for jackets and picture-book spreads. Age bands, character lock, wraparound covers, and print-safe text zones stay under the hood.
+        <h1 style={{ margin: '6px 0 8px', fontSize: tab === 'imagine' ? 40 : 34, letterSpacing: -1, color: tab === 'imagine' ? '#f6efe2' : undefined, fontFamily: '"Cormorant Garamond", Georgia, serif' }}>
+          {tab === 'imagine' ? 'See it first' : 'See the book'}
+        </h1>
+        <p style={{ margin: 0, color: tab === 'imagine' ? '#b9aa98' : '#6d6255', maxWidth: 640, lineHeight: 1.5 }}>
+          {tab === 'imagine'
+            ? 'Image 2.0 on a dark stage. Write the still. Keep the takes. Jacket and spreads wait until one bites.'
+            : 'Lock the jacket or spreads once a still is true.'}
         </p>
       </header>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
         {(
           [
+            { id: 'imagine' as Tab, label: 'Imagine', icon: Sparkles },
             { id: 'cover' as Tab, label: 'Cover', icon: BookImage },
             { id: 'pages' as Tab, label: 'Pages', icon: LayoutTemplate },
             { id: 'export' as Tab, label: 'Export', icon: Download },
           ] as const
-        ).map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            style={{
-              ...pill,
-              borderColor: tab === id ? '#d6a846' : '#eadfce',
-              background: tab === id ? '#fff6df' : '#fff',
-              fontWeight: tab === id ? 700 : 500,
-            }}
-          >
-            <Icon size={16} /> {label}
-          </button>
-        ))}
+        ).map(({ id, label, icon: Icon }) => {
+          const on = tab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              style={{
+                ...pill,
+                borderColor: on ? (tab === 'imagine' ? '#c9a768' : '#d6a846') : tab === 'imagine' ? 'rgba(201,167,104,.28)' : '#eadfce',
+                background: on ? (tab === 'imagine' ? '#c9a768' : '#fff6df') : tab === 'imagine' ? 'rgba(20,16,26,.6)' : '#fff',
+                color: on ? (tab === 'imagine' ? '#17110a' : '#1d1408') : tab === 'imagine' ? '#eee3d2' : undefined,
+                fontWeight: on ? 700 : 500,
+              }}
+            >
+              <Icon size={16} /> {label}
+            </button>
+          );
+        })}
       </div>
 
-      <section style={card}>
-        <div style={controls}>
-          <Field label="Age band">
-            <select value={ageBand} onChange={(e) => setAgeBand(e.target.value)} style={input}>
-              {(catalog?.ageBands || defaultAges).map((a: any) => (
-                <option key={a.id} value={a.id}>
-                  {a.label || a.id}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Trim">
-            <select value={trimId} onChange={(e) => setTrimId(e.target.value)} style={input}>
-              {(catalog?.trims || defaultTrims).map((t: any) => (
-                <option key={t.id} value={t.id}>
-                  {t.label || t.id}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Art style">
-            <select value={artStyle} onChange={(e) => setArtStyle(e.target.value)} style={input}>
-              {(catalog?.artStyles || defaultStyles).map((s: any) => (
-                <option key={s.id} value={s.id}>
-                  {s.label || s.id}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Hero character (lock)">
-            <input
-              value={characterName}
-              onChange={(e) => setCharacterName(e.target.value)}
-              placeholder="e.g. Pip the fox"
-              style={input}
+      {tab === 'imagine' && (
+        <section style={imagineCard}>
+          <div style={stage}>
+            {coverImage ? (
+              <img src={coverImage} alt="Imagine take" style={stageImage} />
+            ) : (
+              <div style={stageEmpty}>
+                <Sparkles size={22} />
+                <p style={{ margin: '10px 0 0', maxWidth: 380 }}>
+                  {busy ? 'Holding for the still…' : 'The stage is empty. Tell Imagine what the book looks like when nobody is explaining it.'}
+                </p>
+              </div>
+            )}
+            {busy && <div style={stageBusy}><Loader size={18} className="spin" /> Working</div>}
+            {activeTake?.model && !busy && (
+              <div style={stageBadge}>{activeTake.model === 'grok-imagine-image-2.0' ? 'Imagine 2.0' : activeTake.model}</div>
+            )}
+          </div>
+          <div style={promptDock}>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!busy) void runImagine();
+                }
+              }}
+              rows={3}
+              placeholder="A clerk at a harbour window, late light, no face shown…"
+              style={imagineTextarea}
             />
-          </Field>
-        </div>
-      </section>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
+              {IMAGINE_ASPECTS.map((ratio) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  onClick={() => setAspectRatio(ratio)}
+                  style={{
+                    ...darkChip,
+                    borderColor: aspectRatio === ratio ? '#c9a768' : 'rgba(201,167,104,.22)',
+                    background: aspectRatio === ratio ? '#c9a768' : 'transparent',
+                    color: aspectRatio === ratio ? '#17110a' : '#eee3d2',
+                    fontWeight: aspectRatio === ratio ? 700 : 500,
+                  }}
+                >
+                  {ratio}
+                </button>
+              ))}
+              <button type="button" onClick={() => setResolution(resolution === '1k' ? '2k' : '1k')} style={darkChip}>
+                {resolution.toUpperCase()}
+              </button>
+              <button type="button" onClick={() => setQuality(quality === 'medium' ? 'low' : 'medium')} style={darkChip}>
+                {quality === 'low' ? 'Fast' : 'Quality'}
+              </button>
+              <button type="button" disabled={busy} onClick={() => void runImagine()} style={imaginePrimary}>
+                {busy ? <Loader size={16} className="spin" /> : <Sparkles size={16} />}
+                {coverImage ? 'Another take' : 'Imagine'}
+              </button>
+              {coverImage && (
+                <button type="button" onClick={() => setTab('cover')} style={imagineGhost}>
+                  <BookImage size={16} /> Use as cover
+                </button>
+              )}
+            </div>
+            {takes.length > 1 && (
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 16, paddingBottom: 4 }}>
+                {takes.filter((take) => take.url).map((take) => (
+                  <button
+                    key={take.id}
+                    type="button"
+                    onClick={() => {
+                      setCoverImage(take.url);
+                      setPrompt(take.prompt);
+                    }}
+                    title={take.model}
+                    style={{
+                      border: coverImage === take.url ? '2px solid #c9a768' : '1px solid rgba(201,167,104,.28)',
+                      borderRadius: 12,
+                      padding: 0,
+                      overflow: 'hidden',
+                      width: 72,
+                      height: 72,
+                      flex: '0 0 auto',
+                      cursor: 'pointer',
+                      background: '#17120e',
+                    }}
+                  >
+                    <img src={take.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {tab !== 'imagine' && bookControls}
 
       {tab === 'cover' && (
         <section style={{ ...card, marginTop: 16 }}>
@@ -487,8 +702,9 @@ export default function BookDesignStudio({ brief, draftPage, authorName = '', on
             marginTop: 16,
             padding: 12,
             borderRadius: 14,
-            background: error ? '#fff0ef' : '#f3ecdf',
-            color: error ? '#a02b20' : '#3d3428',
+            background: error ? (tab === 'imagine' ? '#4c211d' : '#fff0ef') : tab === 'imagine' ? 'rgba(28,24,36,.82)' : '#f3ecdf',
+            color: error ? (tab === 'imagine' ? '#ffd6cf' : '#a02b20') : tab === 'imagine' ? '#eee3d2' : '#3d3428',
+            border: tab === 'imagine' ? '1px solid rgba(201,167,104,.18)' : undefined,
           }}
         >
           {error || status}
@@ -527,12 +743,32 @@ function slug(s: string) {
   return (s || 'book').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'book';
 }
 
+const paperShell: React.CSSProperties = {
+  padding: '32px clamp(20px, 4vw, 56px)',
+  maxWidth: 1200,
+  margin: '0 auto',
+};
+const imagineShell: React.CSSProperties = {
+  ...paperShell,
+  maxWidth: 1280,
+  minHeight: '100%',
+  color: '#f4ead6',
+};
 const card: React.CSSProperties = {
   background: '#fff',
   border: '1px solid #e8e1d4',
   borderRadius: 20,
   padding: 20,
   boxShadow: '0 12px 40px rgba(20,16,10,.05)',
+};
+const imagineCard: React.CSSProperties = {
+  marginTop: 4,
+  padding: 0,
+  overflow: 'hidden',
+  borderRadius: 22,
+  border: '1px solid rgba(201,167,104,.18)',
+  background: 'rgba(16,13,22,.88)',
+  boxShadow: '0 24px 80px rgba(8,6,12,.35)',
 };
 const controls: React.CSSProperties = { display: 'flex', gap: 12, flexWrap: 'wrap' };
 const h2: React.CSSProperties = { margin: '0 0 8px', fontSize: 20 };
@@ -574,6 +810,92 @@ const secondaryBtn: React.CSSProperties = {
   color: '#4a3b28',
   borderColor: '#eadfce',
   fontWeight: 600,
+};
+const darkChip: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  borderRadius: 999,
+  border: '1px solid rgba(201,167,104,.22)',
+  background: 'rgba(20,16,26,.6)',
+  color: '#eee3d2',
+  padding: '7px 11px',
+  cursor: 'pointer',
+};
+const imaginePrimary: React.CSSProperties = {
+  ...primaryBtn,
+  background: '#c9a768',
+  borderColor: '#c9a768',
+  marginLeft: 'auto',
+};
+const imagineGhost: React.CSSProperties = {
+  ...darkChip,
+  padding: '12px 16px',
+  borderRadius: 14,
+};
+const stage: React.CSSProperties = {
+  position: 'relative',
+  minHeight: 'min(64vh, 700px)',
+  background:
+    'radial-gradient(circle at 50% 18%, rgba(201,167,104,.12), transparent 28rem), #0d0b12',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+const stageImage: React.CSSProperties = {
+  width: '100%',
+  maxHeight: 'min(64vh, 700px)',
+  objectFit: 'contain',
+  display: 'block',
+};
+const stageEmpty: React.CSSProperties = {
+  color: '#c9b89a',
+  textAlign: 'center',
+  padding: 32,
+  lineHeight: 1.5,
+};
+const stageBusy: React.CSSProperties = {
+  position: 'absolute',
+  top: 16,
+  right: 16,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '7px 12px',
+  borderRadius: 999,
+  background: 'rgba(16,13,22,.78)',
+  color: '#d4b36a',
+  fontSize: 12,
+  letterSpacing: 0.4,
+};
+const stageBadge: React.CSSProperties = {
+  position: 'absolute',
+  top: 16,
+  left: 16,
+  padding: '6px 10px',
+  borderRadius: 999,
+  background: 'rgba(16,13,22,.78)',
+  color: '#d4b36a',
+  fontSize: 11,
+  letterSpacing: 0.8,
+  textTransform: 'uppercase',
+  fontWeight: 700,
+};
+const promptDock: React.CSSProperties = {
+  padding: 18,
+  borderTop: '1px solid rgba(201,167,104,.14)',
+  background: 'rgba(12,10,16,.94)',
+};
+const imagineTextarea: React.CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  resize: 'vertical',
+  lineHeight: 1.5,
+  padding: 14,
+  borderRadius: 14,
+  border: '1px solid #514230',
+  background: '#17120e',
+  color: '#f4ebdc',
 };
 const emptyArt: React.CSSProperties = {
   minHeight: 220,

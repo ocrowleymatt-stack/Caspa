@@ -122,6 +122,7 @@ export interface CaspaJobRecord {
     | 'prize-draft'
     | 'prize-pass'
     | 'cover-generate'
+    | 'imagine'
     | 'picture-illustrate'
     | 'picture-book-pipeline'
     | 'commission';

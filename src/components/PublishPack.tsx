@@ -105,11 +105,11 @@ export default function PublishPack({ brief, authorEmail, onGoWorkshop, onGoDesi
             <strong>Picture-book plan ready</strong>
             <p style={{ margin: '6px 0 0', color: '#6f6252' }}>
               {picturePlan.pageCount} pages · {picturePlan.trim?.label || 'trim'} · {picturePlan.ageBand}
-              {onGoDesign ? ' — refine in Design, then export here.' : ''}
+              {onGoDesign ? ' — refine in Imagine, then export here.' : ''}
             </p>
             {onGoDesign && (
               <button type="button" onClick={onGoDesign} style={{ ...ghostBtn, marginTop: 10 }}>
-                Open Design
+                Open Imagine
               </button>
             )}
           </div>

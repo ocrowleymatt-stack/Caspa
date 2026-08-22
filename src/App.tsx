@@ -282,7 +282,7 @@ const primaryNav: NavItem[] = [
   { id: 'quickwrite', label: 'Just write', detail: 'Whole book by chapter', group: 'primary', icon: Zap },
   { id: 'write', label: 'White Page', detail: 'Draft and edit', group: 'primary', icon: PenLine },
   { id: 'showbox', label: 'Show in a Box', detail: 'Book, songs, pack', group: 'primary', icon: Music2 },
-  { id: 'design', label: 'Design', detail: 'Cover & picture pages', group: 'primary', icon: BookImage },
+  { id: 'design', label: 'Imagine', detail: 'Grok Imagine, covers & pages', group: 'primary', icon: BookImage },
   { id: 'publish', label: 'Publish', detail: 'Export when ready', group: 'primary', icon: Download },
   { id: 'library', label: 'Library', detail: 'Open work & finished', group: 'primary', icon: Library },
 ];

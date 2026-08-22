@@ -10,12 +10,14 @@
  * - Cover artwork (premium quality)
  * 
  * Features:
- * - SuperGrok tier: grok-3 model + 4K resolution
+ * - SuperGrok tier: grok-imagine-image-2.0
  * - Batch generation with parallel processing
  * - Style consistency across illustrations
  * - Cost estimation
  * - Validation against specifications
  */
+
+import { generateImagineImage } from './grokImagineClient';
 
 export interface GenerationRequest {
   illustrations: {
@@ -83,14 +85,12 @@ export interface GenerationResult {
  * Main service for Grok Imagine integration
  */
 export class GrokImagineService {
-  private grokApiKey: string;
-  private grokApiUrl = 'https://api.x.ai/v1/images/generations';
-  private tierModel = 'grok-3'; // SuperGrok uses latest Grok 3
+  private tierModel = 'grok-imagine-image-2.0';
   private standardCostPerImage = 8; // pence, standard 1024x1024
   private premiumCostPerImage = 24; // pence, 4K 4096x4096
 
-  constructor(apiKey: string) {
-    this.grokApiKey = apiKey;
+  constructor(_apiKey: string) {
+    // Key is read from env inside generateImagineImage; constructor keeps the old factory shape.
   }
 
   /**
@@ -174,7 +174,6 @@ export class GrokImagineService {
   ): Promise<IllustrationAsset> {
     // Determine resolution and cost based on priority
     const isPremium = spec.priority === 'premium' || spec.type === 'cover';
-    const size = isPremium ? '4096x4096' : '1024x1024';
     const estimatedCost = isPremium ? this.premiumCostPerImage : this.standardCostPerImage;
 
     // Notify: starting
@@ -190,43 +189,23 @@ export class GrokImagineService {
     }
 
     try {
-      // Call Grok Imagine API with SuperGrok optimizations
-      const response = await fetch(this.grokApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.grokApiKey}`
-        },
-        body: JSON.stringify({
-          model: this.tierModel, // grok-3 for SuperGrok
-          prompt: spec.grokPrompt,
-          n: 1,
-          size, // 4K for premium, 1K standard
-          quality: isPremium ? 'hd-premium' : 'hd',
-          response_format: 'url',
-          // SuperGrok-specific: improved coherence & style consistency
-          style_consistency: true,
-          seed: null, // Allow variation, or use consistent seed for series
-        })
+      const imagined = await generateImagineImage({
+        prompt: spec.grokPrompt,
+        aspectRatio: '3:4',
+        resolution: isPremium ? '2k' : '1k',
+        quality: 'medium',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`Grok API error: ${errorData.error?.message || response.statusText}`);
+      const imageUrl = imagined.url;
+      let imageBuffer: ArrayBuffer = new ArrayBuffer(0);
+      if (imageUrl.startsWith('data:')) {
+        const raw = imageUrl.split(',')[1] || '';
+        imageBuffer = Buffer.from(raw, 'base64').buffer;
+      } else {
+        const imageResponse = await fetch(imageUrl);
+        imageBuffer = await imageResponse.arrayBuffer();
       }
 
-      const data = await response.json();
-      const imageUrl = data.data?.[0]?.url;
-
-      if (!imageUrl) {
-        throw new Error('No image URL in response');
-      }
-
-      // Fetch image bytes for metadata extraction
-      const imageResponse = await fetch(imageUrl);
-      const imageBuffer = await imageResponse.arrayBuffer();
-
-      const [width, height] = isPremium ? [4096, 4096] : [1024, 1024];
+      const [width, height] = isPremium ? [2048, 2048] : [1024, 1024];
 
       const asset: IllustrationAsset = {
         id: spec.id,
@@ -238,7 +217,7 @@ export class GrokImagineService {
           height,
           format: 'png',
           generatedAt: new Date().toISOString(),
-          model: this.tierModel,
+          model: imagined.model || this.tierModel,
           prompt: spec.grokPrompt,
           cost: estimatedCost,
           tier: 'SuperGrok'
