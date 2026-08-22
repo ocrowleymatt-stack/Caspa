@@ -154,18 +154,12 @@ test('browser journeys walk the integrated desk against a mocked server', { skip
     await page.waitForSelector('[data-testid="desk-help"]');
     assert.ok(await page.$('[data-testid="desk-help"]'));
 
-    const draftRail = await page.evaluateHandle(() =>
-      Array.from(document.querySelectorAll('.desk-rail button')).find((item) => /Draft/i.test(item.textContent || ''))
-    );
-    if (draftRail.asElement()) {
-      await draftRail.asElement()?.click();
-      await page.waitForSelector('[data-testid="draft-with-caspa"]');
-      const draftCopy = await page.$eval('[data-testid="draft-with-caspa"]', (node) => node.textContent || '');
-      assert.match(draftCopy, /Chapter title/i);
-      assert.match(draftCopy, /private preview/i);
-      const draftInput = await page.$('[data-testid="draft-with-caspa"] input[aria-label="Chapter title"]');
-      assert.ok(draftInput);
-    }
+    await page.click('[data-testid="desk-stage-draft"]');
+    await page.waitForSelector('[data-testid="draft-with-caspa"]');
+    const draftCopy = await page.$eval('[data-testid="draft-with-caspa"]', (node) => node.textContent || '');
+    assert.match(draftCopy, /Chapter title/i);
+    assert.match(draftCopy, /private preview/i);
+    assert.ok(await page.$('[data-testid="draft-with-caspa"] input[aria-label="Chapter title"]'));
 
     await page.setViewport({ width: 1440, height: 900 });
     const columns = await page.evaluate(() => {

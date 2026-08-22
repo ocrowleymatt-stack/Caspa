@@ -572,6 +572,7 @@ export default function HybridWorkspace() {
             disabled={!selected && item !== 'Library'}
             onClick={() => selected || item === 'Library' ? void changeStage(item) : undefined}
             className={stage === item ? 'is-active' : ''}
+            data-testid={`desk-stage-${item.toLowerCase()}`}
           >
             <span>{stage === item || (selected && DESK_STAGES.indexOf(stage) > index) ? <Check size={12} /> : index + 1}</span>
             {item}
