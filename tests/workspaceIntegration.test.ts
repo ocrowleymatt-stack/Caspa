@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DESK_STAGES, findWorkspaceTool, toolsForStage } from '../src/services/workspaceCatalog';
-import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, selectRebuildChapter, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
+import { applyRebuildChanges, applySingleRebuildChange, chaptersNeedManuscriptSeed, detectManuscriptProposal, seedChaptersFromManuscript, selectRebuildChapter, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
 import { briefFromProject, collectToolCache, hydrateToolCache, mergeWorkspaceArtefacts, scopedCacheKey } from '../src/services/workspaceProjectBridge';
 import { activateUserDatabase, deactivateUserDatabase } from '../src/services/userDatabaseService';
 import { bindAuthentikCacheOwner, cacheOwnerScope, isSensitiveProjectCacheKey } from '../src/services/workspaceCacheKeys';
@@ -359,4 +359,37 @@ test('image ingest stores extracted text and refuses a truncated data URL fallba
   assert.equal(extracted.extracted, true);
   assert.match(extracted.text, /TOTAL 12\.40/);
   assert.doesNotMatch(extracted.text, /data:image/);
+});
+
+test('critic swarm seeds chapters from any page text, including empty stored stubs', () => {
+  assert.equal(chaptersNeedManuscriptSeed([], 'The clerk washed the glass.'), true);
+  assert.equal(chaptersNeedManuscriptSeed([{ content: '' }], 'The clerk washed the glass.'), true);
+  assert.equal(chaptersNeedManuscriptSeed([{ content: 'Kept' }], 'The clerk washed the glass.'), false);
+  assert.equal(chaptersNeedManuscriptSeed([], ''), false);
+
+  const untitled = seedChaptersFromManuscript('The clerk washed the same glass after the tide had already turned.');
+  assert.equal(untitled.length, 1);
+  assert.match(untitled[0].content, /clerk washed/);
+
+  const split = seedChaptersFromManuscript('# Arrival\n\nThe harbour window.\n\n# Turn\n\nThe sea arrived early.');
+  assert.equal(split.length, 2);
+  assert.equal(split[0].title, 'Arrival');
+  assert.match(split[1].content, /sea arrived/);
+
+  installMemoryStorage();
+  const project = {
+    id: 'proj-swarm',
+    title: 'Tide Tables',
+    mode: 'novel',
+    revision: 1,
+    updatedAt: '2026-08-22T00:00:00.000Z',
+    state: {
+      brief: { idea: 'tide' },
+      commission: { chapters: [{ id: 'empty', title: 'Stub', content: '', order: 1 }] },
+    },
+  };
+  hydrateToolCache(project as any, 'The clerk washed the same glass after the tide had already turned.');
+  const stored = JSON.parse(localStorage.getItem(scopedCacheKey('caspa.commission', 'proj-swarm')) || '{}');
+  assert.ok(Array.isArray(stored.chapters));
+  assert.match(String(stored.chapters[0]?.content || ''), /clerk washed/);
 });

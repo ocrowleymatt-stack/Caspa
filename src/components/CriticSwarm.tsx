@@ -85,7 +85,19 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
     }
   };
 
+  const manuscriptText = chapters.map((chapter) => String(chapter.content || '').trim()).filter(Boolean).join('\n\n');
+  const selectedChapter = selectedChapId && selectedChapId !== 'all'
+    ? chapters.find((chapter) => chapter.id === selectedChapId)
+    : null;
+  const textReady = selectedChapId === 'all' ? Boolean(manuscriptText) : Boolean(selectedChapter?.content?.trim());
+
   const runSwarm = async () => {
+    if (!textReady) {
+      onError?.(selectedChapId === 'all'
+        ? 'Write something on the page first. The swarm reads the manuscript, not an empty room.'
+        : 'That chapter has no text yet. Write on the page, then try again.');
+      return;
+    }
     setLoading(true);
     try {
       let textToAnalyze = "";
@@ -95,6 +107,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
         const chap = chapters.find(c => c.id === selectedChapId);
         if (!chap || !chap.content) {
           setLoading(false);
+          onError?.('That chapter has no text yet. Write on the page, then try again.');
           return;
         }
         textToAnalyze = chap.content;
@@ -145,10 +158,10 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
   const sortedCritiques = [...localCritiques].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-1.5 overflow-hidden">
-      <header className="flex items-center justify-between ethereal-panel p-3 rounded-md border border-border-subtle shadow-2xl relative overflow-hidden group">
+    <div className="critic-swarm h-full min-h-0 flex flex-col gap-1.5 overflow-hidden" data-testid="critic-swarm">
+      <header className="flex flex-wrap items-center justify-between gap-3 ethereal-panel p-3 rounded-md border border-border-subtle shadow-2xl relative overflow-hidden group">
         <div className="absolute inset-0 bg-brand-primary opacity-0 group-hover:opacity-[0.02] transition-opacity duration-1000" />
-        <div className="flex items-center gap-1.5 relative z-10">
+        <div className="flex items-center gap-1.5 relative z-10 min-w-0">
           <div className="w-14 h-14 bg-brand-dark rounded flex items-center justify-center text-brand-primary shadow-2xl border border-border-subtle group-hover:scale-110 transition-transform">
             <Zap size={28} className="fill-brand-primary shadow-[0_0_15px_rgba(168,85,247,0.5)]" />
           </div>
@@ -160,19 +173,23 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
             </p>
           </div>
         </div>
-        <div className="flex gap-2 relative z-10">
+        <div className="flex flex-wrap gap-2 relative z-10">
           <select 
             value={selectedChapId || ''}
             onChange={(e) => setSelectedChapId(e.target.value)}
-            className="bg-brand-dark border border-border-subtle rounded-md px-2 py-3 text-xs font-semibold text-brand-primary uppercase tracking-widest outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all shadow-inner min-w-[240px] cursor-pointer"
+            aria-label="Chapter to review"
+            className="bg-brand-dark border border-border-subtle rounded-md px-2 py-3 text-xs font-semibold text-brand-primary uppercase tracking-widest outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all shadow-inner min-w-[180px] max-w-full cursor-pointer"
           >
             <option value="all">WHOLE MANUSCRIPT (Overview)</option>
             {chapters.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
           </select>
           <button 
+            type="button"
+            data-testid="trigger-swarm"
             onClick={runSwarm}
-            disabled={loading}
-            className="px-2 py-3 bg-brand-primary hover:bg-brand-accent text-white font-semibold text-xs rounded-md transition-all shadow-2xl shadow-brand-primary/20 flex items-center gap-1.5 uppercase tracking-widest disabled:opacity-50 active:scale-95 group/btn"
+            disabled={loading || !textReady}
+            title={!textReady ? 'Write something on the page first' : 'Ask the critics'}
+            className="px-3 py-3 bg-brand-primary hover:bg-brand-accent text-white font-semibold text-xs rounded-md transition-all shadow-2xl shadow-brand-primary/20 flex items-center gap-1.5 uppercase tracking-widest disabled:opacity-50 active:scale-95 group/btn"
           >
             {loading ? (
                <Activity size={16} className="animate-spin" />
@@ -293,7 +310,7 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                         }`}>
                           {s.text}
                         </p>
-                        <div className="flex gap-1.5 mt-4 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                        <div className="flex gap-1.5 mt-4">
                           <button 
                             onClick={() => toggleSuggestion(c.id, idx, 'accepted')}
                             className={`text-[10px] font-semibold uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${
@@ -324,7 +341,11 @@ export default function CriticSwarm({ projectType, maturity, chapters, sourceMat
                 <Bug size={100} strokeWidth={0.5} className="text-text-secondary opacity-10 mb-3 relative z-10" />
                 <div className="relative z-10 max-w-xs space-y-1.5">
                   <p className="text-[11px] font-semibold font-semibold text-text-primary italic font-serif tracking-tight">Swarm Idle</p>
-                  <p className="text-xs text-text-secondary font-semibold uppercase tracking-wider opacity-40 leading-relaxed italic mx-auto">Initialize specialist agents to pressure-test your draft architecture across all logical layers.</p>
+                  <p className="text-xs text-text-secondary font-semibold uppercase tracking-wider opacity-40 leading-relaxed italic mx-auto">
+                    {textReady
+                      ? 'Trigger the swarm to pressure-test this page.'
+                      : 'Write something on the page first. Then trigger the swarm.'}
+                  </p>
                 </div>
               </div>
             )}

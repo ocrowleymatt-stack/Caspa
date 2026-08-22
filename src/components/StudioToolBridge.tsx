@@ -15,6 +15,8 @@ import type {
 } from '../types';
 import { briefToProject, type ProjectBriefLike } from '../services/commissionService';
 import { getProjectKey, loadLibrary, addNote, removeNote } from '../services/researchLibraryService';
+import { scopedCacheKey } from '../services/workspaceCacheKeys';
+import { chaptersNeedManuscriptSeed, seedChaptersFromManuscript } from '../services/workspaceRebuild';
 import {
   formatShowPackForWriting,
   hasShowBoxContent,
@@ -56,9 +58,14 @@ type StudioCanon = {
   critiques: Record<string, any[]>;
 };
 
+function readStorage(projectKey: string, scopedBase: 'caspa.studioCanon' | 'caspa.commission', legacyPrefix: string): string | null {
+  return localStorage.getItem(scopedCacheKey(scopedBase, projectKey))
+    || localStorage.getItem(`${legacyPrefix}.${projectKey}`);
+}
+
 function loadCanon(projectKey: string): StudioCanon {
   try {
-    const raw = localStorage.getItem(`${CANON_KEY}.${projectKey}`);
+    const raw = readStorage(projectKey, 'caspa.studioCanon', CANON_KEY);
     if (!raw) return { characters: [], plotNodes: [], sourceMaterials: [], critiques: {} };
     const parsed = JSON.parse(raw);
     return {
@@ -73,16 +80,12 @@ function loadCanon(projectKey: string): StudioCanon {
 }
 
 function saveCanon(projectKey: string, canon: StudioCanon) {
-  localStorage.setItem(`${CANON_KEY}.${projectKey}`, JSON.stringify(canon));
-}
-
-function commissionKey(projectKey: string): string {
-  return `caspa.commission.${projectKey}`;
+  localStorage.setItem(scopedCacheKey('caspa.studioCanon', projectKey), JSON.stringify(canon));
 }
 
 function loadCommissionChapters(projectKey: string): Chapter[] {
   try {
-    const raw = localStorage.getItem(commissionKey(projectKey));
+    const raw = readStorage(projectKey, 'caspa.commission', 'caspa.commission');
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.chapters) ? parsed.chapters : [];
@@ -93,7 +96,7 @@ function loadCommissionChapters(projectKey: string): Chapter[] {
 
 function persistCommissionChapters(projectKey: string, chapters: Chapter[]) {
   try {
-    const raw = localStorage.getItem(commissionKey(projectKey));
+    const raw = readStorage(projectKey, 'caspa.commission', 'caspa.commission');
     const parsed = raw ? JSON.parse(raw) : {};
     parsed.chapters = chapters;
     if (chapters.length) {
@@ -103,10 +106,23 @@ function persistCommissionChapters(projectKey: string, chapters: Chapter[]) {
         .map((c) => `# ${c.title}\n\n${c.content || ''}`.trim())
         .join('\n\n');
     }
-    localStorage.setItem(commissionKey(projectKey), JSON.stringify(parsed));
+    localStorage.setItem(scopedCacheKey('caspa.commission', projectKey), JSON.stringify(parsed));
   } catch {
     /* ignore */
   }
+}
+
+function toBridgeChapters(manuscript: string, title?: string): Chapter[] {
+  return seedChaptersFromManuscript(manuscript, { projectTitle: title }).map((chapter) => ({
+    id: chapter.id,
+    title: chapter.title,
+    summary: chapter.summary,
+    content: chapter.content,
+    order: chapter.order,
+    plotNodeIds: [],
+    tags: [],
+    updatedAt: Date.now(),
+  }));
 }
 
 interface Props {
@@ -323,25 +339,15 @@ export default function StudioToolBridge({
     [onNavigate]
   );
 
-  // Seed a single chapter from White Page when tools need chapters but Workshop hasn't run.
+  // Seed chapters from the live page when tools need text but Workshop never wrote chapters.
   useEffect(() => {
-    if (chapters.length === 0 && draftPage.trim().length > 40 && (tool === 'swarm' || tool === 'scalpel' || tool === 'autodraft' || tool === 'writing' || tool === 'architect')) {
-      const seeded: Chapter[] = [
-        {
-          id: 'seed-draft',
-          title: 'Working draft',
-          summary: brief.idea.slice(0, 160),
-          content: draftPage,
-          order: 1,
-          plotNodeIds: [],
-          tags: [],
-          updatedAt: Date.now(),
-        },
-      ];
-      setChapters(seeded);
-      persistCommissionChapters(projectKey, seeded);
-    }
-  }, [tool]); // intentionally once when opening a draft tool
+    if (!(tool === 'swarm' || tool === 'scalpel' || tool === 'autodraft' || tool === 'writing' || tool === 'architect')) return;
+    if (!chaptersNeedManuscriptSeed(chapters, draftPage)) return;
+    const seeded = toBridgeChapters(draftPage, brief.title);
+    if (!seeded.length) return;
+    setChapters(seeded);
+    persistCommissionChapters(projectKey, seeded);
+  }, [tool, draftPage, chapters, brief.title, projectKey]);
 
   let body: React.ReactNode = null;
 

@@ -4,7 +4,7 @@ import {
   ACTIVE_HYBRID_PROJECT_KEY,
   scopedCacheKey,
 } from './workspaceCacheKeys';
-import { assembleManuscript, detectManuscriptProposal, splitManuscript, splitManuscriptChapters } from './workspaceRebuild';
+import { assembleManuscript, chaptersNeedManuscriptSeed, detectManuscriptProposal, seedChaptersFromManuscript, splitManuscript } from './workspaceRebuild';
 
 export type WorkspaceProject = {
   id: string;
@@ -115,18 +115,19 @@ export function hydrateToolCache(project: WorkspaceProject, manuscript: string):
   if (project.state?.psychology) {
     localStorage.setItem(scopedCacheKey('caspa.psychology', key), JSON.stringify(project.state.psychology));
   }
-  const chapters = Array.isArray(project.state?.commission?.chapters) && project.state.commission.chapters.length
-    ? project.state.commission.chapters
-    : splitManuscriptChapters(manuscript).map((chapter, index) => ({
-      id: `server-ch-${index + 1}`,
-      title: chapter.title,
-      summary: chapter.body.slice(0, 160),
-      content: chapter.body,
-      order: index + 1,
-      plotNodeIds: [],
-      tags: [],
-      updatedAt: Date.now(),
-    }));
+  const storedChapters = Array.isArray(project.state?.commission?.chapters) ? project.state.commission.chapters : [];
+  const seeded = seedChaptersFromManuscript(manuscript, { projectTitle: project.title });
+  const source = !chaptersNeedManuscriptSeed(storedChapters, manuscript) ? storedChapters : seeded;
+  const chapters = source.map((chapter: any, index: number) => ({
+    id: String(chapter.id || `server-ch-${index + 1}`),
+    title: String(chapter.title || `Chapter ${index + 1}`),
+    summary: String(chapter.summary || chapter.body || '').slice(0, 160),
+    content: String(chapter.content || chapter.body || ''),
+    order: Number(chapter.order || index + 1),
+    plotNodeIds: Array.isArray(chapter.plotNodeIds) ? chapter.plotNodeIds : [],
+    tags: Array.isArray(chapter.tags) ? chapter.tags : [],
+    updatedAt: Number(chapter.updatedAt || Date.now()),
+  }));
   writeScopedCommission(project.id, {
     ...(project.state?.commission || {}),
     chapters,

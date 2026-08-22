@@ -18,6 +18,7 @@ test('specialist capabilities appear contextually', () => {
   assert.ok(contextualTools('revise').includes('Gold Refinery'));
   assert.ok(contextualTools('publish').includes('Export and publishing'));
   assert.ok(contextualTools('publish').includes('Imagine'));
+  assert.ok(contextualTools('workshop').includes('Critic Swarm'));
 });
 
 test('desk copy stays human and every stage has a next hint', () => {

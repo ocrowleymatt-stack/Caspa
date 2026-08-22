@@ -169,6 +169,23 @@ test('browser journeys walk the integrated desk against a mocked server', { skip
       return style.gridTemplateColumns.split(' ').filter(Boolean).length;
     });
     assert.equal(columns, 2, 'desk should be manuscript + rail at desktop width');
+
+    await page.click('textarea[aria-label="Manuscript"]');
+    await page.type('textarea[aria-label="Manuscript"]', 'The clerk washed the same glass after the tide had already turned.');
+    await page.click('[data-testid="desk-stage-workshop"]');
+    await page.waitForSelector('[data-testid="desk-critic-swarm"]');
+    await page.click('[data-testid="desk-critic-swarm"]');
+    await page.waitForSelector('[data-testid="critic-swarm"]');
+    await page.waitForFunction(() => {
+      const button = document.querySelector('[data-testid="trigger-swarm"]') as HTMLButtonElement | null;
+      return Boolean(button && !button.disabled && /Trigger Swarm/i.test(button.textContent || ''));
+    });
+    const swarm = await page.$eval('[data-testid="trigger-swarm"]', (node) => ({
+      disabled: (node as HTMLButtonElement).disabled,
+      text: node.textContent || '',
+    }));
+    assert.match(swarm.text, /Trigger Swarm/i);
+    assert.equal(swarm.disabled, false, 'Trigger Swarm should be live once the page has text');
     t.diagnostic(`journeys exercised at ${base}`);
   } finally {
     await browser.close();

@@ -316,10 +316,6 @@ export default function HybridWorkspace() {
     const tool = findWorkspaceTool(labelOrId);
     if (!selected) { setMessage('Open a project first.'); return; }
     if (!tool) { setMessage(`No room named “${labelOrId}”.`); return; }
-    if (activeTool && activeTool !== tool.id) {
-      const saved = await persistArtefacts();
-      if (!saved.ok) return;
-    }
     if (tool.id === 'workshop') { setStage('Workshop'); setActiveTool(null); return; }
     if (tool.id === 'rebuild') { setStage('Revise'); setActiveTool(null); return; }
     if (tool.id === 'recovery') { setStage('Finish'); setActiveTool(null); return; }
@@ -328,6 +324,9 @@ export default function HybridWorkspace() {
     const project = selected;
     hydrateToolCache(project, manuscript);
     setActiveTool(tool.id);
+    if (activeTool && activeTool !== tool.id) {
+      void persistArtefacts();
+    }
   };
 
   const closeTool = async () => {
@@ -803,7 +802,7 @@ export default function HybridWorkspace() {
                       </>
                     ) :                     <p className="desk-muted">Ask Caspa what is holding. The page does not change.</p>}
                     <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runDiagnosis()}>{diagnosis ? 'Look again' : 'Read the book'}</button>
-                    <button type="button" className="desk-ghost" onClick={() => void openTool('Critic Swarm')}>Critic Swarm</button>
+                    <button type="button" className="desk-ghost" data-testid="desk-critic-swarm" onClick={() => void openTool('Critic Swarm')}>Critic Swarm</button>
                   </section>
                 )}
 

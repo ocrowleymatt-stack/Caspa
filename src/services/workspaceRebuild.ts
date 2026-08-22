@@ -206,6 +206,40 @@ function normalizeTitle(value: string): string {
     .trim();
 }
 
+export type SeededManuscriptChapter = {
+  id: string;
+  title: string;
+  summary: string;
+  content: string;
+  order: number;
+};
+
+export function chaptersNeedManuscriptSeed(chapters: { content?: string }[] | undefined, manuscript: string): boolean {
+  if (!String(manuscript || '').trim()) return false;
+  if (!Array.isArray(chapters) || chapters.length === 0) return true;
+  return chapters.every((chapter) => !String(chapter.content || '').trim());
+}
+
+export function seedChaptersFromManuscript(manuscript: string, options: SplitOptions = {}): SeededManuscriptChapter[] {
+  const page = String(manuscript || '').trim();
+  if (!page) return [];
+  const { chapters } = splitManuscript(page, options);
+  const usable = chapters.filter((chapter) => chapter.body.trim() || chapter.title);
+  const source = usable.length
+    ? usable
+    : [{ title: 'Current page', body: page, index: 0 } as ManuscriptChapter];
+  return source.map((chapter, index) => {
+    const content = String(chapter.body || '').trim() || page;
+    return {
+      id: `ch-${(chapter.index ?? index) + 1}`,
+      title: chapter.title || `Chapter ${index + 1}`,
+      summary: content.slice(0, 160),
+      content,
+      order: index + 1,
+    };
+  });
+}
+
 export function detectManuscriptProposal(canonical: string, candidate: string): boolean {
   return normalizeManuscript(canonical) !== normalizeManuscript(candidate);
 }
