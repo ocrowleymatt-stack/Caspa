@@ -65,6 +65,10 @@ export default function HybridWorkspace() {
   const [diagnosis, setDiagnosis] = useState<any | null>(null);
   const [finishedJobs, setFinishedJobs] = useState<any[]>([]);
   const [preflight, setPreflight] = useState<any | null>(null);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newIdea, setNewIdea] = useState('');
+  const [newMode, setNewMode] = useState('novel');
 
   useEffect(() => {
     api('/api/v2/migration/import-legacy', { method: 'POST', body: '{}' })
@@ -96,6 +100,32 @@ export default function HybridWorkspace() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const createNewProject = async () => {
+    const title = newTitle.trim();
+    const idea = newIdea.trim();
+    if (!title || !idea) { setMessage('Give the project a title and at least one rough idea.'); return; }
+    setBusy(true);
+    try {
+      const project = await api('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectKey: `hybrid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title,
+          mode: newMode,
+          state: {
+            brief: { title, mode: newMode, idea, tone: '', audience: '', output: 'A complete, author-controlled manuscript.', targetWordCount: 80000, createdAt: new Date().toISOString() },
+            hybrid: { startingIdea: idea, createdIn: 'caspa-v2' },
+            whitePage: '', manuscriptSource: '',
+          },
+        }),
+      });
+      setProjects((current) => [project, ...current]);
+      setShowNewProject(false); setNewTitle(''); setNewIdea('');
+      setMessage('Project created on the server. Start with Draft, Research or Story Bible.');
+      await openProject(project);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not create the project.'); setBusy(false); }
   };
 
   const prepareDraft = async () => {
@@ -205,7 +235,8 @@ export default function HybridWorkspace() {
       {busy && <div style={{ position: 'fixed', right: 24, bottom: 24, padding: 12, background: '#2c231a', border: '1px solid #5c4934', borderRadius: 12 }}><Loader className="spin" size={18} /></div>}
       <main className="hybrid-main" style={{ padding: '28px', maxWidth: 1500, margin: '0 auto' }}>
         {stage === 'Library' || !selected ? <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', marginBottom: 24 }}><div><div style={{ color: '#c9a768', fontSize: 11, letterSpacing: '.16em' }}>CANONICAL SERVER LIBRARY</div><h2 style={{ fontFamily: 'Georgia, serif', fontSize: 42, margin: '6px 0' }}>Your work</h2><p style={{ color: '#b9aa98' }}>Every project is loaded from PostgreSQL, not a browser-only shelf.</p></div><Archive color="#c9a768" /></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}><div><div style={{ color: '#c9a768', fontSize: 11, letterSpacing: '.16em' }}>CANONICAL SERVER LIBRARY</div><h2 style={{ fontFamily: 'Georgia, serif', fontSize: 42, margin: '6px 0' }}>Your work</h2><p style={{ color: '#b9aa98' }}>Every project is loaded from PostgreSQL, not a browser-only shelf.</p></div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button onClick={() => { window.location.href = '/legacy?tool=research'; }} style={{ border: '1px solid #655137', background: '#2a2118', color: '#eee3d2', padding: '10px 13px', borderRadius: 8 }}>Research desk</button><button onClick={() => setShowNewProject((value) => !value)} style={{ border: 0, background: '#b89150', color: '#17110a', padding: '10px 13px', borderRadius: 8, fontWeight: 800 }}>+ New project</button><Archive color="#c9a768" /></div></div>
+          {showNewProject && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18, marginBottom: 20 }}><div style={{ color: '#c9a768', fontWeight: 800 }}>Start from a rough idea</div><p style={{ color: '#a99b89', fontSize: 13 }}>A sentence, observation, receipt, note, scene or half-formed thought is enough. Caspa will keep it as the project seed.</p><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 180px', gap: 10 }}><input aria-label="New project title" placeholder="Working title" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} style={{ minWidth: 0, background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 11 }} /><select aria-label="Project format" value={newMode} onChange={(event) => setNewMode(event.target.value)} style={{ minWidth: 0, background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 11 }}><option value="novel">Fiction</option><option value="nonfiction">Non-fiction</option><option value="essay">Essay / article</option><option value="poetry">Poetry</option><option value="script">Script</option><option value="adaptation">Adaptation</option><option value="chaos">Surprise me</option></select></div><textarea aria-label="Rough project idea" placeholder="Paste or type the rough idea here…" value={newIdea} onChange={(event) => setNewIdea(event.target.value)} style={{ boxSizing: 'border-box', width: '100%', minHeight: 120, marginTop: 10, resize: 'vertical', background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 11 }} /><button onClick={() => void createNewProject()} disabled={busy} style={{ marginTop: 10, padding: '10px 14px', border: 0, borderRadius: 7, background: '#b89150', color: '#17110a', fontWeight: 800 }}>Create server project</button></div>}
           <div className="hybrid-library-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 16 }}>
             {projects.map((project) => <button className="hybrid-project-card" key={project.id} onClick={() => void openProject(project)} style={{ textAlign: 'left', padding: 20, minHeight: 170, border: '1px solid #4b3e31', background: '#201a15', color: '#f6efe3', borderRadius: 12 }}><BookOpen size={20} color="#c9a768" /><h3 style={{ fontFamily: 'Georgia, serif', fontSize: 23, margin: '16px 0 8px' }}>{project.title}</h3><div style={{ color: '#a99b89', fontSize: 12 }}>{project.mode} · project revision {project.revision}</div><div style={{ color: '#776b5e', fontSize: 11, marginTop: 8 }}>{new Date(project.updatedAt).toLocaleString()}</div></button>)}
           </div>

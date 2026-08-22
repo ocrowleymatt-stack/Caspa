@@ -24,7 +24,9 @@
 .hybrid-workspace {
   width: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
+  touch-action: pan-y;
 }
 
 .hybrid-main,
@@ -50,7 +52,8 @@
   display: block;
   max-width: 100%;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
+  touch-action: pan-y;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -124,7 +127,7 @@
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: auto;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     @apply bg-surface-bg text-text-primary antialiased;
