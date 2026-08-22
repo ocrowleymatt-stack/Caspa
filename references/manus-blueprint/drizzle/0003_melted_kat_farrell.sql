@@ -1,0 +1,1 @@
+ALTER TABLE `chapterCheckpoints` ADD `progress` int DEFAULT 0 NOT NULL;

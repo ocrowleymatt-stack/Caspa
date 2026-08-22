@@ -1,0 +1,2 @@
+ALTER TABLE `revisionPlans` ADD `styleProfileId` int;--> statement-breakpoint
+ALTER TABLE `revisionPlans` ADD CONSTRAINT `revisionPlans_styleProfileId_styleProfiles_id_fk` FOREIGN KEY (`styleProfileId`) REFERENCES `styleProfiles`(`id`) ON DELETE set null ON UPDATE no action;

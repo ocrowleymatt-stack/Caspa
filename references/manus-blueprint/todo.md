@@ -1,0 +1,126 @@
+# Project TODO
+
+- [x] Define and enforce the global dark literary design tokens: obsidian/deep-slate backgrounds, antique-gold accents, ivory text, and serif display headings.
+- [x] Apply the same branded sign-in shell, typography, color system, and surface treatments to unauthenticated and authenticated screens.
+- [x] Define the canonical project-state order: `draft → diagnosed → plan-approved → revision-running → review → export-ready → archived`.
+- [x] Implement server-side transition validation so projects cannot skip or reverse workflow states outside explicitly permitted restore/archive actions.
+- [x] Derive all navigation visibility, primary calls to action, and mutation permissions from the canonical project state.
+- [x] Add database tables for projects, manuscript versions, diagnoses, findings, revision plans, revision-plan items, revision jobs, chapter checkpoints, export preflights, and account backup records.
+- [x] Enforce user ownership on every project, version, diagnosis, plan, job, checkpoint, preflight, archive, export, and deletion procedure.
+- [x] Build the launchpad format selector for Fiction, Non-fiction, Picture book, Script, Essay, Poetry, and Polish.
+- [x] Build project creation with premise, author metadata, and validated target length, followed by direct navigation to the guided next step.
+- [x] Build a focused project dashboard with state progress, manuscript metrics, next action, recent versions, and no room-based sidebar.
+- [x] Build Workshop manuscript/plan paste ingestion with automatic named snapshot creation.
+- [x] Build secure manuscript file upload through server-side object storage and retain file metadata only in the database.
+- [x] Implement an explicit, project-type-aware editorial rubric used by server-side diagnosis.
+- [x] Implement structured AI diagnosis returning evidence-backed findings with category, severity, confidence, manuscript citations, rationale, and rubric criterion.
+- [x] Add deterministic local diagnosis fallback so the Workshop remains testable and useful when the AI provider is unavailable.
+- [x] Sanitize all AI failures into stable application error codes, recovery messages, and server-only trace IDs without raw upstream diagnostics in client responses.
+- [x] Create a named diagnosis snapshot and transition the project from `draft` to `diagnosed` after successful analysis.
+- [x] Build the diagnosis review interface with filters, finding evidence, confidence, severity, rubric context, and selected-fix controls.
+- [x] Build author-approved revision plans with per-finding selection and scope options for whole book, chapter range, or single chapter.
+- [x] Prevent revision submission until the user explicitly approves the selected fixes and scope.
+- [x] Transition approved projects from `diagnosed` to `plan-approved`, then to `revision-running` only after job submission.
+- [x] Implement durable revision jobs with `queued`, `running`, `awaiting-review`, `succeeded`, `succeeded-with-warnings`, and `failed` statuses.
+- [x] Persist chapter-level checkpoints with before/after word counts, output text, warnings, progress, and trace IDs.
+- [x] Implement resumable revision execution that safely advances one chapter checkpoint at a time and never depends on browser-owned state.
+- [x] Build progress polling and a revision status experience with completed chapters, current stage, warnings, and recovery actions.
+- [x] Create a named manuscript version for every save, diagnosis, and completed revision.
+- [x] Build version history with manuscript metrics, side-by-side comparison, and guarded restore that creates a new snapshot rather than destroying history.
+- [x] Implement server-side project-type-specific export preflight for manuscript completeness, chapter structure, title/author metadata, and target word-count range.
+- [x] Prevent every download route unless the latest server preflight fully passes; do not expose client override controls.
+- [x] Transition qualifying projects from `review` to `export-ready` only after a passing server preflight.
+- [x] Build safe text and Markdown downloads from an authorized, export-ready server procedure.
+- [x] Build archive and restore behavior tied to the canonical workflow state.
+- [x] Build Settings with account details, data export, backup controls, and guarded project/account deletion only.
+- [x] Ensure deployment diagnostics, git SHAs, environment-variable names, model details, provider errors, and infrastructure health never appear in end-user UI or client payloads.
+- [x] Add Vitest coverage for state transitions, ownership checks, rubric output validation, error sanitization, revision-job checkpointing, version restore, and export preflight enforcement.
+- [x] Generate and apply the database migration, then verify schema parity.
+- [x] Run TypeScript checks, tests, and production build with no unresolved errors.
+- [x] Verify desktop and mobile layouts visually, including the sign-in gate, launchpad, project dashboard, Workshop, revision plan, versions, export, and Settings.
+- [x] Exercise the end-to-end workflow from project creation through diagnosis, plan approval, revision checkpoints, review, export readiness, download, and archive.
+- [x] Create one final project checkpoint and deliver the validated application.
+- [x] Extend the canonical workflow after `export-ready` with `art-direction`, `art-approved`, `layout`, `proof-review`, `production-ready`, and `archived`, while preserving all existing manuscript-state rules.
+- [x] Define server-gated actions and navigation for art direction, cover approval, illustration approval, layout generation, proof approval, production export, and archive.
+- [x] Add durable tables for art briefs, cover concepts, illustration plans, illustration assets, layout specifications, page-layout versions, proof annotations, production preflights, and production export records.
+- [x] Enforce project ownership across every art, cover, illustration, layout, proof, and production-export procedure.
+- [x] Create a project-type-aware art-direction assessment that decides whether illustrations are appropriate and explains the recommendation to the author.
+- [x] Build an author-approved visual brief covering audience, genre signals, tone, visual motifs, exclusions, palette, typography direction, trim size, and distribution intent.
+- [x] Generate multiple versioned cover concepts from the approved visual brief, with front-cover composition, title-safe space, thumbnail legibility, and editable concept metadata.
+- [x] Require explicit author selection and approval of one cover concept before layout work can proceed.
+- [x] Create an illustration plan only when appropriate, with placement, narrative purpose, scene brief, aspect ratio, bleed behavior, caption/alt text, and continuity notes for each proposed image.
+- [x] Allow authors to approve, reject, regenerate, or revise every illustration brief individually before any image becomes part of a layout.
+- [x] Store all generated cover and illustration assets in object storage with immutable versions, ownership metadata, dimensions, prompt provenance, and approval state.
+- [x] Add visual-continuity controls so recurring characters, locations, palette, medium, and period details remain consistent across illustrations.
+- [x] Add human-uploaded cover and illustration asset support as an alternative to generated imagery.
+- [x] Define layout specifications for print and digital editions, including trim size, margins, bleed, typography, running heads, folios, chapter openings, paragraph treatment, image anchoring, and accessibility metadata.
+- [x] Implement deterministic page composition from the approved manuscript, cover, illustrations, and layout specification without browser-owned state.
+- [x] Create immutable named layout and proof versions so every composition and author correction remains restorable.
+- [x] Build an art studio interface for visual-brief editing, illustration suitability review, cover comparison, concept approval, illustration sequencing, and asset replacement.
+- [x] Build a page-layout studio with spread navigation, thumbnails, zoom, overflow warnings, image-safe-area indicators, and per-page proof comments.
+- [x] Implement proof annotations with statuses for open, resolved, accepted-as-is, and deferred, plus author-visible change history.
+- [x] Add a server-side production preflight for cover resolution, bleed, safe areas, embedded asset availability, font policy, metadata, pagination, overflow, blank pages, illustration alt text, and approved proof status.
+- [x] Prevent production downloads until the latest proof version passes every server preflight check and is explicitly approved by the author.
+- [x] Produce production-ready PDF and EPUB packages plus separate cover and interior assets, with format-specific manifests and checksums.
+- [x] Keep AI-provider errors, image-generation diagnostics, internal prompts, environment variables, storage keys, and rendering infrastructure out of all author-facing payloads.
+- [x] Add automated coverage for extended state transitions, illustration suitability, approval gating, asset ownership, versioning, layout pagination, proof resolution, and production preflight enforcement.
+- [x] Apply and verify the additive production schema migration without altering existing manuscript projects.
+- [x] Run TypeScript checks, expanded tests, production build, and schema-parity validation.
+- [x] Verify desktop and mobile art studio, cover review, illustration review, layout proof, production preflight, and export experiences visually.
+- [x] Exercise the complete production workflow from an export-ready manuscript through art direction, approved cover/illustrations, layout, proof approval, production preflight, package generation, and archive.
+- [x] Save and deliver the final expanded book-production checkpoint.
+- [x] Add a visible Draft with CASPA action to the launchpad and Manuscript workspace before Workshop diagnosis.
+- [x] Define an author-controlled draft brief with format, premise, optional outline, chapter title, chapter scope, target words, voice notes, and exclusions.
+- [x] Implement server-side outline grounding that derives chapter context and prevents an auto draft from contradicting approved manuscript material.
+- [x] Implement server-side chapter-draft preview generation with structured output, bounded target length, stable error codes, and no provider diagnostics in author-facing payloads.
+- [x] Require explicit author acceptance before a generated chapter draft is merged into the manuscript or changes project state.
+- [x] Save every accepted draft as an immutable named manuscript version with word-count and chapter metrics.
+- [x] Add reject, regenerate, revise-brief, and copy-to-clipboard paths that do not alter the active manuscript.
+- [x] Preserve state-gated navigation so Draft with CASPA is available only in `draft` and before diagnosis, while all later manuscript history remains read-only.
+- [x] Add Vitest coverage for drafting input validation, outline grounding, rejection non-mutation, accepted-draft versioning, ownership, and safe error responses.
+- [x] Verify the Draft with CASPA flow at desktop and mobile sizes, including preview, acceptance, version history, and Workshop handoff.
+- [x] Save and deliver the Draft with CASPA checkpoint.
+- [x] Publish only the directly evidenced parity results: passed operational dimensions, partial qualitative dimensions, and blocked incumbent comparisons—without a blanket product-superiority claim.
+- [x] Add a dedicated launchpad Draft with CASPA call-to-action that opens the new project directly in its draft workspace.
+- [x] Add server-side structured draft output with an explicit continuity checklist and reject any preview that contradicts immutable premise, exclusions, or prior established facts.
+- [x] Add behavioral Vitest coverage for cross-user draft-preview access, rejected-preview non-mutation, accepted-preview persistence, stale-preview rejection, and drafting-specific sanitized errors.
+- [x] Run and record a protected end-to-end flow from accepted auto draft to named version history and Workshop diagnosis.
+- [x] Document a feature-by-feature comparison against the current CASPA site showing the rebuilt product’s functional parity or improvement for both author experience and underlying workflow logic.
+- [x] Add integration-style Vitest coverage for real draft-preview rejection, acceptance, stale handling, and cross-user access against persisted data.
+- [x] Capture and record the accepted auto-draft in the Version History interface before verifying the subsequent Workshop diagnosis handoff.
+- [x] Add a concrete parity evidence matrix with inspected-current evidence, rebuilt evidence, validation method, and an explicit status for every evaluated author and server capability.
+- [x] Add a disposable isolated persistence integration test that exercises accepted, rejected, stale, and cross-user draft previews through real protected procedures and cleans itself up.
+- [x] Add a continuity-quality comparison rubric and record the result for equivalent current-site and rebuilt auto-write scenarios, clearly separating measurable continuity safety from subjective prose quality.
+- [x] Revise the parity matrix so every workflow dimension is marked `passed`, `partial`, or `not directly comparable` only when supported by direct observed-current and rebuilt evidence.
+- [x] Run the same representative auto-write scenario against the incumbent local build and record output, recovery behavior, continuity controls, and any reproducible blocker alongside the rebuilt result.
+- [x] Document the incumbent provider-configuration blocker for equivalent revision and export execution, and distinguish it from the rebuilt system’s independently verified workflows.
+- [x] Define the author-style-sample consent policy: only author-owned or explicitly licensed text may be uploaded; samples are private, removable, exportable, and never presented as another author’s style.
+- [x] Build an author-owned style library that accepts pasted or uploaded sample excerpts with names, tags, consent confirmations, source notes, word counts, and deletion controls.
+- [x] Create a transparent style profile from selected samples using non-identifying craft dimensions such as sentence rhythm, point of view, dialogue density, imagery, pacing, and register.
+- [x] Ground Draft with CASPA and revision requests in selected author-owned style profiles without reproducing verbatim source passages or storing hidden provider prompts in author-facing payloads.
+- [x] Add database tables for style samples, style profiles, project collaborators, invitations, review rounds, blind review submissions, approval decisions, and audit events.
+- [x] Implement collaboration roles for author, editor, and designer, with project-scoped permissions and owner-only invitation, role change, removal, archive, and deletion controls.
+- [x] Implement invitation acceptance and revocation so collaborators cannot access a project or its assets before acceptance or after revocation.
+- [x] Build blind editorial review rounds that conceal author and contributor identifiers from reviewers, assign randomized manuscript labels, and prevent authors from modifying submitted review material.
+- [x] Let reviewers rate prose, structure, clarity, emotional effect, character, pacing, visual direction, cover, illustration continuity, and layout readability with private narrative feedback.
+- [x] Keep submitted review responses immutable, expose only aggregate author-facing summaries during an active round, and reveal reviewer identities only when the review policy explicitly allows it.
+- [x] Add collaboration approval gates requiring author approval and, when configured, editor approval for manuscript revisions and designer approval for cover, illustration, layout, proof, and production-export decisions.
+- [x] Record every invitation, role change, review submission, approval, rejection, and revocation in an author-visible project audit trail.
+- [x] Build a Style Library interface with consent, source controls, sample selection, profile preview, delete, and export actions.
+- [x] Build a Review Desk interface for opening blind rounds, selecting reviewers, viewing aggregate ratings, reading permitted feedback, and closing a round.
+- [x] Build a Collaborators interface for invitations, role badges, permissions, revocation, approval status, and project audit history.
+- [x] Add automated coverage for sample consent, style profile ownership, author-only sample deletion, collaborator isolation, invitation acceptance/revocation, blind label integrity, review immutability, approval gating, and audit trails.
+- [x] Apply and verify the additive schema migration without altering existing projects, versions, production assets, or permissions.
+- [x] Run TypeScript checks, the expanded tests, a production build, and schema-parity validation.
+- [x] Verify desktop and mobile Style Library, Review Desk, Collaborators, and approval-gate flows visually.
+- [x] Exercise an end-to-end workflow from author style sample through a grounded draft, collaborator invitation, blind review, approval decision, revocation, and audit export.
+- [x] Save and deliver the collaborative CASPA checkpoint.
+- [x] Add a server-authorized Style Library export that returns author-owned sample metadata and craft profiles without source-text or storage-key leakage.
+- [x] Show blind-review narrative feedback to the author only after a round closes, honoring anonymous or reveal-on-close identity policy.
+- [x] Show collaborator approval and rejection decisions in the author Collaboration Desk with their role, area, target, note, and immutable timestamp.
+- [x] Extend the real-database collaboration lifecycle test to cover closed-round permitted feedback, approval-decision visibility, and style-library export isolation.
+- [x] Execute a disposable authenticated workflow that creates a consented style profile, grounds a Draft with CASPA preview, accepts it, invites an editor, completes a blind review, records an approval, revokes access, exports the owner data, and cleans up.
+- [x] Generate randomized non-identifying manuscript labels per blind-review assignment and prove in tests that reviewer labels differ while author and contributor identities remain hidden.
+- [x] Render author Review Desk controls for reviewer selection, aggregate ratings, permitted closed-round feedback, and round closure, then capture the completed screen.
+- [x] Render project audit history in the Collaboration Desk and capture invitation, role, review, approval, and revocation events.
+- [x] Extend the style-and-collaboration verifier with a real editor approval decision and owner account-data export assertion before cleanup.
