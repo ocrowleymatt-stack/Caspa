@@ -108,7 +108,7 @@ function liveQuota(entry: QuotaUser | undefined, now: Date): QuotaUser {
 }
 
 function reserveDurableQuota(userId: string): { ok: true } | { ok: false; status: number; message: string } {
-  return withQuotaLock(() => {
+  return withQuotaLock<{ ok: true } | { ok: false; status: number; message: string }>(() => {
     const now = new Date();
     const file = readQuotaFile();
     const next: QuotaFile = { users: {} };
@@ -178,7 +178,7 @@ export function validateVisionImage(imageBase64: unknown, mimeType: unknown): Vi
   }
 
   const geometry = assertImageLimits(inspectImageGeometry(bytes, claimedFamily));
-  if (!geometry.ok) return { ok: false, status: 400, message: geometry.message };
+  if (geometry.ok === false) return { ok: false, status: 400, message: geometry.message };
 
   return {
     ok: true,
@@ -200,7 +200,7 @@ export function acquireVisionSlot(userId: string): { ok: true; release: () => vo
   }
 
   const reserved = reserveDurableQuota(id);
-  if (!reserved.ok) return reserved;
+  if (reserved.ok === false) return reserved;
 
   userInflight.set(id, (userInflight.get(id) || 0) + 1);
   globalInflight += 1;
