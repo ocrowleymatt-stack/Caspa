@@ -26,6 +26,29 @@ export type SplitManuscript = {
 
 const CHAPTER_HEADING = /^(#{1,3}\s+.+)$/gm;
 
+const STRUCTURAL_HEADING = /^(contents|table of contents|title|title page|copyright|dedication|acknowledgements|acknowledgments|about the author|foreword|preface|index|cast of characters|also by)\b/;
+const PART_HEADING = /^(book|part|volume|act)\b/;
+const EXPLICIT_CHAPTER = /^(chapter|ch|chap)\s+(\d+|[ivxlcdm]+)\b|^\d+([.:)\s]|$)|\b(prologue|epilogue)\b/;
+
+export function headingTitle(value: string): string {
+  return String(value || '').replace(/^#+\s+/, '').trim();
+}
+
+export function isStructuralHeading(title: string): boolean {
+  const normalized = normalizeTitle(title);
+  return STRUCTURAL_HEADING.test(normalized) || PART_HEADING.test(normalized);
+}
+
+export function isExplicitChapterHeading(title: string): boolean {
+  return EXPLICIT_CHAPTER.test(normalizeTitle(title));
+}
+
+export function isRebuildChapterHeading(title: string, options?: { preferExplicit?: boolean }): boolean {
+  if (isStructuralHeading(title)) return false;
+  if (options?.preferExplicit) return isExplicitChapterHeading(title);
+  return true;
+}
+
 export function splitManuscript(manuscript: string): SplitManuscript {
   const text = String(manuscript || '');
   if (!text.trim()) return { preamble: '', chapters: [] };
@@ -36,13 +59,21 @@ export function splitManuscript(manuscript: string): SplitManuscript {
       chapters: [{ title: 'Working draft', headingLine: '# Working draft', body: text, start: 0, end: text.length, index: 0 }],
     };
   }
-  const firstHeadingAt = matches[0].index || 0;
+  const preferExplicit = matches.some((match) => isExplicitChapterHeading(headingTitle(match[1])));
+  const chapterMatches = matches.filter((match) => isRebuildChapterHeading(headingTitle(match[1]), { preferExplicit }));
+  if (!chapterMatches.length) {
+    return {
+      preamble: text.replace(/\s+$/, ''),
+      chapters: [],
+    };
+  }
+  const firstHeadingAt = chapterMatches[0].index || 0;
   const preamble = text.slice(0, firstHeadingAt).replace(/\s+$/, '');
-  const chapters = matches.map((match, index) => {
+  const chapters = chapterMatches.map((match, index) => {
     const start = match.index || 0;
-    const next = matches[index + 1]?.index ?? text.length;
+    const next = chapterMatches[index + 1]?.index ?? text.length;
     const headingLine = match[1].trim();
-    const heading = headingLine.replace(/^#+\s+/, '').trim();
+    const heading = headingTitle(headingLine);
     const body = text.slice(start, next).replace(/^#+\s+[^\n]+\n?/, '').trim();
     return { title: heading || `Section ${index + 1}`, headingLine, body, start, end: next, index };
   });

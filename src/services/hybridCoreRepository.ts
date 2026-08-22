@@ -190,6 +190,34 @@ export async function listManuscriptVersions(userId: string, projectId: string):
   return result.rows.map(mapVersion);
 }
 
+export async function listManuscriptVersionSummaries(userId: string, projectId: string) {
+  if (!(await ownedProject(userId, projectId))) return [];
+  const result = await database().query(
+    `SELECT id,project_id,revision,name,trigger,checksum,word_count,chapter_count,source_version_id,created_at
+     FROM caspa_manuscript_versions WHERE user_id=$1 AND project_id=$2 ORDER BY revision DESC`,
+    [userId, projectId],
+  );
+  return result.rows.map((row) => summarizeVersion(mapVersion({ ...row, content: '' })));
+}
+
+export async function getManuscriptVersion(userId: string, projectId: string, versionId: string): Promise<ManuscriptVersion | null> {
+  if (!(await ownedProject(userId, projectId))) return null;
+  const result = await database().query(
+    'SELECT * FROM caspa_manuscript_versions WHERE user_id=$1 AND project_id=$2 AND id=$3',
+    [userId, projectId, versionId],
+  );
+  return result.rowCount ? mapVersion(result.rows[0]) : null;
+}
+
+export async function latestManuscriptVersion(userId: string, projectId: string): Promise<ManuscriptVersion | null> {
+  if (!(await ownedProject(userId, projectId))) return null;
+  const result = await database().query(
+    'SELECT * FROM caspa_manuscript_versions WHERE user_id=$1 AND project_id=$2 ORDER BY revision DESC LIMIT 1',
+    [userId, projectId],
+  );
+  return result.rowCount ? mapVersion(result.rows[0]) : null;
+}
+
 export async function createManuscriptVersion(userId: string, projectId: string, input: {
   name: string;
   trigger: string;
@@ -291,29 +319,76 @@ export async function rejectDraftPreview(userId: string, previewId: string): Pro
 }
 
 export async function acceptDraftPreview(userId: string, previewId: string): Promise<ManuscriptVersion | null> {
-  const preview = await database().query(
-    "UPDATE caspa_draft_previews SET status='accepted',handled_at=now() WHERE id=$1 AND user_id=$2 AND status='previewed' RETURNING *",
-    [previewId, userId],
-  );
-  if (!preview.rowCount) return null;
-  const row = preview.rows[0];
-  const source = row.source_version_id
-    ? await database().query('SELECT content FROM caspa_manuscript_versions WHERE id=$1 AND user_id=$2', [row.source_version_id, userId])
-    : null;
-  const previous = String(source?.rows?.[0]?.content || '');
-  const content = row.mode === 'replace' ? row.content : `${previous}${previous.trim() ? '\n\n---\n\n' : ''}# ${row.chapter_title}\n\n${row.content}`;
+  const client = await database().connect();
   try {
-    const version = await createManuscriptVersion(userId, row.project_id, {
-      name: `Accepted draft · ${row.chapter_title}`,
-      trigger: 'draft-accepted',
-      content,
-      sourceVersionId: row.source_version_id,
-    });
-    if (!version) throw new Error('Draft project is unavailable');
-    return version;
+    await client.query('BEGIN');
+    const preview = await client.query(
+      "SELECT * FROM caspa_draft_previews WHERE id=$1 AND user_id=$2 AND status='previewed' FOR UPDATE",
+      [previewId, userId],
+    );
+    if (!preview.rowCount) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const row = preview.rows[0];
+    const owner = await client.query(
+      'SELECT id FROM caspa_projects WHERE id=$1 AND user_id=$2 FOR UPDATE',
+      [row.project_id, userId],
+    );
+    if (!owner.rowCount) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const latest = await client.query(
+      'SELECT * FROM caspa_manuscript_versions WHERE project_id=$1 AND user_id=$2 ORDER BY revision DESC LIMIT 1 FOR UPDATE',
+      [row.project_id, userId],
+    );
+    const latestVersion = latest.rows[0] || null;
+    assertExpectedSourceVersion(latestVersion?.id || null, row.source_version_id || null);
+    const previous = String(latestVersion?.content || '');
+    const content = row.mode === 'replace'
+      ? row.content
+      : `${previous}${previous.trim() ? '\n\n---\n\n' : ''}# ${row.chapter_title}\n\n${row.content}`;
+    const id = randomUUID();
+    const created = await client.query(
+      `INSERT INTO caspa_manuscript_versions
+       (id,project_id,user_id,revision,name,trigger,content,checksum,word_count,chapter_count,source_version_id)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [
+        id, row.project_id, userId, Number(latestVersion?.revision || 0) + 1,
+        `Accepted draft · ${row.chapter_title}`, 'draft-accepted', content,
+        checksum(content), words(content), chapters(content), latestVersion?.id || null,
+      ],
+    );
+    const accepted = await client.query(
+      "UPDATE caspa_draft_previews SET status='accepted',handled_at=now() WHERE id=$1 AND user_id=$2 AND status='previewed' RETURNING id",
+      [previewId, userId],
+    );
+    if (!accepted.rowCount) {
+      throw new HybridConflictError('VERSION_CONFLICT', 'This preview is no longer awaiting review. The manuscript was not changed.');
+    }
+    await client.query(
+      'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+      [row.project_id, userId, 'draft.preview.accepted', { previewId, versionId: id }],
+    );
+    await client.query(
+      'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+      [row.project_id, userId, 'manuscript.version.created', { versionId: id, trigger: 'draft-accepted', name: `Accepted draft · ${row.chapter_title}` }],
+    );
+    await client.query('COMMIT');
+    return mapVersion(created.rows[0]);
   } catch (error) {
-    await database().query("UPDATE caspa_draft_previews SET status='previewed',handled_at=NULL WHERE id=$1 AND user_id=$2 AND status='accepted'", [previewId, userId]);
+    await client.query('ROLLBACK');
+    const code = (error as { code?: string }).code;
+    if (code === '23505') {
+      throw new HybridConflictError(
+        'VERSION_CONFLICT',
+        'A newer immutable version exists. Reload before accepting this preview. Nothing was overwritten.',
+      );
+    }
     throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -631,8 +706,7 @@ export function summarizeVersion(version: ManuscriptVersion | null) {
 export async function workspaceSnapshot(userId: string, projectId: string): Promise<any | null> {
   const project = await getOwnedProject(userId, projectId);
   if (!project) return null;
-  const versions = await listManuscriptVersions(userId, projectId);
-  const latest = versions[0] || null;
+  const latest = await latestManuscriptVersion(userId, projectId);
   const [preview, diagnosis, rebuild] = await Promise.all([
     latestDraftPreview(userId, projectId),
     latestDiagnosis(userId, projectId),

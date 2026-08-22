@@ -3,8 +3,10 @@ import test from 'node:test';
 import { DESK_STAGES, findWorkspaceTool, toolsForStage } from '../src/services/workspaceCatalog';
 import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, splitManuscript, splitManuscriptChapters } from '../src/services/workspaceRebuild';
 import { briefFromProject, collectToolCache, hydrateToolCache, mergeWorkspaceArtefacts, scopedCacheKey } from '../src/services/workspaceProjectBridge';
-import { assertExpectedSourceVersion, HybridConflictError } from '../src/services/hybridCoreRepository';
+import { assertExpectedSourceVersion, HybridConflictError, summarizeVersion } from '../src/services/hybridCoreRepository';
 import { readIngestFile } from '../src/services/workspaceIngest';
+import { assertJobBoundToProject } from '../src/services/jobQueueService';
+import { getProjectKey } from '../src/services/researchLibraryService';
 
 test('desk journey includes idea and structure without dropping publish', () => {
   assert.deepEqual([...DESK_STAGES], ['Library', 'Idea', 'Structure', 'Draft', 'Workshop', 'Revise', 'Finish', 'Publish']);
@@ -172,11 +174,72 @@ test('browser cache keys are scoped so two projects cannot contaminate each othe
   hydrateToolCache(projectB, '# Ch\n\nBETA');
   assert.equal(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-a')), '# Ch\n\nALPHA');
   assert.equal(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-b')), '# Ch\n\nBETA');
-  assert.equal(localStorage.getItem('caspa.whitePage'), '# Ch\n\nBETA');
+  assert.equal(localStorage.getItem('caspa.whitePage'), null);
   const fromA = collectToolCache(projectA, '# Ch\n\nOTHER');
   assert.match(String(fromA.manuscriptProposal || ''), /ALPHA/);
   assert.doesNotMatch(String(fromA.manuscriptProposal || ''), /BETA/);
   assert.equal(collectToolCache(projectA, '# Ch\n\nALPHA').manuscriptProposal, null);
+});
+
+test('identically named projects keep separate canon, research and psychology caches', () => {
+  installMemoryStorage();
+  const projectA = {
+    id: 'proj-a',
+    title: 'Harbour Book',
+    mode: 'novel',
+    revision: 1,
+    updatedAt: '2026-08-22T00:00:00.000Z',
+    state: { brief: { idea: 'tide' }, canon: { characters: [{ id: 'clerk' }], plotNodes: [], sourceMaterials: [], critiques: {} }, research: [{ id: 'note-a' }], psychology: { id: 'psy-a' } },
+  };
+  const projectB = {
+    id: 'proj-b',
+    title: 'Harbour Book',
+    mode: 'novel',
+    revision: 1,
+    updatedAt: '2026-08-22T00:00:00.000Z',
+    state: { brief: { idea: 'ash' }, canon: { characters: [{ id: 'keeper' }], plotNodes: [], sourceMaterials: [], critiques: {} }, research: [{ id: 'note-b' }], psychology: { id: 'psy-b' } },
+  };
+  assert.equal(getProjectKey(briefFromProject(projectA)), 'proj-a');
+  assert.equal(getProjectKey(briefFromProject(projectB)), 'proj-b');
+  hydrateToolCache(projectA, '# Ch\n\nALPHA');
+  hydrateToolCache(projectB, '# Ch\n\nBETA');
+  const fromA = collectToolCache(projectA, '# Ch\n\nALPHA');
+  assert.equal((fromA.artefacts.canon?.characters as any[])[0].id, 'clerk');
+  assert.equal((fromA.artefacts.research as any[])[0].id, 'note-a');
+  assert.equal((fromA.artefacts.psychology as any).id, 'psy-a');
+});
+
+test('title, contents and part headings are not treated as rebuild chapters', () => {
+  const manuscript = '# Harbour Book\n\n# Contents\n\n- Chapter 1\n\n# Part One\n\n# Chapter 1\n\nThe clerk waits.\n\n# Chapter 2\n\nThe sea arrives.';
+  const { preamble, chapters } = splitManuscript(manuscript);
+  assert.match(preamble, /Harbour Book/);
+  assert.match(preamble, /Contents/);
+  assert.match(preamble, /Part One/);
+  assert.deepEqual(chapters.map((chapter) => chapter.title), ['Chapter 1', 'Chapter 2']);
+});
+
+test('finish recovery refuses jobs that are not bound to the open project', () => {
+  assert.throws(() => assertJobBoundToProject({}, 'proj-b'), /does not belong/);
+  assert.throws(() => assertJobBoundToProject({ projectId: 'proj-a' }, 'proj-b'), /does not belong/);
+  assert.doesNotThrow(() => assertJobBoundToProject({ projectId: 'proj-b' }, 'proj-b'));
+});
+
+test('version summaries omit manuscript bodies', () => {
+  const summary = summarizeVersion({
+    id: 'v1',
+    projectId: 'p1',
+    revision: 3,
+    name: 'Author save',
+    trigger: 'manual-save',
+    content: 'THIS MUST NOT SHIP IN THE LIST',
+    checksum: 'abc',
+    wordCount: 4,
+    chapterCount: 1,
+    sourceVersionId: null,
+    createdAt: '2026-08-22T00:00:00.000Z',
+  });
+  assert.equal(summary?.id, 'v1');
+  assert.equal((summary as any).content, undefined);
 });
 
 test('image ingest stores extracted text and refuses a truncated data URL fallback', async () => {

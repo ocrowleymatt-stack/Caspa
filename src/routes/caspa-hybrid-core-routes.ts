@@ -12,19 +12,20 @@ import {
   latestDiagnosis,
   latestDraftPreview,
   latestRebuildPlan,
-  listManuscriptVersions,
+  getManuscriptVersion,
+  latestManuscriptVersion,
+  listManuscriptVersionSummaries,
   migrateOwnedProjects,
   rejectDraftPreview,
   rejectRebuildChange,
   runExportPreflight,
   saveDiagnosis,
   saveRebuildPlan,
-  summarizeVersion,
   exportableManuscript,
   workspaceSnapshot,
 } from '../services/hybridCoreRepository';
 import { callServerAi } from '../services/serverAiHelper';
-import { getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
+import { assertJobBoundToProject, getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
 import { getProject, updateProject } from '../services/projectRepository';
 import { splitManuscriptChapters, titlesMatch } from '../services/workspaceRebuild';
 import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
@@ -32,8 +33,22 @@ import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
 const router = express.Router();
 
 router.get('/projects/:projectId/versions', async (req, res) => {
-  const versions = await listManuscriptVersions(requestUser(res).id, req.params.projectId);
+  const versions = await listManuscriptVersionSummaries(requestUser(res).id, req.params.projectId);
   return res.json({ success: true, data: { versions } });
+});
+
+router.get('/projects/:projectId/versions/latest', async (req, res) => {
+  const version = await latestManuscriptVersion(requestUser(res).id, req.params.projectId);
+  return version
+    ? res.json({ success: true, data: version })
+    : res.status(404).json({ success: false, message: 'No immutable version has been saved yet.' });
+});
+
+router.get('/projects/:projectId/versions/:versionId', async (req, res) => {
+  const version = await getManuscriptVersion(requestUser(res).id, req.params.projectId, req.params.versionId);
+  return version
+    ? res.json({ success: true, data: version })
+    : res.status(404).json({ success: false, message: 'Version not found.' });
 });
 
 router.post('/projects/:projectId/versions', async (req, res) => {
@@ -91,8 +106,8 @@ router.post('/projects/:projectId/draft-preview', async (req, res) => {
   const targetWords = Math.max(250, Math.min(6000, Number(req.body?.targetWords || 1200)));
   const mode = ['opening', 'append', 'replace'].includes(req.body?.mode) ? req.body.mode : 'append';
   if (!chapterTitle) return res.status(400).json({ success: false, message: 'Chapter title is required.' });
-  const versions = await listManuscriptVersions(user.id, project.id);
-  const source = String(versions[0]?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
+  const latest = await latestManuscriptVersion(user.id, project.id);
+  const source = String(latest?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
   const prompt = `You are Caspa, a precise literary collaborator. Draft prose only; never include commentary.
 Project: ${project.title}
 Mode: ${project.mode}
@@ -120,7 +135,7 @@ CONTEXT:\n${source.slice(-18_000)}\n\nCANDIDATE:\n${prose.slice(0, 24_000)}`;
     return res.status(422).json({ success: false, message: 'The draft was withheld because it contradicted established manuscript facts.', data: { violations: review.violations || [] } });
   }
   const preview = await createDraftPreview(user.id, project.id, {
-    sourceVersionId: versions[0]?.id || null,
+    sourceVersionId: latest?.id || null,
     mode,
     chapterTitle,
     content: prose,
@@ -136,8 +151,15 @@ router.post('/draft-previews/:previewId/reject', async (req, res) => {
 
 router.post('/draft-previews/:previewId/accept', async (req, res) => {
   if (req.body?.authorConfirmed !== true) return res.status(400).json({ success: false, message: 'Explicit author confirmation is required.' });
-  const version = await acceptDraftPreview(requestUser(res).id, req.params.previewId);
-  return version ? res.json({ success: true, data: version }) : res.status(409).json({ success: false, message: 'Preview is stale, rejected or already accepted.' });
+  try {
+    const version = await acceptDraftPreview(requestUser(res).id, req.params.previewId);
+    return version ? res.json({ success: true, data: version }) : res.status(409).json({ success: false, message: 'Preview is stale, rejected or already accepted.' });
+  } catch (error) {
+    if (isHybridConflictError(error)) {
+      return res.status(409).json({ success: false, message: error.message, code: error.code });
+    }
+    throw error;
+  }
 });
 
 router.get('/projects/:projectId/diagnosis', async (req, res) => {
@@ -148,8 +170,8 @@ router.post('/projects/:projectId/diagnosis', async (req, res) => {
   const user = requestUser(res);
   const project = await getOwnedProject(user.id, req.params.projectId);
   if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
-  const versions = await listManuscriptVersions(user.id, project.id);
-  const manuscript = String(versions[0]?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
+  const latest = await latestManuscriptVersion(user.id, project.id);
+  const manuscript = String(latest?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A manuscript is required before Workshop diagnosis.' });
   const prompt = `Act as a rigorous developmental editor. Return ONLY valid JSON with this shape:
 {"summary":"objective assessment","findings":[{"category":"structure|continuity|character|pacing|voice|clarity|evidence","severity":"critical|major|minor","confidence":0.0,"evidence":"specific passage or location","rationale":"why it matters","recommendation":"bounded repair"}]}
@@ -160,7 +182,7 @@ PROJECT: ${project.title}\nMODE: ${project.mode}\nMANUSCRIPT:\n${manuscript.slic
   try { diagnosis = parseJson(await callServerAi(prompt, true, { maxTokens: 3500, timeoutMs: 180_000 })); }
   catch { return res.status(502).json({ success: false, message: 'Workshop could not complete the diagnosis. The manuscript is unchanged.' }); }
   const findings = Array.isArray(diagnosis.findings) ? diagnosis.findings.slice(0, 20) : [];
-  const saved = await saveDiagnosis(user.id, project.id, { versionId: versions[0]?.id || null, summary: String(diagnosis.summary || 'Diagnosis completed.'), findings });
+  const saved = await saveDiagnosis(user.id, project.id, { versionId: latest?.id || null, summary: String(diagnosis.summary || 'Diagnosis completed.'), findings });
   return res.status(201).json({ success: true, data: saved });
 });
 
@@ -169,20 +191,40 @@ router.post('/projects/:projectId/recover-job/:jobId', async (req, res) => {
   const job = getUserJob(user.id, req.params.jobId);
   if (!job) return res.status(404).json({ success: false, message: 'Job not found.' });
   if (job.status !== 'complete') return res.status(409).json({ success: false, message: 'Only a completed job can become a manuscript version.' });
+  try {
+    assertJobBoundToProject(job, req.params.projectId);
+  } catch (error) {
+    return res.status(409).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'This job does not belong to the open project.',
+      code: 'JOB_PROJECT_MISMATCH',
+    });
+  }
   const result = job.result as any;
   const content = String(result?.artefact || result?.finalText || '');
   if (!content.trim()) return res.status(409).json({ success: false, message: 'The completed job has no manuscript payload.' });
-  const current = await listManuscriptVersions(user.id, req.params.projectId);
-  if (current.some((version) => version.checksum === manuscriptHash(content))) {
-    return res.json({ success: true, data: current.find((version) => version.checksum === manuscriptHash(content)), duplicate: true });
+  const summaries = await listManuscriptVersionSummaries(user.id, req.params.projectId);
+  const duplicate = summaries.find((version) => version?.checksum === manuscriptHash(content));
+  if (duplicate) {
+    const existing = await getManuscriptVersion(user.id, req.params.projectId, duplicate.id);
+    return res.json({ success: true, data: existing || duplicate, duplicate: true });
   }
-  const version = await createManuscriptVersion(user.id, req.params.projectId, {
-    name: `Recovered Finish run · ${new Date(job.updatedAt).toLocaleString('en-GB')}`,
-    trigger: 'finish-job-recovery',
-    content,
-    sourceVersionId: current[0]?.id || null,
-  });
-  return version ? res.status(201).json({ success: true, data: version }) : res.status(404).json({ success: false, message: 'Project not found.' });
+  const latest = await latestManuscriptVersion(user.id, req.params.projectId);
+  try {
+    const version = await createManuscriptVersion(user.id, req.params.projectId, {
+      name: `Recovered Finish run · ${new Date(job.updatedAt).toLocaleString('en-GB')}`,
+      trigger: 'finish-job-recovery',
+      content,
+      sourceVersionId: latest?.id || null,
+      expectedSourceVersionId: latest?.id || null,
+    });
+    return version ? res.status(201).json({ success: true, data: version }) : res.status(404).json({ success: false, message: 'Project not found.' });
+  } catch (error) {
+    if (isHybridConflictError(error)) {
+      return res.status(409).json({ success: false, message: error.message, code: error.code });
+    }
+    throw error;
+  }
 });
 
 router.post('/projects/:projectId/export-preflight', async (req, res) => {
@@ -213,7 +255,7 @@ router.get('/projects/:projectId/workspace', async (req, res) => {
     success: true,
     data: {
       ...snapshot,
-      versions: (await listManuscriptVersions(requestUser(res).id, req.params.projectId)).map(summarizeVersion),
+      versions: await listManuscriptVersionSummaries(requestUser(res).id, req.params.projectId),
       jobs,
       recovery: { available: jobs.some((job) => job.status === 'complete' && job.resultAvailable) },
     },
@@ -270,8 +312,8 @@ router.post('/projects/:projectId/rebuild/analyze', async (req, res) => {
   const user = requestUser(res);
   const project = await getOwnedProject(user.id, req.params.projectId);
   if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
-  const versions = await listManuscriptVersions(user.id, project.id);
-  const manuscript = String(versions[0]?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
+  const latest = await latestManuscriptVersion(user.id, project.id);
+  const manuscript = String(latest?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A manuscript is required before rebuild analysis.' });
   const chapters = splitManuscriptChapters(manuscript);
   const prompt = `Analyse this manuscript for structural reconstruction. Return ONLY JSON:
@@ -286,7 +328,7 @@ ${manuscript.slice(0, 70_000)}`;
   try { analysis = parseJson(await callServerAi(prompt, true, { maxTokens: 2500, timeoutMs: 180_000 })); }
   catch { return res.status(502).json({ success: false, message: 'Rebuild analysis could not complete. The manuscript is unchanged.' }); }
   const saved = await saveRebuildPlan(user.id, project.id, {
-    sourceVersionId: versions[0]?.id || null,
+    sourceVersionId: latest?.id || null,
     status: 'analyzed',
     analysis: { summary: String(analysis.summary || 'Analysis complete.'), findings: Array.isArray(analysis.findings) ? analysis.findings.slice(0, 12) : [] },
     changes: [],
@@ -298,8 +340,8 @@ router.post('/projects/:projectId/rebuild/plan', async (req, res) => {
   const user = requestUser(res);
   const project = await getOwnedProject(user.id, req.params.projectId);
   if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
-  const versions = await listManuscriptVersions(user.id, project.id);
-  const manuscript = String(versions[0]?.content || '');
+  const latest = await latestManuscriptVersion(user.id, project.id);
+  const manuscript = String(latest?.content || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A saved version is required before a rebuild plan.' });
   const current = await latestRebuildPlan(user.id, project.id);
   const chapters = splitManuscriptChapters(manuscript);
@@ -331,7 +373,7 @@ ${chapter.body.slice(0, 20_000)}`;
   };
   if (!change.proposed.trim()) return res.status(502).json({ success: false, message: 'No replacement prose was produced. The manuscript is unchanged.' });
   const saved = await saveRebuildPlan(user.id, project.id, {
-    sourceVersionId: versions[0]?.id || null,
+    sourceVersionId: latest?.id || null,
     status: 'planned',
     analysis: current?.analysis || { summary: change.rationale, findings: [] },
     changes: [change],

@@ -80,6 +80,14 @@ export function getUserJob(userId: string, id: string): CaspaJobRecord | null {
   return job;
 }
 
+export function assertJobBoundToProject(job: { projectId?: string }, projectId: string): void {
+  if (!job.projectId || job.projectId !== projectId) {
+    const error = new Error('This completed job does not belong to the open project. Nothing was written.');
+    (error as Error & { code: string }).code = 'JOB_PROJECT_MISMATCH';
+    throw error;
+  }
+}
+
 export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string): CaspaJobRecord[] {
   return listRecentJobs(500)
     .filter((job) => (job.userId || 'legacy-owner') === userId)

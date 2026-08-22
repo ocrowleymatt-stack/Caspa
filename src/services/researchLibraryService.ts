@@ -15,6 +15,8 @@ export interface StoredResearchNote extends ResearchNote {
 }
 
 export function getProjectKey(brief: ProjectBriefLike): string {
+  const projectId = String(brief.projectId || '').trim();
+  if (projectId) return projectId;
   const slug = brief.title
     .trim()
     .toLowerCase()

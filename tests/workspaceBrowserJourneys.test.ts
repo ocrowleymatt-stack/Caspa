@@ -35,7 +35,14 @@ function createMockServer() {
     if (url === '/api/projects' && req.method === 'POST') {
       return json(res, 201, { success: true, data: project });
     }
-    if (url.includes('/versions') && req.method === 'GET') return json(res, 200, { success: true, data: { versions } });
+    if (url.includes('/versions/latest') && req.method === 'GET') {
+      return versions[0]
+        ? json(res, 200, { success: true, data: versions[0] })
+        : json(res, 404, { success: false, message: 'No immutable version has been saved yet.' });
+    }
+    if (url.includes('/versions') && req.method === 'GET') {
+      return json(res, 200, { success: true, data: { versions: versions.map(({ content, ...rest }) => rest) } });
+    }
     if (url.includes('/versions') && req.method === 'POST') {
       const version = { id: `v-${versions.length + 1}`, revision: versions.length + 1, name: 'Imported', trigger: 'ingest-promoted', content: manuscript, wordCount: 18, chapterCount: 1, createdAt: new Date().toISOString() };
       versions.unshift(version);

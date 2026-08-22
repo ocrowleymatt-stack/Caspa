@@ -1,4 +1,4 @@
-import { getProjectKey, loadLibrary } from './researchLibraryService';
+import { loadLibrary } from './researchLibraryService';
 import type { ProjectBriefLike } from './commissionService';
 import { assembleManuscript, detectManuscriptProposal, splitManuscript, splitManuscriptChapters } from './workspaceRebuild';
 
@@ -51,34 +51,22 @@ export function scopedCacheKey(
 function writeScopedManuscript(projectId: string, manuscript: string): void {
   localStorage.setItem(scopedCacheKey('caspa.whitePage', projectId), manuscript);
   localStorage.setItem(scopedCacheKey('caspa.manuscriptSource', projectId), manuscript);
-  localStorage.setItem('caspa.whitePage', manuscript);
-  localStorage.setItem('caspa.manuscriptSource', manuscript);
   localStorage.setItem(ACTIVE_HYBRID_PROJECT_KEY, projectId);
 }
 
 function writeScopedCommission(projectId: string, commission: unknown): void {
-  const raw = JSON.stringify(commission);
-  localStorage.setItem(scopedCacheKey('caspa.commission', projectId), raw);
-  localStorage.setItem('caspa.commission', raw);
+  localStorage.setItem(scopedCacheKey('caspa.commission', projectId), JSON.stringify(commission));
   localStorage.setItem(ACTIVE_HYBRID_PROJECT_KEY, projectId);
 }
 
 function readScopedItem(projectId: string, base: 'caspa.whitePage' | 'caspa.manuscriptSource' | 'caspa.commission'): string | null {
-  const scoped = localStorage.getItem(scopedCacheKey(base, projectId));
-  const active = localStorage.getItem(ACTIVE_HYBRID_PROJECT_KEY);
-  if (active === projectId) {
-    const alias = localStorage.getItem(base);
-    if (alias != null && alias !== '') {
-      localStorage.setItem(scopedCacheKey(base, projectId), alias);
-      return alias;
-    }
-  }
-  return scoped;
+  return localStorage.getItem(scopedCacheKey(base, projectId));
 }
 
 export function briefFromProject(project: WorkspaceProject): ProjectBriefLike {
   const brief = (project.state?.brief || {}) as Record<string, unknown>;
   return {
+    projectId: project.id,
     title: project.title,
     mode: project.mode,
     idea: String(brief.idea || project.state?.hybrid?.startingIdea || ''),
@@ -114,8 +102,8 @@ export function mergeWorkspaceArtefacts(current: Record<string, any>, artefacts:
 export function hydrateToolCache(project: WorkspaceProject, manuscript: string): ProjectBriefLike {
   const brief = briefFromProject(project);
   if (typeof localStorage === 'undefined') return brief;
-  const key = getProjectKey(brief);
-  localStorage.setItem('caspa.currentBrief', JSON.stringify({ ...brief, createdAt: new Date().toISOString() }));
+  const key = project.id;
+  localStorage.setItem(`caspa.currentBrief.${key}`, JSON.stringify({ ...brief, createdAt: new Date().toISOString() }));
   writeScopedManuscript(project.id, manuscript);
   const canon = project.state?.canon || {};
   localStorage.setItem(`caspa.studioCanon.${key}`, JSON.stringify({
@@ -158,7 +146,7 @@ export function collectToolCache(project: WorkspaceProject, canonicalManuscript:
   if (typeof localStorage === 'undefined') {
     return { artefacts: {}, manuscriptProposal: null };
   }
-  const key = getProjectKey(brief);
+  const key = project.id;
   let canon = project.state?.canon;
   let research = project.state?.research;
   let psychology = project.state?.psychology;

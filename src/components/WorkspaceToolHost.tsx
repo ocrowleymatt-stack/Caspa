@@ -17,6 +17,7 @@ type Props = {
   onBriefChange: (patch: Partial<ProjectBriefLike>) => void;
   onManuscriptProposal: (text: string) => void;
   onNavigate: (tool: WorkspaceToolId | string) => void;
+  onSave: () => void;
   onClose: () => void;
 };
 
@@ -27,6 +28,7 @@ export default function WorkspaceToolHost({
   onBriefChange,
   onManuscriptProposal,
   onNavigate,
+  onSave,
   onClose,
 }: Props) {
   const meta = findWorkspaceTool(tool);
@@ -81,7 +83,10 @@ export default function WorkspaceToolHost({
           <p className="eyebrow">{meta?.label || tool}</p>
           <p className="workspace-help-copy">{meta?.help}</p>
         </div>
-        <button type="button" className="desk-ghost" onClick={onClose}>Close tool</button>
+        <div className="desk-row">
+          <button type="button" className="desk-ghost" onClick={onSave}>Save artefacts</button>
+          <button type="button" className="desk-ghost" onClick={onClose}>Close tool</button>
+        </div>
       </header>
       <div className="workspace-tool-host-body">{body}</div>
     </section>

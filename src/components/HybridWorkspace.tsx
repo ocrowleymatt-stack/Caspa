@@ -110,12 +110,15 @@ export default function HybridWorkspace() {
     setActiveTool(null);
     setBusy(true);
     try {
-      const data = await api(`/api/v2/projects/${encodeURIComponent(project.id)}/versions`);
-      const next = data.versions || [];
+      const [list, latest] = await Promise.all([
+        api(`/api/v2/projects/${encodeURIComponent(project.id)}/versions`),
+        api(`/api/v2/projects/${encodeURIComponent(project.id)}/versions/latest`).catch(() => null),
+      ]);
+      const next = list.versions || [];
       setVersions(next);
-      const text = next[0]?.content || initialManuscript(project);
+      const text = latest?.content || initialManuscript(project);
       setManuscript(text);
-      knownVersion.current = next[0]?.revision || 0;
+      knownVersion.current = latest?.revision || next[0]?.revision || 0;
       knownProjectRevision.current = project.revision;
       hydrateToolCache(project, text);
       const [draftData, diagnosisData, rebuildData] = await Promise.all([
@@ -211,8 +214,8 @@ export default function HybridWorkspace() {
     setMessage(err instanceof Error ? err.message : fallback);
   };
 
-  const persistArtefacts = async () => {
-    if (!selected) return;
+  const persistArtefacts = async (): Promise<{ ok: true; project: WorkspaceProject } | { ok: false }> => {
+    if (!selected) return { ok: false };
     const { artefacts, manuscriptProposal } = collectToolCache(selected, manuscript);
     try {
       const result = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/artefacts`, {
@@ -223,25 +226,42 @@ export default function HybridWorkspace() {
       setSelected(result.project);
       knownProjectRevision.current = result.project.revision;
       if (manuscriptProposal) setProposal(manuscriptProposal);
+      return { ok: true, project: result.project };
     } catch (error) {
-      handleConflict(error, 'Could not save project artefacts.');
+      handleConflict(error, 'Could not save project artefacts. The specialist tool stays open so the work is not discarded.');
+      return { ok: false };
     }
+  };
+
+  const changeStage = async (next: DeskStage) => {
+    if (activeTool && next !== stage) {
+      const saved = await persistArtefacts();
+      if (!saved.ok) return;
+      setActiveTool(null);
+    }
+    setStage(next);
   };
 
   const openTool = async (labelOrId: string) => {
     const tool = findWorkspaceTool(labelOrId);
     if (!tool || !selected) { setMessage('That control is already represented on this desk.'); return; }
+    if (activeTool && activeTool !== tool.id) {
+      const saved = await persistArtefacts();
+      if (!saved.ok) return;
+    }
     if (tool.id === 'workshop') { setStage('Workshop'); setActiveTool(null); return; }
     if (tool.id === 'rebuild') { setStage('Revise'); setActiveTool(null); return; }
     if (tool.id === 'recovery') { setStage('Finish'); setActiveTool(null); return; }
     if (tool.id === 'preflight' || tool.id === 'publish') { setStage('Publish'); setActiveTool(null); return; }
     if (tool.id === 'compare') { setStage('Revise'); setActiveTool('compare'); return; }
-    hydrateToolCache(selected, manuscript);
+    const project = selected;
+    hydrateToolCache(project, manuscript);
     setActiveTool(tool.id);
   };
 
   const closeTool = async () => {
-    await persistArtefacts();
+    const saved = await persistArtefacts();
+    if (!saved.ok) return;
     setActiveTool(null);
   };
 
@@ -265,11 +285,12 @@ export default function HybridWorkspace() {
         const version = await api(`/api/v2/draft-previews/${preview.id}/accept`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
         setVersions((current) => [version, ...current]); setManuscript(version.content); knownVersion.current = version.revision;
         setMessage(`Accepted as immutable version ${version.revision}.`);
+        setPreview(null);
       } else {
         await api(`/api/v2/draft-previews/${preview.id}/reject`, { method: 'POST', body: '{}' }); setMessage('Preview rejected. The manuscript was not changed.');
+        setPreview(null);
       }
-      setPreview(null);
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not handle the preview.'); }
+    } catch (error) { handleConflict(error, 'Could not handle the preview.'); }
     finally { setBusy(false); }
   };
 
@@ -325,10 +346,10 @@ export default function HybridWorkspace() {
 
   useEffect(() => {
     if (stage !== 'Finish') return;
-    api('/api/jobs?limit=20&status=complete')
-      .then((data) => setFinishedJobs((data.jobs || []).filter((job: any) => job.resultAvailable)))
+    api(`/api/jobs?limit=20&status=complete&projectId=${encodeURIComponent(selected?.id || '')}`)
+      .then((data) => setFinishedJobs((data.jobs || []).filter((job: any) => job.resultAvailable && (!selected || job.projectId === selected.id))))
       .catch(() => setFinishedJobs([]));
-  }, [stage]);
+  }, [stage, selected?.id]);
 
   const recoverJob = async (jobId: string) => {
     if (!selected) return;
@@ -338,7 +359,7 @@ export default function HybridWorkspace() {
       setVersions((current) => current.some((item) => item.id === version.id) ? current : [version, ...current]);
       setManuscript(version.content); knownVersion.current = version.revision;
       setMessage(`Finish result secured as immutable version ${version.revision}.`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not recover the finished job.'); }
+    } catch (error) { handleConflict(error, 'Could not recover the finished job.'); }
     finally { setBusy(false); }
   };
 
@@ -377,6 +398,19 @@ export default function HybridWorkspace() {
       handleConflict(error, 'Could not save this version.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const revealVersion = async (versionId: string) => {
+    if (!selected) return;
+    const cached = versions.find((item) => item.id === versionId);
+    if (cached?.content) { setManuscript(cached.content); return; }
+    try {
+      const version = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/versions/${encodeURIComponent(versionId)}`);
+      setVersions((current) => current.map((item) => item.id === version.id ? { ...item, content: version.content } : item));
+      setManuscript(version.content);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not load that version.');
     }
   };
 
@@ -422,7 +456,7 @@ export default function HybridWorkspace() {
             key={item}
             type="button"
             disabled={!selected && item !== 'Library'}
-            onClick={() => selected || item === 'Library' ? setStage(item) : undefined}
+            onClick={() => selected || item === 'Library' ? void changeStage(item) : undefined}
             className={stage === item ? 'is-active' : ''}
           >
             <span>{stage === item || (selected && DESK_STAGES.indexOf(stage) > index) ? <Check size={12} /> : index + 1}</span>
@@ -497,7 +531,7 @@ export default function HybridWorkspace() {
           </div>
         ) : (
           <>
-            <button type="button" className="desk-back" onClick={() => { setStage('Library'); setActiveTool(null); }}><ArrowLeft size={14} /> All projects</button>
+            <button type="button" className="desk-back" onClick={() => void changeStage('Library')}><ArrowLeft size={14} /> All projects</button>
             <div className="hybrid-editor-grid">
               <div className="desk-primary-column">
                 {activeTool && brief && !['compare'].includes(activeTool) ? (
@@ -508,6 +542,7 @@ export default function HybridWorkspace() {
                     onBriefChange={(patch) => setSelected((current) => current ? { ...current, state: { ...current.state, brief: { ...current.state.brief, ...patch } }, title: patch.title || current.title } : current)}
                     onManuscriptProposal={setProposal}
                     onNavigate={(next) => void openTool(String(next))}
+                    onSave={() => void persistArtefacts()}
                     onClose={() => void closeTool()}
                   />
                 ) : (
@@ -546,7 +581,7 @@ export default function HybridWorkspace() {
                 <section className="literary-card">
                   <div className="desk-card-kicker"><FileClock size={14} /> Version history</div>
                   {versions.slice(0, 8).map((version) => (
-                    <button key={version.id} type="button" className="desk-version" onClick={() => setManuscript(version.content || manuscript)}>
+                    <button key={version.id} type="button" className="desk-version" onClick={() => void revealVersion(version.id)}>
                       <strong>v{version.revision} · {version.name}</strong>
                       <span>{version.wordCount.toLocaleString()} words · {new Date(version.createdAt).toLocaleString()}</span>
                     </button>
