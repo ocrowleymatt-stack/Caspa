@@ -1938,7 +1938,7 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, loading: authLoading, signOut: handleSignOut }}>
-      {window.location.pathname.startsWith('/v2') ? <HybridWorkspace /> : <CaspaUI />}
+      {window.location.pathname.startsWith('/legacy') ? <CaspaUI /> : <HybridWorkspace />}
     </AuthContext.Provider>
   );
 }
