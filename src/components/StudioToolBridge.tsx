@@ -112,6 +112,7 @@ interface Props {
   onBriefChange: (patch: Partial<ProjectBriefLike>) => void;
   onDraftChange: (text: string) => void;
   onNavigate: (legacyView: LegacyViewType | string) => void;
+  embedded?: boolean;
 }
 
 function assembleShowSource(brief: ProjectBriefLike): string {
@@ -194,6 +195,7 @@ export default function StudioToolBridge({
   onBriefChange,
   onDraftChange,
   onNavigate,
+  embedded = false,
 }: Props) {
   const projectKey = getProjectKey(brief);
   const [canon, setCanon] = useState<StudioCanon>(() => loadCanon(projectKey));
@@ -555,6 +557,15 @@ export default function StudioToolBridge({
     );
   } else if (tool === 'prizes') {
     body = <PrizeCalibrationDashboard />;
+  }
+
+  if (embedded) {
+    return (
+      <section className="workspace-tool-embed" data-tool={tool}>
+        {notice && <div className="workspace-flash">{notice}</div>}
+        <div className="workspace-tool-embed-body">{body}</div>
+      </section>
+    );
   }
 
   return (

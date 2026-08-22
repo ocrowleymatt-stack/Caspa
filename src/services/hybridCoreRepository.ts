@@ -125,6 +125,19 @@ export async function ensureHybridCoreSchema(): Promise<void> {
       checks jsonb NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS caspa_rebuild_plans (
+      id uuid PRIMARY KEY,
+      project_id uuid NOT NULL REFERENCES caspa_projects(id) ON DELETE CASCADE,
+      user_id text NOT NULL,
+      source_version_id uuid REFERENCES caspa_manuscript_versions(id) ON DELETE SET NULL,
+      status text NOT NULL CHECK(status IN ('analyzed','planned','committed','abandoned')),
+      analysis jsonb NOT NULL DEFAULT '{}'::jsonb,
+      changes jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS caspa_rebuild_plans_owner_idx
+      ON caspa_rebuild_plans(user_id, project_id, created_at DESC);
   `);
 }
 
@@ -376,4 +389,121 @@ export async function migrateOwnedProjects(userId: string): Promise<{ imported: 
     if (created) imported += 1;
   }
   return { imported, skipped, empty };
+}
+
+function mapRebuild(row: any) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    sourceVersionId: row.source_version_id,
+    status: row.status,
+    analysis: row.analysis,
+    changes: row.changes,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+  };
+}
+
+export async function saveRebuildPlan(userId: string, projectId: string, input: {
+  sourceVersionId?: string | null;
+  status: 'analyzed' | 'planned';
+  analysis: Record<string, unknown>;
+  changes: unknown[];
+}): Promise<any | null> {
+  if (!(await ownedProject(userId, projectId))) return null;
+  await database().query(
+    "UPDATE caspa_rebuild_plans SET status='abandoned', updated_at=now() WHERE user_id=$1 AND project_id=$2 AND status IN ('analyzed','planned')",
+    [userId, projectId],
+  );
+  const id = randomUUID();
+  const result = await database().query(
+    `INSERT INTO caspa_rebuild_plans(id,project_id,user_id,source_version_id,status,analysis,changes)
+     VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [id, projectId, userId, input.sourceVersionId || null, input.status, JSON.stringify(input.analysis), JSON.stringify(input.changes)],
+  );
+  await database().query(
+    'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+    [projectId, userId, `rebuild.${input.status}`, { planId: id, changeCount: input.changes.length }],
+  );
+  return mapRebuild(result.rows[0]);
+}
+
+export async function latestRebuildPlan(userId: string, projectId: string): Promise<any | null> {
+  const result = await database().query(
+    "SELECT * FROM caspa_rebuild_plans WHERE user_id=$1 AND project_id=$2 AND status IN ('analyzed','planned') ORDER BY created_at DESC LIMIT 1",
+    [userId, projectId],
+  );
+  return result.rowCount ? mapRebuild(result.rows[0]) : null;
+}
+
+export async function updateRebuildChange(userId: string, planId: string, changeId: string, status: 'accepted' | 'rejected'): Promise<any | null> {
+  const result = await database().query(
+    "SELECT * FROM caspa_rebuild_plans WHERE id=$1 AND user_id=$2 AND status IN ('analyzed','planned')",
+    [planId, userId],
+  );
+  if (!result.rowCount) return null;
+  const row = result.rows[0];
+  const changes = Array.isArray(row.changes) ? row.changes : [];
+  const next = changes.map((change: any) => change.id === changeId ? { ...change, status } : change);
+  if (!next.some((change: any) => change.id === changeId)) return null;
+  const updated = await database().query(
+    'UPDATE caspa_rebuild_plans SET changes=$1, updated_at=now() WHERE id=$2 AND user_id=$3 RETURNING *',
+    [JSON.stringify(next), planId, userId],
+  );
+  await database().query(
+    'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+    [row.project_id, userId, `rebuild.change.${status}`, { planId, changeId }],
+  );
+  return mapRebuild(updated.rows[0]);
+}
+
+export async function markRebuildCommitted(userId: string, planId: string): Promise<void> {
+  await database().query(
+    "UPDATE caspa_rebuild_plans SET status='committed', updated_at=now() WHERE id=$1 AND user_id=$2",
+    [planId, userId],
+  );
+}
+
+export function summarizeVersion(version: ManuscriptVersion | null) {
+  if (!version) return null;
+  return {
+    id: version.id,
+    revision: version.revision,
+    name: version.name,
+    trigger: version.trigger,
+    wordCount: version.wordCount,
+    chapterCount: version.chapterCount,
+    checksum: version.checksum,
+    createdAt: version.createdAt,
+  };
+}
+
+export async function workspaceSnapshot(userId: string, projectId: string): Promise<any | null> {
+  const project = await getOwnedProject(userId, projectId);
+  if (!project) return null;
+  const versions = await listManuscriptVersions(userId, projectId);
+  const latest = versions[0] || null;
+  const [preview, diagnosis, rebuild] = await Promise.all([
+    latestDraftPreview(userId, projectId),
+    latestDiagnosis(userId, projectId),
+    latestRebuildPlan(userId, projectId),
+  ]);
+  const projectRow = await database().query(
+    'SELECT current_revision, updated_at FROM caspa_projects WHERE id=$1 AND user_id=$2',
+    [projectId, userId],
+  );
+  return {
+    project: {
+      id: project.id,
+      title: project.title,
+      mode: project.mode,
+      revision: Number(projectRow.rows[0]?.current_revision || 1),
+      updatedAt: projectRow.rows[0]?.updated_at ? new Date(projectRow.rows[0].updated_at).toISOString() : null,
+    },
+    latestVersion: summarizeVersion(latest),
+    preview: preview ? { id: preview.id, status: preview.status, chapterTitle: preview.chapterTitle } : null,
+    diagnosis: diagnosis ? { id: diagnosis.id, summary: diagnosis.summary, findingCount: Array.isArray(diagnosis.findings) ? diagnosis.findings.length : 0 } : null,
+    rebuild: rebuild ? { id: rebuild.id, status: rebuild.status, pending: (rebuild.changes || []).filter((change: any) => change.status === 'pending').length } : null,
+    lastSave: latest?.createdAt || projectRow.rows[0]?.updated_at || null,
+  };
 }

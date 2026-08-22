@@ -1,74 +1,89 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Archive, BookOpen, Check, ChevronLeft, FileClock, Loader, Save, Sparkles, Wrench } from 'lucide-react';
-import { contextualTools, type HybridStage } from '../services/hybridWorkflow';
-
-type Project = {
-  id: string; title: string; mode: string; revision: number; updatedAt: string;
-  state: Record<string, any>;
-};
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, BookOpen, Check, Feather, FileClock, HelpCircle, Loader, Save, ShieldCheck } from 'lucide-react';
+import { contextualTools } from '../services/hybridWorkflow';
+import {
+  DESK_STAGES,
+  STAGE_HELP,
+  findWorkspaceTool,
+  toolsForStage,
+  type DeskStage,
+  type WorkspaceToolId,
+} from '../services/workspaceCatalog';
+import { briefFromProject, collectToolCache, hydrateToolCache, type WorkspaceProject } from '../services/workspaceProjectBridge';
+import { splitManuscriptChapters } from '../services/workspaceRebuild';
+import WorkspaceToolHost from './WorkspaceToolHost';
 
 type Version = {
-  id: string; revision: number; name: string; trigger: string; content: string;
-  wordCount: number; chapterCount: number; createdAt: string;
+  id: string; revision: number; name: string; trigger: string; content?: string;
+  wordCount: number; chapterCount: number; checksum?: string; createdAt: string;
 };
 
-const stages = ['Library', 'Draft', 'Workshop', 'Revise', 'Finish', 'Publish'];
-
-const creativeToolTargets: Record<string, string> = {
-  Research: 'research',
-  'Story bible': 'bible',
-  Psychology: 'psychology',
-  'Style profile': 'writing',
-  Diagnosis: 'workshop',
-  'Reader review': 'swarm',
-  Continuity: 'bible',
-  'Fact check': 'intelligence',
-  'Rip & Fix': 'architect',
-  'Auto Drafter': 'autodraft',
-  Scalpel: 'scalpel',
-  'Gold Refinery': 'gold',
-  'Red Pen': 'redpen',
-  'Book design': 'design',
-  Cover: 'design',
-  Layout: 'design',
-  Proof: 'redpen',
-  Export: 'publish',
-};
+const FORMATS = [
+  { id: 'novel', label: 'Fiction', note: 'Novels and short fiction' },
+  { id: 'nonfiction', label: 'Non-fiction', note: 'Ideas, argument, evidence' },
+  { id: 'essay', label: 'Essay', note: 'Focused long-form' },
+  { id: 'poetry', label: 'Poetry', note: 'Sequence, image, voice' },
+  { id: 'script', label: 'Script', note: 'Stage or screen' },
+  { id: 'picture', label: 'Picture book', note: 'Page turns and rhythm' },
+  { id: 'adaptation', label: 'Adaptation', note: 'A source already exists' },
+] as const;
 
 async function api(url: string, init?: RequestInit): Promise<any> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
   const body = await response.json().catch(() => ({}));
+  if (response.status === 409 && body.code === 'REVISION_CONFLICT') {
+    const error = new Error(body.message || 'Project changed in another session');
+    (error as any).code = 'REVISION_CONFLICT';
+    throw error;
+  }
   if (!response.ok) throw new Error(body.message || `Caspa request failed (${response.status})`);
   return body.data;
 }
 
-function initialManuscript(project: Project): string {
-  return String(
-    project.state?.commission?.artefact
-      || project.state?.manuscript
-      || project.state?.manuscriptSource
-      || project.state?.whitePage
-      || '',
-  );
+function initialManuscript(project: WorkspaceProject): string {
+  return String(project.state?.commission?.artefact || project.state?.manuscript || project.state?.manuscriptSource || project.state?.whitePage || '');
+}
+
+function readFileAsText(file: File): Promise<{ kind: 'text' | 'file' | 'image'; text: string }> {
+  if (file.type.startsWith('image/')) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read that image.'));
+      reader.onload = () => resolve({ kind: 'image', text: `[Image: ${file.name}]\n${String(reader.result || '').slice(0, 240)}` });
+      reader.readAsDataURL(file);
+    });
+  }
+  return file.text().then((text) => ({ kind: file.type.startsWith('text') || /\.(txt|md|markdown)$/i.test(file.name) ? 'text' : 'file', text }));
 }
 
 export default function HybridWorkspace() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selected, setSelected] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
+  const [selected, setSelected] = useState<WorkspaceProject | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
   const [manuscript, setManuscript] = useState('');
-  const [stage, setStage] = useState('Library');
+  const [stage, setStage] = useState<DeskStage>('Library');
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState('');
-  const [draftTitle, setDraftTitle] = useState('Next chapter');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('Opening chapter');
   const [preview, setPreview] = useState<any | null>(null);
   const [diagnosis, setDiagnosis] = useState<any | null>(null);
+  const [rebuild, setRebuild] = useState<any | null>(null);
   const [finishedJobs, setFinishedJobs] = useState<any[]>([]);
   const [preflight, setPreflight] = useState<any | null>(null);
-  const [showNewProject, setShowNewProject] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(true);
   const [newTitle, setNewTitle] = useState('');
   const [newIdea, setNewIdea] = useState('');
   const [newMode, setNewMode] = useState('novel');
+  const [activeTool, setActiveTool] = useState<WorkspaceToolId | null>(null);
+  const [proposal, setProposal] = useState<string | null>(null);
+  const [conflict, setConflict] = useState('');
+  const [compareLeft, setCompareLeft] = useState('');
+  const [compareRight, setCompareRight] = useState('');
+  const [lastSave, setLastSave] = useState('');
+  const [recoveryAvailable, setRecoveryAvailable] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const knownVersion = useRef(0);
 
   useEffect(() => {
     api('/api/v2/migration/import-legacy', { method: 'POST', body: '{}' })
@@ -79,22 +94,50 @@ export default function HybridWorkspace() {
       .finally(() => setBusy(false));
   }, []);
 
-  const openProject = async (project: Project) => {
+  const refreshSnapshot = async (projectId: string) => {
+    const snap = await api(`/api/v2/projects/${encodeURIComponent(projectId)}/workspace`).catch(() => null);
+    if (!snap) return;
+    setLastSave(snap.lastSave || '');
+    setRecoveryAvailable(Boolean(snap.recovery?.available));
+    if (snap.latestVersion?.revision && knownVersion.current && snap.latestVersion.revision > knownVersion.current) {
+      setConflict(`Another session saved immutable version ${snap.latestVersion.revision}. Saving yours will create a newer version and will not delete theirs.`);
+    }
+    if (snap.project?.revision && selected && snap.project.revision !== selected.revision) {
+      setSelected((current) => current ? { ...current, revision: snap.project.revision, updatedAt: snap.project.updatedAt } : current);
+    }
+  };
+
+  useEffect(() => {
+    if (!selected) return;
+    const timer = window.setInterval(() => void refreshSnapshot(selected.id), 20000);
+    return () => window.clearInterval(timer);
+  }, [selected?.id]);
+
+  const openProject = async (project: WorkspaceProject, nextStage: DeskStage = 'Draft') => {
     setSelected(project);
-    setStage('Draft');
+    setStage(nextStage);
+    setActiveTool(null);
     setBusy(true);
     try {
       const data = await api(`/api/v2/projects/${encodeURIComponent(project.id)}/versions`);
       const next = data.versions || [];
       setVersions(next);
-      setManuscript(next[0]?.content || initialManuscript(project));
-      const [draftData, diagnosisData] = await Promise.all([
+      const text = next[0]?.content || initialManuscript(project);
+      setManuscript(text);
+      knownVersion.current = next[0]?.revision || 0;
+      hydrateToolCache(project, text);
+      const [draftData, diagnosisData, rebuildData] = await Promise.all([
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/draft-preview`).catch(() => null),
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/diagnosis`).catch(() => null),
+        api(`/api/v2/projects/${encodeURIComponent(project.id)}/rebuild`).catch(() => null),
       ]);
       setPreview(draftData);
       setDiagnosis(diagnosisData);
+      setRebuild(rebuildData);
       setPreflight(null);
+      setProposal(null);
+      setConflict('');
+      await refreshSnapshot(project.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not open this project.');
     } finally {
@@ -103,9 +146,9 @@ export default function HybridWorkspace() {
   };
 
   const createNewProject = async () => {
-    const title = newTitle.trim();
+    const title = newTitle.trim() || newIdea.trim().slice(0, 72) || 'Untitled manuscript';
     const idea = newIdea.trim();
-    if (!title || !idea) { setMessage('Give the project a title and at least one rough idea.'); return; }
+    if (idea.length < 8) { setMessage('Give Caspa at least one rough sentence, note, or observation.'); return; }
     setBusy(true);
     try {
       const project = await api('/api/projects', {
@@ -116,16 +159,83 @@ export default function HybridWorkspace() {
           mode: newMode,
           state: {
             brief: { title, mode: newMode, idea, tone: '', audience: '', output: 'A complete, author-controlled manuscript.', targetWordCount: 80000, createdAt: new Date().toISOString() },
-            hybrid: { startingIdea: idea, createdIn: 'caspa-v2' },
-            whitePage: '', manuscriptSource: '',
+            hybrid: { startingIdea: idea, createdIn: 'caspa-integrated' },
+            whitePage: '', manuscriptSource: '', ingest: { sources: [] },
           },
         }),
       });
       setProjects((current) => [project, ...current]);
       setShowNewProject(false); setNewTitle(''); setNewIdea('');
-      setMessage('Project created on the server. Start with Draft, Research or Story Bible.');
-      await openProject(project);
+      setMessage('Project created on the server. Nothing has been written into a manuscript yet.');
+      await openProject(project, 'Idea');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not create the project.'); setBusy(false); }
+  };
+
+  const ingestFile = async (file: File | undefined, promote = false) => {
+    if (!file) return;
+    if (!selected) {
+      setNewIdea((current) => current || `Ingested ${file.name}`);
+      const read = await readFileAsText(file);
+      setNewIdea(read.text.slice(0, 4000));
+      setMessage(`Loaded ${file.name}. Create the server project to keep it.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const read = await readFileAsText(file);
+      const result = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/ingest`, {
+        method: 'POST',
+        body: JSON.stringify({ kind: read.kind, title: file.name, filename: file.name, text: read.text }),
+      });
+      setSelected(result.project);
+      setMessage(`${file.name} attached to the project. The manuscript was not overwritten.`);
+      if (promote && read.text.trim()) {
+        await saveVersion(read.text, `Imported · ${file.name}`, 'ingest-promoted');
+      }
+    } catch (error) {
+      handleConflict(error, 'Could not ingest that file.');
+    } finally { setBusy(false); }
+  };
+
+  const handleConflict = (error: unknown, fallback: string) => {
+    const err = error as any;
+    if (err?.code === 'REVISION_CONFLICT') {
+      setConflict('This project changed in another tab. Reload the server artefacts before saving again. Manuscript versions were not deleted.');
+    }
+    setMessage(err instanceof Error ? err.message : fallback);
+  };
+
+  const persistArtefacts = async () => {
+    if (!selected) return;
+    const { artefacts, manuscriptProposal } = collectToolCache(selected, manuscript);
+    try {
+      const result = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/artefacts`, {
+        method: 'POST',
+        headers: { 'If-Match': `"${selected.revision}"` },
+        body: JSON.stringify({ revision: selected.revision, artefacts }),
+      });
+      setSelected(result.project);
+      if (manuscriptProposal) setProposal(manuscriptProposal);
+    } catch (error) {
+      handleConflict(error, 'Could not save project artefacts.');
+    }
+  };
+
+  const openTool = async (labelOrId: string) => {
+    const tool = findWorkspaceTool(labelOrId);
+    if (!tool || !selected) { setMessage('That control is already represented on this desk.'); return; }
+    if (tool.id === 'workshop') { setStage('Workshop'); setActiveTool(null); return; }
+    if (tool.id === 'rebuild') { setStage('Revise'); setActiveTool(null); return; }
+    if (tool.id === 'recovery') { setStage('Finish'); setActiveTool(null); return; }
+    if (tool.id === 'preflight' || tool.id === 'publish') { setStage('Publish'); setActiveTool(null); return; }
+    if (tool.id === 'compare') { setStage('Revise'); setActiveTool('compare'); return; }
+    hydrateToolCache(selected, manuscript);
+    setActiveTool(tool.id);
+  };
+
+  const closeTool = async () => {
+    await persistArtefacts();
+    setActiveTool(null);
   };
 
   const prepareDraft = async () => {
@@ -146,7 +256,8 @@ export default function HybridWorkspace() {
     try {
       if (accept) {
         const version = await api(`/api/v2/draft-previews/${preview.id}/accept`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
-        setVersions((current) => [version, ...current]); setManuscript(version.content); setMessage(`Accepted as immutable version ${version.revision}.`);
+        setVersions((current) => [version, ...current]); setManuscript(version.content); knownVersion.current = version.revision;
+        setMessage(`Accepted as immutable version ${version.revision}.`);
       } else {
         await api(`/api/v2/draft-previews/${preview.id}/reject`, { method: 'POST', body: '{}' }); setMessage('Preview rejected. The manuscript was not changed.');
       }
@@ -158,8 +269,50 @@ export default function HybridWorkspace() {
   const runDiagnosis = async () => {
     if (!selected) return;
     setBusy(true); setMessage('Workshop is examining the current immutable manuscript…');
-    try { const result = await api(`/api/v2/projects/${selected.id}/diagnosis`, { method: 'POST', body: '{}' }); setDiagnosis(result); setMessage('Evidence-backed diagnosis completed.'); }
+    try { const result = await api(`/api/v2/projects/${selected.id}/diagnosis`, { method: 'POST', body: '{}' }); setDiagnosis(result); setMessage('Evidence-backed diagnosis completed. The manuscript is unchanged.'); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Diagnosis failed.'); }
+    finally { setBusy(false); }
+  };
+
+  const analyzeRebuild = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const result = await api(`/api/v2/projects/${selected.id}/rebuild/analyze`, { method: 'POST', body: '{}' });
+      setRebuild(result);
+      setMessage('Rebuild analysis complete. No text was changed.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Rebuild analysis failed.'); }
+    finally { setBusy(false); }
+  };
+
+  const planRebuild = async (chapterTitle?: string) => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const result = await api(`/api/v2/projects/${selected.id}/rebuild/plan`, { method: 'POST', body: JSON.stringify({ chapterTitle }) });
+      setRebuild(result);
+      setMessage('Reconstruction plan ready. Preview the replacement before accepting.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Rebuild plan failed.'); }
+    finally { setBusy(false); }
+  };
+
+  const handleRebuildChange = async (changeId: string, accept: boolean) => {
+    if (!rebuild) return;
+    setBusy(true);
+    try {
+      if (accept) {
+        const result = await api(`/api/v2/rebuild-plans/${rebuild.id}/changes/${changeId}/accept`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
+        setRebuild(result.plan);
+        setVersions((current) => [result.version, ...current]);
+        setManuscript(result.version.content);
+        knownVersion.current = result.version.revision;
+        setMessage(`Accepted rebuild as immutable version ${result.version.revision}.`);
+      } else {
+        const plan = await api(`/api/v2/rebuild-plans/${rebuild.id}/changes/${changeId}/reject`, { method: 'POST', body: '{}' });
+        setRebuild(plan);
+        setMessage('Change rejected. The manuscript was not changed.');
+      }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not handle that rebuild change.'); }
     finally { setBusy(false); }
   };
 
@@ -176,7 +329,8 @@ export default function HybridWorkspace() {
     try {
       const version = await api(`/api/v2/projects/${selected.id}/recover-job/${jobId}`, { method: 'POST', body: '{}' });
       setVersions((current) => current.some((item) => item.id === version.id) ? current : [version, ...current]);
-      setManuscript(version.content); setMessage(`Finish result secured as immutable version ${version.revision}.`);
+      setManuscript(version.content); knownVersion.current = version.revision;
+      setMessage(`Finish result secured as immutable version ${version.revision}.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not recover the finished job.'); }
     finally { setBusy(false); }
   };
@@ -192,20 +346,19 @@ export default function HybridWorkspace() {
     finally { setBusy(false); }
   };
 
-  const saveVersion = async () => {
-    if (!selected || !manuscript.trim()) return;
+  const saveVersion = async (content = manuscript, name = `Author save · ${new Date().toLocaleString()}`, trigger = 'manual-save') => {
+    if (!selected || !content.trim()) return;
     setBusy(true);
     try {
       const version = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/versions`, {
         method: 'POST',
-        body: JSON.stringify({
-          name: `Author save · ${new Date().toLocaleString()}`,
-          trigger: 'manual-save',
-          content: manuscript,
-          sourceVersionId: versions[0]?.id || null,
-        }),
+        body: JSON.stringify({ name, trigger, content, sourceVersionId: versions[0]?.id || null }),
       });
       setVersions((current) => [version, ...current]);
+      setManuscript(version.content);
+      knownVersion.current = version.revision;
+      setProposal(null);
+      setLastSave(version.createdAt);
       setMessage(`Saved immutable version ${version.revision}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save this version.');
@@ -215,51 +368,321 @@ export default function HybridWorkspace() {
   };
 
   const wordCount = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
-  const tools = stage === 'Library' ? [] : contextualTools(stage.toLowerCase() as HybridStage);
-  const openCreativeTool = (tool: string) => {
-    const target = creativeToolTargets[tool];
-    if (target) window.location.href = `/legacy?tool=${encodeURIComponent(target)}`;
-    else setMessage(`${tool} is represented by the current version history and author-save workflow.`);
-  };
+  const chapterCount = useMemo(() => splitManuscriptChapters(manuscript).length, [manuscript]);
+  const brief = selected ? briefFromProject(selected) : null;
+  const stageTools = toolsForStage(stage);
+  const hybridTools = stage === 'Library' ? [] : contextualTools(stage === 'Idea' || stage === 'Structure' ? 'draft' : stage.toLowerCase() as any);
+  const leftVersion = versions.find((item) => item.id === compareLeft) || versions[1];
+  const rightVersion = versions.find((item) => item.id === compareRight) || versions[0];
 
   return (
-    <div className="hybrid-workspace" style={{ minHeight: '100vh', background: '#15110d', color: '#f6efe3', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <header className="hybrid-header" style={{ borderBottom: '1px solid #514334', padding: '18px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div><div style={{ color: '#c9a768', letterSpacing: '.18em', fontSize: 11 }}>CASPA V2 · PRIVATE LITERARY ATELIER</div><h1 style={{ margin: '5px 0 0', fontFamily: 'Georgia, serif', fontSize: 28 }}>Make the thing first.</h1></div>
-        <a href="/legacy" style={{ color: '#d9c7a5', textDecoration: 'none', fontSize: 13 }}>Open legacy specialist studio</a>
+    <div className="hybrid-workspace caspa-desk">
+      <header className="hybrid-header desk-header">
+        <div className="desk-brand">
+          <span className="desk-mark"><Feather size={16} /></span>
+          <div>
+            <div className="eyebrow">CASPA · Manuscript development</div>
+            <h1>Private writing desk</h1>
+          </div>
+        </div>
+        <div className="desk-header-actions">
+          {busy && <span className="desk-busy" role="status"><Loader className="spin" size={14} /> Working</span>}
+          <button type="button" className="desk-ghost" onClick={() => setHelpOpen((value) => !value)}><HelpCircle size={14} /> Help</button>
+          <a href="/legacy" className="desk-ghost">Previous studio</a>
+        </div>
       </header>
-      <nav style={{ display: 'flex', gap: 8, padding: '14px 28px', borderBottom: '1px solid #372e25', overflowX: 'auto' }}>
-        {stages.map((item, index) => <button key={item} onClick={() => selected || item === 'Library' ? setStage(item) : undefined} style={{ border: `1px solid ${stage === item ? '#c9a768' : '#493d31'}`, background: stage === item ? '#322719' : 'transparent', color: stage === item ? '#fff7e8' : '#a99b89', padding: '9px 14px', borderRadius: 20, whiteSpace: 'nowrap' }}>{index + 1}. {item}</button>)}
+
+      {selected && (
+        <div className="desk-status" data-testid="desk-status">
+          <span>Stage <strong>{stage}</strong></span>
+          <span>Last server save <strong>{lastSave ? new Date(lastSave).toLocaleString() : 'none yet'}</strong></span>
+          <span>{wordCount.toLocaleString()} words · {chapterCount} chapter{chapterCount === 1 ? '' : 's'}</span>
+          <span>{versions.length} version{versions.length === 1 ? '' : 's'}</span>
+          <span>Recovery <strong>{recoveryAvailable ? 'available' : 'idle'}</strong></span>
+          <span>Model / cost <strong>shown only after an author-started run</strong></span>
+        </div>
+      )}
+
+      <nav className="desk-rail" aria-label="Project workflow">
+        {DESK_STAGES.map((item, index) => (
+          <button
+            key={item}
+            type="button"
+            disabled={!selected && item !== 'Library'}
+            onClick={() => selected || item === 'Library' ? setStage(item) : undefined}
+            className={stage === item ? 'is-active' : ''}
+          >
+            <span>{stage === item || (selected && DESK_STAGES.indexOf(stage) > index) ? <Check size={12} /> : index + 1}</span>
+            {item}
+          </button>
+        ))}
       </nav>
-      {message && <div style={{ margin: '16px 28px 0', padding: 12, border: '1px solid #655137', background: '#2b2117', borderRadius: 8 }}>{message}</div>}
-      {busy && <div style={{ position: 'fixed', right: 24, bottom: 24, padding: 12, background: '#2c231a', border: '1px solid #5c4934', borderRadius: 12 }}><Loader className="spin" size={18} /></div>}
-      <main className="hybrid-main" style={{ padding: '28px', maxWidth: 1500, margin: '0 auto' }}>
-        {stage === 'Library' || !selected ? <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}><div><div style={{ color: '#c9a768', fontSize: 11, letterSpacing: '.16em' }}>CANONICAL SERVER LIBRARY</div><h2 style={{ fontFamily: 'Georgia, serif', fontSize: 42, margin: '6px 0' }}>Your work</h2><p style={{ color: '#b9aa98' }}>Every project is loaded from PostgreSQL, not a browser-only shelf.</p></div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button onClick={() => { window.location.href = '/legacy?tool=research'; }} style={{ border: '1px solid #655137', background: '#2a2118', color: '#eee3d2', padding: '10px 13px', borderRadius: 8 }}>Research desk</button><button onClick={() => setShowNewProject((value) => !value)} style={{ border: 0, background: '#b89150', color: '#17110a', padding: '10px 13px', borderRadius: 8, fontWeight: 800 }}>+ New project</button><Archive color="#c9a768" /></div></div>
-          {showNewProject && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18, marginBottom: 20 }}><div style={{ color: '#c9a768', fontWeight: 800 }}>Start from a rough idea</div><p style={{ color: '#a99b89', fontSize: 13 }}>A sentence, observation, receipt, note, scene or half-formed thought is enough. Caspa will keep it as the project seed.</p><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 180px', gap: 10 }}><input aria-label="New project title" placeholder="Working title" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} style={{ minWidth: 0, background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 11 }} /><select aria-label="Project format" value={newMode} onChange={(event) => setNewMode(event.target.value)} style={{ minWidth: 0, background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 11 }}><option value="novel">Fiction</option><option value="nonfiction">Non-fiction</option><option value="essay">Essay / article</option><option value="poetry">Poetry</option><option value="script">Script</option><option value="adaptation">Adaptation</option><option value="chaos">Surprise me</option></select></div><textarea aria-label="Rough project idea" placeholder="Paste or type the rough idea here…" value={newIdea} onChange={(event) => setNewIdea(event.target.value)} style={{ boxSizing: 'border-box', width: '100%', minHeight: 120, marginTop: 10, resize: 'vertical', background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 11 }} /><button onClick={() => void createNewProject()} disabled={busy} style={{ marginTop: 10, padding: '10px 14px', border: 0, borderRadius: 7, background: '#b89150', color: '#17110a', fontWeight: 800 }}>Create server project</button></div>}
-          <div className="hybrid-library-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 16 }}>
-            {projects.map((project) => <button className="hybrid-project-card" key={project.id} onClick={() => void openProject(project)} style={{ textAlign: 'left', padding: 20, minHeight: 170, border: '1px solid #4b3e31', background: '#201a15', color: '#f6efe3', borderRadius: 12 }}><BookOpen size={20} color="#c9a768" /><h3 style={{ fontFamily: 'Georgia, serif', fontSize: 23, margin: '16px 0 8px' }}>{project.title}</h3><div style={{ color: '#a99b89', fontSize: 12 }}>{project.mode} · project revision {project.revision}</div><div style={{ color: '#776b5e', fontSize: 11, marginTop: 8 }}>{new Date(project.updatedAt).toLocaleString()}</div></button>)}
+
+      {helpOpen && (
+        <aside className="literary-card desk-help" data-testid="desk-help">
+          <p className="eyebrow">This stage</p>
+          <p>{STAGE_HELP[stage]}</p>
+          <div className="gold-rule" />
+          {stageTools.map((tool) => <p key={tool.id}><strong>{tool.label}.</strong> {tool.help}</p>)}
+        </aside>
+      )}
+
+      {message && <div className="desk-banner" role="status">{message}</div>}
+      {conflict && <div className="desk-banner is-conflict" role="alert">{conflict} <button type="button" className="desk-ghost" onClick={() => selected && void openProject(selected, stage)}>Reload project</button></div>}
+
+      <main className="hybrid-main desk-main">
+        {stage === 'Library' || !selected ? (
+          <div className="desk-library">
+            <div className="desk-library-head">
+              <div>
+                <p className="eyebrow">Author workspace</p>
+                <h2>Your work</h2>
+                <p className="desk-muted">Every project is loaded from PostgreSQL. Browser storage is only a cache.</p>
+              </div>
+              <div className="desk-row">
+                <button type="button" className="desk-ghost" onClick={() => { setShowNewProject(true); setActiveTool(null); }}>New project</button>
+                <button type="button" className="desk-ghost" onClick={() => { setShowNewProject(true); fileInput.current?.click(); }}>Ingest a file</button>
+              </div>
+            </div>
+
+            {showNewProject && (
+              <section className="literary-card" data-testid="new-project-form">
+                <p className="eyebrow">New project</p>
+                <h3>What are you making?</h3>
+                <div className="desk-formats">
+                  {FORMATS.map((item) => (
+                    <button key={item.id} type="button" className={newMode === item.id ? 'is-active' : ''} onClick={() => setNewMode(item.id)}>
+                      <strong>{item.label}</strong>
+                      <span>{item.note}</span>
+                    </button>
+                  ))}
+                </div>
+                <label className="desk-field">Working title
+                  <input aria-label="New project title" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Optional — Caspa can derive one" />
+                </label>
+                <label className="desk-field">A sentence, receipt, note, or half-formed thought
+                  <textarea aria-label="Rough project idea" value={newIdea} onChange={(event) => setNewIdea(event.target.value)} placeholder="Paste or type the rough idea here…" />
+                </label>
+                <div className="desk-row">
+                  <button type="button" className="desk-primary" disabled={busy} onClick={() => void createNewProject()}>Create server project</button>
+                  <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach text, manuscript or image</button>
+                </div>
+              </section>
+            )}
+
+            <div className="hybrid-library-grid">
+              {projects.map((project) => (
+                <button className="hybrid-project-card literary-card" key={project.id} onClick={() => void openProject(project)}>
+                  <BookOpen size={18} />
+                  <h3>{project.title}</h3>
+                  <div className="desk-muted">{project.mode} · project revision {project.revision}</div>
+                  <div className="desk-muted">{new Date(project.updatedAt).toLocaleString()}</div>
+                </button>
+              ))}
+              {!projects.length && !busy && <div className="literary-card desk-empty">Your desk is clear. Start with a sentence.</div>}
+            </div>
           </div>
-        </> : <>
-          <button onClick={() => setStage('Library')} style={{ background: 'transparent', border: 0, color: '#c9a768', display: 'flex', gap: 7, alignItems: 'center', marginBottom: 18 }}><ChevronLeft size={16} /> Library</button>
-          <div className="hybrid-editor-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 20 }}>
-            <section className="hybrid-editor-panel" style={{ border: '1px solid #4b3e31', background: '#1d1813', borderRadius: 12, overflow: 'hidden' }}>
-              <div style={{ padding: '18px 20px', borderBottom: '1px solid #3c3228', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div><div style={{ color: '#c9a768', fontSize: 11, letterSpacing: '.14em' }}>{stage.toUpperCase()}</div><h2 style={{ fontFamily: 'Georgia, serif', margin: '5px 0' }}>{selected.title}</h2></div><button onClick={() => void saveVersion()} disabled={busy || !manuscript.trim()} style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#b89150', color: '#17110a', border: 0, padding: '10px 14px', borderRadius: 8, fontWeight: 700 }}><Save size={16} /> Save version</button></div>
-              <textarea className="hybrid-manuscript" value={manuscript} onChange={(event) => setManuscript(event.target.value)} aria-label="Manuscript" style={{ boxSizing: 'border-box', width: '100%', minHeight: '68vh', resize: 'vertical', border: 0, outline: 0, padding: '32px clamp(24px,6vw,90px)', background: '#f1e8d8', color: '#251f19', font: '18px/1.75 Georgia, serif' }} />
-            </section>
-            <aside className="hybrid-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ border: '1px solid #4b3e31', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#c9a768' }}><Check size={16} /> Server checkpoint</div><div style={{ fontSize: 30, fontFamily: 'Georgia, serif', marginTop: 12 }}>{wordCount.toLocaleString()} words</div><div style={{ color: '#a99b89', fontSize: 12, marginTop: 5 }}>{versions.length ? `${versions.length} immutable version${versions.length === 1 ? '' : 's'}` : 'Legacy project ready for its first immutable version'}</div></div>
-              <div style={{ border: '1px solid #4b3e31', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#c9a768' }}><FileClock size={16} /> Version history</div>{versions.slice(0, 8).map((version) => <button key={version.id} onClick={() => setManuscript(version.content)} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 0, borderTop: '1px solid #3b3128', color: '#eee3d2', padding: '12px 0' }}><strong>v{version.revision} · {version.name}</strong><div style={{ color: '#8f8171', fontSize: 11, marginTop: 4 }}>{version.wordCount.toLocaleString()} words · {new Date(version.createdAt).toLocaleString()}</div></button>)}</div>
-              {stage === 'Draft' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Draft with Caspa</div><p style={{ color: '#a99b89', fontSize: 12, lineHeight: 1.5 }}>Caspa prepares a private preview. Only explicit acceptance creates a version.</p>{preview?.status === 'previewed' ? <><h4>{preview.chapterTitle}</h4><div style={{ maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#efe4d2', color: '#282018', padding: 12, borderRadius: 8, font: '13px/1.6 Georgia, serif' }}>{preview.content}</div><p style={{ color: '#a99b89', fontSize: 11 }}>{preview.grounding?.summary}</p><div style={{ display: 'flex', gap: 8 }}><button onClick={() => void handlePreview(false)} style={{ flex: 1, padding: 9, borderRadius: 7, border: '1px solid #66533d', background: 'transparent', color: '#eee3d2' }}>Reject</button><button onClick={() => void handlePreview(true)} style={{ flex: 1, padding: 9, borderRadius: 7, border: 0, background: '#b89150', color: '#17110a', fontWeight: 700 }}>Accept version</button></div></> : <><input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} style={{ boxSizing: 'border-box', width: '100%', background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 10 }} /><button onClick={() => void prepareDraft()} disabled={busy} style={{ width: '100%', marginTop: 9, padding: 10, border: 0, borderRadius: 7, background: '#b89150', color: '#17110a', fontWeight: 700 }}>Prepare preview</button></>}</div>}
-              {stage === 'Workshop' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Workshop diagnosis</div>{diagnosis ? <><p style={{ color: '#d8cbb9', fontSize: 13, lineHeight: 1.55 }}>{diagnosis.summary}</p>{(diagnosis.findings || []).slice(0, 8).map((finding: any, index: number) => <div key={index} style={{ borderTop: '1px solid #41362b', padding: '10px 0' }}><strong style={{ fontSize: 12 }}>{finding.category} · {finding.severity}</strong><div style={{ color: '#a99b89', fontSize: 11, marginTop: 4 }}>{finding.recommendation || finding.rationale}</div></div>)}</> : <p style={{ color: '#a99b89', fontSize: 12 }}>Run a server-owned diagnosis against the current version.</p>}<button onClick={() => void runDiagnosis()} disabled={busy} style={{ width: '100%', marginTop: 9, padding: 10, border: '1px solid #66533d', borderRadius: 7, background: '#2a2118', color: '#eee3d2' }}>{diagnosis ? 'Run new diagnosis' : 'Diagnose manuscript'}</button></div>}
-              {stage === 'Revise' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Revision desk</div><p style={{ color: '#a99b89', fontSize: 12, lineHeight: 1.5 }}>Edit directly for ordinary changes, or open a specialist engine for structural work. Save version makes each deliberate revision recoverable.</p>{diagnosis?.findings?.length ? <div style={{ color: '#d8cbb9', fontSize: 12 }}>{diagnosis.findings.length} diagnosed item{diagnosis.findings.length === 1 ? '' : 's'} available as your revision checklist.</div> : <div style={{ color: '#8f8171', fontSize: 12 }}>Run Workshop diagnosis first for an evidence-backed checklist.</div>}<div style={{ display: 'grid', gap: 8, marginTop: 12 }}><button onClick={() => openCreativeTool('Rip & Fix')} style={{ padding: 11, border: 0, borderRadius: 7, background: '#b89150', color: '#17110a', fontWeight: 800 }}>Rip up &amp; rebuild structure</button><button onClick={() => openCreativeTool('Auto Drafter')} style={{ padding: 11, border: '1px solid #66533d', borderRadius: 7, background: '#2a2118', color: '#eee3d2', fontWeight: 700 }}>Redraft chapters</button><button onClick={() => openCreativeTool('Scalpel')} style={{ padding: 11, border: '1px solid #66533d', borderRadius: 7, background: '#2a2118', color: '#eee3d2' }}>Cut and tighten with Scalpel</button></div></div>}
-              {stage === 'Finish' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Recovery Centre</div><p style={{ color: '#a99b89', fontSize: 12 }}>Promote a completed server job into immutable project history without running AI again.</p>{finishedJobs.length ? finishedJobs.map((job) => <button key={job.id} onClick={() => void recoverJob(job.id)} style={{ width: '100%', textAlign: 'left', marginTop: 7, padding: 9, border: '1px solid #514230', borderRadius: 7, background: '#2a2118', color: '#eee3d2' }}><strong>{job.type}</strong><div style={{ fontSize: 10, color: '#9e907f' }}>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</div></button>) : <div style={{ color: '#8f8171', fontSize: 12 }}>No unrecovered completed jobs found.</div>}</div>}
-              {stage === 'Publish' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Publish gate</div><p style={{ color: '#a99b89', fontSize: 12, lineHeight: 1.5 }}>The export gate checks the current immutable version. Any later save requires a fresh preflight.</p>{preflight?.checks?.map((check: any) => <div key={check.id} style={{ display: 'flex', gap: 8, borderTop: '1px solid #41362b', padding: '9px 0', color: check.passed ? '#bdd6ad' : '#e5ae9e', fontSize: 12 }}><span>{check.passed ? '✓' : '✗'}</span><span><strong>{check.label}</strong><br />{check.detail}</span></div>)}<button onClick={() => void runPreflight()} disabled={busy} style={{ width: '100%', marginTop: 9, padding: 10, border: '1px solid #66533d', borderRadius: 7, background: '#2a2118', color: '#eee3d2' }}>Run publish preflight</button>{preflight?.passed && selected && <a href={`/api/v2/projects/${encodeURIComponent(selected.id)}/export.txt`} style={{ boxSizing: 'border-box', display: 'block', textAlign: 'center', textDecoration: 'none', width: '100%', marginTop: 9, padding: 10, borderRadius: 7, background: '#b89150', color: '#17110a', fontWeight: 700 }}>Download verified manuscript</a>}</div>}
-              <div style={{ border: '1px solid #4b3e31', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#c9a768' }}><Wrench size={16} /> Creative tools</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, margin: '14px 0' }}>{tools.map((tool) => <button key={tool} onClick={() => openCreativeTool(tool)} style={{ border: '1px solid #514230', background: '#2a2118', borderRadius: 20, padding: '7px 10px', color: '#e6d8c4', fontSize: 11, cursor: 'pointer' }}>{tool}</button>)}</div><p style={{ color: '#a99b89', fontSize: 13, lineHeight: 1.6 }}>These are real launch controls now. They open the existing specialist engine directly; return here to secure the result as an immutable version.</p><button onClick={() => { window.location.href = '/legacy'; }} style={{ width: '100%', border: '1px solid #655137', background: '#2a2118', color: '#eee3d2', padding: 10, borderRadius: 8 }}><Sparkles size={14} style={{ verticalAlign: 'middle', marginRight: 7 }} /> Browse every creative tool</button></div>
-            </aside>
-          </div>
-        </>}
+        ) : (
+          <>
+            <button type="button" className="desk-back" onClick={() => { setStage('Library'); setActiveTool(null); }}><ArrowLeft size={14} /> All projects</button>
+            <div className="hybrid-editor-grid">
+              <div className="desk-primary-column">
+                {activeTool && brief && !['compare'].includes(activeTool) ? (
+                  <WorkspaceToolHost
+                    tool={activeTool}
+                    brief={brief}
+                    manuscript={manuscript}
+                    onBriefChange={(patch) => setSelected((current) => current ? { ...current, state: { ...current.state, brief: { ...current.state.brief, ...patch } }, title: patch.title || current.title } : current)}
+                    onManuscriptProposal={setProposal}
+                    onNavigate={(next) => void openTool(String(next))}
+                    onClose={() => void closeTool()}
+                  />
+                ) : (
+                  <section className="hybrid-editor-panel literary-card">
+                    <div className="desk-editor-bar">
+                      <div>
+                        <p className="eyebrow">{stage}</p>
+                        <h2>{selected.title}</h2>
+                      </div>
+                      <button type="button" className="desk-primary" disabled={busy || !manuscript.trim()} onClick={() => void saveVersion()}><Save size={14} /> Save version</button>
+                    </div>
+                    <textarea className="hybrid-manuscript manuscript-page" value={manuscript} onChange={(event) => setManuscript(event.target.value)} aria-label="Manuscript" />
+                  </section>
+                )}
+
+                {proposal && (
+                  <section className="literary-card desk-proposal" data-testid="manuscript-proposal">
+                    <p className="eyebrow">Proposed manuscript change</p>
+                    <p>A specialist tool produced replacement text. Accepting creates a new immutable version. Rejecting leaves the canonical manuscript untouched.</p>
+                    <div className="desk-preview">{proposal.slice(0, 4000)}</div>
+                    <div className="desk-row">
+                      <button type="button" className="desk-ghost" onClick={() => setProposal(null)}>Reject proposal</button>
+                      <button type="button" className="desk-primary" onClick={() => void saveVersion(proposal, `Accepted tool proposal · ${new Date().toLocaleString()}`, 'tool-accepted')}>Accept as new version</button>
+                    </div>
+                  </section>
+                )}
+              </div>
+
+              <aside className="hybrid-sidebar">
+                <section className="literary-card">
+                  <div className="desk-card-kicker"><ShieldCheck size={14} /> Server checkpoint</div>
+                  <div className="desk-metric">{wordCount.toLocaleString()} words</div>
+                  <p className="desk-muted">{chapterCount} chapters · {versions.length ? `${versions.length} immutable versions` : 'Ready for a first version'}</p>
+                </section>
+
+                <section className="literary-card">
+                  <div className="desk-card-kicker"><FileClock size={14} /> Version history</div>
+                  {versions.slice(0, 8).map((version) => (
+                    <button key={version.id} type="button" className="desk-version" onClick={() => setManuscript(version.content || manuscript)}>
+                      <strong>v{version.revision} · {version.name}</strong>
+                      <span>{version.wordCount.toLocaleString()} words · {new Date(version.createdAt).toLocaleString()}</span>
+                    </button>
+                  ))}
+                </section>
+
+                {stage === 'Idea' && (
+                  <section className="literary-card">
+                    <p className="eyebrow">Idea / ingest</p>
+                    <p className="desk-muted">Attach notes, a long manuscript, or an image. Promotion is explicit.</p>
+                    <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach file or image</button>
+                    <button type="button" className="desk-primary" disabled={!manuscript.trim()} onClick={() => void saveVersion(manuscript, 'Imported manuscript', 'ingest-promoted')}>Save current text as first version</button>
+                    <button type="button" className="desk-ghost" onClick={() => void openTool('research')}>Open Research Desk</button>
+                  </section>
+                )}
+
+                {stage === 'Structure' && (
+                  <section className="literary-card">
+                    <p className="eyebrow">Structure</p>
+                    <p className="desk-muted">These engines read this PostgreSQL project and write artefacts back to it.</p>
+                    {['Brainstorm', 'Story Bible', 'Character Forge', 'Psychology Studio', 'Plot Architect'].map((label) => (
+                      <button key={label} type="button" className="desk-ghost" onClick={() => void openTool(label)}>{label}</button>
+                    ))}
+                  </section>
+                )}
+
+                {stage === 'Draft' && (
+                  <section className="literary-card">
+                    <p className="eyebrow">Draft with Caspa</p>
+                    <p className="desk-muted">Caspa prepares a private preview. Only explicit acceptance creates a version.</p>
+                    {preview?.status === 'previewed' ? (
+                      <>
+                        <h4>{preview.chapterTitle}</h4>
+                        <div className="desk-preview">{preview.content}</div>
+                        <p className="desk-muted">{preview.grounding?.summary}</p>
+                        <div className="desk-row">
+                          <button type="button" className="desk-ghost" onClick={() => void handlePreview(false)}>Reject</button>
+                          <button type="button" className="desk-primary" onClick={() => void handlePreview(true)}>Accept version</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <input aria-label="Chapter title" value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} />
+                        <button type="button" className="desk-primary" disabled={busy} onClick={() => void prepareDraft()}>Prepare preview</button>
+                      </>
+                    )}
+                  </section>
+                )}
+
+                {stage === 'Workshop' && (
+                  <section className="literary-card">
+                    <p className="eyebrow">Workshop diagnosis</p>
+                    {diagnosis ? (
+                      <>
+                        <p>{diagnosis.summary}</p>
+                        {(diagnosis.findings || []).slice(0, 8).map((finding: any, index: number) => (
+                          <div key={index} className="desk-finding"><strong>{finding.category} · {finding.severity}</strong><span>{finding.recommendation || finding.rationale}</span></div>
+                        ))}
+                      </>
+                    ) : <p className="desk-muted">Run a server-owned diagnosis against the current version.</p>}
+                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runDiagnosis()}>{diagnosis ? 'Run new diagnosis' : 'Diagnose manuscript'}</button>
+                    <button type="button" className="desk-ghost" onClick={() => void openTool('Critic Swarm')}>Critic Swarm</button>
+                  </section>
+                )}
+
+                {stage === 'Revise' && (
+                  <section className="literary-card" data-testid="rebuild-panel">
+                    <p className="eyebrow">Rip up and rebuild</p>
+                    <p className="desk-muted">Analyse without modifying. Then plan one chapter, preview it, and accept or reject that change.</p>
+                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void analyzeRebuild()}>1. Analyse structure</button>
+                    {rebuild?.analysis?.summary && <p>{rebuild.analysis.summary}</p>}
+                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void planRebuild()}>2. Plan one chapter</button>
+                    {(rebuild?.changes || []).map((change: any) => (
+                      <div key={change.id} className="desk-change">
+                        <strong>{change.chapterTitle} · {change.status}</strong>
+                        <p>{change.rationale}</p>
+                        <div className="desk-preview">{change.proposed}</div>
+                        {change.status === 'pending' && (
+                          <div className="desk-row">
+                            <button type="button" className="desk-ghost" onClick={() => void handleRebuildChange(change.id, false)}>Reject change</button>
+                            <button type="button" className="desk-primary" onClick={() => void handleRebuildChange(change.id, true)}>Accept as new version</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <div className="gold-rule" />
+                    {['Rip & Fix', 'Auto Drafter', 'Scalpel', 'Gold Refinery', 'Version compare'].map((label) => (
+                      <button key={label} type="button" className="desk-ghost" onClick={() => void openTool(label)}>{label}</button>
+                    ))}
+                  </section>
+                )}
+
+                {activeTool === 'compare' && (
+                  <section className="literary-card">
+                    <p className="eyebrow">Version compare</p>
+                    <select aria-label="Earlier version" value={compareLeft} onChange={(event) => setCompareLeft(event.target.value)}>
+                      {versions.map((version) => <option key={version.id} value={version.id}>v{version.revision} · {version.name}</option>)}
+                    </select>
+                    <select aria-label="Later version" value={compareRight} onChange={(event) => setCompareRight(event.target.value)}>
+                      {versions.map((version) => <option key={version.id} value={version.id}>v{version.revision} · {version.name}</option>)}
+                    </select>
+                    <p className="desk-muted">{leftVersion ? `${leftVersion.wordCount} words` : '—'} → {rightVersion ? `${rightVersion.wordCount} words` : '—'}</p>
+                    <button type="button" className="desk-ghost" onClick={() => setActiveTool(null)}>Close compare</button>
+                  </section>
+                )}
+
+                {stage === 'Finish' && (
+                  <section className="literary-card">
+                    <p className="eyebrow">Recovery Centre</p>
+                    <p className="desk-muted">Promote a completed server job into immutable history without running AI again.</p>
+                    {finishedJobs.length ? finishedJobs.map((job) => (
+                      <button key={job.id} type="button" className="desk-ghost" onClick={() => void recoverJob(job.id)}>
+                        <strong>{job.type}</strong>
+                        <span>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
+                      </button>
+                    )) : <p className="desk-muted">No unrecovered completed jobs found.</p>}
+                  </section>
+                )}
+
+                {stage === 'Publish' && (
+                  <section className="literary-card">
+                    <p className="eyebrow">Publish gate</p>
+                    <p className="desk-muted">The export gate checks the current immutable version. Any later save requires a fresh preflight.</p>
+                    {preflight?.checks?.map((check: any) => (
+                      <div key={check.id} className={check.passed ? 'desk-check is-pass' : 'desk-check is-fail'}>
+                        <strong>{check.passed ? '✓' : '✗'} {check.label}</strong>
+                        <span>{check.detail}</span>
+                      </div>
+                    ))}
+                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runPreflight()}>Run publish preflight</button>
+                    {preflight?.passed && selected && <a className="desk-primary" href={`/api/v2/projects/${encodeURIComponent(selected.id)}/export.txt`}>Download verified manuscript</a>}
+                    <button type="button" className="desk-ghost" onClick={() => void openTool('design')}>Design</button>
+                  </section>
+                )}
+
+                <section className="literary-card">
+                  <p className="eyebrow">Contextual tools</p>
+                  <div className="desk-chips">
+                    {(stageTools.length ? stageTools.map((tool) => tool.label) : hybridTools).map((tool) => (
+                      <button key={tool} type="button" onClick={() => void openTool(tool)}>{tool}</button>
+                    ))}
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </>
+        )}
       </main>
+      <input ref={fileInput} type="file" className="sr-only" accept=".txt,.md,text/plain,text/markdown,image/*" onChange={(event) => void ingestFile(event.target.files?.[0])} />
     </div>
   );
 }

@@ -9,15 +9,24 @@ import {
   getOwnedProject,
   latestDiagnosis,
   latestDraftPreview,
+  latestRebuildPlan,
   listManuscriptVersions,
+  markRebuildCommitted,
   migrateOwnedProjects,
   rejectDraftPreview,
   runExportPreflight,
   saveDiagnosis,
+  saveRebuildPlan,
+  summarizeVersion,
+  updateRebuildChange,
   exportableManuscript,
+  workspaceSnapshot,
 } from '../services/hybridCoreRepository';
 import { callServerAi } from '../services/serverAiHelper';
-import { getUserJob } from '../services/jobQueueService';
+import { getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
+import { getProject, updateProject } from '../services/projectRepository';
+import { applySingleRebuildChange, splitManuscriptChapters } from '../services/workspaceRebuild';
+import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
 
 const router = express.Router();
 
@@ -182,5 +191,159 @@ router.get('/projects/:projectId/export.txt', async (req, res) => {
 function manuscriptHash(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
+
+router.get('/projects/:projectId/workspace', async (req, res) => {
+  const snapshot = await workspaceSnapshot(requestUser(res).id, req.params.projectId);
+  if (!snapshot) return res.status(404).json({ success: false, message: 'Project not found.' });
+  const jobs = listUserJobs(requestUser(res).id, 12, req.params.projectId).map(jobSummary);
+  return res.json({
+    success: true,
+    data: {
+      ...snapshot,
+      versions: (await listManuscriptVersions(requestUser(res).id, req.params.projectId)).map(summarizeVersion),
+      jobs,
+      recovery: { available: jobs.some((job) => job.status === 'complete' && job.resultAvailable) },
+    },
+  });
+});
+
+router.post('/projects/:projectId/artefacts', async (req, res) => {
+  const user = requestUser(res);
+  const expected = Number(String(req.headers['if-match'] || req.body?.revision || '').replace(/"/g, ''));
+  if (!Number.isInteger(expected) || expected < 1) {
+    return res.status(428).json({ success: false, message: 'If-Match project revision is required', code: 'REVISION_REQUIRED' });
+  }
+  const current = await getProject(user.id, req.params.projectId);
+  if (!current) return res.status(404).json({ success: false, message: 'Project not found.' });
+  const merged = mergeWorkspaceArtefacts(current.state, req.body?.artefacts && typeof req.body.artefacts === 'object' ? req.body.artefacts : {});
+  const project = await updateProject(user.id, req.params.projectId, expected, merged, req.body?.title, req.body?.mode);
+  if (!project) return res.status(409).json({ success: false, message: 'Project changed in another session', code: 'REVISION_CONFLICT' });
+  res.setHeader('ETag', `"${project.revision}"`);
+  return res.json({ success: true, data: { project, manuscriptUnchanged: true } });
+});
+
+router.post('/projects/:projectId/ingest', async (req, res) => {
+  const user = requestUser(res);
+  const current = await getProject(user.id, req.params.projectId);
+  if (!current) return res.status(404).json({ success: false, message: 'Project not found.' });
+  const text = String(req.body?.text || '').slice(0, 4_000_000);
+  const title = String(req.body?.title || req.body?.filename || 'Ingested source').slice(0, 240);
+  if (!text.trim()) return res.status(400).json({ success: false, message: 'Ingested text is required.' });
+  const source = {
+    id: `ingest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: ['text', 'file', 'image'].includes(req.body?.kind) ? req.body.kind : 'text',
+    title,
+    text,
+    filename: req.body?.filename ? String(req.body.filename).slice(0, 240) : undefined,
+    createdAt: new Date().toISOString(),
+  };
+  const merged = mergeWorkspaceArtefacts(current.state, { ingest: { sources: [source] } });
+  const project = await updateProject(user.id, req.params.projectId, current.revision, merged);
+  if (!project) return res.status(409).json({ success: false, message: 'Project changed in another session', code: 'REVISION_CONFLICT' });
+  return res.status(201).json({ success: true, data: { source, project, manuscriptUnchanged: true } });
+});
+
+router.get('/projects/:projectId/rebuild', async (req, res) => {
+  return res.json({ success: true, data: await latestRebuildPlan(requestUser(res).id, req.params.projectId) });
+});
+
+router.post('/projects/:projectId/rebuild/analyze', async (req, res) => {
+  const user = requestUser(res);
+  const project = await getOwnedProject(user.id, req.params.projectId);
+  if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
+  const versions = await listManuscriptVersions(user.id, project.id);
+  const manuscript = String(versions[0]?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
+  if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A manuscript is required before rebuild analysis.' });
+  const chapters = splitManuscriptChapters(manuscript);
+  const prompt = `Analyse this manuscript for structural reconstruction. Return ONLY JSON:
+{"summary":"...","findings":[{"category":"structure|pacing|character|continuity","severity":"critical|major|minor","evidence":"...","recommendation":"...","chapterTitle":"..."}]}
+Do not rewrite prose. Do not invent chapters. Prefer 3-8 findings.
+
+TITLE: ${project.title}
+CHAPTERS: ${chapters.map((chapter) => chapter.title).join(' | ')}
+MANUSCRIPT:
+${manuscript.slice(0, 70_000)}`;
+  let analysis: any;
+  try { analysis = parseJson(await callServerAi(prompt, true, { maxTokens: 2500, timeoutMs: 180_000 })); }
+  catch { return res.status(502).json({ success: false, message: 'Rebuild analysis could not complete. The manuscript is unchanged.' }); }
+  const saved = await saveRebuildPlan(user.id, project.id, {
+    sourceVersionId: versions[0]?.id || null,
+    status: 'analyzed',
+    analysis: { summary: String(analysis.summary || 'Analysis complete.'), findings: Array.isArray(analysis.findings) ? analysis.findings.slice(0, 12) : [] },
+    changes: [],
+  });
+  return res.status(201).json({ success: true, data: saved });
+});
+
+router.post('/projects/:projectId/rebuild/plan', async (req, res) => {
+  const user = requestUser(res);
+  const project = await getOwnedProject(user.id, req.params.projectId);
+  if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
+  const versions = await listManuscriptVersions(user.id, project.id);
+  const manuscript = String(versions[0]?.content || '');
+  if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A saved version is required before a rebuild plan.' });
+  const current = await latestRebuildPlan(user.id, project.id);
+  const chapters = splitManuscriptChapters(manuscript);
+  const target = String(req.body?.chapterTitle || chapters[0]?.title || '').trim();
+  const chapter = chapters.find((item) => item.title.toLowerCase() === target.toLowerCase()) || chapters[0];
+  if (!chapter) return res.status(400).json({ success: false, message: 'No chapter could be isolated for reconstruction.' });
+  const prompt = `Propose a bounded reconstruction of ONE chapter. Return ONLY JSON:
+{"chapterTitle":"${chapter.title}","rationale":"...","proposed":"full replacement chapter prose"}
+Preserve names, facts, and unresolved tensions. Do not rewrite other chapters.
+
+CONTEXT:
+${manuscript.slice(0, 24_000)}
+
+CHAPTER TO REBUILD:
+# ${chapter.title}
+
+${chapter.body.slice(0, 20_000)}`;
+  let planned: any;
+  try { planned = parseJson(await callServerAi(prompt, true, { maxTokens: 5000, timeoutMs: 180_000 })); }
+  catch { return res.status(502).json({ success: false, message: 'Rebuild plan could not be produced. The manuscript is unchanged.' }); }
+  const change = {
+    id: `chg-${Date.now().toString(36)}`,
+    chapterTitle: String(planned.chapterTitle || chapter.title),
+    currentExcerpt: chapter.body.slice(0, 1200),
+    proposed: String(planned.proposed || ''),
+    rationale: String(planned.rationale || current?.analysis?.summary || ''),
+    status: 'pending',
+  };
+  if (!change.proposed.trim()) return res.status(502).json({ success: false, message: 'No replacement prose was produced. The manuscript is unchanged.' });
+  const saved = await saveRebuildPlan(user.id, project.id, {
+    sourceVersionId: versions[0]?.id || null,
+    status: 'planned',
+    analysis: current?.analysis || { summary: change.rationale, findings: [] },
+    changes: [change],
+  });
+  return res.status(201).json({ success: true, data: saved });
+});
+
+router.post('/rebuild-plans/:planId/changes/:changeId/reject', async (req, res) => {
+  const plan = await updateRebuildChange(requestUser(res).id, req.params.planId, req.params.changeId, 'rejected');
+  return plan ? res.json({ success: true, data: plan }) : res.status(409).json({ success: false, message: 'Change is no longer pending.' });
+});
+
+router.post('/rebuild-plans/:planId/changes/:changeId/accept', async (req, res) => {
+  if (req.body?.authorConfirmed !== true) return res.status(400).json({ success: false, message: 'Explicit author confirmation is required.' });
+  const user = requestUser(res);
+  const plan = await updateRebuildChange(user.id, req.params.planId, req.params.changeId, 'accepted');
+  if (!plan) return res.status(409).json({ success: false, message: 'Change is no longer pending.' });
+  const change = (plan.changes || []).find((item: any) => item.id === req.params.changeId);
+  const versions = await listManuscriptVersions(user.id, plan.projectId);
+  const source = String(versions[0]?.content || '');
+  const content = applySingleRebuildChange(source, change);
+  const version = await createManuscriptVersion(user.id, plan.projectId, {
+    name: `Accepted rebuild · ${change.chapterTitle}`,
+    trigger: 'rebuild-accepted',
+    content,
+    sourceVersionId: versions[0]?.id || null,
+  });
+  if (!version) return res.status(404).json({ success: false, message: 'Project not found.' });
+  if ((plan.changes || []).every((item: any) => item.status !== 'pending')) {
+    await markRebuildCommitted(user.id, plan.id);
+  }
+  return res.status(201).json({ success: true, data: { plan, version } });
+});
 
 export default router;
