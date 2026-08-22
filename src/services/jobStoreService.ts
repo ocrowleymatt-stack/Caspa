@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import type { CaspaJobRecord } from '../types/gold';
 import { getJobsFilePath } from './dataPaths';
+import { toJobListRecord, type JobListRecord } from './jobProvenance';
 
 interface JobStoreFile {
   version: 1;
@@ -56,6 +57,15 @@ function archivePath(id: string): string {
   return path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive', `${safe}.json`);
 }
 
+function archiveMetaPath(id: string): string {
+  const safe = String(id).replace(/[^a-zA-Z0-9_-]/g, '');
+  return path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive', `${safe}.meta.json`);
+}
+
+function writeArchiveMeta(job: CaspaJobRecord): void {
+  atomicWriteJson(archiveMetaPath(job.id), toJobListRecord(job));
+}
+
 function recordPath(id: string): string {
   const safe = String(id).replace(/[^a-zA-Z0-9_-]/g, '');
   return path.join(path.dirname(getJobsFilePath()), 'caspa-job-records', `${safe}.json`);
@@ -85,6 +95,7 @@ function writeStore(jobs: Map<string, CaspaJobRecord>): void {
 
 export function archiveJobRecord(job: CaspaJobRecord): void {
   atomicWriteJson(archivePath(job.id), job);
+  writeArchiveMeta(job);
   try { fs.unlinkSync(recordPath(job.id)); } catch { /* migrated legacy record */ }
 }
 
@@ -110,16 +121,16 @@ export function persistArchivedJob(job: CaspaJobRecord): CaspaJobRecord {
   return persisted;
 }
 
-export function listArchivedJobs(): CaspaJobRecord[] {
+export function listArchivedJobs(): JobListRecord[] {
   const dir = path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive');
   if (!fs.existsSync(dir)) return [];
-  const jobs: CaspaJobRecord[] = [];
-  for (const name of fs.readdirSync(dir).filter((entry) => entry.endsWith('.json'))) {
+  const jobs: JobListRecord[] = [];
+  for (const name of fs.readdirSync(dir).filter((entry) => entry.endsWith('.meta.json'))) {
     try {
-      const job = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) as CaspaJobRecord;
+      const job = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) as JobListRecord;
       if (job?.id) jobs.push(job);
     } catch (error) {
-      console.warn(`[JobStore] Failed to read archived job ${name}:`, error);
+      console.warn(`[JobStore] Failed to read archived job meta ${name}:`, error);
     }
   }
   return jobs;

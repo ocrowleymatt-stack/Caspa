@@ -5,6 +5,7 @@
 import { randomUUID } from 'crypto';
 import type { CaspaJobRecord, JobAuditSnapshot } from '../types/gold';
 import { archiveJobRecord, listArchivedJobs, loadArchivedJob, loadJobStore, persistArchivedJob, persistJobStore } from './jobStoreService';
+import { jobProvenance, toJobListRecord, type JobListRecord } from './jobProvenance';
 import { currentProjectId, currentUser } from './requestContext';
 
 // Large book results can be several megabytes each. Keep the active ledger small
@@ -75,10 +76,11 @@ export function listRecentJobs(limit = 20): CaspaJobRecord[] {
     .slice(0, limit);
 }
 
-export function jobSummary(job: CaspaJobRecord): Omit<CaspaJobRecord, 'input' | 'checkpoint' | 'result'> & { resultAvailable: boolean; resumable: boolean } {
-  const { input, checkpoint, result, ...summary } = job;
-  return { ...summary, resultAvailable: result !== undefined, resumable: input !== undefined || checkpoint !== undefined };
+export function jobSummary(job: CaspaJobRecord & Partial<JobListRecord>): JobListRecord {
+  return toJobListRecord(job);
 }
+
+export { jobProvenance };
 
 export function getUserJob(userId: string, id: string): CaspaJobRecord | null {
   const job = getJob(id);
@@ -119,7 +121,7 @@ export function bindJobToProject(jobId: string, projectId: string): CaspaJobReco
   return updated;
 }
 
-export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string, unboundOnly = false): CaspaJobRecord[] {
+export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string, unboundOnly = false): Array<CaspaJobRecord | JobListRecord> {
   const active = listRecentJobs(500);
   const seen = new Set(active.map((job) => job.id));
   const archived = listArchivedJobs().filter((job) => !seen.has(job.id));

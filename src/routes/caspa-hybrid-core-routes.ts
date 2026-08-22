@@ -232,10 +232,12 @@ router.post('/projects/:projectId/jobs/:jobId/assign', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Explicit assignment to this project is required.' });
   }
   const user = requestUser(res);
+  const project = await getOwnedProject(user.id, req.params.projectId);
+  if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
   const job = getUserJob(user.id, req.params.jobId);
   if (!job) return res.status(404).json({ success: false, message: 'Job not found.' });
   try {
-    const assigned = bindJobToProject(job.id, req.params.projectId);
+    const assigned = bindJobToProject(job.id, project.id);
     return res.json({ success: true, data: jobSummary(assigned) });
   } catch (error) {
     const code = (error as { code?: string }).code || 'JOB_PROJECT_MISMATCH';
@@ -335,7 +337,7 @@ router.post('/projects/:projectId/rebuild/analyze', async (req, res) => {
   const latest = await latestManuscriptVersion(user.id, project.id);
   const manuscript = String(latest?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A manuscript is required before rebuild analysis.' });
-  const chapters = splitRebuildChapters(manuscript);
+  const chapters = splitRebuildChapters(manuscript, { projectTitle: project.title });
   const prompt = `Analyse this manuscript for structural reconstruction. Return ONLY JSON:
 {"summary":"...","findings":[{"category":"structure|pacing|character|continuity","severity":"critical|major|minor","evidence":"...","recommendation":"...","chapterTitle":"..."}]}
 Do not rewrite prose. Do not invent chapters. Prefer 3-8 findings.
@@ -364,7 +366,7 @@ router.post('/projects/:projectId/rebuild/plan', async (req, res) => {
   const manuscript = String(latest?.content || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A saved version is required before a rebuild plan.' });
   const current = await latestRebuildPlan(user.id, project.id);
-  const chapters = splitManuscript(manuscript).chapters;
+  const chapters = splitManuscript(manuscript, { projectTitle: project.title }).chapters;
   const chapter = selectRebuildChapter(chapters, {
     chapterIndex: parseChapterIndex(req.body?.chapterIndex),
     chapterTitle: req.body?.chapterTitle ? String(req.body.chapterTitle) : undefined,

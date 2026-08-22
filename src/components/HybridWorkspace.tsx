@@ -51,6 +51,21 @@ function initialManuscript(project: WorkspaceProject): string {
   return String(project.state?.commission?.artefact || project.state?.manuscript || project.state?.manuscriptSource || project.state?.whitePage || '');
 }
 
+function JobIdentity({ job }: { job: any }) {
+  const provenance = job.provenance || {};
+  return (
+    <>
+      <strong>{provenance.title || 'Untitled finished job'}</strong>
+      <span>{job.type} · {job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
+      <span>
+        {Number.isFinite(provenance.wordCount) ? `${Number(provenance.wordCount).toLocaleString()} words` : 'Word count unknown'}
+        {provenance.checksum ? ` · ${String(provenance.checksum).slice(0, 12)}` : ' · no checksum'}
+      </span>
+      {provenance.brief ? <span>{provenance.brief}</span> : null}
+    </>
+  );
+}
+
 
 export default function HybridWorkspace() {
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
@@ -67,6 +82,7 @@ export default function HybridWorkspace() {
   const [rebuild, setRebuild] = useState<any | null>(null);
   const [finishedJobs, setFinishedJobs] = useState<any[]>([]);
   const [unboundJobs, setUnboundJobs] = useState<any[]>([]);
+  const [assignPreviewId, setAssignPreviewId] = useState('');
   const [rebuildChapterIndex, setRebuildChapterIndex] = useState<number | ''>('');
   const [preflight, setPreflight] = useState<any | null>(null);
   const [showNewProject, setShowNewProject] = useState(true);
@@ -116,15 +132,16 @@ export default function HybridWorkspace() {
     setRebuildChapterIndex('');
     setUnboundJobs([]);
     setFinishedJobs([]);
+    setAssignPreviewId('');
   }, [selected?.id]);
 
   useEffect(() => {
     if (rebuildChapterIndex === '') return;
-    const chapters = splitManuscript(manuscript).chapters;
+    const chapters = splitManuscript(manuscript, { projectTitle: selected?.title }).chapters;
     if (!chapters.some((chapter) => chapter.index === rebuildChapterIndex && chapter.rebuildable)) {
       setRebuildChapterIndex('');
     }
-  }, [manuscript, rebuildChapterIndex]);
+  }, [manuscript, rebuildChapterIndex, selected?.title]);
 
   useEffect(() => {
     if (!selected?.id) return;
@@ -368,7 +385,7 @@ export default function HybridWorkspace() {
 
   const planRebuild = async () => {
     if (!selected || rebuildChapterIndex === '') return;
-    const chapter = splitManuscript(manuscript).chapters.find((item) => item.index === rebuildChapterIndex);
+    const chapter = splitManuscript(manuscript, { projectTitle: selected?.title }).chapters.find((item) => item.index === rebuildChapterIndex);
     if (!chapter?.rebuildable) {
       setMessage('Choose a rebuildable chapter.');
       return;
@@ -440,10 +457,14 @@ export default function HybridWorkspace() {
   };
 
   const assignJob = async (jobId: string) => {
-    if (!selected) return;
+    if (!selected || assignPreviewId !== jobId) {
+      setMessage('Preview the finished job before assigning it to this project.');
+      return;
+    }
     setBusy(true);
     try {
       await api(`/api/v2/projects/${selected.id}/jobs/${jobId}/assign`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
+      setAssignPreviewId('');
       setMessage('Job assigned to this project. Recover it to create a version.');
       refreshFinishJobs();
     } catch (error) {
@@ -505,8 +526,8 @@ export default function HybridWorkspace() {
   };
 
   const wordCount = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
-  const chapterCount = useMemo(() => splitRebuildChapters(manuscript).length, [manuscript]);
-  const manuscriptChapters = useMemo(() => splitManuscript(manuscript).chapters, [manuscript]);
+  const chapterCount = useMemo(() => splitRebuildChapters(manuscript, { projectTitle: selected?.title }).length, [manuscript, selected?.title]);
+  const manuscriptChapters = useMemo(() => splitManuscript(manuscript, { projectTitle: selected?.title }).chapters, [manuscript, selected?.title]);
   const selectedRebuildChapter = rebuildChapterIndex === ''
     ? null
     : manuscriptChapters.find((chapter) => chapter.index === rebuildChapterIndex) || null;
@@ -805,20 +826,29 @@ export default function HybridWorkspace() {
                     <div data-testid="finish-recover-panel">
                       {finishedJobs.length ? finishedJobs.map((job) => (
                         <button key={job.id} type="button" className="desk-ghost" onClick={() => void recoverJob(job.id)}>
-                          <strong>{job.type}</strong>
-                          <span>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
+                          <JobIdentity job={job} />
                         </button>
                       )) : <p className="desk-muted">No completed jobs are assigned to this project.</p>}
                     </div>
                     <div className="gold-rule" />
                     <p className="eyebrow">Unassigned jobs</p>
-                    <p className="desk-muted">Assigning attaches the job to this project. It does not write a manuscript version.</p>
+                    <p className="desk-muted">Preview title, brief, length and checksum before assigning. Assignment does not write a version.</p>
                     <div data-testid="finish-assign-panel">
                       {unboundJobs.length ? unboundJobs.map((job) => (
-                        <button key={job.id} type="button" className="desk-ghost" disabled={busy} onClick={() => void assignJob(job.id)}>
-                          <strong>Assign {job.type}</strong>
-                          <span>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
-                        </button>
+                        <div key={job.id} className="desk-change" data-testid="unbound-job">
+                          <JobIdentity job={job} />
+                          {assignPreviewId === job.id ? (
+                            <>
+                              {job.provenance?.excerpt ? <div className="desk-preview">{job.provenance.excerpt}</div> : <p className="desk-muted">No excerpt is stored for this job.</p>}
+                              <div className="desk-row">
+                                <button type="button" className="desk-ghost" onClick={() => setAssignPreviewId('')}>Cancel</button>
+                                <button type="button" className="desk-primary" disabled={busy} onClick={() => void assignJob(job.id)}>Assign to this project</button>
+                              </div>
+                            </>
+                          ) : (
+                            <button type="button" className="desk-ghost" onClick={() => setAssignPreviewId(job.id)}>Preview before assigning</button>
+                          )}
+                        </div>
                       )) : <p className="desk-muted">No unassigned completed jobs.</p>}
                     </div>
                   </section>

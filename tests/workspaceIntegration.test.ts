@@ -259,6 +259,17 @@ test('named chapters stay rebuildable and empty book titles do not', () => {
   assert.equal(selectRebuildChapter(titledChapters, { chapterIndex: titledChapters.find((chapter) => chapter.title === 'Chapter 1')?.index })?.title, 'Chapter 1');
 });
 
+test('title pages with bylines or the project title are not rebuild targets', () => {
+  const byline = '# Harbour Book\n\nby A. Clerk\n\n# Chapter 1\n\nThe clerk waits.';
+  assert.equal(splitManuscript(byline).chapters[0].rebuildable, false);
+  assert.deepEqual(splitRebuildChapters(byline).map((chapter) => chapter.title), ['Chapter 1']);
+
+  const matched = '# Harbour Book\n\nThe clerk keeps the tide tables.\n\n# Chapter 1\n\nThe clerk waits.';
+  assert.equal(splitManuscript(matched).chapters[0].rebuildable, true);
+  assert.equal(splitManuscript(matched, { projectTitle: 'Harbour Book' }).chapters[0].rebuildable, false);
+  assert.equal(splitRebuildChapters(matched, { projectTitle: 'Harbour Book' })[0]?.title, 'Chapter 1');
+});
+
 test('version summaries omit manuscript bodies', () => {
   const summary = summarizeVersion({
     id: 'v1',

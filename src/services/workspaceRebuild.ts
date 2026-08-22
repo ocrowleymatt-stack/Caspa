@@ -25,6 +25,10 @@ export type SplitManuscript = {
   chapters: ManuscriptChapter[];
 };
 
+export type SplitOptions = {
+  projectTitle?: string;
+};
+
 const CHAPTER_HEADING = /^(#{1,3}\s+.+)$/gm;
 
 const STRUCTURAL_HEADING = /^(contents|table of contents|title|title page|copyright|dedication|acknowledgements|acknowledgments|about the author|foreword|preface|index|cast of characters|also by)\b/;
@@ -48,17 +52,40 @@ export function isRebuildChapterHeading(title: string): boolean {
   return !isStructuralHeading(title);
 }
 
+const TITLE_PAGE_LINE = /^(by|written by|a novel|a novella|a memoir|a story|copyright|all rights reserved|published|first published|isbn)\b/;
+
+export function isTitlePageLine(line: string): boolean {
+  const trimmed = String(line || '').trim();
+  if (!trimmed) return true;
+  const normalized = normalizeTitle(trimmed);
+  if (TITLE_PAGE_LINE.test(normalized)) return true;
+  if (!/[.!?]$/.test(trimmed) && /^[A-Z][A-Za-z.'’\-]+(\s+[A-Z][A-Za-z.'’\-]+){0,4}$/.test(trimmed)) return true;
+  return false;
+}
+
+export function isTitlePageBody(body: string): boolean {
+  const text = String(body || '').trim();
+  if (!text) return true;
+  const lines = text.split(/\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length > 8) return false;
+  if (text.split(/\s+/).filter(Boolean).length > 40) return false;
+  return lines.every(isTitlePageLine);
+}
+
 export function isBookTitleHeading(
   headingLine: string,
   title: string,
   index: number,
   body: string,
   headingCount: number,
+  projectTitle?: string,
 ): boolean {
   if (index !== 0 || headingCount < 2) return false;
   if (isStructuralHeading(title) || isExplicitChapterHeading(title)) return false;
   const isH1 = /^#\s+/.test(headingLine.trim()) && !/^##/.test(headingLine.trim());
-  return isH1 && !body.trim();
+  if (!isH1) return false;
+  if (projectTitle && titlesMatch(title, projectTitle)) return true;
+  return isTitlePageBody(body);
 }
 
 export function parseChapterIndex(value: unknown): number | undefined {
@@ -67,7 +94,7 @@ export function parseChapterIndex(value: unknown): number | undefined {
   return undefined;
 }
 
-export function splitManuscript(manuscript: string): SplitManuscript {
+export function splitManuscript(manuscript: string, options: SplitOptions = {}): SplitManuscript {
   const text = String(manuscript || '');
   if (!text.trim()) return { preamble: '', chapters: [] };
   const matches = [...text.matchAll(CHAPTER_HEADING)];
@@ -86,7 +113,7 @@ export function splitManuscript(manuscript: string): SplitManuscript {
     const heading = headingTitle(headingLine);
     const body = text.slice(start, next).replace(/^#+\s+[^\n]+\n?/, '').trim();
     const rebuildable = isRebuildChapterHeading(heading)
-      && !isBookTitleHeading(headingLine, heading, index, body, matches.length);
+      && !isBookTitleHeading(headingLine, heading, index, body, matches.length, options.projectTitle);
     return {
       title: heading || `Section ${index + 1}`,
       headingLine,
@@ -111,12 +138,12 @@ export function selectRebuildChapter(
   return chapter;
 }
 
-export function splitManuscriptChapters(manuscript: string): ManuscriptChapter[] {
-  return splitManuscript(manuscript).chapters;
+export function splitManuscriptChapters(manuscript: string, options: SplitOptions = {}): ManuscriptChapter[] {
+  return splitManuscript(manuscript, options).chapters;
 }
 
-export function splitRebuildChapters(manuscript: string): ManuscriptChapter[] {
-  return splitManuscript(manuscript).chapters.filter((chapter) => chapter.rebuildable);
+export function splitRebuildChapters(manuscript: string, options: SplitOptions = {}): ManuscriptChapter[] {
+  return splitManuscript(manuscript, options).chapters.filter((chapter) => chapter.rebuildable);
 }
 
 export function chaptersToManuscript(chapters: Array<{ title: string; body: string; headingLine?: string }>): string {
@@ -134,10 +161,10 @@ export function assembleManuscript(
   return [lead, body].filter((part) => part.trim()).join('\n\n');
 }
 
-export function applyRebuildChanges(manuscript: string, changes: RebuildChange[]): string {
+export function applyRebuildChanges(manuscript: string, changes: RebuildChange[], options: SplitOptions = {}): string {
   const accepted = changes.filter((change) => change.status === 'accepted' && change.proposed.trim());
   if (!accepted.length) return manuscript;
-  const { preamble, chapters } = splitManuscript(manuscript);
+  const { preamble, chapters } = splitManuscript(manuscript, options);
   if (!chapters.length) return manuscript;
   const next = chapters.map((chapter) => {
     const change = accepted.find((item) => changeTargetsChapter(item, chapter, chapters));
@@ -149,8 +176,8 @@ export function applyRebuildChanges(manuscript: string, changes: RebuildChange[]
   return assembleManuscript(preamble, next);
 }
 
-export function applySingleRebuildChange(manuscript: string, change: RebuildChange): string {
-  return applyRebuildChanges(manuscript, [{ ...change, status: 'accepted' }]);
+export function applySingleRebuildChange(manuscript: string, change: RebuildChange, options: SplitOptions = {}): string {
+  return applyRebuildChanges(manuscript, [{ ...change, status: 'accepted' }], options);
 }
 
 export function changeTargetsChapter(
