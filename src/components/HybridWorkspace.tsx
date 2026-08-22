@@ -555,7 +555,7 @@ export default function HybridWorkspace() {
     Idea: Boolean(manuscript.trim()),
     Structure: Boolean(manuscript.trim()),
     Draft: versions.length > 0,
-    Workshop: Boolean(diagnosis),
+    Workshop: Boolean(diagnosis?.summary),
     Revise: Boolean((rebuild?.changes || []).some((change: any) => change.status === 'accepted')),
     Finish: Boolean(finishedJobs.length),
     Publish: Boolean(preflight?.passed),
