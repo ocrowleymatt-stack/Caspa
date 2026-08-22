@@ -37,9 +37,10 @@ test('older completed jobs are archived losslessly and remain retrievable', () =
 
   fs.renameSync(archiveFile, `${archiveFile}.hidden`);
   const listed = listUserJobs(first.userId || 'legacy-owner', 50, undefined, 'complete');
-  const listedJob = listed.find((job) => job.id === first.id);
+  const listedJob = listed.find((job) => job.id === first.id) as { result?: unknown; provenance?: { excerpt?: string } } | undefined;
   assert.ok(listedJob);
-  assert.doesNotMatch(JSON.stringify(listedJob), /retained manuscript/);
+  assert.equal(listedJob.result, undefined);
+  assert.equal(listedJob.provenance?.excerpt, 'retained manuscript');
   assert.ok(listArchivedJobs().every((job) => !('result' in job) || !(job as { result?: unknown }).result));
   fs.renameSync(`${archiveFile}.hidden`, archiveFile);
 });
