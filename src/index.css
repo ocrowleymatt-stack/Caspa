@@ -124,8 +124,8 @@
   resize: vertical;
 }
 
-.caspa-desk textarea.hybrid-manuscript,
-.caspa-desk textarea.manuscript-page {
+#root .caspa-desk textarea.hybrid-manuscript,
+#root .caspa-desk textarea.manuscript-page {
   background: #f4ead6 !important;
   color: #1c1610 !important;
   border-color: #4a3f32 !important;
@@ -235,6 +235,9 @@
 }
 
 .desk-rail button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   width: auto;
   margin-top: 0;
   white-space: nowrap;
@@ -494,14 +497,14 @@
     border-color: var(--caspa-border);
   }
 
-  #root :where(input,textarea,select):not(.manuscript-page *) {
+  #root :where(input,textarea,select):not(.manuscript-page):not(.manuscript-page *):not(.paper-preview *) {
     background: #100f19 !important;
     color: var(--caspa-text) !important;
     border-color: rgba(212,166,255,.26) !important;
     box-shadow: none !important;
   }
 
-  #root :where(input,textarea,select):focus:not(.manuscript-page *) {
+  #root :where(input,textarea,select):focus:not(.manuscript-page):not(.manuscript-page *):not(.paper-preview *) {
     border-color: var(--caspa-primary) !important;
     outline: 2px solid rgba(212,166,255,.16) !important;
     outline-offset: 1px;
