@@ -39,6 +39,11 @@ export default function HybridWorkspace() {
   const [stage, setStage] = useState('Library');
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState('');
+  const [draftTitle, setDraftTitle] = useState('Next chapter');
+  const [preview, setPreview] = useState<any | null>(null);
+  const [diagnosis, setDiagnosis] = useState<any | null>(null);
+  const [finishedJobs, setFinishedJobs] = useState<any[]>([]);
+  const [preflight, setPreflight] = useState<any | null>(null);
 
   useEffect(() => {
     api('/api/v2/migration/import-legacy', { method: 'POST', body: '{}' })
@@ -58,11 +63,82 @@ export default function HybridWorkspace() {
       const next = data.versions || [];
       setVersions(next);
       setManuscript(next[0]?.content || initialManuscript(project));
+      const [draftData, diagnosisData] = await Promise.all([
+        api(`/api/v2/projects/${encodeURIComponent(project.id)}/draft-preview`).catch(() => null),
+        api(`/api/v2/projects/${encodeURIComponent(project.id)}/diagnosis`).catch(() => null),
+      ]);
+      setPreview(draftData);
+      setDiagnosis(diagnosisData);
+      setPreflight(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not open this project.');
     } finally {
       setBusy(false);
     }
+  };
+
+  const prepareDraft = async () => {
+    if (!selected || !draftTitle.trim()) return;
+    setBusy(true); setMessage('Preparing a private continuity-checked preview…');
+    try {
+      const result = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/draft-preview`, {
+        method: 'POST', body: JSON.stringify({ mode: manuscript.trim() ? 'append' : 'opening', chapterTitle: draftTitle, targetWords: 1200 }),
+      });
+      setPreview(result); setMessage('Preview ready. The manuscript has not changed.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Draft preview failed.'); }
+    finally { setBusy(false); }
+  };
+
+  const handlePreview = async (accept: boolean) => {
+    if (!preview) return;
+    setBusy(true);
+    try {
+      if (accept) {
+        const version = await api(`/api/v2/draft-previews/${preview.id}/accept`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
+        setVersions((current) => [version, ...current]); setManuscript(version.content); setMessage(`Accepted as immutable version ${version.revision}.`);
+      } else {
+        await api(`/api/v2/draft-previews/${preview.id}/reject`, { method: 'POST', body: '{}' }); setMessage('Preview rejected. The manuscript was not changed.');
+      }
+      setPreview(null);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not handle the preview.'); }
+    finally { setBusy(false); }
+  };
+
+  const runDiagnosis = async () => {
+    if (!selected) return;
+    setBusy(true); setMessage('Workshop is examining the current immutable manuscript…');
+    try { const result = await api(`/api/v2/projects/${selected.id}/diagnosis`, { method: 'POST', body: '{}' }); setDiagnosis(result); setMessage('Evidence-backed diagnosis completed.'); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Diagnosis failed.'); }
+    finally { setBusy(false); }
+  };
+
+  useEffect(() => {
+    if (stage !== 'Finish') return;
+    api('/api/jobs?limit=20&status=complete')
+      .then((data) => setFinishedJobs((data.jobs || []).filter((job: any) => job.resultAvailable)))
+      .catch(() => setFinishedJobs([]));
+  }, [stage]);
+
+  const recoverJob = async (jobId: string) => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const version = await api(`/api/v2/projects/${selected.id}/recover-job/${jobId}`, { method: 'POST', body: '{}' });
+      setVersions((current) => current.some((item) => item.id === version.id) ? current : [version, ...current]);
+      setManuscript(version.content); setMessage(`Finish result secured as immutable version ${version.revision}.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not recover the finished job.'); }
+    finally { setBusy(false); }
+  };
+
+  const runPreflight = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const result = await api(`/api/v2/projects/${selected.id}/export-preflight`, { method: 'POST', body: '{}' });
+      setPreflight(result);
+      setMessage(result.passed ? 'Publish preflight passed. The current immutable version is ready to download.' : 'Publish preflight found items to resolve.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Publish preflight failed.'); }
+    finally { setBusy(false); }
   };
 
   const saveVersion = async () => {
@@ -117,6 +193,11 @@ export default function HybridWorkspace() {
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ border: '1px solid #4b3e31', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#c9a768' }}><Check size={16} /> Server checkpoint</div><div style={{ fontSize: 30, fontFamily: 'Georgia, serif', marginTop: 12 }}>{wordCount.toLocaleString()} words</div><div style={{ color: '#a99b89', fontSize: 12, marginTop: 5 }}>{versions.length ? `${versions.length} immutable version${versions.length === 1 ? '' : 's'}` : 'Legacy project ready for its first immutable version'}</div></div>
               <div style={{ border: '1px solid #4b3e31', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#c9a768' }}><FileClock size={16} /> Version history</div>{versions.slice(0, 8).map((version) => <button key={version.id} onClick={() => setManuscript(version.content)} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 0, borderTop: '1px solid #3b3128', color: '#eee3d2', padding: '12px 0' }}><strong>v{version.revision} · {version.name}</strong><div style={{ color: '#8f8171', fontSize: 11, marginTop: 4 }}>{version.wordCount.toLocaleString()} words · {new Date(version.createdAt).toLocaleString()}</div></button>)}</div>
+              {stage === 'Draft' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Draft with Caspa</div><p style={{ color: '#a99b89', fontSize: 12, lineHeight: 1.5 }}>Caspa prepares a private preview. Only explicit acceptance creates a version.</p>{preview?.status === 'previewed' ? <><h4>{preview.chapterTitle}</h4><div style={{ maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#efe4d2', color: '#282018', padding: 12, borderRadius: 8, font: '13px/1.6 Georgia, serif' }}>{preview.content}</div><p style={{ color: '#a99b89', fontSize: 11 }}>{preview.grounding?.summary}</p><div style={{ display: 'flex', gap: 8 }}><button onClick={() => void handlePreview(false)} style={{ flex: 1, padding: 9, borderRadius: 7, border: '1px solid #66533d', background: 'transparent', color: '#eee3d2' }}>Reject</button><button onClick={() => void handlePreview(true)} style={{ flex: 1, padding: 9, borderRadius: 7, border: 0, background: '#b89150', color: '#17110a', fontWeight: 700 }}>Accept version</button></div></> : <><input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} style={{ boxSizing: 'border-box', width: '100%', background: '#17120e', color: '#f4ebdc', border: '1px solid #514230', borderRadius: 7, padding: 10 }} /><button onClick={() => void prepareDraft()} disabled={busy} style={{ width: '100%', marginTop: 9, padding: 10, border: 0, borderRadius: 7, background: '#b89150', color: '#17110a', fontWeight: 700 }}>Prepare preview</button></>}</div>}
+              {stage === 'Workshop' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Workshop diagnosis</div>{diagnosis ? <><p style={{ color: '#d8cbb9', fontSize: 13, lineHeight: 1.55 }}>{diagnosis.summary}</p>{(diagnosis.findings || []).slice(0, 8).map((finding: any, index: number) => <div key={index} style={{ borderTop: '1px solid #41362b', padding: '10px 0' }}><strong style={{ fontSize: 12 }}>{finding.category} · {finding.severity}</strong><div style={{ color: '#a99b89', fontSize: 11, marginTop: 4 }}>{finding.recommendation || finding.rationale}</div></div>)}</> : <p style={{ color: '#a99b89', fontSize: 12 }}>Run a server-owned diagnosis against the current version.</p>}<button onClick={() => void runDiagnosis()} disabled={busy} style={{ width: '100%', marginTop: 9, padding: 10, border: '1px solid #66533d', borderRadius: 7, background: '#2a2118', color: '#eee3d2' }}>{diagnosis ? 'Run new diagnosis' : 'Diagnose manuscript'}</button></div>}
+              {stage === 'Revise' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Revision desk</div><p style={{ color: '#a99b89', fontSize: 12, lineHeight: 1.5 }}>Edit the manuscript directly. Workshop findings remain visible when you return there; Save version makes each deliberate revision recoverable.</p>{diagnosis?.findings?.length ? <div style={{ color: '#d8cbb9', fontSize: 12 }}>{diagnosis.findings.length} diagnosed item{diagnosis.findings.length === 1 ? '' : 's'} available as your revision checklist.</div> : <div style={{ color: '#8f8171', fontSize: 12 }}>Run Workshop diagnosis first for an evidence-backed checklist.</div>}</div>}
+              {stage === 'Finish' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Recovery Centre</div><p style={{ color: '#a99b89', fontSize: 12 }}>Promote a completed server job into immutable project history without running AI again.</p>{finishedJobs.length ? finishedJobs.map((job) => <button key={job.id} onClick={() => void recoverJob(job.id)} style={{ width: '100%', textAlign: 'left', marginTop: 7, padding: 9, border: '1px solid #514230', borderRadius: 7, background: '#2a2118', color: '#eee3d2' }}><strong>{job.type}</strong><div style={{ fontSize: 10, color: '#9e907f' }}>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</div></button>) : <div style={{ color: '#8f8171', fontSize: 12 }}>No unrecovered completed jobs found.</div>}</div>}
+              {stage === 'Publish' && <div style={{ border: '1px solid #6b5538', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ color: '#c9a768', fontWeight: 700 }}>Publish gate</div><p style={{ color: '#a99b89', fontSize: 12, lineHeight: 1.5 }}>The export gate checks the current immutable version. Any later save requires a fresh preflight.</p>{preflight?.checks?.map((check: any) => <div key={check.id} style={{ display: 'flex', gap: 8, borderTop: '1px solid #41362b', padding: '9px 0', color: check.passed ? '#bdd6ad' : '#e5ae9e', fontSize: 12 }}><span>{check.passed ? '✓' : '✗'}</span><span><strong>{check.label}</strong><br />{check.detail}</span></div>)}<button onClick={() => void runPreflight()} disabled={busy} style={{ width: '100%', marginTop: 9, padding: 10, border: '1px solid #66533d', borderRadius: 7, background: '#2a2118', color: '#eee3d2' }}>Run publish preflight</button>{preflight?.passed && selected && <a href={`/api/v2/projects/${encodeURIComponent(selected.id)}/export.txt`} style={{ boxSizing: 'border-box', display: 'block', textAlign: 'center', textDecoration: 'none', width: '100%', marginTop: 9, padding: 10, borderRadius: 7, background: '#b89150', color: '#17110a', fontWeight: 700 }}>Download verified manuscript</a>}</div>}
               <div style={{ border: '1px solid #4b3e31', background: '#201a15', borderRadius: 12, padding: 18 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#c9a768' }}><Wrench size={16} /> Tools when needed</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, margin: '14px 0' }}>{tools.map((tool) => <span key={tool} style={{ border: '1px solid #514230', borderRadius: 20, padding: '6px 9px', color: '#cbbda8', fontSize: 11 }}>{tool}</span>)}</div><p style={{ color: '#a99b89', fontSize: 13, lineHeight: 1.6 }}>Specialist capabilities appear for the current stage instead of competing with the manuscript.</p><button onClick={() => { window.location.href = '/'; }} style={{ width: '100%', border: '1px solid #655137', background: '#2a2118', color: '#eee3d2', padding: 10, borderRadius: 8 }}><Sparkles size={14} style={{ verticalAlign: 'middle', marginRight: 7 }} /> Open current specialist tools</button></div>
             </aside>
           </div>

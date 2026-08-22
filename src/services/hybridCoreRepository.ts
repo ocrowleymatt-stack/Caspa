@@ -104,7 +104,35 @@ export async function ensureHybridCoreSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS caspa_project_audit_owner_idx
       ON caspa_project_audit_events(user_id, project_id, id DESC);
+    CREATE TABLE IF NOT EXISTS caspa_diagnoses (
+      id uuid PRIMARY KEY,
+      project_id uuid NOT NULL REFERENCES caspa_projects(id) ON DELETE CASCADE,
+      user_id text NOT NULL,
+      version_id uuid REFERENCES caspa_manuscript_versions(id) ON DELETE SET NULL,
+      status text NOT NULL DEFAULT 'complete',
+      summary text NOT NULL,
+      findings jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS caspa_diagnoses_owner_idx
+      ON caspa_diagnoses(user_id, project_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS caspa_export_preflights (
+      id uuid PRIMARY KEY,
+      project_id uuid NOT NULL REFERENCES caspa_projects(id) ON DELETE CASCADE,
+      user_id text NOT NULL,
+      version_id uuid NOT NULL REFERENCES caspa_manuscript_versions(id) ON DELETE CASCADE,
+      passed boolean NOT NULL,
+      checks jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
   `);
+}
+
+export async function getOwnedProject(userId: string, projectId: string): Promise<any | null> {
+  const result = await database().query('SELECT * FROM caspa_projects WHERE id=$1 AND user_id=$2', [projectId, userId]);
+  if (!result.rowCount) return null;
+  const row = result.rows[0];
+  return { id: row.id, title: row.title, mode: row.mode, state: row.state };
 }
 
 async function ownedProject(userId: string, projectId: string): Promise<boolean> {
@@ -159,6 +187,136 @@ export async function createManuscriptVersion(userId: string, projectId: string,
   } finally {
     client.release();
   }
+}
+
+export async function createDraftPreview(userId: string, projectId: string, input: {
+  sourceVersionId?: string | null; mode: string; chapterTitle: string; content: string; grounding?: Record<string, unknown>;
+}): Promise<any | null> {
+  if (!(await ownedProject(userId, projectId))) return null;
+  await database().query(
+    "UPDATE caspa_draft_previews SET status='stale',handled_at=now() WHERE user_id=$1 AND project_id=$2 AND status='previewed'",
+    [userId, projectId],
+  );
+  const id = randomUUID();
+  const result = await database().query(
+    `INSERT INTO caspa_draft_previews(id,project_id,user_id,source_version_id,status,mode,chapter_title,content,grounding)
+     VALUES($1,$2,$3,$4,'previewed',$5,$6,$7,$8) RETURNING *`,
+    [id, projectId, userId, input.sourceVersionId || null, input.mode, input.chapterTitle, input.content, input.grounding || {}],
+  );
+  await database().query(
+    'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+    [projectId, userId, 'draft.preview.created', { previewId: id, mode: input.mode, chapterTitle: input.chapterTitle }],
+  );
+  return result.rows[0];
+}
+
+export async function latestDraftPreview(userId: string, projectId: string): Promise<any | null> {
+  const result = await database().query(
+    'SELECT * FROM caspa_draft_previews WHERE user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 1',
+    [userId, projectId],
+  );
+  if (!result.rowCount) return null;
+  const row = result.rows[0];
+  return { id: row.id, projectId: row.project_id, sourceVersionId: row.source_version_id, status: row.status, mode: row.mode, chapterTitle: row.chapter_title, content: row.content, grounding: row.grounding, createdAt: new Date(row.created_at).toISOString() };
+}
+
+export async function rejectDraftPreview(userId: string, previewId: string): Promise<boolean> {
+  const result = await database().query(
+    "UPDATE caspa_draft_previews SET status='rejected',handled_at=now() WHERE id=$1 AND user_id=$2 AND status='previewed' RETURNING project_id",
+    [previewId, userId],
+  );
+  if (!result.rowCount) return false;
+  await database().query(
+    'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+    [result.rows[0].project_id, userId, 'draft.preview.rejected', { previewId }],
+  );
+  return true;
+}
+
+export async function acceptDraftPreview(userId: string, previewId: string): Promise<ManuscriptVersion | null> {
+  const preview = await database().query(
+    "UPDATE caspa_draft_previews SET status='accepted',handled_at=now() WHERE id=$1 AND user_id=$2 AND status='previewed' RETURNING *",
+    [previewId, userId],
+  );
+  if (!preview.rowCount) return null;
+  const row = preview.rows[0];
+  const source = row.source_version_id
+    ? await database().query('SELECT content FROM caspa_manuscript_versions WHERE id=$1 AND user_id=$2', [row.source_version_id, userId])
+    : null;
+  const previous = String(source?.rows?.[0]?.content || '');
+  const content = row.mode === 'replace' ? row.content : `${previous}${previous.trim() ? '\n\n---\n\n' : ''}# ${row.chapter_title}\n\n${row.content}`;
+  try {
+    const version = await createManuscriptVersion(userId, row.project_id, {
+      name: `Accepted draft · ${row.chapter_title}`,
+      trigger: 'draft-accepted',
+      content,
+      sourceVersionId: row.source_version_id,
+    });
+    if (!version) throw new Error('Draft project is unavailable');
+    return version;
+  } catch (error) {
+    await database().query("UPDATE caspa_draft_previews SET status='previewed',handled_at=NULL WHERE id=$1 AND user_id=$2 AND status='accepted'", [previewId, userId]);
+    throw error;
+  }
+}
+
+export async function saveDiagnosis(userId: string, projectId: string, input: {
+  versionId?: string | null; summary: string; findings: any[];
+}): Promise<any | null> {
+  if (!(await ownedProject(userId, projectId))) return null;
+  const id = randomUUID();
+  const result = await database().query(
+    `INSERT INTO caspa_diagnoses(id,project_id,user_id,version_id,summary,findings)
+     VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [id, projectId, userId, input.versionId || null, input.summary, input.findings],
+  );
+  await database().query(
+    'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+    [projectId, userId, 'workshop.diagnosis.completed', { diagnosisId: id, findingCount: input.findings.length }],
+  );
+  return result.rows[0];
+}
+
+export async function latestDiagnosis(userId: string, projectId: string): Promise<any | null> {
+  const result = await database().query(
+    'SELECT * FROM caspa_diagnoses WHERE user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 1',
+    [userId, projectId],
+  );
+  if (!result.rowCount) return null;
+  const row = result.rows[0];
+  return { id: row.id, versionId: row.version_id, summary: row.summary, findings: row.findings, createdAt: new Date(row.created_at).toISOString() };
+}
+
+export async function runExportPreflight(userId: string, projectId: string): Promise<any | null> {
+  const project = await getOwnedProject(userId, projectId);
+  const versions = await listManuscriptVersions(userId, projectId);
+  if (!project || !versions[0]) return null;
+  const version = versions[0];
+  const checks = [
+    { id: 'content', label: 'Manuscript content', passed: version.wordCount >= 500, detail: `${version.wordCount.toLocaleString()} words` },
+    { id: 'structure', label: 'Document structure', passed: version.chapterCount >= 1, detail: `${version.chapterCount} chapter/section heading${version.chapterCount === 1 ? '' : 's'}` },
+    { id: 'title', label: 'Project title', passed: Boolean(String(project.title || '').trim()), detail: project.title },
+    { id: 'version', label: 'Immutable checkpoint', passed: Boolean(version.checksum), detail: `Version ${version.revision} · ${version.checksum.slice(0, 12)}` },
+  ];
+  const passed = checks.every((check) => check.passed);
+  const id = randomUUID();
+  const saved = await database().query(
+    'INSERT INTO caspa_export_preflights(id,project_id,user_id,version_id,passed,checks) VALUES($1,$2,$3,$4,$5,$6) RETURNING created_at',
+    [id, projectId, userId, version.id, passed, checks],
+  );
+  return { id, projectId, versionId: version.id, passed, checks, createdAt: new Date(saved.rows[0].created_at).toISOString() };
+}
+
+export async function exportableManuscript(userId: string, projectId: string): Promise<{ title: string; version: ManuscriptVersion } | null> {
+  const project = await getOwnedProject(userId, projectId);
+  const versions = await listManuscriptVersions(userId, projectId);
+  if (!project || !versions[0]) return null;
+  const allowed = await database().query(
+    `SELECT 1 FROM caspa_export_preflights WHERE user_id=$1 AND project_id=$2 AND version_id=$3 AND passed=true
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId, projectId, versions[0].id],
+  );
+  return allowed.rowCount ? { title: project.title, version: versions[0] } : null;
 }
 
 export async function getAuditEvents(userId: string, projectId: string): Promise<any[]> {
