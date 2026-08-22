@@ -9,6 +9,7 @@ const CLOUD_KEYS = [
   'OPENAI_API_KEY', 'VITE_OPENAI_API_KEY',
   'ANTHROPIC_API_KEY', 'VITE_ANTHROPIC_API_KEY',
   'VENICE_API_KEY', 'VITE_VENICE_API_KEY',
+  'UNIFIED_ROUTER_URL', 'UNIFIED_ROUTER_API_KEY', 'UNIFIED_ROUTER_MODEL',
 ];
 
 test('falls through exhausted/unconfigured cloud providers to the local Ollama pool', async () => {
@@ -73,6 +74,83 @@ test('can explicitly disable the local survival tier', async () => {
       /Atlas model pool exhausted/,
     );
   } finally {
+    for (const [key, value] of originalEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('Atlas unified router is first when UNIFIED_ROUTER_URL is set', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = new Map<string, string | undefined>();
+  for (const key of CLOUD_KEYS) {
+    originalEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
+  process.env.UNIFIED_ROUTER_URL = 'http://127.0.0.1:9999';
+  process.env.UNIFIED_ROUTER_MODEL = 'atlas-council';
+
+  const seen: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    seen.push(url);
+    if (url === 'http://127.0.0.1:9999/api/chat/completions') {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: '{"content":"The opening stalls.","severity":"high","suggestions":["Arrive sooner."]}' } }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    throw new Error(`Unexpected network call in test: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const result = await callWithProviderFailover('Council critique of this draft.', {
+      json: true,
+      task: 'council',
+      disableLocalFallback: true,
+    });
+    assert.equal(result.provider, 'unified');
+    assert.equal(result.model, 'atlas-council');
+    assert.match(result.text, /opening stalls/);
+    assert.deepEqual(seen, ['http://127.0.0.1:9999/api/chat/completions']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of originalEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('strict cloud provider pin does not steal work from an explicit Grok request', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = new Map<string, string | undefined>();
+  for (const key of CLOUD_KEYS) {
+    originalEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
+  process.env.UNIFIED_ROUTER_URL = 'http://127.0.0.1:9999';
+  process.env.GROK_API_KEY = 'test-grok';
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes('127.0.0.1:9999')) {
+      throw new Error('Unified router must not be called for a strict Grok pin');
+    }
+    return new Response('no', { status: 401 });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => callWithProviderFailover('Ping', {
+        primaryProvider: 'grok',
+        strictProvider: true,
+        disableLocalFallback: true,
+      }),
+      /Grok|xAI|401|Atlas model pool exhausted/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
     for (const [key, value] of originalEnv) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

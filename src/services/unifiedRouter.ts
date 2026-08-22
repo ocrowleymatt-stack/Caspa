@@ -8,38 +8,23 @@
  */
 
 import { routeAtlasPrompt } from './routerFallbackBridge';
+import {
+  callHostUnifiedRouter,
+  unifiedRouterAuthHeaders,
+  unifiedRouterBase,
+  unifiedRouterChatUrl,
+  unifiedRouterConfigured,
+  unifiedRouterModel,
+} from './unifiedRouterHost';
 
-export function unifiedRouterBase(env: NodeJS.ProcessEnv = process.env): string | null {
-  const raw = (env.UNIFIED_ROUTER_URL || '').trim().replace(/\/$/, '');
-  return raw || null;
-}
-
-export function unifiedRouterConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean(unifiedRouterBase(env));
-}
-
-export function unifiedRouterChatUrl(env: NodeJS.ProcessEnv = process.env): string | null {
-  const base = unifiedRouterBase(env);
-  return base ? `${base}/api/chat/completions` : null;
-}
-
-export function unifiedRouterAuthHeaders(
-  env: NodeJS.ProcessEnv = process.env
-): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = (
-    env.UNIFIED_ROUTER_API_KEY ||
-    env.UNIFIED_ROUTER_TOKEN ||
-    env.UNIFIED_ROUTER_BEARER ||
-    ''
-  ).trim();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
-}
-
-export function unifiedRouterModel(env: NodeJS.ProcessEnv = process.env): string {
-  return (env.UNIFIED_ROUTER_MODEL || 'llama3.2').trim() || 'llama3.2';
-}
+export {
+  callHostUnifiedRouter,
+  unifiedRouterAuthHeaders,
+  unifiedRouterBase,
+  unifiedRouterChatUrl,
+  unifiedRouterConfigured,
+  unifiedRouterModel,
+};
 
 async function cloudFallback(
   prompt: string,
@@ -78,48 +63,13 @@ export async function callUnifiedRouterChat(
   }
 ): Promise<string> {
   const env = opts?.env || process.env;
-  const url = unifiedRouterChatUrl(env);
-
-  if (!url) {
+  if (!unifiedRouterChatUrl(env)) {
     return cloudFallback(prompt, opts);
   }
 
-  const timeoutMs = opts?.timeoutMs ?? (opts?.maxTokens && opts.maxTokens >= 4000 ? 180_000 : 120_000);
-  const system =
-    opts?.system ||
-    'You are a proudly snobbish literary machine that always seeks a prize, prestige, or critical acclaim for its work. You help the user write elegantly from a developed idea, maintaining an intuitive process where the human still has a guiding hand.';
-
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: unifiedRouterAuthHeaders(env),
-      signal: AbortSignal.timeout(timeoutMs),
-      body: JSON.stringify({
-        model: unifiedRouterModel(env),
-        messages: [
-          { role: 'system', content: system },
-          {
-            role: 'user',
-            content: opts?.json ? `${prompt}\n\nIMPORTANT: Return ONLY valid JSON.` : prompt,
-          },
-        ],
-        max_tokens: opts?.maxTokens || 4096,
-        temperature: 0.7,
-        ...(opts?.json ? { response_format: { type: 'json_object' } } : {}),
-      }),
-    });
-
-    if (!response.ok) {
-      const raw = await response.text().catch(() => '');
-      throw new Error(`Unified router error (${response.status}): ${raw.slice(0, 1000)}`);
-    }
-
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content;
-    if (!text || !String(text).trim()) {
-      throw new Error('Unified router returned an empty completion');
-    }
-    return String(text);
+    const hosted = await callHostUnifiedRouter(prompt, opts);
+    return hosted.text;
   } catch {
     // Host/local router failure is not terminal. Continue via Atlas's provider
     // cascade so one dead endpoint, quota boundary or provider cannot kill a job.

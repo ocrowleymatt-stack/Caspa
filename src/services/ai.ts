@@ -355,11 +355,12 @@ Based ONLY on the provided text and strictly following any structural plans foun
     if (type === 'experimental' || type === 'screenplay') defaultRoles.push('comedy');
 
     const intelligenceMode = ((typeof window !== 'undefined' ? window.localStorage.getItem('caspa_intelligence_mode') : null) || 'balanced') as IntelligenceMode;
-    type CouncilProvider = 'grok' | 'gemini' | 'venice' | 'openai' | 'claude';
 
     // Council 2.0: cap the number of seats by mode. The old UI could request 14-17
     // critics, which multiplied identical 10k-token prompts and made one review behave
     // like a batch job. Keep the strongest, most relevant perspectives instead.
+    // Seats go through Atlas (UNIFIED_ROUTER_URL). Do not pin Grok/Gemini/Venice —
+    // those keys live on the router, not on Caspa.
     const requestedRoles = [...new Set((customRoles?.length ? customRoles : defaultRoles) as string[])];
     const domainFirst = type === 'legal' ? ['legal'] : type === 'academic' ? ['academic'] : [];
     const priority = [
@@ -374,17 +375,6 @@ Based ONLY on the provided text and strictly following any structural plans foun
     };
     const maxSeats = intelligenceMode === 'speed' ? 6 : intelligenceMode === 'god' ? 12 : 9;
     const roles = [...requestedRoles].sort((a, b) => rank(a) - rank(b)).slice(0, maxSeats);
-
-    const providerRotation: CouncilProvider[] = intelligenceMode === 'god'
-      ? ['grok', 'gemini', 'venice', 'openai', 'claude']
-      : ['grok', 'gemini', 'venice'];
-    const providerLabels: Record<CouncilProvider, string> = {
-      grok: 'Grok',
-      gemini: 'Gemini',
-      claude: 'Claude',
-      openai: 'OpenAI',
-      venice: 'Venice'
-    };
 
     // Repeating a large evidence pack for every seat was a major hidden cost. Give
     // each critic enough source context to challenge the manuscript without cloning
@@ -450,17 +440,13 @@ Based ONLY on the provided text and strictly following any structural plans foun
     const seatClientTimeout = intelligenceMode === 'speed' ? 16_000 : intelligenceMode === 'god' ? 30_000 : 22_000;
     const seatTokens = intelligenceMode === 'god' ? 1100 : 900;
 
-    const runSeat = async (role: string, index: number): Promise<Critique> => {
-      const provider = providerRotation[index % providerRotation.length];
+    const runSeat = async (role: string): Promise<Critique> => {
       const responseText = await callAI({
         prompt: makeSeatPrompt(role),
         json: true,
         schema,
         maxTokens: seatTokens,
-        providerOverride: provider,
-        strictProvider: true,
         taskHint: 'council',
-        skipLocalFallback: true,
         clientTimeoutMs: seatClientTimeout,
       });
       const data = safeParseJSON(responseText || '{}');
@@ -470,7 +456,7 @@ Based ONLY on the provided text and strictly following any structural plans foun
 
       return {
         id: crypto.randomUUID(),
-        agentName: `${personaNames[role] || `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`} · ${providerLabels[provider]}`,
+        agentName: `${personaNames[role] || `${role.charAt(0).toUpperCase() + role.slice(1)} Engine`} · Atlas`,
         role: role as any,
         content: data.content || 'No major issues identified.',
         severity: data.severity || 'low',
@@ -484,8 +470,8 @@ Based ONLY on the provided text and strictly following any structural plans foun
 
     // Launch the full bounded Council simultaneously. No serial batches and no
     // seat-by-seat retries: the ensemble is the redundancy mechanism.
-    const seatPromises = roles.map((role, index) =>
-      runSeat(role, index)
+    const seatPromises = roles.map((role) =>
+      runSeat(role)
         .then((critique) => {
           critiques.push(critique);
           return critique;
@@ -508,23 +494,19 @@ Based ONLY on the provided text and strictly following any structural plans foun
     // Extreme degradation: race three independent emergency chairs. This is one
     // bounded recovery wave, never a sequential fallback chain.
     const recoveryPrompt = `You are the emergency chair of an editorial council. Review this ${type} draft from structural, voice, factual, sentence-level, thematic and commercial perspectives. Return JSON with content, severity and 3-5 concrete suggestions.\n\nTEXT:\n${manuscriptSample}`;
-    const recoveryProviders: CouncilProvider[] = ['grok', 'gemini', 'venice'];
-    const recoveryCalls = recoveryProviders.map(async (provider) => {
+    try {
       const responseText = await callAI({
         prompt: recoveryPrompt,
         json: true,
         schema,
         maxTokens: 1000,
-        providerOverride: provider,
-        strictProvider: true,
         taskHint: 'council',
-        skipLocalFallback: true,
         clientTimeoutMs: seatClientTimeout,
       });
       const data = safeParseJSON(responseText || '{}');
-      return {
+      critiques.push({
         id: crypto.randomUUID(),
-        agentName: `Council Recovery Chair · ${providerLabels[provider]}`,
+        agentName: 'Council Recovery Chair · Atlas',
         role: 'structural' as any,
         content: data.content || 'Council recovery completed.',
         severity: data.severity || 'medium',
@@ -532,20 +514,15 @@ Based ONLY on the provided text and strictly following any structural plans foun
           ? data.suggestions.map((s: any) => typeof s === 'string' ? { text: s } : s)
           : [],
         timestamp: Date.now()
-      } as Critique;
-    });
-
-    try {
-      const recovery = await Promise.any(recoveryCalls);
-      critiques.push(recovery);
+      } as Critique);
     } catch (error) {
       console.warn('[Council] Emergency recovery wave failed:', error);
     }
 
-    // Partial Council is still useful and must not be discarded because a provider
+    // Partial Council is still useful and must not be discarded because a lane
     // was down. Only surface a hard failure when literally no independent critic spoke.
     if (critiques.length > 0) return critiques;
-    throw new Error('Council could not reach any configured cloud critic within the hard deadline.');
+    throw new Error('Council could not reach Atlas or any configured critic within the hard deadline.');
   },
 
   async writeDraft(title: string, summary: string, context: string, type: ProjectType, activeNodes: PlotNode[], research: ResearchNote[] = [], maturity = 'standard', sourceMaterials: { name: string, content: string }[] = [], directives: string[] = [], projectTargetWords?: number, externalReviews: ExternalReview[] = [], draftStage?: 1 | 2 | 3 | 4, chapterCount?: number, cutMode?: boolean): Promise<string> {

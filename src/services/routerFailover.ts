@@ -15,8 +15,12 @@ import {
   selectAttemptOrder,
   sharedCircuitBreaker,
 } from './aiRouterPolicy';
+import {
+  callHostUnifiedRouter,
+  unifiedRouterConfigured,
+} from './unifiedRouterHost';
 
-export type AtlasProvider = CloudProvider | 'ollama';
+export type AtlasProvider = CloudProvider | 'ollama' | 'unified';
 
 export interface RouterFailoverAttempt {
   provider: string;
@@ -61,10 +65,28 @@ export function providerSupportsWebSearch(provider: string): boolean {
   return WEB_SEARCH_CAPABLE_PROVIDER_SET.has(String(provider || '').toLowerCase());
 }
 
+function unifiedHostTimeoutMs(mode: IntelligenceMode, task: TaskKind, maxTokens?: number): number {
+  if (task === 'council') {
+    if (mode === 'speed') return 10_000;
+    if (mode === 'god') return 20_000;
+    return 16_000;
+  }
+  if (maxTokens && maxTokens >= 4000) return 180_000;
+  return 120_000;
+}
+
+function shouldTryUnifiedRouter(opts: RouterFailoverOptions, primary: string, webRequired: boolean): boolean {
+  if (!unifiedRouterConfigured()) return false;
+  if (webRequired && primary !== 'unified') return false;
+  if (opts.strictProvider && primary && primary !== 'unified') return false;
+  return true;
+}
+
 /**
  * Canonical Atlas failover path.
  *
- * - Only configured, healthy cloud providers are attempted.
+ * - Host Unified Router (Atlas) is first when UNIFIED_ROUTER_URL is set.
+ * - Only configured, healthy cloud providers are attempted after that.
  * - Billing/quota failures quarantine a provider for longer than transient errors.
  * - Successful providers are immediately restored to healthy state.
  * - Explicit strict-provider requests remain strict for ordinary model/runtime
@@ -83,19 +105,39 @@ export async function callWithProviderFailover(
   const mode: IntelligenceMode = normaliseMode(opts.mode);
   const task: TaskKind = opts.task || classifyTask(prompt, opts);
   const primary = String(opts.primaryProvider || '').trim();
-  const unfilteredPreferred = opts.strictProvider && primary
+  const unfilteredPreferred = opts.strictProvider && primary && primary !== 'unified'
     ? [primary]
     : providerOrder(primary, mode, task, Boolean(opts.sensitive));
   const attempts: RouterFailoverAttempt[] = [];
   const webRequired = Boolean(opts.useSearch);
   let localAttempted = false;
 
-  if (webRequired && opts.strictProvider && primary && !providerSupportsWebSearch(primary)) {
+  if (webRequired && opts.strictProvider && primary && primary !== 'unified' && !providerSupportsWebSearch(primary)) {
     throw new Error(
       `Atlas web retrieval unavailable — strict provider "${primary}" has no wired web-search capability.`,
     );
   }
 
+  if (shouldTryUnifiedRouter(opts, primary, webRequired)) {
+    try {
+      const hosted = await callHostUnifiedRouter(prompt, {
+        json: opts.json,
+        maxTokens: opts.maxTokens,
+        timeoutMs: unifiedHostTimeoutMs(mode, task, opts.maxTokens),
+      });
+      return { text: hosted.text, model: hosted.model, provider: 'unified', attempts };
+    } catch (error: any) {
+      attempts.push({
+        provider: 'unified',
+        error: String(error?.message || error || 'Unified router failure'),
+        billingFailure: false,
+      });
+      if (opts.strictProvider && primary === 'unified') {
+        const summary = attempts.map((attempt) => `${attempt.provider}: ${attempt.error.slice(0, 180)}`).join(' | ');
+        throw new Error(`Atlas model pool exhausted — ${summary}`);
+      }
+    }
+  }
 
   const localFirst = !webRequired
     && !opts.disableLocalFallback
