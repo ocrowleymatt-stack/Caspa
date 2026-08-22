@@ -4,8 +4,9 @@
 
 import { randomUUID } from 'crypto';
 import type { CaspaJobRecord, JobAuditSnapshot } from '../types/gold';
-import { archiveJobRecord, loadArchivedJob, loadJobStore, persistJobStore } from './jobStoreService';
-import { currentUser } from './requestContext';
+import { archiveJobRecord, listArchivedJobs, loadArchivedJob, loadJobStore, migrateLegacyArchiveMeta, persistArchivedJob, persistJobStore } from './jobStoreService';
+import { jobProvenance, toJobListRecord, type JobListRecord } from './jobProvenance';
+import { currentProjectId, currentUser } from './requestContext';
 
 // Large book results can be several megabytes each. Keep the active ledger small
 // and archive older completed records individually without deleting user work.
@@ -31,7 +32,7 @@ export function createJob(type: CaspaJobRecord['type'], stage = 'queued', option
   const job: CaspaJobRecord = {
     id: randomUUID(),
     userId,
-    projectId: options.projectId,
+    projectId: options.projectId || currentProjectId(),
     idempotencyKey: options.idempotencyKey,
     type,
     status: 'queued',
@@ -47,16 +48,22 @@ export function createJob(type: CaspaJobRecord['type'], stage = 'queued', option
 
 export function updateJob(
   id: string,
-  patch: Partial<Pick<CaspaJobRecord, 'status' | 'progress' | 'stage' | 'error' | 'result' | 'input' | 'checkpoint'>>
+  patch: Partial<Pick<CaspaJobRecord, 'status' | 'progress' | 'stage' | 'error' | 'result' | 'input' | 'checkpoint' | 'projectId'>>
 ): CaspaJobRecord | null {
   const jobs = store();
   const job = jobs.get(id);
-  if (!job) return null;
-  Object.assign(job, patch, { updatedAt: new Date().toISOString() });
-  jobs.set(id, job);
-  pruneCompleted(jobs);
-  save(jobs);
-  return job;
+  if (job) {
+    Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+    jobs.set(id, job);
+    pruneCompleted(jobs);
+    save(jobs);
+    return job;
+  }
+  const archived = loadArchivedJob(id);
+  if (!archived) return null;
+  Object.assign(archived, patch, { updatedAt: new Date().toISOString() });
+  persistArchivedJob(archived);
+  return archived;
 }
 
 export function getJob(id: string): CaspaJobRecord | null {
@@ -69,10 +76,11 @@ export function listRecentJobs(limit = 20): CaspaJobRecord[] {
     .slice(0, limit);
 }
 
-export function jobSummary(job: CaspaJobRecord): Omit<CaspaJobRecord, 'input' | 'checkpoint' | 'result'> & { resultAvailable: boolean; resumable: boolean } {
-  const { input, checkpoint, result, ...summary } = job;
-  return { ...summary, resultAvailable: result !== undefined, resumable: input !== undefined || checkpoint !== undefined };
+export function jobSummary(job: CaspaJobRecord & Partial<JobListRecord>): JobListRecord {
+  return toJobListRecord(job);
 }
+
+export { jobProvenance };
 
 export function getUserJob(userId: string, id: string): CaspaJobRecord | null {
   const job = getJob(id);
@@ -80,11 +88,48 @@ export function getUserJob(userId: string, id: string): CaspaJobRecord | null {
   return job;
 }
 
-export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string): CaspaJobRecord[] {
-  return listRecentJobs(500)
+export function jobMatchesProject(job: { projectId?: string }, projectId?: string): boolean {
+  if (!projectId) return true;
+  return Boolean(job.projectId) && job.projectId === projectId;
+}
+
+export function assertJobBoundToProject(job: { projectId?: string }, projectId: string): void {
+  if (!job.projectId || job.projectId !== projectId) {
+    const error = new Error('This completed job is not assigned to the open project. Assign it first. Nothing was written.');
+    (error as Error & { code: string }).code = 'JOB_PROJECT_MISMATCH';
+    throw error;
+  }
+}
+
+export function bindJobToProject(jobId: string, projectId: string): CaspaJobRecord {
+  const job = getJob(jobId);
+  if (!job) {
+    const error = new Error('Job not found.');
+    (error as Error & { code: string }).code = 'JOB_NOT_FOUND';
+    throw error;
+  }
+  if (job.projectId && job.projectId !== projectId) {
+    assertJobBoundToProject(job, projectId);
+  }
+  if (job.projectId === projectId) return job;
+  const updated = updateJob(jobId, { projectId });
+  if (!updated?.projectId || updated.projectId !== projectId) {
+    const error = new Error('Could not assign this job to the project. Nothing was written.');
+    (error as Error & { code: string }).code = 'JOB_BIND_FAILED';
+    throw error;
+  }
+  return updated;
+}
+
+export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string, unboundOnly = false): Array<CaspaJobRecord | JobListRecord> {
+  const active = listRecentJobs(500);
+  const seen = new Set(active.map((job) => job.id));
+  const archived = listArchivedJobs().filter((job) => !seen.has(job.id));
+  return [...active, ...archived]
     .filter((job) => (job.userId || 'legacy-owner') === userId)
-    .filter((job) => !projectId || job.projectId === projectId)
+    .filter((job) => unboundOnly ? !job.projectId : jobMatchesProject(job, projectId))
     .filter((job) => !status || job.status === status)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, limit);
 }
 
@@ -121,6 +166,7 @@ export function reapStaleJobs(maxAgeMs = DEFAULT_STALE_ACTIVE_MS): number {
   if (reaped || jobs.size !== sizeBeforeMaintenance) {
     save(jobs);
   }
+  migrateLegacyArchiveMeta();
   return reaped;
 }
 

@@ -10,6 +10,7 @@
  */
 
 import { scheduleServerProjectSync } from './serverProjectSync';
+import { clearAuthentikCacheOwner, clearSensitiveProjectCaches, isSensitiveProjectCacheKey } from './workspaceCacheKeys';
 
 const ACTIVE_SCOPE_KEY = 'atlas.activeUserDb';
 const USER_DB_PREFIX = 'atlas.userdb.';
@@ -38,7 +39,7 @@ export function collectActiveWorkspaceEntries(): Record<string, string> {
   const entries: Record<string, string> = {};
   for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i);
-    if (!key || !isWorkspaceDataKey(key)) continue;
+    if (!key || !isWorkspaceDataKey(key) || isSensitiveProjectCacheKey(key)) continue;
     entries[key] = localStorage.getItem(key) || '';
   }
   return entries;
@@ -59,7 +60,7 @@ function readUserDatabase(scope: string): Record<string, string> {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(parsed)) {
-      if (isWorkspaceDataKey(key) && typeof value === 'string') result[key] = value;
+      if (isWorkspaceDataKey(key) && typeof value === 'string' && !isSensitiveProjectCacheKey(key)) result[key] = value;
     }
     return result;
   } catch {
@@ -80,7 +81,7 @@ function writeUserDatabase(scope: string, entries: Record<string, string>): void
 
 function mountEntries(entries: Record<string, string>): void {
   for (const [key, value] of Object.entries(entries)) {
-    if (isWorkspaceDataKey(key)) localStorage.setItem(key, value);
+    if (isWorkspaceDataKey(key) && !isSensitiveProjectCacheKey(key)) localStorage.setItem(key, value);
   }
 }
 
@@ -119,11 +120,13 @@ export function activateUserDatabase(uid: string): void {
 export function deactivateUserDatabase(uid?: string): void {
   const current = localStorage.getItem(ACTIVE_SCOPE_KEY);
   if (!current) {
+    clearAuthentikCacheOwner();
     clearActiveWorkspace();
     return;
   }
   if (!uid || safeScope(uid) === current) {
     writeUserDatabase(current, collectActiveWorkspaceEntries());
+    clearAuthentikCacheOwner();
     clearActiveWorkspace();
     localStorage.removeItem(ACTIVE_SCOPE_KEY);
   }

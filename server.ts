@@ -27,10 +27,11 @@ import caspaProjectRoutes from './src/routes/caspa-project-routes';
 import caspaHybridCoreRoutes from './src/routes/caspa-hybrid-core-routes';
 import caspaJobRoutes from './src/routes/caspa-job-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
-import { requireAuthenticatedUser } from './src/middleware/authenticatedUser';
+import { requestUser, requireAuthenticatedUser } from './src/middleware/authenticatedUser';
+import { acquireVisionSlot, estimateVisionSpend, validateVisionImage } from './src/services/visionGuard';
 import { ensureProjectSchema } from './src/services/projectRepository';
 import { ensureHybridCoreSchema } from './src/services/hybridCoreRepository';
-import { getBuildInfo } from './src/services/buildInfoService';
+import { publicHealthPayload } from './src/services/publicHealth';
 import { startCloudKnowledgeAutopilot } from './src/services/cloudKnowledgeAutopilotService';
 import {
   AI_PROVIDERS,
@@ -62,20 +63,13 @@ const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// Health Check
-app.get("/health", (req, res) => {
-  const build = getBuildInfo();
-  res.json({
-    status: "ok",
-    service: "Caspa",
-    version: build.version,
-    gitSha: build.gitSha,
-    gitShaShort: build.gitShaShort,
-    builtAt: build.builtAt,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    env: process.env.NODE_ENV || "production (default)",
-  });
+// Health Check — coarse public status only. Build SHA / env / uptime stay off this route.
+app.get("/health", (_req, res) => {
+  res.json(publicHealthPayload());
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json(publicHealthPayload());
 });
 
 // Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.
@@ -117,15 +111,6 @@ async function callXAI(prompt: string, json = false, maxTokens?: number) {
 async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {
   return callRoutedServerModel(prompt, json, maxTokens, 'venice');
 }
-
-// API routes go here FIRST
-app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    timestamp: new Date().toISOString(),
-    env: IS_DEVELOPMENT ? "development" : "production"
-  });
-});
 
 // Safe catalogue of models Atlas can discover without asking the user for new credentials.
 app.get("/api/ai/models", async (_req, res) => {
@@ -285,10 +270,19 @@ app.post("/api/ai/image-grok", async (req, res) => {
 // ── Vision / OCR endpoint ─────────────────────────────────────────────────────
 // Accepts base64-encoded image and returns extracted text via Grok vision
 app.post("/api/ai/vision", async (req, res) => {
-  const { imageBase64, mimeType } = req.body;
+  const user = requestUser(res);
+  const validated = validateVisionImage(req.body?.imageBase64, req.body?.mimeType);
+  if (validated.ok === false) {
+    return res.status(validated.status).json({ message: validated.message });
+  }
+  const slot = acquireVisionSlot(user.id, estimateVisionSpend(validated));
+  if (slot.ok === false) return res.status(slot.status).json({ message: slot.message });
+
   const apiKey = process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
-  if (!apiKey) return res.status(400).json({ message: "Grok API key not configured" });
-  if (!imageBase64) return res.status(400).json({ message: "imageBase64 required" });
+  if (!apiKey) {
+    slot.release();
+    return res.status(400).json({ message: "Grok API key not configured" });
+  }
 
   try {
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -299,7 +293,7 @@ app.post("/api/ai/vision", async (req, res) => {
         messages: [{
           role: "user",
           content: [
-            { type: "image_url", image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${imageBase64}` } },
+            { type: "image_url", image_url: { url: `data:${validated.mimeType};base64,${validated.base64}` } },
             { type: "text", text: "Extract and transcribe ALL text visible in this image. Preserve paragraph structure, headings, bullet points, and formatting as closely as possible. If there is no text, describe the visual content in detail instead." }
           ]
         }],
@@ -314,6 +308,8 @@ app.post("/api/ai/vision", async (req, res) => {
     return res.json({ result: data.choices?.[0]?.message?.content || '' });
   } catch (err: any) {
     res.status(500).json({ message: "Vision OCR exception", error: err.message });
+  } finally {
+    slot.release();
   }
 });
 

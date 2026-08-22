@@ -79,6 +79,7 @@ import {
   deactivateUserDatabase,
   persistActiveUserDatabase,
 } from './services/userDatabaseService';
+import { bindAuthentikCacheOwner } from './services/workspaceCacheKeys';
 import {
   getNextStep,
   getProgressSummary,
@@ -628,20 +629,28 @@ function CaspaUI() {
 
   useEffect(() => {
     let cancelled = false;
-    const key = 'atlas.runtime.gitSha';
+    const key = 'atlas.runtime.buildStamp';
     const checkBuild = async () => {
       try {
-        const response = await fetch('/api/doctor', { cache: 'no-store' });
+        const response = await fetch('/api/v2/build', { cache: 'no-store' });
         const data = await response.json();
-        const sha = data?.data?.gitSha || data?.data?.deployment?.gitSha || '';
-        if (!sha || cancelled) return;
+        const stamp = data?.data?.stamp || '';
+        try {
+          const me = await fetch('/api/v2/me', { cache: 'no-store' });
+          const identity = await me.json();
+          const authentikUid = identity?.data?.id || '';
+          if (authentikUid && !cancelled) bindAuthentikCacheOwner(String(authentikUid));
+        } catch {
+          /* local-first workspaces have no Authentik session */
+        }
+        if (!stamp || cancelled) return;
         const previous = sessionStorage.getItem(key);
-        if (previous && previous !== sha) {
-          sessionStorage.setItem(key, sha);
+        if (previous && previous !== stamp) {
+          sessionStorage.setItem(key, stamp);
           window.location.reload();
           return;
         }
-        sessionStorage.setItem(key, sha);
+        sessionStorage.setItem(key, stamp);
       } catch {
         /* update checking is fail-soft */
       }

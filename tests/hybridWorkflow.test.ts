@@ -4,17 +4,18 @@ import { canMoveBetweenStages, contextualTools, nextHybridStage } from '../src/s
 import { manuscriptMetrics } from '../src/services/hybridCoreRepository';
 
 test('hybrid workflow guides forward without trapping the author', () => {
+  assert.equal(nextHybridStage('idea'), 'structure');
   assert.equal(nextHybridStage('draft'), 'workshop');
   assert.equal(nextHybridStage('publish'), 'publish');
   assert.equal(canMoveBetweenStages('workshop', 'draft'), true);
   assert.equal(canMoveBetweenStages('publish', 'revise'), true);
-  assert.equal(canMoveBetweenStages('draft', 'publish'), false);
+  assert.equal(canMoveBetweenStages('draft', 'publish'), true);
 });
 
 test('specialist capabilities appear contextually', () => {
-  assert.ok(contextualTools('draft').includes('Story bible'));
+  assert.ok(contextualTools('draft').includes('Story Bible'));
   assert.ok(contextualTools('revise').includes('Gold Refinery'));
-  assert.ok(contextualTools('publish').includes('Proof'));
+  assert.ok(contextualTools('publish').includes('Export and publishing'));
 });
 
 test('manuscript metrics count chapters rather than every subheading', () => {

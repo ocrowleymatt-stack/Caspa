@@ -17,6 +17,7 @@ import type { StoryPromise } from '../types/promise';
 import { formatShowPackForWriting } from './showBoxService';
 
 export interface ProjectBriefLike {
+  projectId?: string;
   title: string;
   mode: string;
   idea: string;

@@ -76,9 +76,13 @@ function saveCanon(projectKey: string, canon: StudioCanon) {
   localStorage.setItem(`${CANON_KEY}.${projectKey}`, JSON.stringify(canon));
 }
 
-function loadCommissionChapters(): Chapter[] {
+function commissionKey(projectKey: string): string {
+  return `caspa.commission.${projectKey}`;
+}
+
+function loadCommissionChapters(projectKey: string): Chapter[] {
   try {
-    const raw = localStorage.getItem('caspa.commission');
+    const raw = localStorage.getItem(commissionKey(projectKey));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed.chapters) ? parsed.chapters : [];
@@ -87,9 +91,9 @@ function loadCommissionChapters(): Chapter[] {
   }
 }
 
-function persistCommissionChapters(chapters: Chapter[]) {
+function persistCommissionChapters(projectKey: string, chapters: Chapter[]) {
   try {
-    const raw = localStorage.getItem('caspa.commission');
+    const raw = localStorage.getItem(commissionKey(projectKey));
     const parsed = raw ? JSON.parse(raw) : {};
     parsed.chapters = chapters;
     if (chapters.length) {
@@ -99,7 +103,7 @@ function persistCommissionChapters(chapters: Chapter[]) {
         .map((c) => `# ${c.title}\n\n${c.content || ''}`.trim())
         .join('\n\n');
     }
-    localStorage.setItem('caspa.commission', JSON.stringify(parsed));
+    localStorage.setItem(commissionKey(projectKey), JSON.stringify(parsed));
   } catch {
     /* ignore */
   }
@@ -112,6 +116,7 @@ interface Props {
   onBriefChange: (patch: Partial<ProjectBriefLike>) => void;
   onDraftChange: (text: string) => void;
   onNavigate: (legacyView: LegacyViewType | string) => void;
+  embedded?: boolean;
 }
 
 function assembleShowSource(brief: ProjectBriefLike): string {
@@ -194,15 +199,16 @@ export default function StudioToolBridge({
   onBriefChange,
   onDraftChange,
   onNavigate,
+  embedded = false,
 }: Props) {
   const projectKey = getProjectKey(brief);
   const [canon, setCanon] = useState<StudioCanon>(() => loadCanon(projectKey));
-  const [chapters, setChapters] = useState<Chapter[]>(() => loadCommissionChapters());
+  const [chapters, setChapters] = useState<Chapter[]>(() => loadCommissionChapters(projectKey));
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setCanon(loadCanon(projectKey));
-    setChapters(loadCommissionChapters());
+    setChapters(loadCommissionChapters(projectKey));
   }, [projectKey]);
 
   useEffect(() => {
@@ -267,7 +273,7 @@ export default function StudioToolBridge({
       }));
       if (updates.chapters) {
         setChapters(updates.chapters);
-        persistCommissionChapters(updates.chapters);
+        persistCommissionChapters(projectKey, updates.chapters);
         const text = updates.chapters
           .slice()
           .sort((a, b) => a.order - b.order)
@@ -276,13 +282,13 @@ export default function StudioToolBridge({
         if (text.trim()) onDraftChange(text);
       }
     },
-    [onBriefChange, onDraftChange]
+    [onBriefChange, onDraftChange, projectKey]
   );
 
   const updateChapters = useCallback(
     async (next: Chapter[]) => {
       setChapters(next);
-      persistCommissionChapters(next);
+      persistCommissionChapters(projectKey, next);
       const text = next
         .slice()
         .sort((a, b) => a.order - b.order)
@@ -290,7 +296,7 @@ export default function StudioToolBridge({
         .join('\n\n');
       if (text.trim()) onDraftChange(text);
     },
-    [onDraftChange]
+    [onDraftChange, projectKey]
   );
 
   const updateCharacters = useCallback((chars: Character[]) => {
@@ -333,7 +339,7 @@ export default function StudioToolBridge({
         },
       ];
       setChapters(seeded);
-      persistCommissionChapters(seeded);
+      persistCommissionChapters(projectKey, seeded);
     }
   }, [tool]); // intentionally once when opening a draft tool
 
@@ -555,6 +561,15 @@ export default function StudioToolBridge({
     );
   } else if (tool === 'prizes') {
     body = <PrizeCalibrationDashboard />;
+  }
+
+  if (embedded) {
+    return (
+      <section className="workspace-tool-embed" data-tool={tool}>
+        {notice && <div className="workspace-flash">{notice}</div>}
+        <div className="workspace-tool-embed-body">{body}</div>
+      </section>
+    );
   }
 
   return (
