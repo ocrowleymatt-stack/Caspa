@@ -143,12 +143,9 @@ test('browser journeys walk the integrated desk against a mocked server', { skip
       assert.equal(overflow, false, `horizontal overflow at ${width}px`);
     }
 
-    const help = await page.evaluate(() => {
-      const btn = Array.from(document.querySelectorAll('button')).find((item) => /^Help$/i.test((item.textContent || '').trim()));
-      btn?.click();
-      return Boolean(document.querySelector('[data-testid="desk-help"]'));
-    });
-    assert.equal(help, true);
+    await page.click('[data-testid="desk-help-toggle"]');
+    await page.waitForSelector('[data-testid="desk-help"]');
+    assert.ok(await page.$('[data-testid="desk-help"]'));
     t.diagnostic(`journeys exercised at ${base}`);
   } finally {
     await browser.close();

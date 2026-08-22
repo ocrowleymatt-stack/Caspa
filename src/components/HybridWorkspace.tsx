@@ -387,7 +387,7 @@ export default function HybridWorkspace() {
         </div>
         <div className="desk-header-actions">
           {busy && <span className="desk-busy" role="status"><Loader className="spin" size={14} /> Working</span>}
-          <button type="button" className="desk-ghost" onClick={() => setHelpOpen((value) => !value)}><HelpCircle size={14} /> Help</button>
+          <button type="button" className="desk-ghost" data-testid="desk-help-toggle" onClick={() => setHelpOpen((value) => !value)}><HelpCircle size={14} /> Help</button>
           <a href="/legacy" className="desk-ghost">Previous studio</a>
         </div>
       </header>
