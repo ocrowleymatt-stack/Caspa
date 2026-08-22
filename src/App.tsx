@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import HybridWorkspace from './components/HybridWorkspace';
 import {
   AlertCircle,
   Award,
@@ -78,6 +79,7 @@ import {
   deactivateUserDatabase,
   persistActiveUserDatabase,
 } from './services/userDatabaseService';
+import { bindAuthentikCacheOwner } from './services/workspaceCacheKeys';
 import {
   getNextStep,
   getProgressSummary,
@@ -212,6 +214,9 @@ function mapLegacyView(legacy: string): ViewType | null {
     settings: 'settings',
     dashboard: 'project',
     workshop: 'workshop',
+    bible: 'bible',
+    psychology: 'psychology',
+    redpen: 'redpen',
     gold: 'gold',
     pilot: 'pilot',
     showbox: 'showbox',
@@ -605,7 +610,10 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
 
 function CaspaUI() {
   const authContext = React.useContext(AuthContext);
-  const [currentView, setCurrentView] = useState<ViewType>(() => (hasActiveProject() ? 'project' : 'launchpad'));
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    const requested = mapLegacyView(new URLSearchParams(window.location.search).get('tool') || '');
+    return requested || (hasActiveProject() ? 'project' : 'launchpad');
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
@@ -616,24 +624,33 @@ function CaspaUI() {
   const [manuscriptSource, setManuscriptSource] = useState(() => localStorage.getItem('caspa.manuscriptSource') || '');
   const [projectStatus, setProjectStatus] = useState<'active' | 'complete'>(() => loadProjectStatus(loadBrief()));
   const [sidebarFastUploading, setSidebarFastUploading] = useState(false);
+  const [sidebarFastUploadError, setSidebarFastUploadError] = useState('');
   const sidebarFastUploadRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const key = 'atlas.runtime.gitSha';
+    const key = 'atlas.runtime.buildStamp';
     const checkBuild = async () => {
       try {
-        const response = await fetch('/api/doctor', { cache: 'no-store' });
+        const response = await fetch('/api/v2/build', { cache: 'no-store' });
         const data = await response.json();
-        const sha = data?.data?.gitSha || data?.data?.deployment?.gitSha || '';
-        if (!sha || cancelled) return;
+        const stamp = data?.data?.stamp || '';
+        try {
+          const me = await fetch('/api/v2/me', { cache: 'no-store' });
+          const identity = await me.json();
+          const authentikUid = identity?.data?.id || '';
+          if (authentikUid && !cancelled) bindAuthentikCacheOwner(String(authentikUid));
+        } catch {
+          /* local-first workspaces have no Authentik session */
+        }
+        if (!stamp || cancelled) return;
         const previous = sessionStorage.getItem(key);
-        if (previous && previous !== sha) {
-          sessionStorage.setItem(key, sha);
+        if (previous && previous !== stamp) {
+          sessionStorage.setItem(key, stamp);
           window.location.reload();
           return;
         }
-        sessionStorage.setItem(key, sha);
+        sessionStorage.setItem(key, stamp);
       } catch {
         /* update checking is fail-soft */
       }
@@ -708,11 +725,20 @@ function CaspaUI() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('caspa.whitePage', draftPage);
+    try {
+      localStorage.setItem('caspa.whitePage', draftPage);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+    }
   }, [draftPage]);
 
   useEffect(() => {
-    localStorage.setItem('caspa.manuscriptSource', manuscriptSource);
+    try {
+      localStorage.setItem('caspa.manuscriptSource', manuscriptSource);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+      setSidebarFastUploadError('The source is safely indexed on the Caspa server, but this browser is too full to keep another complete recovery copy.');
+    }
   }, [manuscriptSource]);
 
   const startProject = (mode: CreativeMode, idea: string, tone: string, output: string, audience: string, targetWordCount?: number) => {
@@ -821,7 +847,12 @@ function CaspaUI() {
     setDraftPage('');
     setManuscriptSource(combined);
     localStorage.setItem('caspa.whitePage', '');
-    localStorage.setItem('caspa.manuscriptSource', combined);
+    try {
+      localStorage.setItem('caspa.manuscriptSource', combined);
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+      setSidebarFastUploadError('Ingest completed on the server. The working excerpt is open now, but this browser is too full to cache another complete copy.');
+    }
     localStorage.removeItem('caspa.commission');
     localStorage.removeItem('caspa.commission.tab');
     clearShowBox();
@@ -838,8 +869,11 @@ function CaspaUI() {
     const files = Array.from(list || []);
     if (!files.length) return;
     setSidebarFastUploading(true);
+    setSidebarFastUploadError('');
     try {
       await handleFastDataUpload(files);
+    } catch (error) {
+      setSidebarFastUploadError(error instanceof Error ? error.message : 'Data ingest failed. Please try the file again.');
     } finally {
       setSidebarFastUploading(false);
       if (sidebarFastUploadRef.current) sidebarFastUploadRef.current.value = '';
@@ -1091,6 +1125,11 @@ function CaspaUI() {
           <div style={{ color: '#8f8068', fontSize: 10, lineHeight: 1.35, marginTop: 6, padding: '0 4px', textAlign: 'center' }}>
             Any file type → extract/transcribe/index where possible
           </div>
+          {sidebarFastUploadError && (
+            <div role="alert" style={{ color: '#ffd6cf', background: '#4c211d', borderRadius: 10, fontSize: 11, lineHeight: 1.4, marginTop: 8, padding: '8px 10px' }}>
+              {sidebarFastUploadError}
+            </div>
+          )}
         </div>
 
         <div style={{ marginBottom: 12 }}>
@@ -1914,7 +1953,7 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, loading: authLoading, signOut: handleSignOut }}>
-      <CaspaUI />
+      {window.location.pathname.startsWith('/legacy') ? <CaspaUI /> : <HybridWorkspace />}
     </AuthContext.Provider>
   );
 }

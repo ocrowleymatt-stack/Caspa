@@ -17,6 +17,7 @@ import {
   showBoxPieceCount,
   type ShowBoxState,
 } from './showBoxService';
+import { scheduleServerProjectSync } from './serverProjectSync';
 
 export type ProjectStatus = 'active' | 'complete';
 
@@ -135,7 +136,26 @@ function loadShelfIndex(): Record<string, ProjectSnapshot> {
 }
 
 function saveShelfIndex(index: Record<string, ProjectSnapshot>): void {
-  localStorage.setItem(SHELF_KEY, JSON.stringify(index));
+  try {
+    localStorage.setItem(SHELF_KEY, JSON.stringify(index));
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') throw error;
+    // The server is canonical. If the legacy all-project ledger no longer fits,
+    // retain a lightweight browser catalogue while the active project's normal
+    // keys remain available as the emergency recovery copy.
+    const compact = Object.fromEntries(Object.entries(index).map(([key, snapshot]) => [key, {
+      brief: snapshot.brief,
+      whitePage: '',
+      manuscriptSource: '',
+      commission: null,
+      showBox: null,
+      savedAt: snapshot.savedAt,
+      status: snapshot.status,
+    }]));
+    localStorage.setItem(SHELF_KEY, JSON.stringify(compact));
+    window.dispatchEvent(new CustomEvent('caspa-storage-compacted', { detail: { projects: Object.keys(index).length } }));
+  }
+  scheduleServerProjectSync(50);
 }
 
 function loadCommissionState(): CommissionState | null {
@@ -251,6 +271,47 @@ export function loadOpenProjects(): ShelfProject[] {
 
 export function loadLibraryManuscripts(): ShelfProject[] {
   return loadShelf().filter((p) => p.status === 'complete');
+}
+
+export function recoverCompletedCommission(result: any): string {
+  const meta = result?.project || {};
+  const brief: ProjectBriefLike = {
+    title: String(meta.title || `Recovered manuscript ${new Date().toLocaleDateString()}`),
+    mode: String(meta.mode || 'novel'),
+    idea: String(meta.idea || 'Recovered from a completed Caspa Finish run.'),
+    tone: String(meta.tone || ''),
+    output: String(meta.output || 'Finished manuscript'),
+    audience: String(meta.audience || 'General reader'),
+    targetWordCount: Number(meta.targetWordCount || result?.targetWords || 0) || undefined,
+  };
+  const key = getProjectKey(brief);
+  const chapters = Array.isArray(result?.chapters) ? result.chapters : [];
+  const artefact = String(result?.artefact || result?.finalText || '');
+  if (!chapters.length || !artefact.trim()) throw new Error('The completed job has no recoverable manuscript payload.');
+  const commission: CommissionState = {
+    phase: 'complete',
+    rawInput: '',
+    chapters,
+    diagnosis: null,
+    promises: Array.isArray(result?.promises) ? result.promises : [],
+    selectedRecommendationIds: [],
+    scope: { type: 'whole' },
+    progress: null,
+    artefact,
+    error: null,
+  };
+  const index = loadShelfIndex();
+  index[key] = {
+    brief,
+    whitePage: artefact,
+    manuscriptSource: artefact,
+    commission,
+    showBox: null,
+    savedAt: new Date().toISOString(),
+    status: 'complete',
+  };
+  saveShelfIndex(index);
+  return key;
 }
 
 export function recordProjectSnapshot(brief: ProjectBriefLike): void {

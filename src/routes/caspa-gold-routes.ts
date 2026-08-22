@@ -186,10 +186,12 @@ router.post('/pipeline', async (req, res) => {
     res.flushHeaders();
 
     try {
-      const result = await runGoldPipeline({ content, title, tone, mode, targetWordCount, plotHold }, (event) => writeSse(res, event));
-      writeSse(res, { type: 'complete', result });
+      const result = await runGoldPipeline(content, { title, tone, mode, targetWordCount, plotHold }, (passId, status, passResult) => {
+        writeSse(res, { type: 'stage', jobId: 'gold-pipeline', passId, status, notes: passResult?.notes, revisedText: passResult?.revisedText });
+      });
+      writeSse(res, { type: 'complete', jobId: result.jobId, finalText: result.finalText });
     } catch (error) {
-      writeSse(res, { type: 'error', message: error instanceof Error ? error.message : 'Pipeline failed' });
+      writeSse(res, { type: 'error', jobId: 'gold-pipeline', message: error instanceof Error ? error.message : 'Pipeline failed' });
     } finally {
       res.end();
     }
@@ -197,7 +199,7 @@ router.post('/pipeline', async (req, res) => {
   }
 
   try {
-    const result = await runGoldPipeline({ content, title, tone, mode, targetWordCount, plotHold });
+    const result = await runGoldPipeline(content, { title, tone, mode, targetWordCount, plotHold });
     return res.json({ success: true, data: result });
   } catch (error) {
     return res.status(500).json({ success: false, message: error instanceof Error ? error.message : 'Pipeline failed' });

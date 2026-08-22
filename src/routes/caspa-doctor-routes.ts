@@ -3,13 +3,13 @@
  */
 
 import { Router } from 'express';
-import { getDoctorSnapshot } from '../services/doctorService';
+import { getPublicDoctorStatus } from '../services/doctorService';
 
 const router = Router();
 
 router.get('/', async (_req, res) => {
   try {
-    const data = await getDoctorSnapshot();
+    const data = await getPublicDoctorStatus();
     res.json({ success: true, data });
   } catch (err) {
     console.error('[Doctor] Snapshot failed:', err);

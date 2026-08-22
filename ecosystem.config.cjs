@@ -16,8 +16,9 @@ const env = {
 };
 
 try {
-  const envPath = path.join(cwd, '.env');
-  if (fs.existsSync(envPath)) {
+  const envPaths = [path.join(cwd, '.env'), path.join(cwd, '.caspa-core.env')];
+  for (const envPath of envPaths) {
+    if (!fs.existsSync(envPath)) continue;
     for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
@@ -35,7 +36,7 @@ try {
     }
   }
 } catch (err) {
-  console.warn('[ecosystem] could not load .env:', err.message || err);
+  console.warn('[ecosystem] could not load environment:', err.message || err);
 }
 
 module.exports = {

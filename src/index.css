@@ -20,6 +20,227 @@
   --color-text-secondary: #bdb4c8;
 }
 
+/* Caspa hybrid workspace: contain long imported names and keep every surface scrollable. */
+.hybrid-workspace {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
+  overflow-y: visible;
+  touch-action: pan-y;
+}
+
+.hybrid-main,
+.hybrid-library-grid,
+.hybrid-project-card,
+.hybrid-editor-grid,
+.hybrid-editor-panel,
+.hybrid-sidebar {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hybrid-project-card,
+.hybrid-project-card h3,
+.hybrid-sidebar,
+.hybrid-sidebar * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.hybrid-manuscript {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: auto;
+  touch-action: pan-y;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .hybrid-editor-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .hybrid-sidebar {
+    width: 100%;
+  }
+}
+
+.caspa-desk {
+  min-height: 100vh;
+  color: #f4ead6;
+  background:
+    radial-gradient(circle at 10% -10%, rgba(201, 167, 104, 0.16), transparent 35rem),
+    radial-gradient(circle at 100% 20%, rgba(48, 40, 72, 0.35), transparent 32rem),
+    linear-gradient(180deg, #14111c, #0d0b12);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.caspa-desk h1, .caspa-desk h2, .caspa-desk h3, .caspa-desk h4 {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  margin: 0;
+}
+
+.desk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 28px;
+  border-bottom: 1px solid rgba(201, 167, 104, 0.18);
+  background: rgba(16, 13, 22, 0.88);
+  backdrop-filter: blur(16px);
+}
+
+.desk-brand, .desk-header-actions, .desk-row, .desk-chips, .desk-formats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.desk-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 167, 104, 0.4);
+  color: #d4b36a;
+}
+
+.eyebrow {
+  color: #d4b36a;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.literary-card {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid rgba(201, 167, 104, 0.18);
+  background: rgba(28, 24, 36, 0.82);
+  border-radius: 16px;
+  padding: 18px;
+  overflow-wrap: anywhere;
+}
+
+.gold-rule {
+  height: 1px;
+  margin: 14px 0;
+  background: linear-gradient(90deg, transparent, rgba(201, 167, 104, 0.7), transparent);
+}
+
+.desk-status, .desk-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 12px 28px;
+  border-bottom: 1px solid rgba(201, 167, 104, 0.12);
+}
+
+.desk-status span, .desk-muted, .workspace-help-copy {
+  color: #b9aa98;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.desk-rail button, .desk-ghost, .desk-chips button, .desk-formats button, .desk-version, .desk-back {
+  border: 1px solid rgba(201, 167, 104, 0.22);
+  background: rgba(20, 16, 26, 0.6);
+  color: #eee3d2;
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.desk-rail button.is-active, .desk-formats button.is-active, .desk-primary, a.desk-primary {
+  background: #c9a768;
+  color: #17110a;
+  border: 0;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+}
+
+.desk-primary, a.desk-primary, .desk-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 10px;
+}
+
+.desk-field, .desk-field input, .desk-field textarea, .hybrid-sidebar input, .hybrid-sidebar select, .hybrid-sidebar textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.desk-field { margin-top: 12px; color: #d8cbb9; font-size: 13px; }
+.desk-field input, .desk-field textarea, .hybrid-sidebar input, .hybrid-sidebar select {
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #514230;
+  background: #17120e;
+  color: #f4ebdc;
+}
+
+.desk-formats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.desk-formats button { border-radius: 12px; text-align: left; min-height: 84px; }
+.desk-formats span { display: block; color: #a99b89; font-size: 11px; }
+
+.desk-banner, .desk-help { margin: 16px 28px 0; }
+.desk-banner.is-conflict { border-color: #c47a6a; }
+.desk-busy { display: inline-flex; gap: 6px; align-items: center; color: #d4b36a; }
+.desk-back { background: transparent; border: 0; color: #d4b36a; margin-bottom: 16px; }
+.desk-metric { font-family: "Cormorant Garamond", Georgia, serif; font-size: 30px; margin: 8px 0; }
+.desk-preview { max-height: 240px; overflow: auto; white-space: pre-wrap; background: #efe4d2; color: #282018; padding: 12px; border-radius: 8px; font: 13px/1.6 Georgia, serif; }
+.desk-finding, .desk-change, .desk-check, .desk-version { display: block; width: 100%; text-align: left; border-top: 1px solid #3b3128; padding: 10px 0; background: transparent; color: inherit; }
+.desk-check.is-pass { color: #bdd6ad; }
+.desk-check.is-fail { color: #e5ae9e; }
+.workspace-tool-host-bar { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.workspace-tool-host-body, .workspace-tool-embed, .workspace-tool-embed-body { min-width: 0; max-width: 100%; overflow: auto; }
+.workspace-tool-embed { max-height: min(80vh, 920px); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+@media (max-width: 1024px) {
+  .desk-status, .desk-header, .desk-rail { padding-left: 16px; padding-right: 16px; }
+}
+
+@media (max-width: 620px) {
+  .hybrid-header {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px !important;
+  }
+
+  .hybrid-main {
+    padding: 16px !important;
+  }
+
+  .hybrid-library-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .hybrid-manuscript {
+    min-height: 60vh !important;
+    padding: 24px 18px !important;
+    font-size: 16px !important;
+  }
+}
+
 :root {
   color-scheme: dark;
   --caspa-bg: #0b0d14;
@@ -56,7 +277,7 @@
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: auto;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     @apply bg-surface-bg text-text-primary antialiased;

@@ -1,7 +1,6 @@
 import {StrictMode, Component, ErrorInfo, ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
-import ChapterSourceDock from './components/ChapterSourceDock.tsx';
 import { installInspirationFetchBridge } from './services/sourcePackService.ts';
 import './index.css';
 import './components/CaspaThemeOverride.css';
@@ -74,7 +73,6 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <App />
-      <ChapterSourceDock />
     </ErrorBoundary>
   </StrictMode>,
 );

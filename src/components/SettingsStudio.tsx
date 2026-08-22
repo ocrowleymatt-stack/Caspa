@@ -69,7 +69,22 @@ export default function SettingsStudio({ userEmail, userId, onFastUpload }: Prop
   const refreshDoctor = useCallback(async () => {
     setCheckingDoctor(true);
     try {
-      const res = await fetch('/api/doctor');
+      const res = await fetch('/api/v2/doctor');
+      if (res.status === 401 || res.status === 403) {
+        const pub = await fetch('/api/doctor');
+        const data = await pub.json();
+        if (data.success) {
+          setReadiness({
+            ready: Boolean(data.data.ready),
+            label: data.data.status,
+            blockers: [],
+            warnings: [],
+          });
+          setDoctorVersion('');
+          setBuildFingerprint('');
+        }
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setReadiness(data.data.readiness || null);
@@ -184,7 +199,8 @@ export default function SettingsStudio({ userEmail, userId, onFastUpload }: Prop
           {readiness ? (
             <>
               <p style={{ margin: '0 0 10px', color: readiness.ready ? '#15803d' : '#a02b20', fontWeight: 800 }}>
-                {readiness.ready ? 'Ready to run' : 'Blocked'} · score {readiness.score ?? '—'}
+                {readiness.ready ? 'Ready to run' : 'Blocked'}
+                {readiness.score != null ? ` · score ${readiness.score}` : ''}
                 {doctorVersion ? ` · v${doctorVersion}` : ''}
               </p>
               {buildFingerprint && (

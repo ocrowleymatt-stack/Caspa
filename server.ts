@@ -23,8 +23,15 @@ import caspaWriteRoutes from './src/routes/caspa-write-routes';
 import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import economyBatchRoutes from './src/routes/economy-batch-routes';
 import osintRoutes from './src/routes/osint-routes';
+import caspaProjectRoutes from './src/routes/caspa-project-routes';
+import caspaHybridCoreRoutes from './src/routes/caspa-hybrid-core-routes';
+import caspaJobRoutes from './src/routes/caspa-job-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
-import { getBuildInfo } from './src/services/buildInfoService';
+import { requestUser, requireAuthenticatedUser } from './src/middleware/authenticatedUser';
+import { acquireVisionSlot, estimateVisionSpend, validateVisionImage } from './src/services/visionGuard';
+import { ensureProjectSchema } from './src/services/projectRepository';
+import { ensureHybridCoreSchema } from './src/services/hybridCoreRepository';
+import { publicHealthPayload } from './src/services/publicHealth';
 import { startCloudKnowledgeAutopilot } from './src/services/cloudKnowledgeAutopilotService';
 import {
   AI_PROVIDERS,
@@ -56,27 +63,21 @@ const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// Health Check
-app.get("/health", (req, res) => {
-  const build = getBuildInfo();
-  res.json({
-    status: "ok",
-    service: "Caspa",
-    version: build.version,
-    gitSha: build.gitSha,
-    gitShaShort: build.gitShaShort,
-    builtAt: build.builtAt,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    env: process.env.NODE_ENV || "production (default)",
-  });
+// Health Check — coarse public status only. Build SHA / env / uptime stay off this route.
+app.get("/health", (_req, res) => {
+  res.json(publicHealthPayload());
 });
 
-app.use('/api/ai/economy', economyBatchRoutes);
-app.use('/api/osint', osintRoutes);
+app.get("/api/health", (_req, res) => {
+  res.json(publicHealthPayload());
+});
 
 // Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.
 app.use("/api/doctor", caspaDoctorRoutes);
+
+app.use('/api', requireAuthenticatedUser);
+app.use('/api/ai/economy', economyBatchRoutes);
+app.use('/api/osint', osintRoutes);
 
 // Canonical Atlas text-routing helpers. Provider selection, cost policy,
 // circuit breaking and fallback all live behind routeAtlasPrompt().
@@ -110,15 +111,6 @@ async function callXAI(prompt: string, json = false, maxTokens?: number) {
 async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {
   return callRoutedServerModel(prompt, json, maxTokens, 'venice');
 }
-
-// API routes go here FIRST
-app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    timestamp: new Date().toISOString(),
-    env: IS_DEVELOPMENT ? "development" : "production"
-  });
-});
 
 // Safe catalogue of models Atlas can discover without asking the user for new credentials.
 app.get("/api/ai/models", async (_req, res) => {
@@ -278,10 +270,19 @@ app.post("/api/ai/image-grok", async (req, res) => {
 // ── Vision / OCR endpoint ─────────────────────────────────────────────────────
 // Accepts base64-encoded image and returns extracted text via Grok vision
 app.post("/api/ai/vision", async (req, res) => {
-  const { imageBase64, mimeType } = req.body;
+  const user = requestUser(res);
+  const validated = validateVisionImage(req.body?.imageBase64, req.body?.mimeType);
+  if (validated.ok === false) {
+    return res.status(validated.status).json({ message: validated.message });
+  }
+  const slot = acquireVisionSlot(user.id, estimateVisionSpend(validated));
+  if (slot.ok === false) return res.status(slot.status).json({ message: slot.message });
+
   const apiKey = process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
-  if (!apiKey) return res.status(400).json({ message: "Grok API key not configured" });
-  if (!imageBase64) return res.status(400).json({ message: "imageBase64 required" });
+  if (!apiKey) {
+    slot.release();
+    return res.status(400).json({ message: "Grok API key not configured" });
+  }
 
   try {
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -292,7 +293,7 @@ app.post("/api/ai/vision", async (req, res) => {
         messages: [{
           role: "user",
           content: [
-            { type: "image_url", image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${imageBase64}` } },
+            { type: "image_url", image_url: { url: `data:${validated.mimeType};base64,${validated.base64}` } },
             { type: "text", text: "Extract and transcribe ALL text visible in this image. Preserve paragraph structure, headings, bullet points, and formatting as closely as possible. If there is no text, describe the visual content in detail instead." }
           ]
         }],
@@ -307,6 +308,8 @@ app.post("/api/ai/vision", async (req, res) => {
     return res.json({ result: data.choices?.[0]?.message?.content || '' });
   } catch (err: any) {
     res.status(500).json({ message: "Vision OCR exception", error: err.message });
+  } finally {
+    slot.release();
   }
 });
 
@@ -731,6 +734,9 @@ app.use("/api/caspa/export", caspaExportRoutes);
 app.use("/api/caspa/gold", caspaGoldRoutes);
 app.use("/api/caspa/novel-write-pro", caspaQualityRoutes);
 app.use("/api/caspa/storage", caspaStorageRoutes);
+app.use("/api/projects", caspaProjectRoutes);
+app.use("/api/v2", caspaHybridCoreRoutes);
+app.use("/api/jobs", caspaJobRoutes);
 app.use("/api/atlas/knowledge", caspaKnowledgeRoutes);
 app.use("/api/caspa/knowledge", caspaKnowledgeRoutes);
 app.use("/api/caspa/rewire", caspaRewireRoutes);
@@ -1109,6 +1115,8 @@ app.use("/api", (req, res) => {
 
 
 async function run() {
+  await ensureProjectSchema();
+  await ensureHybridCoreSchema();
   // DEFAULT TO PRODUCTION: Only use Vite dev middleware if NODE_ENV is explicitly set to "development"
   if (IS_DEVELOPMENT) {
     console.log("[Server] Starting in DEVELOPMENT mode with Vite middleware");
@@ -1155,8 +1163,9 @@ async function run() {
   startCloudKnowledgeAutopilot();
 
   // Listen — long AI/research calls need node HTTP timeouts > nginx default.
-  const httpServer = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n🧭 Atlas running at http://0.0.0.0:${PORT}`);
+  const bindHost = process.env.CASPA_BIND_HOST || "127.0.0.1";
+  const httpServer = app.listen(PORT, bindHost, () => {
+    console.log(`\n🧭 Caspa running at http://${bindHost}:${PORT}`);
     console.log(`Environment: ${IS_DEVELOPMENT ? 'DEVELOPMENT' : 'PRODUCTION'}`);
     console.log(`Dist path: ${path.join(process.cwd(), 'dist')}\n`);
   });

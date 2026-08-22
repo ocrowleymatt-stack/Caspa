@@ -64,9 +64,7 @@ function buildReadiness(snapshot: {
 
   if (!anyAi) {
     if (snapshot.unifiedConfigured && !snapshot.unifiedAvailable) {
-      blockers.push(
-        'UNIFIED_ROUTER_URL is set but the router is unreachable. Check 127.0.0.1:9999 (host) or 172.18.0.1:9999 (Docker).'
-      );
+      blockers.push('The configured AI router is unreachable.');
     } else {
       blockers.push(
         'No AI provider configured. Set UNIFIED_ROUTER_URL, GEMINI_API_KEY (or another provider), or start Ollama.'
@@ -104,6 +102,17 @@ function buildReadiness(snapshot: {
     blockers,
     warnings,
   };
+}
+
+export function publicDoctorView(snapshot: Awaited<ReturnType<typeof getDoctorSnapshot>>): { status: 'ok' | 'degraded'; ready: boolean } {
+  return {
+    status: snapshot.status,
+    ready: snapshot.readiness.ready,
+  };
+}
+
+export async function getPublicDoctorStatus(): Promise<{ status: 'ok' | 'degraded'; ready: boolean }> {
+  return publicDoctorView(await getDoctorSnapshot());
 }
 
 export async function getDoctorSnapshot() {
@@ -158,7 +167,7 @@ export async function getDoctorSnapshot() {
       anthropicConfigured,
       grokConfigured,
       veniceConfigured,
-      unifiedRouter: unified,
+      unifiedRouter: { configured: unified.configured, available: unified.available },
       ollama,
       liveWebSearchConfigured: grokConfigured,
     },

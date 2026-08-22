@@ -74,7 +74,8 @@ export default function ChapterSourceDock() {
   const panelStyle: React.CSSProperties = {
     position: 'fixed',
     right: 'max(12px, env(safe-area-inset-right))',
-    bottom: 'max(18px, env(safe-area-inset-bottom))',
+    // Keep the dock clear of Caspa's persistent workflow action bar.
+    bottom: 'calc(88px + env(safe-area-inset-bottom))',
     width: 'min(420px, calc(100vw - 24px))',
     maxHeight: 'min(72vh, 720px)',
     overflow: 'hidden',
@@ -177,8 +178,10 @@ export default function ChapterSourceDock() {
           style={{
             position: 'fixed',
             right: 'max(4px, env(safe-area-inset-right))',
-            top: '50%',
-            transform: 'translateY(-50%)',
+            // The workflow bar owns the lower edge of the screen. Pin this
+            // utility tab below the browser/header area instead of letting it
+            // float over page actions.
+            top: 'max(84px, calc(env(safe-area-inset-top) + 64px))',
             zIndex: 901,
             width: 42,
             height: 52,
