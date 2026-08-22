@@ -19,12 +19,10 @@ ok "/health"
 # Doctor
 DOCTOR=$(curl -sf "$BASE/api/doctor") || fail "/api/doctor"
 echo "$DOCTOR" | grep -q '"success":true' || fail "/api/doctor success"
-echo "$DOCTOR" | grep -q '"readiness"' || fail "/api/doctor readiness"
-echo "$DOCTOR" | grep -q '"version"' || fail "/api/doctor version"
-echo "$DOCTOR" | grep -q '"service":"Caspa"' || fail "/api/doctor service Caspa"
-echo "$DOCTOR" | grep -q '"gitSha"' || fail "/api/doctor gitSha"
-echo "$DOCTOR" | grep -q '"builtAt"' || fail "/api/doctor builtAt"
-echo "$DOCTOR" | grep -q '"localGuestAllowed":true' || fail "/api/doctor localGuestAllowed"
+echo "$DOCTOR" | grep -q '"status"' || fail "/api/doctor status"
+echo "$DOCTOR" | grep -q '"ready"' || fail "/api/doctor ready"
+echo "$DOCTOR" | grep -q '"gitSha"' && fail "public /api/doctor must not expose gitSha"
+echo "$DOCTOR" | grep -q '"aiProviders"\|"UNIFIED_ROUTER"\|127.0.0.1:9999\|"jobs"\|"storage"' && fail "public /api/doctor leaked internals"
 ok "/api/doctor"
 
 # Stale-generation guard: old Atlas doctor advertised CASPA Studio / sqlite modules.

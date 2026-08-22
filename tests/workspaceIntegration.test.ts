@@ -3,6 +3,8 @@ import test from 'node:test';
 import { DESK_STAGES, findWorkspaceTool, toolsForStage } from '../src/services/workspaceCatalog';
 import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, selectRebuildChapter, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
 import { briefFromProject, collectToolCache, hydrateToolCache, mergeWorkspaceArtefacts, scopedCacheKey } from '../src/services/workspaceProjectBridge';
+import { activateUserDatabase, deactivateUserDatabase } from '../src/services/userDatabaseService';
+import { isSensitiveProjectCacheKey } from '../src/services/workspaceCacheKeys';
 import { assertExpectedSourceVersion, HybridConflictError, summarizeVersion } from '../src/services/hybridCoreRepository';
 import { readIngestFile } from '../src/services/workspaceIngest';
 import { assertJobBoundToProject, jobMatchesProject } from '../src/services/jobQueueService';
@@ -175,6 +177,7 @@ test('browser cache keys are scoped so two projects cannot contaminate each othe
   assert.equal(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-a')), '# Ch\n\nALPHA');
   assert.equal(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-b')), '# Ch\n\nBETA');
   assert.equal(localStorage.getItem('caspa.whitePage'), null);
+  assert.equal(localStorage.getItem('caspa.whitePage.proj-a'), null);
   const fromA = collectToolCache(projectA, '# Ch\n\nOTHER');
   assert.match(String(fromA.manuscriptProposal || ''), /ALPHA/);
   assert.doesNotMatch(String(fromA.manuscriptProposal || ''), /BETA/);
@@ -207,6 +210,27 @@ test('identically named projects keep separate canon, research and psychology ca
   assert.equal((fromA.artefacts.canon?.characters as any[])[0].id, 'clerk');
   assert.equal((fromA.artefacts.research as any[])[0].id, 'note-a');
   assert.equal((fromA.artefacts.psychology as any).id, 'psy-a');
+});
+
+test('manuscript caches are user-scoped and do not survive sign-out', () => {
+  installMemoryStorage();
+  activateUserDatabase('author-a');
+  const project = {
+    id: 'proj-a',
+    title: 'Harbour Book',
+    mode: 'novel',
+    revision: 1,
+    updatedAt: '2026-08-22T00:00:00.000Z',
+    state: { brief: { idea: 'tide' }, research: [{ id: 'note-a' }] },
+  };
+  hydrateToolCache(project, '# Ch\n\nSECRET MANUSCRIPT');
+  assert.match(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-a')) || '', /SECRET MANUSCRIPT/);
+  deactivateUserDatabase('author-a');
+  assert.equal(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-a')), null);
+  assert.equal(localStorage.getItem('caspa.activeHybridProject'), null);
+  const packed = JSON.parse(localStorage.getItem('atlas.userdb.author-a') || '{}');
+  assert.ok(!Object.keys(packed).some((key) => isSensitiveProjectCacheKey(key)));
+  assert.doesNotMatch(JSON.stringify(packed), /SECRET MANUSCRIPT/);
 });
 
 test('title, contents and part headings stay as boundaries but are not rebuild targets', () => {

@@ -27,7 +27,8 @@ import caspaProjectRoutes from './src/routes/caspa-project-routes';
 import caspaHybridCoreRoutes from './src/routes/caspa-hybrid-core-routes';
 import caspaJobRoutes from './src/routes/caspa-job-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
-import { requireAuthenticatedUser } from './src/middleware/authenticatedUser';
+import { requestUser, requireAuthenticatedUser } from './src/middleware/authenticatedUser';
+import { acquireVisionSlot, validateVisionImage } from './src/services/visionGuard';
 import { ensureProjectSchema } from './src/services/projectRepository';
 import { ensureHybridCoreSchema } from './src/services/hybridCoreRepository';
 import { getBuildInfo } from './src/services/buildInfoService';
@@ -285,10 +286,22 @@ app.post("/api/ai/image-grok", async (req, res) => {
 // ── Vision / OCR endpoint ─────────────────────────────────────────────────────
 // Accepts base64-encoded image and returns extracted text via Grok vision
 app.post("/api/ai/vision", async (req, res) => {
-  const { imageBase64, mimeType } = req.body;
+  const user = requestUser(res);
+  const slot = acquireVisionSlot(user.id);
+  if (slot.ok === false) return res.status(slot.status).json({ message: slot.message });
+
+  const imageBase64 = String(req.body?.imageBase64 || '');
+  const validated = validateVisionImage(imageBase64, req.body?.mimeType);
+  if (validated.ok === false) {
+    slot.release();
+    return res.status(validated.status).json({ message: validated.message });
+  }
+
   const apiKey = process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
-  if (!apiKey) return res.status(400).json({ message: "Grok API key not configured" });
-  if (!imageBase64) return res.status(400).json({ message: "imageBase64 required" });
+  if (!apiKey) {
+    slot.release();
+    return res.status(400).json({ message: "Grok API key not configured" });
+  }
 
   try {
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -299,7 +312,7 @@ app.post("/api/ai/vision", async (req, res) => {
         messages: [{
           role: "user",
           content: [
-            { type: "image_url", image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${imageBase64}` } },
+            { type: "image_url", image_url: { url: `data:${validated.mimeType};base64,${imageBase64.replace(/\s+/g, '')}` } },
             { type: "text", text: "Extract and transcribe ALL text visible in this image. Preserve paragraph structure, headings, bullet points, and formatting as closely as possible. If there is no text, describe the visual content in detail instead." }
           ]
         }],
@@ -314,6 +327,8 @@ app.post("/api/ai/vision", async (req, res) => {
     return res.json({ result: data.choices?.[0]?.message?.content || '' });
   } catch (err: any) {
     res.status(500).json({ message: "Vision OCR exception", error: err.message });
+  } finally {
+    slot.release();
   }
 });
 

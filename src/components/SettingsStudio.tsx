@@ -69,7 +69,7 @@ export default function SettingsStudio({ userEmail, userId, onFastUpload }: Prop
   const refreshDoctor = useCallback(async () => {
     setCheckingDoctor(true);
     try {
-      const res = await fetch('/api/doctor');
+      const res = await fetch('/api/v2/doctor');
       const data = await res.json();
       if (data.success) {
         setReadiness(data.data.readiness || null);

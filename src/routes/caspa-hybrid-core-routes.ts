@@ -29,8 +29,13 @@ import { assertJobBoundToProject, bindJobToProject, getUserJob, jobSummary, list
 import { getProject, updateProject } from '../services/projectRepository';
 import { parseChapterIndex, selectRebuildChapter, splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
 import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
+import { getDoctorSnapshot } from '../services/doctorService';
 
 const router = express.Router();
+
+router.get('/doctor', async (_req, res) => {
+  return res.json({ success: true, data: await getDoctorSnapshot() });
+});
 
 router.get('/projects/:projectId/versions', async (req, res) => {
   const versions = await listManuscriptVersionSummaries(requestUser(res).id, req.params.projectId);

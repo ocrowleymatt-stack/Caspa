@@ -7,6 +7,7 @@ import type { ProjectBriefLike } from './commissionService';
 import { AIService } from './ai';
 import { briefToProject } from './commissionService';
 import { readApiJson } from './apiJson';
+import { scopedCacheKey } from './workspaceCacheKeys';
 
 export interface StoredResearchNote extends ResearchNote {
   verificationStatus?: 'unverified' | 'verified' | 'contradicted';
@@ -26,7 +27,7 @@ export function getProjectKey(brief: ProjectBriefLike): string {
 }
 
 function storageKey(projectKey: string): string {
-  return `caspa.research.${projectKey}`;
+  return projectKey.startsWith('caspa.research.') ? projectKey : scopedCacheKey('caspa.research', projectKey);
 }
 
 export function loadLibrary(projectKey: string): StoredResearchNote[] {

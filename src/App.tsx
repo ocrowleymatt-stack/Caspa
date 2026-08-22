@@ -631,9 +631,9 @@ function CaspaUI() {
     const key = 'atlas.runtime.gitSha';
     const checkBuild = async () => {
       try {
-        const response = await fetch('/api/doctor', { cache: 'no-store' });
+        const response = await fetch('/health', { cache: 'no-store' });
         const data = await response.json();
-        const sha = data?.data?.gitSha || data?.data?.deployment?.gitSha || '';
+        const sha = data?.gitSha || '';
         if (!sha || cancelled) return;
         const previous = sessionStorage.getItem(key);
         if (previous && previous !== sha) {

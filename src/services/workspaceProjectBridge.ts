@@ -1,5 +1,9 @@
 import { loadLibrary } from './researchLibraryService';
 import type { ProjectBriefLike } from './commissionService';
+import {
+  ACTIVE_HYBRID_PROJECT_KEY,
+  scopedCacheKey,
+} from './workspaceCacheKeys';
 import { assembleManuscript, detectManuscriptProposal, splitManuscript, splitManuscriptChapters } from './workspaceRebuild';
 
 export type WorkspaceProject = {
@@ -37,16 +41,9 @@ export type IngestSource = {
   createdAt: string;
 };
 
-export const ACTIVE_HYBRID_PROJECT_KEY = 'caspa.activeHybridProject';
+export { ACTIVE_HYBRID_PROJECT_KEY, clearSensitiveProjectCaches, scopedCacheKey } from './workspaceCacheKeys';
 
 const MANUSCRIPT_STATE_KEYS = ['manuscript', 'whitePage', 'manuscriptSource'] as const;
-
-export function scopedCacheKey(
-  base: 'caspa.whitePage' | 'caspa.manuscriptSource' | 'caspa.commission',
-  projectId: string,
-): string {
-  return `${base}.${projectId}`;
-}
 
 function writeScopedManuscript(projectId: string, manuscript: string): void {
   localStorage.setItem(scopedCacheKey('caspa.whitePage', projectId), manuscript);
@@ -103,20 +100,20 @@ export function hydrateToolCache(project: WorkspaceProject, manuscript: string):
   const brief = briefFromProject(project);
   if (typeof localStorage === 'undefined') return brief;
   const key = project.id;
-  localStorage.setItem(`caspa.currentBrief.${key}`, JSON.stringify({ ...brief, createdAt: new Date().toISOString() }));
+  localStorage.setItem(scopedCacheKey('caspa.currentBrief', key), JSON.stringify({ ...brief, createdAt: new Date().toISOString() }));
   writeScopedManuscript(project.id, manuscript);
   const canon = project.state?.canon || {};
-  localStorage.setItem(`caspa.studioCanon.${key}`, JSON.stringify({
+  localStorage.setItem(scopedCacheKey('caspa.studioCanon', key), JSON.stringify({
     characters: canon.characters || [],
     plotNodes: canon.plotNodes || [],
     sourceMaterials: canon.sourceMaterials || [],
     critiques: canon.critiques || {},
   }));
   if (project.state?.research) {
-    localStorage.setItem(`caspa.research.${key}`, JSON.stringify(project.state.research));
+    localStorage.setItem(scopedCacheKey('caspa.research', key), JSON.stringify(project.state.research));
   }
   if (project.state?.psychology) {
-    localStorage.setItem(`caspa.psychology.${key}`, JSON.stringify(project.state.psychology));
+    localStorage.setItem(scopedCacheKey('caspa.psychology', key), JSON.stringify(project.state.psychology));
   }
   const chapters = Array.isArray(project.state?.commission?.chapters) && project.state.commission.chapters.length
     ? project.state.commission.chapters
@@ -153,10 +150,10 @@ export function collectToolCache(project: WorkspaceProject, canonicalManuscript:
   let commission = project.state?.commission;
   let draft = canonicalManuscript;
   try {
-    const rawCanon = localStorage.getItem(`caspa.studioCanon.${key}`);
+    const rawCanon = localStorage.getItem(scopedCacheKey('caspa.studioCanon', key));
     if (rawCanon) canon = JSON.parse(rawCanon);
     research = loadLibrary(key);
-    const rawPsych = localStorage.getItem(`caspa.psychology.${key}`);
+    const rawPsych = localStorage.getItem(scopedCacheKey('caspa.psychology', key));
     if (rawPsych) psychology = JSON.parse(rawPsych);
     const rawCommission = readScopedItem(project.id, 'caspa.commission');
     if (rawCommission) commission = JSON.parse(rawCommission);
