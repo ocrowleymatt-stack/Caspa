@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import HybridWorkspace from './components/HybridWorkspace';
 import {
   AlertCircle,
   Award,
@@ -1937,7 +1938,7 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ user, loading: authLoading, signOut: handleSignOut }}>
-      <CaspaUI />
+      {window.location.pathname.startsWith('/v2') ? <HybridWorkspace /> : <CaspaUI />}
     </AuthContext.Provider>
   );
 }

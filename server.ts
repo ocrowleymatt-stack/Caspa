@@ -24,10 +24,12 @@ import caspaDesignRoutes from './src/routes/caspa-design-routes';
 import economyBatchRoutes from './src/routes/economy-batch-routes';
 import osintRoutes from './src/routes/osint-routes';
 import caspaProjectRoutes from './src/routes/caspa-project-routes';
+import caspaHybridCoreRoutes from './src/routes/caspa-hybrid-core-routes';
 import caspaJobRoutes from './src/routes/caspa-job-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 import { requireAuthenticatedUser } from './src/middleware/authenticatedUser';
 import { ensureProjectSchema } from './src/services/projectRepository';
+import { ensureHybridCoreSchema } from './src/services/hybridCoreRepository';
 import { getBuildInfo } from './src/services/buildInfoService';
 import { startCloudKnowledgeAutopilot } from './src/services/cloudKnowledgeAutopilotService';
 import {
@@ -737,6 +739,7 @@ app.use("/api/caspa/gold", caspaGoldRoutes);
 app.use("/api/caspa/novel-write-pro", caspaQualityRoutes);
 app.use("/api/caspa/storage", caspaStorageRoutes);
 app.use("/api/projects", caspaProjectRoutes);
+app.use("/api/v2", caspaHybridCoreRoutes);
 app.use("/api/jobs", caspaJobRoutes);
 app.use("/api/atlas/knowledge", caspaKnowledgeRoutes);
 app.use("/api/caspa/knowledge", caspaKnowledgeRoutes);
@@ -1117,6 +1120,7 @@ app.use("/api", (req, res) => {
 
 async function run() {
   await ensureProjectSchema();
+  await ensureHybridCoreSchema();
   // DEFAULT TO PRODUCTION: Only use Vite dev middleware if NODE_ENV is explicitly set to "development"
   if (IS_DEVELOPMENT) {
     console.log("[Server] Starting in DEVELOPMENT mode with Vite middleware");
