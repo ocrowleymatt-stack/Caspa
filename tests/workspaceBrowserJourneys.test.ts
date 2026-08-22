@@ -94,6 +94,11 @@ function createMockServer() {
     }
     if (url.includes('/export-preflight')) return json(res, 200, { success: true, data: { passed: true, checks: [{ id: 'content', label: 'Manuscript content', passed: true, detail: 'ok' }] } });
     if (url.includes('/jobs')) return json(res, 200, { success: true, data: { jobs: [] } });
+    if (url === '/api/ai/call') {
+      return json(res, 200, {
+        result: '{"content":"The clerk is still washing the glass.","severity":"high","suggestions":["Let the tide arrive before the glass is clean."]}',
+      });
+    }
     if (url.startsWith('/api/')) return json(res, 200, { success: true, data: {} });
 
     const file = url === '/' ? '/index.html' : url.split('?')[0];
@@ -173,19 +178,19 @@ test('browser journeys walk the integrated desk against a mocked server', { skip
     await page.click('textarea[aria-label="Manuscript"]');
     await page.type('textarea[aria-label="Manuscript"]', 'The clerk washed the same glass after the tide had already turned.');
     await page.click('[data-testid="desk-stage-workshop"]');
-    await page.waitForSelector('[data-testid="desk-critic-swarm"]');
-    await page.click('[data-testid="desk-critic-swarm"]');
-    await page.waitForSelector('[data-testid="critic-swarm"]');
+    await page.waitForSelector('[data-testid="workshop-panel"]');
+    const workshopCopy = await page.$eval('[data-testid="workshop-panel"]', (node) => node.textContent || '');
+    assert.match(workshopCopy, /What's holding/i);
+    assert.doesNotMatch(workshopCopy, /Read the book/);
+    assert.match(workshopCopy, /Ask the critics/i);
     await page.waitForFunction(() => {
-      const button = document.querySelector('[data-testid="trigger-swarm"]') as HTMLButtonElement | null;
-      return Boolean(button && !button.disabled && /Trigger Swarm/i.test(button.textContent || ''));
+      const button = document.querySelector('[data-testid="desk-critic-swarm"]') as HTMLButtonElement | null;
+      return Boolean(button && !button.disabled && /Ask the critics/i.test(button.textContent || ''));
     });
-    const swarm = await page.$eval('[data-testid="trigger-swarm"]', (node) => ({
-      disabled: (node as HTMLButtonElement).disabled,
-      text: node.textContent || '',
-    }));
-    assert.match(swarm.text, /Trigger Swarm/i);
-    assert.equal(swarm.disabled, false, 'Trigger Swarm should be live once the page has text');
+    await page.click('[data-testid="desk-critic-swarm"]');
+    await page.waitForSelector('[data-testid="desk-critique"]');
+    const critique = await page.$eval('[data-testid="desk-critique"]', (node) => node.textContent || '');
+    assert.match(critique, /washing the glass|critics|Atlas|severity|high/i);
     t.diagnostic(`journeys exercised at ${base}`);
   } finally {
     await browser.close();

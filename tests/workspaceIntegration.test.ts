@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DESK_STAGES, findWorkspaceTool, toolsForStage } from '../src/services/workspaceCatalog';
-import { applyRebuildChanges, applySingleRebuildChange, chaptersNeedManuscriptSeed, detectManuscriptProposal, seedChaptersFromManuscript, selectRebuildChapter, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
+import { applyRebuildChanges, applySingleRebuildChange, chaptersNeedManuscriptSeed, detectManuscriptProposal, pickWorkshopManuscript, seedChaptersFromManuscript, selectRebuildChapter, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
 import { briefFromProject, collectToolCache, hydrateToolCache, mergeWorkspaceArtefacts, scopedCacheKey } from '../src/services/workspaceProjectBridge';
 import { activateUserDatabase, deactivateUserDatabase } from '../src/services/userDatabaseService';
 import { bindAuthentikCacheOwner, cacheOwnerScope, isSensitiveProjectCacheKey } from '../src/services/workspaceCacheKeys';
@@ -392,4 +392,14 @@ test('critic swarm seeds chapters from any page text, including empty stored stu
   const stored = JSON.parse(localStorage.getItem(scopedCacheKey('caspa.commission', 'proj-swarm')) || '{}');
   assert.ok(Array.isArray(stored.chapters));
   assert.match(String(stored.chapters[0]?.content || ''), /clerk washed/);
+});
+
+test('workshop diagnosis prefers the live page over a saved version', () => {
+  assert.equal(
+    pickWorkshopManuscript('  The clerk washed the glass.  ', 'Old saved chapter.'),
+    'The clerk washed the glass.',
+  );
+  assert.equal(pickWorkshopManuscript('   ', 'Saved only.'), 'Saved only.');
+  assert.equal(pickWorkshopManuscript(undefined, '', 'From artefact.'), 'From artefact.');
+  assert.equal(pickWorkshopManuscript(''), '');
 });

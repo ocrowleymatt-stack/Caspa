@@ -29,6 +29,8 @@ test('desk copy stays human and every stage has a next hint', () => {
   assert.equal(STAGE_NEXT.Draft.next, 'Workshop');
   assert.equal(STAGE_NEXT.Publish.next, undefined);
   assert.match(STAGE_NEXT.Idea.nextLabel || '', /Structure/);
+  assert.match(STAGE_HELP.Workshop, /critics/i);
+  assert.doesNotMatch(STAGE_HELP.Workshop, /Read the book/);
 });
 
 test('manuscript metrics count chapters rather than every subheading', () => {

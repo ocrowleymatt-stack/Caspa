@@ -28,7 +28,7 @@ import {
 import { callServerAi } from '../services/serverAiHelper';
 import { assertJobBoundToProject, bindJobToProject, getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
 import { getProject, updateProject } from '../services/projectRepository';
-import { parseChapterIndex, selectRebuildChapter, splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
+import { parseChapterIndex, pickWorkshopManuscript, selectRebuildChapter, splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
 import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
 import { getDoctorSnapshot } from '../services/doctorService';
 
@@ -185,8 +185,14 @@ router.post('/projects/:projectId/diagnosis', async (req, res) => {
   const project = await getOwnedProject(user.id, req.params.projectId);
   if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
   const latest = await latestManuscriptVersion(user.id, project.id);
-  const manuscript = String(latest?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
-  if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A manuscript is required before Workshop diagnosis.' });
+  const manuscript = pickWorkshopManuscript(
+    req.body?.manuscript,
+    latest?.content,
+    project.state?.commission?.artefact,
+    project.state?.manuscriptSource,
+    project.state?.whitePage,
+  );
+  if (!manuscript) return res.status(400).json({ success: false, message: 'Write on the page first. Diagnosis reads what you can see, and does not change it.' });
   const prompt = `Act as a rigorous developmental editor. Return ONLY valid JSON with this shape:
 {"summary":"objective assessment","findings":[{"category":"structure|continuity|character|pacing|voice|clarity|evidence","severity":"critical|major|minor","confidence":0.0,"evidence":"specific passage or location","rationale":"why it matters","recommendation":"bounded repair"}]}
 Use evidence from the text. Do not invent facts. Prefer 4-10 high-value findings.

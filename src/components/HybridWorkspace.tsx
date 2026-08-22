@@ -11,8 +11,11 @@ import {
   type WorkspaceToolId,
 } from '../services/workspaceCatalog';
 import { briefFromProject, collectToolCache, hydrateToolCache, type WorkspaceProject } from '../services/workspaceProjectBridge';
+import { briefToProject } from '../services/commissionService';
 import { extractImageViaVision, readIngestFile } from '../services/workspaceIngest';
 import { splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
+import { AIService } from '../services/ai';
+import type { Critique } from '../types';
 import WorkspaceToolHost from './WorkspaceToolHost';
 
 type Version = {
@@ -79,6 +82,8 @@ export default function HybridWorkspace() {
   const [draftTitle, setDraftTitle] = useState('');
   const [preview, setPreview] = useState<any | null>(null);
   const [diagnosis, setDiagnosis] = useState<any | null>(null);
+  const [critiques, setCritiques] = useState<Critique[]>([]);
+  const [swarmProgress, setSwarmProgress] = useState<{ done: number; total: number } | null>(null);
   const [rebuild, setRebuild] = useState<any | null>(null);
   const [finishedJobs, setFinishedJobs] = useState<any[]>([]);
   const [unboundJobs, setUnboundJobs] = useState<any[]>([]);
@@ -133,6 +138,8 @@ export default function HybridWorkspace() {
     setUnboundJobs([]);
     setFinishedJobs([]);
     setAssignPreviewId('');
+    setCritiques([]);
+    setSwarmProgress(null);
   }, [selected?.id]);
 
   useEffect(() => {
@@ -366,10 +373,49 @@ export default function HybridWorkspace() {
 
   const runDiagnosis = async () => {
     if (!selected) return;
-    setBusy(true); setMessage('Reading the saved book…');
-    try { const result = await api(`/api/v2/projects/${selected.id}/diagnosis`, { method: 'POST', body: '{}' }); setDiagnosis(result); setMessage('Notes are ready. The page is unchanged.'); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Diagnosis failed.'); }
+    if (!manuscript.trim()) { setMessage('Write on the page first.'); return; }
+    setBusy(true); setMessage('Reading the page…');
+    try {
+      const result = await api(`/api/v2/projects/${selected.id}/diagnosis`, {
+        method: 'POST',
+        body: JSON.stringify({ manuscript }),
+      });
+      setDiagnosis(result);
+      setMessage('Notes are ready. The page is unchanged.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not read the page.'); }
     finally { setBusy(false); }
+  };
+
+  const runDeskSwarm = async () => {
+    if (!selected) return;
+    if (!manuscript.trim()) { setMessage('Write on the page first.'); return; }
+    setBusy(true);
+    setSwarmProgress({ done: 0, total: 0 });
+    setMessage('The critics are reading through Atlas…');
+    try {
+      const project = briefToProject(briefFromProject(selected));
+      const results = await AIService.getSwarmCritique(
+        manuscript,
+        project.type,
+        project.maturity,
+        [],
+        undefined,
+        (partial, done, total) => {
+          setCritiques([...partial]);
+          setSwarmProgress({ done, total });
+          setMessage(`Critics ${done}/${total}…`);
+        },
+      );
+      setCritiques(results);
+      setMessage(results.length
+        ? 'The critics have spoken. The page is unchanged.'
+        : 'The critics returned nothing. Try again in a moment.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'The critics could not reach Atlas.');
+    } finally {
+      setBusy(false);
+      setSwarmProgress(null);
+    }
   };
 
   const analyzeRebuild = async () => {
@@ -791,8 +837,11 @@ export default function HybridWorkspace() {
                 )}
 
                 {stage === 'Workshop' && (
-                  <section className="literary-card">
-                    <p className="eyebrow">Workshop diagnosis</p>
+                  <section className="literary-card" data-testid="workshop-panel">
+                    <p className="eyebrow">Workshop</p>
+                    <p className="desk-muted">Two jobs. Neither rewrites the page.</p>
+                    <p className="desk-field"><span>What's holding</span></p>
+                    <p className="desk-muted">A short note on the stuck places. Reads the page you can see.</p>
                     {diagnosis ? (
                       <>
                         <p>{diagnosis.summary}</p>
@@ -800,9 +849,41 @@ export default function HybridWorkspace() {
                           <div key={index} className="desk-finding"><strong>{finding.category} · {finding.severity}</strong><span>{finding.recommendation || finding.rationale}</span></div>
                         ))}
                       </>
-                    ) :                     <p className="desk-muted">Ask Caspa what is holding. The page does not change.</p>}
-                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runDiagnosis()}>{diagnosis ? 'Look again' : 'Read the book'}</button>
-                    <button type="button" className="desk-ghost" data-testid="desk-critic-swarm" onClick={() => void openTool('Critic Swarm')}>Critic Swarm</button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="desk-ghost"
+                      data-testid="desk-whats-holding"
+                      disabled={busy || !manuscript.trim()}
+                      onClick={() => void runDiagnosis()}
+                    >
+                      {diagnosis ? 'Look again' : "What's holding?"}
+                    </button>
+                    <div className="gold-rule" />
+                    <p className="desk-field"><span>Critics</span></p>
+                    <p className="desk-muted">Several specialists read this page through Atlas. You choose what to keep.</p>
+                    {swarmProgress && (
+                      <p className="desk-busy" role="status">Critics {swarmProgress.done}/{swarmProgress.total || '…'}</p>
+                    )}
+                    {critiques.map((critique) => (
+                      <div key={critique.id} className="desk-finding" data-testid="desk-critique">
+                        <strong>{critique.agentName} · {critique.severity}</strong>
+                        <span>{critique.content}</span>
+                        {critique.suggestions.slice(0, 3).map((suggestion, index) => (
+                          <span key={index}>{suggestion.text}</span>
+                        ))}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="desk-primary"
+                      data-testid="desk-critic-swarm"
+                      disabled={busy || !manuscript.trim()}
+                      onClick={() => void runDeskSwarm()}
+                    >
+                      Ask the critics
+                    </button>
+                    {!manuscript.trim() && <p className="desk-muted">Write on the page first.</p>}
                   </section>
                 )}
 

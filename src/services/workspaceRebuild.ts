@@ -240,6 +240,15 @@ export function seedChaptersFromManuscript(manuscript: string, options: SplitOpt
   });
 }
 
+export function pickWorkshopManuscript(live: unknown, ...fallbacks: Array<string | undefined | null>): string {
+  const candidates = [typeof live === 'string' ? live : '', ...fallbacks];
+  for (const item of candidates) {
+    const text = String(item || '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 export function detectManuscriptProposal(canonical: string, candidate: string): boolean {
   return normalizeManuscript(canonical) !== normalizeManuscript(candidate);
 }
