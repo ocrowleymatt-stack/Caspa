@@ -11,7 +11,7 @@ import {
 } from '../services/workspaceCatalog';
 import { briefFromProject, collectToolCache, hydrateToolCache, type WorkspaceProject } from '../services/workspaceProjectBridge';
 import { extractImageViaVision, readIngestFile } from '../services/workspaceIngest';
-import { splitRebuildChapters } from '../services/workspaceRebuild';
+import { splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
 import WorkspaceToolHost from './WorkspaceToolHost';
 
 type Version = {
@@ -66,6 +66,8 @@ export default function HybridWorkspace() {
   const [diagnosis, setDiagnosis] = useState<any | null>(null);
   const [rebuild, setRebuild] = useState<any | null>(null);
   const [finishedJobs, setFinishedJobs] = useState<any[]>([]);
+  const [unboundJobs, setUnboundJobs] = useState<any[]>([]);
+  const [rebuildChapterIndex, setRebuildChapterIndex] = useState<number | ''>('');
   const [preflight, setPreflight] = useState<any | null>(null);
   const [showNewProject, setShowNewProject] = useState(true);
   const [newTitle, setNewTitle] = useState('');
@@ -109,6 +111,20 @@ export default function HybridWorkspace() {
     const timer = window.setInterval(() => void refreshSnapshot(selected.id), 20000);
     return () => window.clearInterval(timer);
   }, [selected?.id]);
+
+  useEffect(() => {
+    setRebuildChapterIndex('');
+    setUnboundJobs([]);
+    setFinishedJobs([]);
+  }, [selected?.id]);
+
+  useEffect(() => {
+    if (rebuildChapterIndex === '') return;
+    const chapters = splitManuscript(manuscript).chapters;
+    if (!chapters.some((chapter) => chapter.index === rebuildChapterIndex && chapter.rebuildable)) {
+      setRebuildChapterIndex('');
+    }
+  }, [manuscript, rebuildChapterIndex]);
 
   useEffect(() => {
     if (!selected?.id) return;
@@ -350,11 +366,19 @@ export default function HybridWorkspace() {
     finally { setBusy(false); }
   };
 
-  const planRebuild = async (chapterTitle?: string) => {
-    if (!selected) return;
+  const planRebuild = async () => {
+    if (!selected || rebuildChapterIndex === '') return;
+    const chapter = splitManuscript(manuscript).chapters.find((item) => item.index === rebuildChapterIndex);
+    if (!chapter?.rebuildable) {
+      setMessage('Choose a rebuildable chapter.');
+      return;
+    }
     setBusy(true);
     try {
-      const result = await api(`/api/v2/projects/${selected.id}/rebuild/plan`, { method: 'POST', body: JSON.stringify({ chapterTitle }) });
+      const result = await api(`/api/v2/projects/${selected.id}/rebuild/plan`, {
+        method: 'POST',
+        body: JSON.stringify({ chapterIndex: chapter.index, chapterTitle: chapter.title }),
+      });
       setRebuild(result);
       setMessage('Reconstruction plan ready. Preview the replacement before accepting.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Rebuild plan failed.'); }
@@ -381,11 +405,26 @@ export default function HybridWorkspace() {
     finally { setBusy(false); }
   };
 
+  const refreshFinishJobs = () => {
+    if (stage !== 'Finish' || !selected) {
+      setFinishedJobs([]);
+      setUnboundJobs([]);
+      return;
+    }
+    Promise.all([
+      api(`/api/jobs?limit=20&status=complete&projectId=${encodeURIComponent(selected.id)}`),
+      api(`/api/jobs?limit=20&status=complete&unbound=1`),
+    ]).then(([bound, unbound]) => {
+      setFinishedJobs((bound.jobs || []).filter((job: any) => job.resultAvailable && job.projectId === selected.id));
+      setUnboundJobs((unbound.jobs || []).filter((job: any) => job.resultAvailable && !job.projectId));
+    }).catch(() => {
+      setFinishedJobs([]);
+      setUnboundJobs([]);
+    });
+  };
+
   useEffect(() => {
-    if (stage !== 'Finish') return;
-    api(`/api/jobs?limit=20&status=complete&projectId=${encodeURIComponent(selected?.id || '')}`)
-      .then((data) => setFinishedJobs((data.jobs || []).filter((job: any) => job.resultAvailable && (!selected || job.projectId === selected.id))))
-      .catch(() => setFinishedJobs([]));
+    refreshFinishJobs();
   }, [stage, selected?.id]);
 
   const recoverJob = async (jobId: string) => {
@@ -398,6 +437,20 @@ export default function HybridWorkspace() {
       setMessage(`Finish result secured as immutable version ${version.revision}.`);
     } catch (error) { handleConflict(error, 'Could not recover the finished job.'); }
     finally { setBusy(false); }
+  };
+
+  const assignJob = async (jobId: string) => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await api(`/api/v2/projects/${selected.id}/jobs/${jobId}/assign`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
+      setMessage('Job assigned to this project. Recover it to create a version.');
+      refreshFinishJobs();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not assign that job.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const runPreflight = async () => {
@@ -453,6 +506,10 @@ export default function HybridWorkspace() {
 
   const wordCount = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
   const chapterCount = useMemo(() => splitRebuildChapters(manuscript).length, [manuscript]);
+  const manuscriptChapters = useMemo(() => splitManuscript(manuscript).chapters, [manuscript]);
+  const selectedRebuildChapter = rebuildChapterIndex === ''
+    ? null
+    : manuscriptChapters.find((chapter) => chapter.index === rebuildChapterIndex) || null;
   const brief = selected ? briefFromProject(selected) : null;
   const stageTools = toolsForStage(stage);
   const hybridTools = stage === 'Library' ? [] : contextualTools(stage === 'Idea' || stage === 'Structure' ? 'draft' : stage.toLowerCase() as any);
@@ -687,10 +744,26 @@ export default function HybridWorkspace() {
                 {stage === 'Revise' && (
                   <section className="literary-card" data-testid="rebuild-panel">
                     <p className="eyebrow">Rip up and rebuild</p>
-                    <p className="desk-muted">Analyse without modifying. Then plan one chapter, preview it, and accept or reject that change.</p>
+                    <p className="desk-muted">Analyse without modifying. Then choose one chapter, plan it, preview it, and accept or reject that change. Title, contents and part headings stay as structure.</p>
                     <button type="button" className="desk-ghost" disabled={busy} onClick={() => void analyzeRebuild()}>1. Analyse structure</button>
                     {rebuild?.analysis?.summary && <p>{rebuild.analysis.summary}</p>}
-                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void planRebuild()}>2. Plan one chapter</button>
+                    <label className="desk-field">
+                      <span>Chapter to rebuild</span>
+                      <select
+                        aria-label="Chapter to rebuild"
+                        data-testid="rebuild-chapter-select"
+                        value={rebuildChapterIndex === '' ? '' : String(rebuildChapterIndex)}
+                        onChange={(event) => setRebuildChapterIndex(event.target.value === '' ? '' : Number(event.target.value))}
+                      >
+                        <option value="">Choose a chapter</option>
+                        {manuscriptChapters.map((chapter) => (
+                          <option key={chapter.index} value={chapter.index} disabled={!chapter.rebuildable}>
+                            {chapter.rebuildable ? chapter.title : `${chapter.title} — structure`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button type="button" className="desk-ghost" disabled={busy || !selectedRebuildChapter?.rebuildable} onClick={() => void planRebuild()}>2. Plan chosen chapter</button>
                     {(rebuild?.changes || []).map((change: any) => (
                       <div key={change.id} className="desk-change">
                         <strong>{change.chapterTitle} · {change.status}</strong>
@@ -728,13 +801,26 @@ export default function HybridWorkspace() {
                 {stage === 'Finish' && (
                   <section className="literary-card">
                     <p className="eyebrow">Recovery Centre</p>
-                    <p className="desk-muted">Promote a completed server job into immutable history without running AI again.</p>
-                    {finishedJobs.length ? finishedJobs.map((job) => (
-                      <button key={job.id} type="button" className="desk-ghost" onClick={() => void recoverJob(job.id)}>
-                        <strong>{job.type}</strong>
-                        <span>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
-                      </button>
-                    )) : <p className="desk-muted">No unrecovered completed jobs found.</p>}
+                    <p className="desk-muted">Only jobs already assigned to this project can become a version. Unassigned jobs stay listed separately until you attach them.</p>
+                    <div data-testid="finish-recover-panel">
+                      {finishedJobs.length ? finishedJobs.map((job) => (
+                        <button key={job.id} type="button" className="desk-ghost" onClick={() => void recoverJob(job.id)}>
+                          <strong>{job.type}</strong>
+                          <span>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
+                        </button>
+                      )) : <p className="desk-muted">No completed jobs are assigned to this project.</p>}
+                    </div>
+                    <div className="gold-rule" />
+                    <p className="eyebrow">Unassigned jobs</p>
+                    <p className="desk-muted">Assigning attaches the job to this project. It does not write a manuscript version.</p>
+                    <div data-testid="finish-assign-panel">
+                      {unboundJobs.length ? unboundJobs.map((job) => (
+                        <button key={job.id} type="button" className="desk-ghost" disabled={busy} onClick={() => void assignJob(job.id)}>
+                          <strong>Assign {job.type}</strong>
+                          <span>{job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
+                        </button>
+                      )) : <p className="desk-muted">No unassigned completed jobs.</p>}
+                    </div>
                   </section>
                 )}
 

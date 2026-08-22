@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'crypto';
 import type { CaspaJobRecord, JobAuditSnapshot } from '../types/gold';
-import { archiveJobRecord, loadArchivedJob, loadJobStore, persistJobStore } from './jobStoreService';
+import { archiveJobRecord, listArchivedJobs, loadArchivedJob, loadJobStore, persistArchivedJob, persistJobStore } from './jobStoreService';
 import { currentProjectId, currentUser } from './requestContext';
 
 // Large book results can be several megabytes each. Keep the active ledger small
@@ -51,12 +51,18 @@ export function updateJob(
 ): CaspaJobRecord | null {
   const jobs = store();
   const job = jobs.get(id);
-  if (!job) return null;
-  Object.assign(job, patch, { updatedAt: new Date().toISOString() });
-  jobs.set(id, job);
-  pruneCompleted(jobs);
-  save(jobs);
-  return job;
+  if (job) {
+    Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+    jobs.set(id, job);
+    pruneCompleted(jobs);
+    save(jobs);
+    return job;
+  }
+  const archived = loadArchivedJob(id);
+  if (!archived) return null;
+  Object.assign(archived, patch, { updatedAt: new Date().toISOString() });
+  persistArchivedJob(archived);
+  return archived;
 }
 
 export function getJob(id: string): CaspaJobRecord | null {
@@ -82,29 +88,46 @@ export function getUserJob(userId: string, id: string): CaspaJobRecord | null {
 
 export function jobMatchesProject(job: { projectId?: string }, projectId?: string): boolean {
   if (!projectId) return true;
-  return !job.projectId || job.projectId === projectId;
+  return Boolean(job.projectId) && job.projectId === projectId;
 }
 
 export function assertJobBoundToProject(job: { projectId?: string }, projectId: string): void {
-  if (job.projectId && job.projectId !== projectId) {
-    const error = new Error('This completed job does not belong to the open project. Nothing was written.');
+  if (!job.projectId || job.projectId !== projectId) {
+    const error = new Error('This completed job is not assigned to the open project. Assign it first. Nothing was written.');
     (error as Error & { code: string }).code = 'JOB_PROJECT_MISMATCH';
     throw error;
   }
 }
 
-export function bindJobToProject(jobId: string, projectId: string): CaspaJobRecord | null {
+export function bindJobToProject(jobId: string, projectId: string): CaspaJobRecord {
   const job = getJob(jobId);
-  if (!job || (job.projectId && job.projectId !== projectId)) return job || null;
-  if (job.projectId) return job;
-  return updateJob(jobId, { projectId });
+  if (!job) {
+    const error = new Error('Job not found.');
+    (error as Error & { code: string }).code = 'JOB_NOT_FOUND';
+    throw error;
+  }
+  if (job.projectId && job.projectId !== projectId) {
+    assertJobBoundToProject(job, projectId);
+  }
+  if (job.projectId === projectId) return job;
+  const updated = updateJob(jobId, { projectId });
+  if (!updated?.projectId || updated.projectId !== projectId) {
+    const error = new Error('Could not assign this job to the project. Nothing was written.');
+    (error as Error & { code: string }).code = 'JOB_BIND_FAILED';
+    throw error;
+  }
+  return updated;
 }
 
-export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string): CaspaJobRecord[] {
-  return listRecentJobs(500)
+export function listUserJobs(userId: string, limit = 20, projectId?: string, status?: string, unboundOnly = false): CaspaJobRecord[] {
+  const active = listRecentJobs(500);
+  const seen = new Set(active.map((job) => job.id));
+  const archived = listArchivedJobs().filter((job) => !seen.has(job.id));
+  return [...active, ...archived]
     .filter((job) => (job.userId || 'legacy-owner') === userId)
-    .filter((job) => jobMatchesProject(job, projectId))
+    .filter((job) => unboundOnly ? !job.projectId : jobMatchesProject(job, projectId))
     .filter((job) => !status || job.status === status)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, limit);
 }
 

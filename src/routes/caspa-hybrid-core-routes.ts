@@ -27,7 +27,7 @@ import {
 import { callServerAi } from '../services/serverAiHelper';
 import { assertJobBoundToProject, bindJobToProject, getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
 import { getProject, updateProject } from '../services/projectRepository';
-import { splitRebuildChapters, titlesMatch } from '../services/workspaceRebuild';
+import { parseChapterIndex, selectRebuildChapter, splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
 import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
 
 const router = express.Router();
@@ -200,7 +200,6 @@ router.post('/projects/:projectId/recover-job/:jobId', async (req, res) => {
       code: 'JOB_PROJECT_MISMATCH',
     });
   }
-  bindJobToProject(job.id, req.params.projectId);
   const result = job.result as any;
   const content = String(result?.artefact || result?.finalText || '');
   if (!content.trim()) return res.status(409).json({ success: false, message: 'The completed job has no manuscript payload.' });
@@ -225,6 +224,26 @@ router.post('/projects/:projectId/recover-job/:jobId', async (req, res) => {
       return res.status(409).json({ success: false, message: error.message, code: error.code });
     }
     throw error;
+  }
+});
+
+router.post('/projects/:projectId/jobs/:jobId/assign', async (req, res) => {
+  if (req.body?.authorConfirmed !== true) {
+    return res.status(400).json({ success: false, message: 'Explicit assignment to this project is required.' });
+  }
+  const user = requestUser(res);
+  const job = getUserJob(user.id, req.params.jobId);
+  if (!job) return res.status(404).json({ success: false, message: 'Job not found.' });
+  try {
+    const assigned = bindJobToProject(job.id, req.params.projectId);
+    return res.json({ success: true, data: jobSummary(assigned) });
+  } catch (error) {
+    const code = (error as { code?: string }).code || 'JOB_PROJECT_MISMATCH';
+    return res.status(409).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Could not assign that job.',
+      code,
+    });
   }
 });
 
@@ -345,10 +364,12 @@ router.post('/projects/:projectId/rebuild/plan', async (req, res) => {
   const manuscript = String(latest?.content || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A saved version is required before a rebuild plan.' });
   const current = await latestRebuildPlan(user.id, project.id);
-  const chapters = splitRebuildChapters(manuscript);
-  const target = String(req.body?.chapterTitle || chapters[0]?.title || '').trim();
-  const chapter = chapters.find((item) => titlesMatch(item.title, target)) || chapters[0];
-  if (!chapter) return res.status(400).json({ success: false, message: 'No chapter could be isolated for reconstruction.' });
+  const chapters = splitManuscript(manuscript).chapters;
+  const chapter = selectRebuildChapter(chapters, {
+    chapterIndex: parseChapterIndex(req.body?.chapterIndex),
+    chapterTitle: req.body?.chapterTitle ? String(req.body.chapterTitle) : undefined,
+  });
+  if (!chapter) return res.status(400).json({ success: false, message: 'Choose a rebuildable chapter.' });
   const prompt = `Propose a bounded reconstruction of ONE chapter. Return ONLY JSON:
 {"chapterTitle":"${chapter.title}","rationale":"...","proposed":"full replacement chapter prose"}
 Preserve names, facts, and unresolved tensions. Do not rewrite other chapters.

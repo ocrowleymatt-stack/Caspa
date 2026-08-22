@@ -9,7 +9,14 @@ const router = express.Router();
 router.get('/', (req, res) => {
   const user = requestUser(res);
   const limit = Math.max(1, Math.min(100, Number(req.query.limit || 20)));
-  const jobs = listUserJobs(user.id, limit, String(req.query.projectId || ''), String(req.query.status || ''));
+  const unboundOnly = req.query.unbound === '1' || req.query.unbound === 'true';
+  const jobs = listUserJobs(
+    user.id,
+    limit,
+    unboundOnly ? undefined : String(req.query.projectId || ''),
+    String(req.query.status || ''),
+    unboundOnly,
+  );
   res.json({ success: true, data: { jobs: jobs.map(jobSummary) } });
 });
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DESK_STAGES, findWorkspaceTool, toolsForStage } from '../src/services/workspaceCatalog';
-import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
+import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, selectRebuildChapter, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
 import { briefFromProject, collectToolCache, hydrateToolCache, mergeWorkspaceArtefacts, scopedCacheKey } from '../src/services/workspaceProjectBridge';
 import { assertExpectedSourceVersion, HybridConflictError, summarizeVersion } from '../src/services/hybridCoreRepository';
 import { readIngestFile } from '../src/services/workspaceIngest';
@@ -231,13 +231,32 @@ test('title, contents and part headings stay as boundaries but are not rebuild t
   assert.doesNotMatch(next, /The clerk waits/);
 });
 
-test('finish recovery allows legacy unbound jobs and refuses a different project', () => {
-  assert.doesNotThrow(() => assertJobBoundToProject({}, 'proj-b'));
-  assert.equal(jobMatchesProject({}, 'proj-b'), true);
+test('finish recovery refuses unbound jobs and jobs bound to another project', () => {
+  assert.equal(jobMatchesProject({}, 'proj-b'), false);
   assert.equal(jobMatchesProject({ projectId: 'proj-b' }, 'proj-b'), true);
   assert.equal(jobMatchesProject({ projectId: 'proj-a' }, 'proj-b'), false);
-  assert.throws(() => assertJobBoundToProject({ projectId: 'proj-a' }, 'proj-b'), /does not belong/);
+  assert.throws(() => assertJobBoundToProject({}, 'proj-b'), /not assigned/);
+  assert.throws(() => assertJobBoundToProject({ projectId: 'proj-a' }, 'proj-b'), /not assigned/);
   assert.doesNotThrow(() => assertJobBoundToProject({ projectId: 'proj-b' }, 'proj-b'));
+});
+
+test('named chapters stay rebuildable and empty book titles do not', () => {
+  const named = '# Arrival\n\nThe clerk waits.\n\n# Turn\n\nThe sea arrives.';
+  const namedChapters = splitManuscript(named).chapters;
+  assert.deepEqual(namedChapters.map((chapter) => [chapter.title, chapter.rebuildable]), [['Arrival', true], ['Turn', true]]);
+  assert.equal(selectRebuildChapter(namedChapters, {}), null);
+  assert.equal(selectRebuildChapter(namedChapters, { chapterTitle: 'Arrival' }), null);
+  assert.equal(selectRebuildChapter(namedChapters, { chapterIndex: 0 })?.title, 'Arrival');
+  assert.equal(selectRebuildChapter(namedChapters, { chapterIndex: 0, chapterTitle: 'Turn' }), null);
+
+  const titled = '# Harbour Book\n\n# Contents\n\n- Chapter 1\n\n# Part One\n\n# Chapter 1\n\nThe clerk waits.';
+  const titledChapters = splitManuscript(titled).chapters;
+  assert.equal(titledChapters.find((chapter) => chapter.title === 'Harbour Book')?.rebuildable, false);
+  assert.equal(titledChapters.find((chapter) => chapter.title === 'Contents')?.rebuildable, false);
+  assert.equal(titledChapters.find((chapter) => chapter.title === 'Part One')?.rebuildable, false);
+  assert.equal(titledChapters.find((chapter) => chapter.title === 'Chapter 1')?.rebuildable, true);
+  assert.equal(selectRebuildChapter(titledChapters, { chapterIndex: 0 }), null);
+  assert.equal(selectRebuildChapter(titledChapters, { chapterIndex: titledChapters.find((chapter) => chapter.title === 'Chapter 1')?.index })?.title, 'Chapter 1');
 });
 
 test('version summaries omit manuscript bodies', () => {

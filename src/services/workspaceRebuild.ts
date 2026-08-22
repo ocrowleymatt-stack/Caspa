@@ -44,10 +44,27 @@ export function isExplicitChapterHeading(title: string): boolean {
   return EXPLICIT_CHAPTER.test(normalizeTitle(title));
 }
 
-export function isRebuildChapterHeading(title: string, options?: { preferExplicit?: boolean }): boolean {
-  if (isStructuralHeading(title)) return false;
-  if (options?.preferExplicit) return isExplicitChapterHeading(title);
-  return true;
+export function isRebuildChapterHeading(title: string): boolean {
+  return !isStructuralHeading(title);
+}
+
+export function isBookTitleHeading(
+  headingLine: string,
+  title: string,
+  index: number,
+  body: string,
+  headingCount: number,
+): boolean {
+  if (index !== 0 || headingCount < 2) return false;
+  if (isStructuralHeading(title) || isExplicitChapterHeading(title)) return false;
+  const isH1 = /^#\s+/.test(headingLine.trim()) && !/^##/.test(headingLine.trim());
+  return isH1 && !body.trim();
+}
+
+export function parseChapterIndex(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
+  return undefined;
 }
 
 export function splitManuscript(manuscript: string): SplitManuscript {
@@ -60,7 +77,6 @@ export function splitManuscript(manuscript: string): SplitManuscript {
       chapters: [{ title: 'Working draft', headingLine: '# Working draft', body: text, start: 0, end: text.length, index: 0, rebuildable: true }],
     };
   }
-  const preferExplicit = matches.some((match) => isExplicitChapterHeading(headingTitle(match[1])));
   const firstHeadingAt = matches[0].index || 0;
   const preamble = text.slice(0, firstHeadingAt).replace(/\s+$/, '');
   const chapters = matches.map((match, index) => {
@@ -69,6 +85,8 @@ export function splitManuscript(manuscript: string): SplitManuscript {
     const headingLine = match[1].trim();
     const heading = headingTitle(headingLine);
     const body = text.slice(start, next).replace(/^#+\s+[^\n]+\n?/, '').trim();
+    const rebuildable = isRebuildChapterHeading(heading)
+      && !isBookTitleHeading(headingLine, heading, index, body, matches.length);
     return {
       title: heading || `Section ${index + 1}`,
       headingLine,
@@ -76,10 +94,21 @@ export function splitManuscript(manuscript: string): SplitManuscript {
       start,
       end: next,
       index,
-      rebuildable: isRebuildChapterHeading(heading, { preferExplicit }),
+      rebuildable,
     };
   });
   return { preamble, chapters };
+}
+
+export function selectRebuildChapter(
+  chapters: ManuscriptChapter[],
+  selection: { chapterIndex?: number; chapterTitle?: string },
+): ManuscriptChapter | null {
+  if (!Number.isInteger(selection.chapterIndex)) return null;
+  const chapter = chapters.find((item) => item.index === selection.chapterIndex);
+  if (!chapter?.rebuildable) return null;
+  if (selection.chapterTitle && !titlesMatch(selection.chapterTitle, chapter.title)) return null;
+  return chapter;
 }
 
 export function splitManuscriptChapters(manuscript: string): ManuscriptChapter[] {

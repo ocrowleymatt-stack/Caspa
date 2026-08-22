@@ -99,6 +99,32 @@ export function loadArchivedJob(id: string): CaspaJobRecord | null {
   }
 }
 
+export function persistArchivedJob(job: CaspaJobRecord): CaspaJobRecord {
+  archiveJobRecord(job);
+  const persisted = loadArchivedJob(job.id);
+  if (!persisted || persisted.projectId !== job.projectId || persisted.updatedAt !== job.updatedAt) {
+    const error = new Error('Could not persist the archived job assignment.');
+    (error as Error & { code: string }).code = 'JOB_BIND_FAILED';
+    throw error;
+  }
+  return persisted;
+}
+
+export function listArchivedJobs(): CaspaJobRecord[] {
+  const dir = path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive');
+  if (!fs.existsSync(dir)) return [];
+  const jobs: CaspaJobRecord[] = [];
+  for (const name of fs.readdirSync(dir).filter((entry) => entry.endsWith('.json'))) {
+    try {
+      const job = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) as CaspaJobRecord;
+      if (job?.id) jobs.push(job);
+    } catch (error) {
+      console.warn(`[JobStore] Failed to read archived job ${name}:`, error);
+    }
+  }
+  return jobs;
+}
+
 let cache: Map<string, CaspaJobRecord> | null = null;
 
 export function loadJobStore(): Map<string, CaspaJobRecord> {
