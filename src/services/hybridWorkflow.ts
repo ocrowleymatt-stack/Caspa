@@ -21,7 +21,7 @@ export function nextHybridStage(stage: HybridStage): HybridStage {
 export function contextualTools(stage: HybridStage): string[] {
   if (stage === 'draft') return ['Research', 'Story bible', 'Psychology', 'Style profile'];
   if (stage === 'workshop') return ['Diagnosis', 'Reader review', 'Continuity', 'Fact check'];
-  if (stage === 'revise') return ['Revision plan', 'Gold Refinery', 'Red Pen', 'Version compare'];
+  if (stage === 'revise') return ['Rip & Fix', 'Auto Drafter', 'Scalpel', 'Gold Refinery', 'Red Pen', 'Version compare'];
   if (stage === 'finish') return ['Final QA', 'Recovery', 'Export preflight'];
   return ['Book design', 'Cover', 'Layout', 'Proof', 'Export'];
 }

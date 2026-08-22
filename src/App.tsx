@@ -213,6 +213,9 @@ function mapLegacyView(legacy: string): ViewType | null {
     settings: 'settings',
     dashboard: 'project',
     workshop: 'workshop',
+    bible: 'bible',
+    psychology: 'psychology',
+    redpen: 'redpen',
     gold: 'gold',
     pilot: 'pilot',
     showbox: 'showbox',
@@ -606,7 +609,10 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
 
 function CaspaUI() {
   const authContext = React.useContext(AuthContext);
-  const [currentView, setCurrentView] = useState<ViewType>(() => (hasActiveProject() ? 'project' : 'launchpad'));
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    const requested = mapLegacyView(new URLSearchParams(window.location.search).get('tool') || '');
+    return requested || (hasActiveProject() ? 'project' : 'launchpad');
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
