@@ -20,6 +20,8 @@ Open http://localhost:3000 → **Continue locally** → pick a door.
 ```bash
 npm install
 cp .env.example .env   # fill keys
+npm run lint
+npm test
 npm run build
 PORT=3000 CASPA_DATA_DIR=/root/Caspa/data NODE_ENV=production node dist/server.cjs
 # or:
@@ -28,7 +30,7 @@ npm run start:pm2      # uses ecosystem.config.cjs
 
 ### Atlas (caspa.ocrowley.com) recovery
 
-If production still shows the old seven-step “CASPA Studio” wizard or `/api/doctor` lacks `gitSha` / `service: Caspa`:
+If production still shows the old seven-step “CASPA Studio” wizard or `/api/doctor` does not report `service: Caspa`:
 
 ```bash
 cd /root/Caspa
@@ -44,23 +46,34 @@ curl -fsS http://127.0.0.1:3000/api/doctor
 
 Then clear Safari website data for `caspa.ocrowley.com` and reload.
 
-Manual GitHub Action (after adding SSH secret `HETZNER_SSH_KEY`): **Actions → Deploy Atlas → Run workflow** with `confirm=deploy`.
+Before deployment, set `CASPA_PROXY_SHARED_SECRET`, `CASPA_DATABASE_URL`, and
+`CASPA_OPS_GROUPS` in `/root/Caspa/.env`, and make sure nginx injects the same
+proxy secret and the trusted Authentik UID. The deployment workflow checks
+PostgreSQL connectivity and runs `scripts/verify-nginx-identity.sh` before PM2
+is reloaded.
+
+Manual GitHub Action (after adding SSH secret `HETZNER_SSH_KEY`): **Actions → Deploy Caspa → Run workflow** with `confirm=deploy`.
 
 Verify:
 
 ```bash
-npm run deploy:smoke   # server must already be listening on :3000
+CASPA_SMOKE_PROXY_SECRET="$CASPA_PROXY_SHARED_SECRET" npm run deploy:smoke
 # or full path:
 npm run verify         # build + smoke (start server between them if needed)
 ```
 
-Doctor endpoint (safe, no secrets): `GET /api/doctor` — readiness score plus `gitSha` / `builtAt` fingerprint.
+Public doctor endpoint: `GET /api/doctor` — coarse, sanitised readiness only.
+Authenticated operators can use `GET /api/v2/doctor` for the deployment
+fingerprint and detailed diagnostics.
 
 ## Env
 
 | Variable | Required | Notes |
 |---|---|---|
 | `GEMINI_API_KEY` | Recommended | Primary cloud model |
+| `CASPA_PROXY_SHARED_SECRET` | **Production** | High-entropy secret shared only by Caspa and the trusted nginx identity path |
+| `CASPA_DATABASE_URL` | **Production** | Canonical PostgreSQL project/revision database |
+| `CASPA_OPS_GROUPS` | **Production** | Explicit Authentik groups allowed to read detailed diagnostics; unset fails closed |
 | `PORT` | No | Default `3000` |
 | `CASPA_DATA_DIR` | Prod recommended | Jobs + backups persistence |
 | `VITE_GROK_API_KEY` / `OPENAI` / `ANTHROPIC` / `VENICE` | Optional | Extra providers |
@@ -79,4 +92,4 @@ Doctor endpoint (safe, no secrets): `GET /api/doctor` — readiness score plus `
 
 ## Smoke checks
 
-`/health`, `/api/doctor` (incl. `gitSha`), Cache-Control on `/`, Ollama smoke, Gold passes, backups list, Novel Write Pro quality pass, static UI, local-project persistence (no Firebase session).
+`/health`, sanitised `/api/doctor`, authenticated API denial/access, Cache-Control on `/`, Ollama smoke, Gold passes, backups list, Novel Write Pro quality pass, static UI, and local-project persistence. The deploy smoke must run on loopback with `CASPA_SMOKE_PROXY_SECRET`.

@@ -68,6 +68,10 @@ app.get("/health", (_req, res) => {
   res.json(publicHealthPayload());
 });
 
+app.get("/api/health", (_req, res) => {
+  res.json(publicHealthPayload());
+});
+
 // Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.
 app.use("/api/doctor", caspaDoctorRoutes);
 
@@ -107,11 +111,6 @@ async function callXAI(prompt: string, json = false, maxTokens?: number) {
 async function callVeniceOnServer(prompt: string, json = false, maxTokens?: number) {
   return callRoutedServerModel(prompt, json, maxTokens, 'venice');
 }
-
-// API routes go here FIRST
-app.get("/api/health", (_req, res) => {
-  res.json(publicHealthPayload());
-});
 
 // Safe catalogue of models Atlas can discover without asking the user for new credentials.
 app.get("/api/ai/models", async (_req, res) => {
