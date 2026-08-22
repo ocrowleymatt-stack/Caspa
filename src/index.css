@@ -293,7 +293,19 @@
 .desk-formats span { display: block; color: #a99b89; font-size: 11px; }
 
 .desk-banner, .desk-help { margin: 16px 28px 0; }
+.desk-banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(201, 167, 104, 0.22);
+  background: rgba(28, 24, 36, 0.9);
+  color: #eee3d2;
+}
 .desk-banner.is-conflict { border-color: #c47a6a; }
+.caspa-desk button:disabled,
+.caspa-desk .desk-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .desk-busy { display: inline-flex; gap: 6px; align-items: center; color: #d4b36a; }
 .desk-back { background: transparent; border: 0; color: #d4b36a; margin-bottom: 16px; }
 .desk-metric { font-family: "Cormorant Garamond", Georgia, serif; font-size: 30px; margin: 8px 0; }
