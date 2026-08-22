@@ -47,13 +47,14 @@ const LITERARY_RULES = `Rules:
 
 export function extractJsonObject(text: string): unknown {
   const raw = String(text || '').trim();
-  const fenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```[\s\S]*$/i, '').trim();
-  const start = fenced.indexOf('{');
-  const end = fenced.lastIndexOf('}');
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = (fenced?.[1] || raw).trim();
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
   if (start >= 0 && end > start) {
-    return JSON.parse(fenced.slice(start, end + 1));
+    return JSON.parse(candidate.slice(start, end + 1));
   }
-  return JSON.parse(fenced);
+  return JSON.parse(candidate);
 }
 
 function asRecord(raw: unknown): Record<string, any> {

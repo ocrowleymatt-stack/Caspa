@@ -223,7 +223,7 @@ test('browser journeys walk the integrated desk against a mocked server', { skip
       const report = document.querySelector('[data-testid="workshop-report"]');
       const pageText = document.querySelector('textarea[aria-label="Manuscript"]');
       if (!report || !pageText) return false;
-      return report.compareDocumentPosition(pageText) & Node.DOCUMENT_POSITION_FOLLOWING;
+      return Boolean(report.compareDocumentPosition(pageText) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
     assert.equal(reportAbovePage, true, 'workshop notes should sit above the manuscript');
 
