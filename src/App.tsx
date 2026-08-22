@@ -628,20 +628,20 @@ function CaspaUI() {
 
   useEffect(() => {
     let cancelled = false;
-    const key = 'atlas.runtime.gitSha';
+    const key = 'atlas.runtime.buildStamp';
     const checkBuild = async () => {
       try {
-        const response = await fetch('/health', { cache: 'no-store' });
+        const response = await fetch('/api/v2/build', { cache: 'no-store' });
         const data = await response.json();
-        const sha = data?.gitSha || '';
-        if (!sha || cancelled) return;
+        const stamp = data?.data?.stamp || '';
+        if (!stamp || cancelled) return;
         const previous = sessionStorage.getItem(key);
-        if (previous && previous !== sha) {
-          sessionStorage.setItem(key, sha);
+        if (previous && previous !== stamp) {
+          sessionStorage.setItem(key, stamp);
           window.location.reload();
           return;
         }
-        sessionStorage.setItem(key, sha);
+        sessionStorage.setItem(key, stamp);
       } catch {
         /* update checking is fail-soft */
       }

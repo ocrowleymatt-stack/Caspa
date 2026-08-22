@@ -43,3 +43,25 @@ export function requestUser(res: Response): CaspaUser {
   if (!user) throw new Error('Authenticated user context is missing');
   return user;
 }
+
+export function parseOpsGroups(raw = process.env.CASPA_OPS_GROUPS): string[] {
+  return String(raw || 'authentik Admins,caspa-ops,ops,admin')
+    .split(/[,|]/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function userIsOperator(user: Pick<CaspaUser, 'groups'> | undefined | null): boolean {
+  if (!user) return false;
+  const allowed = new Set(parseOpsGroups());
+  return user.groups.some((group) => allowed.has(group.trim().toLowerCase()));
+}
+
+export function requireOperator(_req: Request, res: Response, next: NextFunction): void {
+  const user = res.locals.caspaUser as CaspaUser | undefined;
+  if (!user || !userIsOperator(user)) {
+    res.status(403).json({ success: false, message: 'Operator access required' });
+    return;
+  }
+  next();
+}

@@ -31,7 +31,7 @@ import { requestUser, requireAuthenticatedUser } from './src/middleware/authenti
 import { acquireVisionSlot, validateVisionImage } from './src/services/visionGuard';
 import { ensureProjectSchema } from './src/services/projectRepository';
 import { ensureHybridCoreSchema } from './src/services/hybridCoreRepository';
-import { getBuildInfo } from './src/services/buildInfoService';
+import { publicHealthPayload } from './src/services/publicHealth';
 import { startCloudKnowledgeAutopilot } from './src/services/cloudKnowledgeAutopilotService';
 import {
   AI_PROVIDERS,
@@ -63,20 +63,9 @@ const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// Health Check
-app.get("/health", (req, res) => {
-  const build = getBuildInfo();
-  res.json({
-    status: "ok",
-    service: "Caspa",
-    version: build.version,
-    gitSha: build.gitSha,
-    gitShaShort: build.gitShaShort,
-    builtAt: build.builtAt,
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    env: process.env.NODE_ENV || "production (default)",
-  });
+// Health Check — coarse public status only. Build SHA / env / uptime stay off this route.
+app.get("/health", (_req, res) => {
+  res.json(publicHealthPayload());
 });
 
 // Safe public diagnostics — booleans/status only, no secrets. Register before any auth middleware.
@@ -120,12 +109,8 @@ async function callVeniceOnServer(prompt: string, json = false, maxTokens?: numb
 }
 
 // API routes go here FIRST
-app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    timestamp: new Date().toISOString(),
-    env: IS_DEVELOPMENT ? "development" : "production"
-  });
+app.get("/api/health", (_req, res) => {
+  res.json(publicHealthPayload());
 });
 
 // Safe catalogue of models Atlas can discover without asking the user for new credentials.

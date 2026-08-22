@@ -2,6 +2,7 @@
  * Production build fingerprint — read from dist/build-info.json when present.
  */
 
+import { createHash } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -64,6 +65,12 @@ export function getBuildInfo(): BuildInfo {
   };
 
   return cached;
+}
+
+/** Opaque deploy stamp — enough for the UI to reload, not a leaked SHA. */
+export function getBuildStamp(): string {
+  const build = getBuildInfo();
+  return createHash('sha256').update(`${build.gitSha}|${build.builtAt}`).digest('hex').slice(0, 16);
 }
 
 /** Test helper — clear memoised fingerprint between runs. */

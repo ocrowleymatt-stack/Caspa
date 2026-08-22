@@ -1,6 +1,7 @@
 import express from 'express';
 import { createHash } from 'node:crypto';
-import { requestUser } from '../middleware/authenticatedUser';
+import { requestUser, requireOperator } from '../middleware/authenticatedUser';
+import { getBuildStamp } from '../services/buildInfoService';
 import {
   acceptDraftPreview,
   acceptRebuildChange,
@@ -33,7 +34,11 @@ import { getDoctorSnapshot } from '../services/doctorService';
 
 const router = express.Router();
 
-router.get('/doctor', async (_req, res) => {
+router.get('/build', (_req, res) => {
+  return res.json({ success: true, data: { stamp: getBuildStamp() } });
+});
+
+router.get('/doctor', requireOperator, async (_req, res) => {
   return res.json({ success: true, data: await getDoctorSnapshot() });
 });
 

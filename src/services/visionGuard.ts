@@ -1,8 +1,13 @@
+import { closeSync, existsSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { getDataDir } from './dataPaths';
+import { assertImageLimits, inspectImageGeometry } from './imageGeometry';
+
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const MAX_BASE64_CHARS = Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 48;
-const MAX_USER_PER_HOUR = 12;
-const MAX_USER_PER_DAY = 36;
+export const MAX_USER_PER_HOUR = 12;
+export const MAX_USER_PER_DAY = 36;
 const MAX_USER_CONCURRENT = 1;
 const MAX_GLOBAL_CONCURRENT = 3;
 
@@ -14,38 +19,130 @@ const MAGIC: Array<{ mime: string; test: (bytes: Uint8Array) => boolean }> = [
   { mime: 'image/webp', test: (bytes) => bytes.length > 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50 },
 ];
 
-type WindowHit = { at: number };
-
-const hourly = new Map<string, WindowHit[]>();
-const daily = new Map<string, WindowHit[]>();
 const userInflight = new Map<string, number>();
 let globalInflight = 0;
 
+type QuotaUser = {
+  hourKey: string;
+  hourCount: number;
+  dayKey: string;
+  dayCount: number;
+};
+
+type QuotaFile = {
+  users: Record<string, QuotaUser>;
+};
+
 export type VisionValidation =
-  | { ok: true; mimeType: string; byteLength: number }
+  | { ok: true; mimeType: string; byteLength: number; width: number; height: number }
   | { ok: false; status: number; message: string };
 
-function prune(hits: WindowHit[], windowMs: number, now: number): WindowHit[] {
-  return hits.filter((hit) => now - hit.at < windowMs);
+function quotaPath(): string {
+  return path.join(getDataDir(), 'caspa-vision-quota.json');
 }
 
-function countWindow(store: Map<string, WindowHit[]>, userId: string, windowMs: number, now: number): number {
-  const next = prune(store.get(userId) || [], windowMs, now);
-  store.set(userId, next);
-  return next.length;
+function lockPath(): string {
+  return `${quotaPath()}.lock`;
 }
 
-function record(store: Map<string, WindowHit[]>, userId: string, now: number): void {
-  const hits = store.get(userId) || [];
-  hits.push({ at: now });
-  store.set(userId, hits);
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function withQuotaLock<T>(fn: () => T): T {
+  const lock = lockPath();
+  const started = Date.now();
+  while (true) {
+    try {
+      const fd = openSync(lock, 'wx');
+      try {
+        return fn();
+      } finally {
+        closeSync(fd);
+        try { unlinkSync(lock); } catch { /* already gone */ }
+      }
+    } catch (error) {
+      if (Date.now() - started > 2000) throw error;
+      sleepSync(15);
+    }
+  }
+}
+
+function readQuotaFile(): QuotaFile {
+  try {
+    if (!existsSync(quotaPath())) return { users: {} };
+    const parsed = JSON.parse(readFileSync(quotaPath(), 'utf8')) as QuotaFile;
+    if (!parsed || typeof parsed !== 'object' || !parsed.users || typeof parsed.users !== 'object') {
+      return { users: {} };
+    }
+    return parsed;
+  } catch {
+    return { users: {} };
+  }
+}
+
+function writeQuotaFile(data: QuotaFile): void {
+  const target = quotaPath();
+  const tmp = `${target}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(data));
+  renameSync(tmp, target);
+}
+
+function utcHourKey(now: Date): string {
+  return now.toISOString().slice(0, 13);
+}
+
+function utcDayKey(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+function liveQuota(entry: QuotaUser | undefined, now: Date): QuotaUser {
+  const hourKey = utcHourKey(now);
+  const dayKey = utcDayKey(now);
+  return {
+    hourKey,
+    hourCount: entry?.hourKey === hourKey ? entry.hourCount : 0,
+    dayKey,
+    dayCount: entry?.dayKey === dayKey ? entry.dayCount : 0,
+  };
+}
+
+function reserveDurableQuota(userId: string): { ok: true } | { ok: false; status: number; message: string } {
+  return withQuotaLock(() => {
+    const now = new Date();
+    const file = readQuotaFile();
+    const next: QuotaFile = { users: {} };
+    for (const [id, raw] of Object.entries(file.users)) {
+      const live = liveQuota(raw, now);
+      if (live.hourCount > 0 || live.dayCount > 0) next.users[id] = live;
+    }
+    const current = liveQuota(next.users[userId], now);
+    if (current.hourCount >= MAX_USER_PER_HOUR) {
+      return { ok: false, status: 429, message: 'Vision limit reached for this hour. Try again later.' };
+    }
+    if (current.dayCount >= MAX_USER_PER_DAY) {
+      return { ok: false, status: 429, message: 'Daily vision quota reached. Try again tomorrow.' };
+    }
+    next.users[userId] = {
+      hourKey: current.hourKey,
+      hourCount: current.hourCount + 1,
+      dayKey: current.dayKey,
+      dayCount: current.dayCount + 1,
+    };
+    writeQuotaFile(next);
+    return { ok: true };
+  });
+}
+
+export function resetVisionGuardMemoryForTests(): void {
+  userInflight.clear();
+  globalInflight = 0;
 }
 
 export function resetVisionGuardForTests(): void {
-  hourly.clear();
-  daily.clear();
-  userInflight.clear();
-  globalInflight = 0;
+  resetVisionGuardMemoryForTests();
+  try { unlinkSync(quotaPath()); } catch { /* missing is fine */ }
+  try { unlinkSync(lockPath()); } catch { /* missing is fine */ }
 }
 
 export function detectImageMime(bytes: Uint8Array): string | null {
@@ -80,19 +177,21 @@ export function validateVisionImage(imageBase64: unknown, mimeType: unknown): Vi
     return { ok: false, status: 400, message: 'Image type does not match the file contents.' };
   }
 
-  return { ok: true, mimeType: claimedFamily, byteLength: bytes.length };
+  const geometry = assertImageLimits(inspectImageGeometry(bytes, claimedFamily));
+  if (!geometry.ok) return { ok: false, status: 400, message: geometry.message };
+
+  return {
+    ok: true,
+    mimeType: claimedFamily,
+    byteLength: bytes.length,
+    width: geometry.width,
+    height: geometry.height,
+  };
 }
 
 export function acquireVisionSlot(userId: string): { ok: true; release: () => void } | { ok: false; status: number; message: string } {
   const id = String(userId || '').trim();
   if (!id) return { ok: false, status: 401, message: 'Authentication required' };
-  const now = Date.now();
-  if (countWindow(hourly, id, 60 * 60 * 1000, now) >= MAX_USER_PER_HOUR) {
-    return { ok: false, status: 429, message: 'Vision limit reached for this hour. Try again later.' };
-  }
-  if (countWindow(daily, id, 24 * 60 * 60 * 1000, now) >= MAX_USER_PER_DAY) {
-    return { ok: false, status: 429, message: 'Daily vision quota reached. Try again tomorrow.' };
-  }
   if ((userInflight.get(id) || 0) >= MAX_USER_CONCURRENT) {
     return { ok: false, status: 429, message: 'A vision request is already running for this account.' };
   }
@@ -100,10 +199,11 @@ export function acquireVisionSlot(userId: string): { ok: true; release: () => vo
     return { ok: false, status: 429, message: 'Vision is busy. Try again in a moment.' };
   }
 
+  const reserved = reserveDurableQuota(id);
+  if (!reserved.ok) return reserved;
+
   userInflight.set(id, (userInflight.get(id) || 0) + 1);
   globalInflight += 1;
-  record(hourly, id, now);
-  record(daily, id, now);
   let released = false;
   return {
     ok: true,

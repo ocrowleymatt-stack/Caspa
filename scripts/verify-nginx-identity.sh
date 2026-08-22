@@ -1,11 +1,30 @@
 #!/usr/bin/env bash
 # Verify the live nginx identity path before any Caspa deploy.
-# Expected: client identity headers are stripped, Authentik headers are injected,
-# and Caspa stays on loopback/internal bind.
+# Fail-closed: missing conf is a failure. Client-supplied $http_ identity
+# headers must never be forwarded.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { echo "FAIL: $1"; exit 1; }
 ok() { echo "OK: $1"; }
+
+evaluate_conf() {
+  local conf="$1"
+  [[ -f "$conf" ]] || fail "nginx conf not found: $conf"
+  if [[ -x "$ROOT/node_modules/.bin/tsx" ]]; then
+    "$ROOT/node_modules/.bin/tsx" "$ROOT/src/services/nginxIdentityPolicy.ts" "$conf"
+  elif command -v tsx >/dev/null 2>&1; then
+    tsx "$ROOT/src/services/nginxIdentityPolicy.ts" "$conf"
+  else
+    node --experimental-strip-types "$ROOT/src/services/nginxIdentityPolicy.ts" "$conf"
+  fi
+}
+
+if [[ -n "${VERIFY_NGINX_CONF:-}" ]]; then
+  evaluate_conf "$VERIFY_NGINX_CONF"
+  ok "$(basename "$VERIFY_NGINX_CONF") satisfies the fail-closed identity policy"
+  exit 0
+fi
 
 BIND="${CASPA_BIND_HOST:-127.0.0.1}"
 if [[ "$BIND" != "127.0.0.1" && "$BIND" != "localhost" && "$BIND" != "::1" ]]; then
@@ -32,16 +51,11 @@ do
 done
 
 if [[ -z "$CONFS" ]]; then
-  echo "NOTE: no live nginx Caspa conf found on this host — check the production gateway before deploy."
-  exit 0
+  fail "no live nginx Caspa conf found — refusing to approve an unverified identity path"
 fi
 
-echo "$CONFS" | while read -r conf; do
+while IFS= read -r conf; do
   [[ -z "$conf" ]] && continue
-  grep -Eq "proxy_set_header[[:space:]]+X-Authentik-Uid" "$conf" || fail "$conf does not inject X-Authentik-Uid"
-  grep -Eq "proxy_set_header[[:space:]]+X-Caspa-Proxy-Secret" "$conf" || fail "$conf does not inject the proxy secret"
-  grep -Eq "proxy_set_header[[:space:]]+X-Authentik-Uid[[:space:]]+(\"\")?[[:space:]]*;|proxy_hide_header[[:space:]]+X-Authentik-Uid|more_clear_input_headers[[:space:]]+['\"]?X-Authentik-Uid" "$conf" \
-    || grep -Eq "proxy_set_header[[:space:]]+X-Authentik-Uid[[:space:]]+\\\$" "$conf" \
-    || fail "$conf must overwrite client-supplied X-Authentik-Uid"
-  ok "$(basename "$conf") injects trusted Authentik identity"
-done
+  evaluate_conf "$conf"
+  ok "$(basename "$conf") satisfies the fail-closed identity policy"
+done <<< "$CONFS"

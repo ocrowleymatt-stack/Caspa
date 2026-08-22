@@ -13,7 +13,7 @@ echo "Caspa smoke tests against $BASE"
 # Health
 HEALTH=$(curl -sf "$BASE/health") || fail "/health"
 echo "$HEALTH" | grep -q '"status"' || fail "/health status"
-echo "$HEALTH" | grep -q '"gitSha"' || fail "/health gitSha fingerprint"
+echo "$HEALTH" | grep -q '"gitSha"\|"gitShaShort"\|"builtAt"\|"uptime"\|"env"' && fail "public /health must not expose build or host details"
 ok "/health"
 
 # Doctor
