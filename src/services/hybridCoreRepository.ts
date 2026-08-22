@@ -31,7 +31,13 @@ function words(content: string): number {
 }
 
 function chapters(content: string): number {
-  return Math.max(1, (content.match(/^#{1,3}\s+(?:chapter\s+)?[^\n]+/gim) || []).length);
+  const explicit = (content.match(/^#{1,3}\s+chapter\s+\d+\b[^\n]*/gim) || []).length;
+  if (explicit) return explicit;
+  return Math.max(1, (content.match(/^#\s+[^#\n]+/gm) || []).length);
+}
+
+export function manuscriptMetrics(content: string): { wordCount: number; chapterCount: number } {
+  return { wordCount: words(content), chapterCount: chapters(content) };
 }
 
 function checksum(content: string): string {
@@ -181,8 +187,24 @@ export async function migrateOwnedProjects(userId: string): Promise<{ imported: 
   let skipped = 0;
   let empty = 0;
   for (const project of projects.rows) {
-    const exists = await database().query('SELECT 1 FROM caspa_manuscript_versions WHERE project_id=$1 LIMIT 1', [project.id]);
-    if (exists.rowCount) { skipped += 1; continue; }
+    const exists = await database().query(
+      'SELECT id,content,word_count,chapter_count FROM caspa_manuscript_versions WHERE project_id=$1 ORDER BY revision',
+      [project.id],
+    );
+    if (exists.rowCount) {
+      for (const version of exists.rows) {
+        const correctedWords = words(version.content);
+        const correctedChapters = chapters(version.content);
+        if (Number(version.word_count) !== correctedWords || Number(version.chapter_count) !== correctedChapters) {
+          await database().query(
+            'UPDATE caspa_manuscript_versions SET word_count=$1,chapter_count=$2 WHERE id=$3 AND user_id=$4',
+            [correctedWords, correctedChapters, version.id, userId],
+          );
+        }
+      }
+      skipped += 1;
+      continue;
+    }
     const content = manuscriptFromLegacyState(project.state);
     if (!content) { empty += 1; continue; }
     const created = await createManuscriptVersion(userId, project.id, {
