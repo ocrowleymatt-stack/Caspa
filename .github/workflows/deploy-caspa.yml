@@ -138,12 +138,17 @@ jobs:
             exit 1
           }
           DOCTOR=$(curl -fsS "https://caspa.ocrowley.com/api/doctor")
-          echo "$DOCTOR" | grep -q '"service":"Caspa"' || {
+          echo "$DOCTOR" | grep -q '"success":true' || {
             echo "::error::Public /api/doctor is not serving Caspa."
             echo "$DOCTOR" | head -c 800
             exit 1
           }
-          echo "$DOCTOR" | grep -q '"gitSha"\|"builtAt"\|"aiProviders"\|"storage"' && {
+          echo "$DOCTOR" | grep -q '"ready"' || {
+            echo "::error::Public /api/doctor is missing readiness."
+            echo "$DOCTOR" | head -c 800
+            exit 1
+          }
+          echo "$DOCTOR" | grep -q '"service"\|"gitSha"\|"builtAt"\|"aiProviders"\|"storage"' && {
             echo "::error::Public /api/doctor leaked deployment internals."
             exit 1
           }
