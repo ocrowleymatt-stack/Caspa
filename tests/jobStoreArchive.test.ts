@@ -8,7 +8,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'caspa-job-store-'));
 process.env.CASPA_DATA_DIR = dataDir;
 
 const { bindJobToProject, createJob, getJob, jobSummary, listUserJobs, updateJob } = await import('../src/services/jobQueueService');
-const { listArchivedJobs } = await import('../src/services/jobStoreService');
+const { listArchivedJobs, migrateLegacyArchiveMeta } = await import('../src/services/jobStoreService');
 
 test('older completed jobs are archived losslessly and remain retrievable', () => {
   const first = createJob('commission');
@@ -74,4 +74,49 @@ test('archived job assignment persists and then matches only that project', () =
   assert.equal(listUserJobs(bound.userId, 20, 'proj-harbour').some((job) => job.id === first.id), true);
   assert.equal(listUserJobs(bound.userId, 20, 'proj-other').some((job) => job.id === first.id), false);
   assert.equal(listUserJobs(bound.userId, 20, undefined, 'complete', true).some((job) => job.id === first.id), false);
+});
+
+test('legacy archives receive sidecar metadata without rewriting the manuscript', () => {
+  const archive = path.join(dataDir, 'caspa-job-archive');
+  fs.mkdirSync(archive, { recursive: true });
+  const job = {
+    id: 'legacy-finish-1',
+    userId: 'legacy-owner',
+    type: 'commission' as const,
+    status: 'complete' as const,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    progress: 100,
+    stage: 'complete',
+    input: { brief: { title: 'Harbour Book', idea: 'A clerk keeps the tide' } },
+    result: { finalText: 'historical harbour manuscript', words: 3, project: { title: 'Harbour Book', idea: 'A clerk keeps the tide' } },
+  };
+  const full = path.join(archive, `${job.id}.json`);
+  const meta = path.join(archive, `${job.id}.meta.json`);
+  const raw = JSON.stringify(job);
+  fs.writeFileSync(full, raw);
+  assert.equal(fs.existsSync(meta), false);
+
+  const listed = listArchivedJobs();
+  assert.ok(listed.some((item) => item.id === job.id && item.provenance?.title === 'Harbour Book'));
+  assert.ok(fs.existsSync(meta));
+  assert.equal(fs.readFileSync(full, 'utf8'), raw);
+  assert.equal(JSON.parse(fs.readFileSync(meta, 'utf8')).result, undefined);
+
+  const again = migrateLegacyArchiveMeta();
+  assert.equal(again.migrated, 0);
+  assert.equal(fs.readFileSync(full, 'utf8'), raw);
+
+  const other = {
+    ...job,
+    id: 'legacy-finish-2',
+    result: { finalText: 'second harbour book', words: 3, project: { title: 'Tide Tables' } },
+  };
+  const otherFull = path.join(archive, `${other.id}.json`);
+  fs.writeFileSync(otherFull, JSON.stringify(other));
+  const resumed = migrateLegacyArchiveMeta();
+  assert.equal(resumed.migrated, 1);
+  assert.ok(fs.existsSync(path.join(archive, `${other.id}.meta.json`)));
+  assert.equal(JSON.parse(fs.readFileSync(otherFull, 'utf8')).result.finalText, 'second harbour book');
+  assert.equal(listUserJobs('legacy-owner', 50, undefined, 'complete').some((item) => item.id === job.id), true);
 });

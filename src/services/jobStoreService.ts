@@ -52,14 +52,60 @@ function atomicWriteJson(filePath: string, value: unknown): void {
   fs.renameSync(temporary, filePath);
 }
 
+function archiveDir(): string {
+  return path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive');
+}
+
 function archivePath(id: string): string {
   const safe = String(id).replace(/[^a-zA-Z0-9_-]/g, '');
-  return path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive', `${safe}.json`);
+  return path.join(archiveDir(), `${safe}.json`);
 }
 
 function archiveMetaPath(id: string): string {
   const safe = String(id).replace(/[^a-zA-Z0-9_-]/g, '');
-  return path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive', `${safe}.meta.json`);
+  return path.join(archiveDir(), `${safe}.meta.json`);
+}
+
+function isLegacyArchiveName(name: string): boolean {
+  return name.endsWith('.json') && !name.endsWith('.meta.json');
+}
+
+export function migrateLegacyArchiveMeta(): { migrated: number; skipped: number; failed: number } {
+  const dir = archiveDir();
+  if (!fs.existsSync(dir)) return { migrated: 0, skipped: 0, failed: 0 };
+  let migrated = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const name of fs.readdirSync(dir).filter(isLegacyArchiveName)) {
+    const stem = name.slice(0, -'.json'.length);
+    const fullPath = path.join(dir, name);
+    const metaBeside = path.join(dir, `${stem}.meta.json`);
+    if (!stem || fs.existsSync(metaBeside)) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      const before = fs.readFileSync(fullPath);
+      const job = JSON.parse(before.toString('utf8')) as CaspaJobRecord;
+      if (!job?.id) {
+        failed += 1;
+        continue;
+      }
+      writeArchiveMeta(job);
+      const after = fs.readFileSync(fullPath);
+      if (!before.equals(after)) {
+        const error = new Error(`Legacy archive ${name} changed during metadata migration.`);
+        (error as Error & { code: string }).code = 'JOB_ARCHIVE_MUTATED';
+        throw error;
+      }
+      migrated += 1;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'JOB_ARCHIVE_MUTATED') throw error;
+      console.warn(`[JobStore] Failed to migrate archive metadata for ${name}:`, error);
+      failed += 1;
+    }
+  }
+  return { migrated, skipped, failed };
 }
 
 function writeArchiveMeta(job: CaspaJobRecord): void {
@@ -122,7 +168,8 @@ export function persistArchivedJob(job: CaspaJobRecord): CaspaJobRecord {
 }
 
 export function listArchivedJobs(): JobListRecord[] {
-  const dir = path.join(path.dirname(getJobsFilePath()), 'caspa-job-archive');
+  migrateLegacyArchiveMeta();
+  const dir = archiveDir();
   if (!fs.existsSync(dir)) return [];
   const jobs: JobListRecord[] = [];
   for (const name of fs.readdirSync(dir).filter((entry) => entry.endsWith('.meta.json'))) {

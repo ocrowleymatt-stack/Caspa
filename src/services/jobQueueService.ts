@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'crypto';
 import type { CaspaJobRecord, JobAuditSnapshot } from '../types/gold';
-import { archiveJobRecord, listArchivedJobs, loadArchivedJob, loadJobStore, persistArchivedJob, persistJobStore } from './jobStoreService';
+import { archiveJobRecord, listArchivedJobs, loadArchivedJob, loadJobStore, migrateLegacyArchiveMeta, persistArchivedJob, persistJobStore } from './jobStoreService';
 import { jobProvenance, toJobListRecord, type JobListRecord } from './jobProvenance';
 import { currentProjectId, currentUser } from './requestContext';
 
@@ -166,6 +166,7 @@ export function reapStaleJobs(maxAgeMs = DEFAULT_STALE_ACTIVE_MS): number {
   if (reaped || jobs.size !== sizeBeforeMaintenance) {
     save(jobs);
   }
+  migrateLegacyArchiveMeta();
   return reaped;
 }
 
