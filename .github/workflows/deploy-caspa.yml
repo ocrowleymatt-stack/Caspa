@@ -70,7 +70,7 @@ jobs:
              cd '${CASPA_DIR}'
              git fetch origin
              git reset --hard origin/main
-             git clean -fd -e data -e .env -e exports -e backups -e .caspa_snapshots
+             git clean -fd -e data -e .env -e .caspa-core.env -e '.caspa-core.env.bak.*' -e exports -e backups -e .caspa_snapshots
              export CASPA_GIT_SHA=\$(git rev-parse HEAD)
              export CASPA_GIT_BRANCH=\$(git rev-parse --abbrev-ref HEAD || echo main)
              export CASPA_BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
