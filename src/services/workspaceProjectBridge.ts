@@ -1,6 +1,6 @@
 import { getProjectKey, loadLibrary } from './researchLibraryService';
 import type { ProjectBriefLike } from './commissionService';
-import { chaptersToManuscript, detectManuscriptProposal, splitManuscriptChapters } from './workspaceRebuild';
+import { assembleManuscript, detectManuscriptProposal, splitManuscript, splitManuscriptChapters } from './workspaceRebuild';
 
 export type WorkspaceProject = {
   id: string;
@@ -32,10 +32,49 @@ export type IngestSource = {
   title: string;
   text: string;
   filename?: string;
+  mimeType?: string;
+  extracted?: boolean;
   createdAt: string;
 };
 
+export const ACTIVE_HYBRID_PROJECT_KEY = 'caspa.activeHybridProject';
+
 const MANUSCRIPT_STATE_KEYS = ['manuscript', 'whitePage', 'manuscriptSource'] as const;
+
+export function scopedCacheKey(
+  base: 'caspa.whitePage' | 'caspa.manuscriptSource' | 'caspa.commission',
+  projectId: string,
+): string {
+  return `${base}.${projectId}`;
+}
+
+function writeScopedManuscript(projectId: string, manuscript: string): void {
+  localStorage.setItem(scopedCacheKey('caspa.whitePage', projectId), manuscript);
+  localStorage.setItem(scopedCacheKey('caspa.manuscriptSource', projectId), manuscript);
+  localStorage.setItem('caspa.whitePage', manuscript);
+  localStorage.setItem('caspa.manuscriptSource', manuscript);
+  localStorage.setItem(ACTIVE_HYBRID_PROJECT_KEY, projectId);
+}
+
+function writeScopedCommission(projectId: string, commission: unknown): void {
+  const raw = JSON.stringify(commission);
+  localStorage.setItem(scopedCacheKey('caspa.commission', projectId), raw);
+  localStorage.setItem('caspa.commission', raw);
+  localStorage.setItem(ACTIVE_HYBRID_PROJECT_KEY, projectId);
+}
+
+function readScopedItem(projectId: string, base: 'caspa.whitePage' | 'caspa.manuscriptSource' | 'caspa.commission'): string | null {
+  const scoped = localStorage.getItem(scopedCacheKey(base, projectId));
+  const active = localStorage.getItem(ACTIVE_HYBRID_PROJECT_KEY);
+  if (active === projectId) {
+    const alias = localStorage.getItem(base);
+    if (alias != null && alias !== '') {
+      localStorage.setItem(scopedCacheKey(base, projectId), alias);
+      return alias;
+    }
+  }
+  return scoped;
+}
 
 export function briefFromProject(project: WorkspaceProject): ProjectBriefLike {
   const brief = (project.state?.brief || {}) as Record<string, unknown>;
@@ -77,8 +116,7 @@ export function hydrateToolCache(project: WorkspaceProject, manuscript: string):
   if (typeof localStorage === 'undefined') return brief;
   const key = getProjectKey(brief);
   localStorage.setItem('caspa.currentBrief', JSON.stringify({ ...brief, createdAt: new Date().toISOString() }));
-  localStorage.setItem('caspa.whitePage', manuscript);
-  localStorage.setItem('caspa.manuscriptSource', manuscript);
+  writeScopedManuscript(project.id, manuscript);
   const canon = project.state?.canon || {};
   localStorage.setItem(`caspa.studioCanon.${key}`, JSON.stringify({
     characters: canon.characters || [],
@@ -104,11 +142,11 @@ export function hydrateToolCache(project: WorkspaceProject, manuscript: string):
       tags: [],
       updatedAt: Date.now(),
     }));
-  localStorage.setItem('caspa.commission', JSON.stringify({
+  writeScopedCommission(project.id, {
     ...(project.state?.commission || {}),
     chapters,
     artefact: manuscript,
-  }));
+  });
   return brief;
 }
 
@@ -132,11 +170,15 @@ export function collectToolCache(project: WorkspaceProject, canonicalManuscript:
     research = loadLibrary(key);
     const rawPsych = localStorage.getItem(`caspa.psychology.${key}`);
     if (rawPsych) psychology = JSON.parse(rawPsych);
-    const rawCommission = localStorage.getItem('caspa.commission');
+    const rawCommission = readScopedItem(project.id, 'caspa.commission');
     if (rawCommission) commission = JSON.parse(rawCommission);
-    draft = localStorage.getItem('caspa.whitePage') || localStorage.getItem('caspa.manuscriptSource') || draft;
+    draft = readScopedItem(project.id, 'caspa.whitePage')
+      || readScopedItem(project.id, 'caspa.manuscriptSource')
+      || draft;
     if (commission?.chapters?.length) {
-      const assembled = chaptersToManuscript(
+      const { preamble } = splitManuscript(draft);
+      const assembled = assembleManuscript(
+        preamble,
         commission.chapters
           .slice()
           .sort((a: any, b: any) => Number(a.order || 0) - Number(b.order || 0))

@@ -10,6 +10,7 @@ import {
   type WorkspaceToolId,
 } from '../services/workspaceCatalog';
 import { briefFromProject, collectToolCache, hydrateToolCache, type WorkspaceProject } from '../services/workspaceProjectBridge';
+import { extractImageViaVision, readIngestFile } from '../services/workspaceIngest';
 import { splitManuscriptChapters } from '../services/workspaceRebuild';
 import WorkspaceToolHost from './WorkspaceToolHost';
 
@@ -31,9 +32,9 @@ const FORMATS = [
 async function api(url: string, init?: RequestInit): Promise<any> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
   const body = await response.json().catch(() => ({}));
-  if (response.status === 409 && body.code === 'REVISION_CONFLICT') {
+  if (response.status === 409 && (body.code === 'REVISION_CONFLICT' || body.code === 'VERSION_CONFLICT')) {
     const error = new Error(body.message || 'Project changed in another session');
-    (error as any).code = 'REVISION_CONFLICT';
+    (error as any).code = body.code;
     throw error;
   }
   if (!response.ok) throw new Error(body.message || `Caspa request failed (${response.status})`);
@@ -44,17 +45,6 @@ function initialManuscript(project: WorkspaceProject): string {
   return String(project.state?.commission?.artefact || project.state?.manuscript || project.state?.manuscriptSource || project.state?.whitePage || '');
 }
 
-function readFileAsText(file: File): Promise<{ kind: 'text' | 'file' | 'image'; text: string }> {
-  if (file.type.startsWith('image/')) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Could not read that image.'));
-      reader.onload = () => resolve({ kind: 'image', text: `[Image: ${file.name}]\n${String(reader.result || '').slice(0, 240)}` });
-      reader.readAsDataURL(file);
-    });
-  }
-  return file.text().then((text) => ({ kind: file.type.startsWith('text') || /\.(txt|md|markdown)$/i.test(file.name) ? 'text' : 'file', text }));
-}
 
 export default function HybridWorkspace() {
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
@@ -84,6 +74,7 @@ export default function HybridWorkspace() {
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const knownVersion = useRef(0);
+  const knownProjectRevision = useRef(0);
 
   useEffect(() => {
     api('/api/v2/migration/import-legacy', { method: 'POST', body: '{}' })
@@ -100,10 +91,10 @@ export default function HybridWorkspace() {
     setLastSave(snap.lastSave || '');
     setRecoveryAvailable(Boolean(snap.recovery?.available));
     if (snap.latestVersion?.revision && knownVersion.current && snap.latestVersion.revision > knownVersion.current) {
-      setConflict(`Another session saved immutable version ${snap.latestVersion.revision}. Saving yours will create a newer version and will not delete theirs.`);
+      setConflict(`Another session saved immutable version ${snap.latestVersion.revision}. Reload this desk before saving or accepting changes.`);
     }
-    if (snap.project?.revision && selected && snap.project.revision !== selected.revision) {
-      setSelected((current) => current ? { ...current, revision: snap.project.revision, updatedAt: snap.project.updatedAt } : current);
+    if (snap.project?.revision && knownProjectRevision.current && snap.project.revision !== knownProjectRevision.current) {
+      setConflict((current) => current || 'This project changed in another tab. Reload before saving artefacts. Local revision was not advanced.');
     }
   };
 
@@ -125,6 +116,7 @@ export default function HybridWorkspace() {
       const text = next[0]?.content || initialManuscript(project);
       setManuscript(text);
       knownVersion.current = next[0]?.revision || 0;
+      knownProjectRevision.current = project.revision;
       hydrateToolCache(project, text);
       const [draftData, diagnosisData, rebuildData] = await Promise.all([
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/draft-preview`).catch(() => null),
@@ -174,21 +166,35 @@ export default function HybridWorkspace() {
   const ingestFile = async (file: File | undefined, promote = false) => {
     if (!file) return;
     if (!selected) {
-      setNewIdea((current) => current || `Ingested ${file.name}`);
-      const read = await readFileAsText(file);
+      if (file.type.startsWith('image/')) {
+        setNewIdea((current) => current || `Image ready after create: ${file.name}`);
+        setMessage('Create the server project first, then attach the image so Caspa can extract its text.');
+        return;
+      }
+      const read = await readIngestFile(file);
       setNewIdea(read.text.slice(0, 4000));
       setMessage(`Loaded ${file.name}. Create the server project to keep it.`);
       return;
     }
     setBusy(true);
     try {
-      const read = await readFileAsText(file);
+      const read = await readIngestFile(file, { extractImage: extractImageViaVision });
       const result = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/ingest`, {
         method: 'POST',
-        body: JSON.stringify({ kind: read.kind, title: file.name, filename: file.name, text: read.text }),
+        headers: { 'If-Match': `"${selected.revision}"` },
+        body: JSON.stringify({
+          kind: read.kind,
+          title: file.name,
+          filename: file.name,
+          mimeType: read.mimeType,
+          extracted: read.extracted,
+          text: read.text,
+          revision: selected.revision,
+        }),
       });
       setSelected(result.project);
-      setMessage(`${file.name} attached to the project. The manuscript was not overwritten.`);
+      knownProjectRevision.current = result.project.revision;
+      setMessage(`${file.name} attached with extracted text. The manuscript was not overwritten.`);
       if (promote && read.text.trim()) {
         await saveVersion(read.text, `Imported · ${file.name}`, 'ingest-promoted');
       }
@@ -199,8 +205,8 @@ export default function HybridWorkspace() {
 
   const handleConflict = (error: unknown, fallback: string) => {
     const err = error as any;
-    if (err?.code === 'REVISION_CONFLICT') {
-      setConflict('This project changed in another tab. Reload the server artefacts before saving again. Manuscript versions were not deleted.');
+    if (err?.code === 'REVISION_CONFLICT' || err?.code === 'VERSION_CONFLICT') {
+      setConflict(err.message || 'This project changed in another tab. Reload before saving again. Nothing was overwritten.');
     }
     setMessage(err instanceof Error ? err.message : fallback);
   };
@@ -215,6 +221,7 @@ export default function HybridWorkspace() {
         body: JSON.stringify({ revision: selected.revision, artefacts }),
       });
       setSelected(result.project);
+      knownProjectRevision.current = result.project.revision;
       if (manuscriptProposal) setProposal(manuscriptProposal);
     } catch (error) {
       handleConflict(error, 'Could not save project artefacts.');
@@ -312,7 +319,7 @@ export default function HybridWorkspace() {
         setRebuild(plan);
         setMessage('Change rejected. The manuscript was not changed.');
       }
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not handle that rebuild change.'); }
+    } catch (error) { handleConflict(error, 'Could not handle that rebuild change.'); }
     finally { setBusy(false); }
   };
 
@@ -352,7 +359,13 @@ export default function HybridWorkspace() {
     try {
       const version = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/versions`, {
         method: 'POST',
-        body: JSON.stringify({ name, trigger, content, sourceVersionId: versions[0]?.id || null }),
+        body: JSON.stringify({
+          name,
+          trigger,
+          content,
+          sourceVersionId: versions[0]?.id || null,
+          expectedSourceVersionId: versions[0]?.id || null,
+        }),
       });
       setVersions((current) => [version, ...current]);
       setManuscript(version.content);
@@ -361,7 +374,7 @@ export default function HybridWorkspace() {
       setLastSave(version.createdAt);
       setMessage(`Saved immutable version ${version.revision}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save this version.');
+      handleConflict(error, 'Could not save this version.');
     } finally {
       setBusy(false);
     }
@@ -460,7 +473,7 @@ export default function HybridWorkspace() {
                 <label className="desk-field">Working title
                   <input aria-label="New project title" value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Optional — Caspa can derive one" />
                 </label>
-                <label className="desk-field">A sentence, receipt, note, or half-formed thought
+                <label className="desk-field">A sentence, note, or half-formed thought
                   <textarea aria-label="Rough project idea" value={newIdea} onChange={(event) => setNewIdea(event.target.value)} placeholder="Paste or type the rough idea here…" />
                 </label>
                 <div className="desk-row">
@@ -543,7 +556,7 @@ export default function HybridWorkspace() {
                 {stage === 'Idea' && (
                   <section className="literary-card">
                     <p className="eyebrow">Idea / ingest</p>
-                    <p className="desk-muted">Attach notes, a long manuscript, or an image. Promotion is explicit.</p>
+                    <p className="desk-muted">Attach notes or a manuscript. Images are OCR’d on attach; if extraction fails, nothing is stored. Promotion into the manuscript is explicit.</p>
                     <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach file or image</button>
                     <button type="button" className="desk-primary" disabled={!manuscript.trim()} onClick={() => void saveVersion(manuscript, 'Imported manuscript', 'ingest-promoted')}>Save current text as first version</button>
                     <button type="button" className="desk-ghost" onClick={() => void openTool('research')}>Open Research Desk</button>
