@@ -153,6 +153,28 @@ test('browser journeys walk the integrated desk against a mocked server', { skip
     await page.click('[data-testid="desk-help-toggle"]');
     await page.waitForSelector('[data-testid="desk-help"]');
     assert.ok(await page.$('[data-testid="desk-help"]'));
+
+    const draftRail = await page.evaluateHandle(() =>
+      Array.from(document.querySelectorAll('.desk-rail button')).find((item) => /Draft/i.test(item.textContent || ''))
+    );
+    if (draftRail.asElement()) {
+      await draftRail.asElement()?.click();
+      await page.waitForSelector('[data-testid="draft-with-caspa"]');
+      const draftCopy = await page.$eval('[data-testid="draft-with-caspa"]', (node) => node.textContent || '');
+      assert.match(draftCopy, /Chapter title/i);
+      assert.match(draftCopy, /private preview/i);
+      const draftInput = await page.$('[data-testid="draft-with-caspa"] input[aria-label="Chapter title"]');
+      assert.ok(draftInput);
+    }
+
+    await page.setViewport({ width: 1440, height: 900 });
+    const columns = await page.evaluate(() => {
+      const grid = document.querySelector('.hybrid-editor-grid');
+      if (!grid) return 0;
+      const style = window.getComputedStyle(grid);
+      return style.gridTemplateColumns.split(' ').filter(Boolean).length;
+    });
+    assert.equal(columns, 2, 'desk should be manuscript + rail at desktop width');
     t.diagnostic(`journeys exercised at ${base}`);
   } finally {
     await browser.close();

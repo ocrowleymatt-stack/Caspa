@@ -40,6 +40,62 @@
   max-width: 100%;
 }
 
+.hybrid-main {
+  padding: 22px 28px 48px;
+}
+
+.hybrid-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.hybrid-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 20px;
+  align-items: start;
+}
+
+.hybrid-project-card {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background: rgba(28, 24, 36, 0.82);
+}
+
+.hybrid-project-card:hover {
+  border-color: rgba(201, 167, 104, 0.45);
+}
+
+.desk-library-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.desk-editor-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.desk-header-actions .desk-ghost,
+.desk-library-head .desk-ghost,
+.desk-editor-bar .desk-primary,
+.desk-row > .desk-primary,
+.desk-row > .desk-ghost {
+  width: auto;
+  margin-top: 0;
+}
+
 .hybrid-project-card,
 .hybrid-project-card h3,
 .hybrid-sidebar,
@@ -50,12 +106,30 @@
 
 .hybrid-manuscript {
   display: block;
+  width: 100%;
   max-width: 100%;
+  min-height: min(72vh, 840px);
   overflow: auto;
   overscroll-behavior: auto;
   touch-action: pan-y;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  box-sizing: border-box;
+  padding: 28px 32px;
+  border-radius: 12px;
+  border: 1px solid #4a3f32;
+  background: #f4ead6;
+  color: #1c1610;
+  font: 19px/1.7 "Cormorant Garamond", Georgia, serif;
+  resize: vertical;
+}
+
+.caspa-desk textarea.hybrid-manuscript,
+.caspa-desk textarea.manuscript-page {
+  background: #f4ead6 !important;
+  color: #1c1610 !important;
+  border-color: #4a3f32 !important;
+  box-shadow: none !important;
 }
 
 @media (max-width: 900px) {
@@ -151,13 +225,24 @@
   line-height: 1.5;
 }
 
-.desk-rail button, .desk-ghost, .desk-chips button, .desk-formats button, .desk-version, .desk-back {
+.desk-rail button, .desk-ghost, .desk-chips button, .desk-formats button, .desk-back {
   border: 1px solid rgba(201, 167, 104, 0.22);
   background: rgba(20, 16, 26, 0.6);
   color: #eee3d2;
   border-radius: 999px;
   padding: 8px 12px;
   cursor: pointer;
+}
+
+.desk-rail button {
+  width: auto;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.desk-chips button {
+  width: auto;
+  margin-top: 0;
 }
 
 .desk-rail button.is-active, .desk-formats button.is-active, .desk-primary, a.desk-primary {
@@ -174,9 +259,16 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
+  width: auto;
   margin-top: 8px;
   border-radius: 10px;
+}
+
+.hybrid-sidebar .desk-primary,
+.hybrid-sidebar .desk-ghost,
+.literary-card > .desk-primary,
+.literary-card > .desk-ghost {
+  width: 100%;
 }
 
 .desk-field, .desk-field input, .desk-field textarea, .hybrid-sidebar input, .hybrid-sidebar select, .hybrid-sidebar textarea {

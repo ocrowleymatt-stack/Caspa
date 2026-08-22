@@ -13,9 +13,9 @@ export function nextHybridStage(stage: HybridStage): HybridStage {
 export function contextualTools(stage: HybridStage): string[] {
   if (stage === 'idea') return ['Research Desk', 'Intelligence Lab', 'Brainstorm'];
   if (stage === 'structure') return ['Brainstorm', 'Story Bible', 'Character Forge', 'Psychology Studio', 'Plot Architect'];
-  if (stage === 'draft') return ['Research Desk', 'Story Bible', 'Writing Studio', 'Auto Drafter'];
+  if (stage === 'draft') return ['Writing Studio', 'Auto Drafter', 'Story Bible', 'Research Desk'];
   if (stage === 'workshop') return ['Workshop diagnosis', 'Critic Swarm', 'Intelligence Lab', 'Red Pen'];
   if (stage === 'revise') return ['Rip up and rebuild', 'Rip & Fix', 'Auto Drafter', 'Scalpel', 'Gold Refinery', 'Version compare'];
   if (stage === 'finish') return ['Gold Refinery', 'Prize Calibration', 'Recovery', 'Proof / preflight'];
-  return ['Design', 'Red Pen', 'Export and publishing'];
+  return ['Imagine', 'Red Pen', 'Export and publishing'];
 }

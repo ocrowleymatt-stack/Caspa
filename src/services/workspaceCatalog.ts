@@ -57,7 +57,7 @@ export const STAGE_HELP: Record<DeskStage, string> = {
   Library: 'Server library. Every card is a PostgreSQL project. Create from a sentence, a file, or open existing work.',
   Idea: 'Ingest a sentence, notes, or a manuscript. Photographs and receipts are OCR’d on attach; if extraction fails, nothing is stored. Promoting sources into the manuscript requires an explicit version.',
   Structure: 'Reveal Story Bible, characters, psychology, and plot only when you need them. Nothing here overwrites the canonical manuscript.',
-  Draft: 'Write yourself or ask Caspa for a private chapter preview. Reject leaves the version untouched. Accept creates a new immutable version.',
+  Draft: 'Write in the page, or ask Caspa for a named chapter preview. Reject leaves the version untouched. Accept creates a new immutable version.',
   Workshop: 'Diagnose the saved version. Findings are evidence, not edits.',
   Revise: 'Rip up and rebuild with per-change approval, or open Scalpel, Gold, or Auto Drafter. Earlier versions remain.',
   Finish: 'Recover interrupted or completed jobs. Polling never re-downloads the whole manuscript.',

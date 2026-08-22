@@ -76,7 +76,7 @@ export default function HybridWorkspace() {
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
-  const [draftTitle, setDraftTitle] = useState('Opening chapter');
+  const [draftTitle, setDraftTitle] = useState('');
   const [preview, setPreview] = useState<any | null>(null);
   const [diagnosis, setDiagnosis] = useState<any | null>(null);
   const [rebuild, setRebuild] = useState<any | null>(null);
@@ -314,7 +314,8 @@ export default function HybridWorkspace() {
 
   const openTool = async (labelOrId: string) => {
     const tool = findWorkspaceTool(labelOrId);
-    if (!tool || !selected) { setMessage('That control is already represented on this desk.'); return; }
+    if (!selected) { setMessage('Open a project first.'); return; }
+    if (!tool) { setMessage(`No room named “${labelOrId}”.`); return; }
     if (activeTool && activeTool !== tool.id) {
       const saved = await persistArtefacts();
       if (!saved.ok) return;
@@ -543,14 +544,13 @@ export default function HybridWorkspace() {
         <div className="desk-brand">
           <span className="desk-mark"><Feather size={16} /></span>
           <div>
-            <div className="eyebrow">CASPA · Manuscript development</div>
-            <h1>Private writing desk</h1>
+            <div className="eyebrow">Caspa</div>
+            <h1>Writing desk</h1>
           </div>
         </div>
         <div className="desk-header-actions">
           {busy && <span className="desk-busy" role="status"><Loader className="spin" size={14} /> Working</span>}
           <button type="button" className="desk-ghost" data-testid="desk-help-toggle" onClick={() => setHelpOpen((value) => !value)}><HelpCircle size={14} /> Help</button>
-          <a href="/legacy" className="desk-ghost">Previous studio</a>
         </div>
       </header>
 
@@ -561,7 +561,6 @@ export default function HybridWorkspace() {
           <span>{wordCount.toLocaleString()} words · {chapterCount} chapter{chapterCount === 1 ? '' : 's'}</span>
           <span>{versions.length} version{versions.length === 1 ? '' : 's'}</span>
           <span>Recovery <strong>{recoveryAvailable ? 'available' : 'idle'}</strong></span>
-          <span>Model / cost <strong>shown only after an author-started run</strong></span>
         </div>
       )}
 
@@ -599,7 +598,7 @@ export default function HybridWorkspace() {
               <div>
                 <p className="eyebrow">Author workspace</p>
                 <h2>Your work</h2>
-                <p className="desk-muted">Every project is loaded from PostgreSQL. Browser storage is only a cache.</p>
+                <p className="desk-muted">Open a book, or start from a sentence. Work is saved on the server, not only in this browser.</p>
               </div>
               <div className="desk-row">
                 <button type="button" className="desk-ghost" onClick={() => { setShowNewProject(true); setActiveTool(null); }}>New project</button>
@@ -626,7 +625,7 @@ export default function HybridWorkspace() {
                   <textarea aria-label="Rough project idea" value={newIdea} onChange={(event) => setNewIdea(event.target.value)} placeholder="Paste or type the rough idea here…" />
                 </label>
                 <div className="desk-row">
-                  <button type="button" className="desk-primary" disabled={busy} onClick={() => void createNewProject()}>Create server project</button>
+                  <button type="button" className="desk-primary" disabled={busy} onClick={() => void createNewProject()}>Create project</button>
                   <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach text, manuscript or image</button>
                 </div>
               </section>
@@ -688,7 +687,7 @@ export default function HybridWorkspace() {
 
               <aside className="hybrid-sidebar">
                 <section className="literary-card">
-                  <div className="desk-card-kicker"><ShieldCheck size={14} /> Server checkpoint</div>
+                  <div className="desk-card-kicker"><ShieldCheck size={14} /> This manuscript</div>
                   <div className="desk-metric">{wordCount.toLocaleString()} words</div>
                   <p className="desk-muted">{chapterCount} chapters · {versions.length ? `${versions.length} immutable versions` : 'Ready for a first version'}</p>
                 </section>
@@ -724,9 +723,11 @@ export default function HybridWorkspace() {
                 )}
 
                 {stage === 'Draft' && (
-                  <section className="literary-card">
-                    <p className="eyebrow">Draft with Caspa</p>
-                    <p className="desk-muted">Caspa prepares a private preview. Only explicit acceptance creates a version.</p>
+                  <section className="literary-card" data-testid="draft-with-caspa">
+                    <p className="eyebrow">Ask Caspa for a chapter</p>
+                    <p className="desk-muted">
+                      Name the chapter you want written. Caspa prepares a private preview. Accepting creates a new version. Rejecting leaves the manuscript untouched.
+                    </p>
                     {preview?.status === 'previewed' ? (
                       <>
                         <h4>{preview.chapterTitle}</h4>
@@ -734,13 +735,23 @@ export default function HybridWorkspace() {
                         <p className="desk-muted">{preview.grounding?.summary}</p>
                         <div className="desk-row">
                           <button type="button" className="desk-ghost" onClick={() => void handlePreview(false)}>Reject</button>
-                          <button type="button" className="desk-primary" onClick={() => void handlePreview(true)}>Accept version</button>
+                          <button type="button" className="desk-primary" onClick={() => void handlePreview(true)}>Keep as a version</button>
                         </div>
                       </>
                     ) : (
                       <>
-                        <input aria-label="Chapter title" value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} />
-                        <button type="button" className="desk-primary" disabled={busy} onClick={() => void prepareDraft()}>Prepare preview</button>
+                        <label className="desk-field">
+                          Chapter title
+                          <input
+                            aria-label="Chapter title"
+                            value={draftTitle}
+                            onChange={(event) => setDraftTitle(event.target.value)}
+                            placeholder="e.g. The harbour window"
+                          />
+                        </label>
+                        <button type="button" className="desk-primary" disabled={busy || !draftTitle.trim()} onClick={() => void prepareDraft()}>
+                          Write a private preview
+                        </button>
                       </>
                     )}
                   </section>

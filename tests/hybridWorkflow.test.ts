@@ -16,6 +16,7 @@ test('specialist capabilities appear contextually', () => {
   assert.ok(contextualTools('draft').includes('Story Bible'));
   assert.ok(contextualTools('revise').includes('Gold Refinery'));
   assert.ok(contextualTools('publish').includes('Export and publishing'));
+  assert.ok(contextualTools('publish').includes('Imagine'));
 });
 
 test('manuscript metrics count chapters rather than every subheading', () => {
