@@ -144,6 +144,17 @@ export async function ensureHybridCoreSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS caspa_diagnoses_owner_idx
       ON caspa_diagnoses(user_id, project_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS caspa_workshop_critiques (
+      id uuid PRIMARY KEY,
+      project_id uuid NOT NULL REFERENCES caspa_projects(id) ON DELETE CASCADE,
+      user_id text NOT NULL,
+      version_id uuid REFERENCES caspa_manuscript_versions(id) ON DELETE SET NULL,
+      summary text NOT NULL,
+      critics jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS caspa_workshop_critiques_owner_idx
+      ON caspa_workshop_critiques(user_id, project_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS caspa_export_preflights (
       id uuid PRIMARY KEY,
       project_id uuid NOT NULL REFERENCES caspa_projects(id) ON DELETE CASCADE,
@@ -417,6 +428,44 @@ export async function latestDiagnosis(userId: string, projectId: string): Promis
   if (!result.rowCount) return null;
   const row = result.rows[0];
   return { id: row.id, versionId: row.version_id, summary: row.summary, findings: row.findings, createdAt: new Date(row.created_at).toISOString() };
+}
+
+export async function saveWorkshopCritique(userId: string, projectId: string, input: {
+  versionId?: string | null; summary: string; critics: any[];
+}): Promise<any | null> {
+  if (!(await ownedProject(userId, projectId))) return null;
+  const id = randomUUID();
+  const result = await database().query(
+    `INSERT INTO caspa_workshop_critiques(id,project_id,user_id,version_id,summary,critics)
+     VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [id, projectId, userId, input.versionId || null, input.summary, JSON.stringify(input.critics)],
+  );
+  await database().query(
+    'INSERT INTO caspa_project_audit_events(project_id,user_id,event_type,payload) VALUES($1,$2,$3,$4)',
+    [projectId, userId, 'workshop.critique.completed', { critiqueId: id, criticCount: input.critics.length }],
+  );
+  const row = result.rows[0];
+  return mapWorkshopCritique(row);
+}
+
+export async function latestWorkshopCritique(userId: string, projectId: string): Promise<any | null> {
+  const result = await database().query(
+    'SELECT * FROM caspa_workshop_critiques WHERE user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 1',
+    [userId, projectId],
+  );
+  if (!result.rowCount) return null;
+  return mapWorkshopCritique(result.rows[0]);
+}
+
+function mapWorkshopCritique(row: any) {
+  const critics = typeof row.critics === 'string' ? JSON.parse(row.critics) : row.critics;
+  return {
+    id: row.id,
+    versionId: row.version_id,
+    summary: row.summary,
+    critics: Array.isArray(critics) ? critics : [],
+    createdAt: new Date(row.created_at).toISOString(),
+  };
 }
 
 export async function runExportPreflight(userId: string, projectId: string): Promise<any | null> {

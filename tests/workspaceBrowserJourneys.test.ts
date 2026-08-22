@@ -25,6 +25,7 @@ function createMockServer() {
   const versions: any[] = [];
   let preview: any = null;
   let diagnosis: any = null;
+  let critique: any = null;
   let rebuild: any = null;
   const manuscript = '# TITHE\n\nA clerk keeps the tide tables and notices the sea arriving a minute early.';
 
@@ -65,6 +66,22 @@ function createMockServer() {
       return json(res, 201, { success: true, data: diagnosis });
     }
     if (url.includes('/diagnosis')) return json(res, 200, { success: true, data: diagnosis });
+    if (url.includes('/critique') && req.method === 'POST') {
+      critique = {
+        id: 'c1',
+        summary: 'The opening stays at the sink while the sea has already moved.',
+        critics: [{
+          name: 'Structural Architect',
+          role: 'structural',
+          severity: 'high',
+          finding: 'Nothing turns after the tide arrives.',
+          evidence: 'the tide had already turned',
+          fix: 'Let the sea arrive before he reaches for the glass.',
+        }],
+      };
+      return json(res, 201, { success: true, data: critique });
+    }
+    if (url.includes('/critique')) return json(res, 200, { success: true, data: critique });
     if (url.includes('/rebuild/analyze')) {
       rebuild = { id: 'rb1', status: 'analyzed', analysis: { summary: 'Chapter 1 can be tightened.' }, changes: [] };
       return json(res, 201, { success: true, data: rebuild });
@@ -187,10 +204,35 @@ test('browser journeys walk the integrated desk against a mocked server', { skip
       const button = document.querySelector('[data-testid="desk-critic-swarm"]') as HTMLButtonElement | null;
       return Boolean(button && !button.disabled && /Ask the critics/i.test(button.textContent || ''));
     });
+    await page.click('[data-testid="desk-whats-holding"]');
+    await page.waitForSelector('[data-testid="workshop-report"]');
+    const holding = await page.$eval('[data-testid="workshop-report"]', (node) => node.textContent || '');
+    assert.match(holding, /second movement is late|What's holding/i);
+
     await page.click('[data-testid="desk-critic-swarm"]');
-    await page.waitForSelector('[data-testid="desk-critique"]');
-    const critique = await page.$eval('[data-testid="desk-critique"]', (node) => node.textContent || '');
-    assert.match(critique, /washing the glass|critics|Atlas|severity|high/i);
+    await page.waitForSelector('[data-testid="workshop-council"]');
+    const report = await page.$eval('[data-testid="workshop-report"]', (node) => node.textContent || '');
+    assert.match(report, /The critics/i);
+    assert.match(report, /tide had already turned|Structural Architect|under the page/i);
+    const note = await page.$eval('[data-testid="desk-critique"]', (node) => node.textContent || '');
+    assert.match(note, /Structural Architect/i);
+    assert.match(note, /tide|glass|turn/i);
+    const rail = await page.$eval('[data-testid="workshop-panel"]', (node) => node.textContent || '');
+    assert.match(rail, /Structural Architect|Nothing turns|tide had already turned|above the page/i);
+    const reportAbovePage = await page.evaluate(() => {
+      const report = document.querySelector('[data-testid="workshop-report"]');
+      const pageText = document.querySelector('textarea[aria-label="Manuscript"]');
+      if (!report || !pageText) return false;
+      return report.compareDocumentPosition(pageText) & Node.DOCUMENT_POSITION_FOLLOWING;
+    });
+    assert.equal(reportAbovePage, true, 'workshop notes should sit above the manuscript');
+
+    await page.click('[data-testid="desk-stage-structure"]');
+    await page.waitForFunction(() => /People and spine/i.test(document.body.innerText));
+    await page.click('[data-testid="desk-stage-revise"]');
+    await page.waitForSelector('[data-testid="rebuild-panel"]');
+    await page.click('[data-testid="rebuild-panel"] button');
+    await page.waitForFunction(() => /Chapter 1 can be tightened/i.test(document.body.innerText));
     t.diagnostic(`journeys exercised at ${base}`);
   } finally {
     await browser.close();

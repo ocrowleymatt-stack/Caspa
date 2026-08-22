@@ -11,11 +11,10 @@ import {
   type WorkspaceToolId,
 } from '../services/workspaceCatalog';
 import { briefFromProject, collectToolCache, hydrateToolCache, type WorkspaceProject } from '../services/workspaceProjectBridge';
-import { briefToProject } from '../services/commissionService';
 import { extractImageViaVision, readIngestFile } from '../services/workspaceIngest';
 import { splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
-import { AIService } from '../services/ai';
-import type { Critique } from '../types';
+import type { WorkshopCouncil } from '../services/workspaceCouncil';
+import { fetchWithTimeout, AI_FETCH_TIMEOUT_MS, friendlyFetchError } from '../lib/fetchWithTimeout';
 import WorkspaceToolHost from './WorkspaceToolHost';
 
 type Version = {
@@ -39,16 +38,25 @@ function activeProjectHeader(): Record<string, string> {
   return projectId ? { 'x-caspa-project-id': projectId } : {};
 }
 
-async function api(url: string, init?: RequestInit): Promise<any> {
-  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...activeProjectHeader(), ...(init?.headers || {}) } });
-  const body = await response.json().catch(() => ({}));
-  if (response.status === 409 && (body.code === 'REVISION_CONFLICT' || body.code === 'VERSION_CONFLICT')) {
-    const error = new Error(body.message || 'Project changed in another session');
-    (error as any).code = body.code;
-    throw error;
+async function api(url: string, init?: RequestInit & { timeoutMs?: number }): Promise<any> {
+  const { timeoutMs, headers, ...rest } = init || {};
+  try {
+    const response = await fetchWithTimeout(url, {
+      ...rest,
+      headers: { 'Content-Type': 'application/json', ...activeProjectHeader(), ...(headers || {}) },
+    }, timeoutMs || AI_FETCH_TIMEOUT_MS);
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 409 && (body.code === 'REVISION_CONFLICT' || body.code === 'VERSION_CONFLICT')) {
+      const error = new Error(body.message || 'Project changed in another session');
+      (error as any).code = body.code;
+      throw error;
+    }
+    if (!response.ok) throw new Error(body.message || `Caspa request failed (${response.status})`);
+    return body.data;
+  } catch (error) {
+    if ((error as any)?.code === 'REVISION_CONFLICT' || (error as any)?.code === 'VERSION_CONFLICT') throw error;
+    throw new Error(friendlyFetchError(error, 'Caspa request failed'));
   }
-  if (!response.ok) throw new Error(body.message || `Caspa request failed (${response.status})`);
-  return body.data;
 }
 
 function initialManuscript(project: WorkspaceProject): string {
@@ -82,8 +90,7 @@ export default function HybridWorkspace() {
   const [draftTitle, setDraftTitle] = useState('');
   const [preview, setPreview] = useState<any | null>(null);
   const [diagnosis, setDiagnosis] = useState<any | null>(null);
-  const [critiques, setCritiques] = useState<Critique[]>([]);
-  const [swarmProgress, setSwarmProgress] = useState<{ done: number; total: number } | null>(null);
+  const [council, setCouncil] = useState<(WorkshopCouncil & { id?: string }) | null>(null);
   const [rebuild, setRebuild] = useState<any | null>(null);
   const [finishedJobs, setFinishedJobs] = useState<any[]>([]);
   const [unboundJobs, setUnboundJobs] = useState<any[]>([]);
@@ -102,8 +109,12 @@ export default function HybridWorkspace() {
   const [lastSave, setLastSave] = useState('');
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const reportRef = useRef<HTMLElement | null>(null);
   const knownVersion = useRef(0);
   const knownProjectRevision = useRef(0);
+  const readingHolding = busy && /Reading the page/i.test(message);
+  const readingCritics = busy && /critics/i.test(message);
+  const workshopNotesOpen = Boolean(diagnosis || council || readingHolding || readingCritics);
 
   useEffect(() => {
     api('/api/v2/migration/import-legacy', { method: 'POST', body: '{}' })
@@ -138,8 +149,6 @@ export default function HybridWorkspace() {
     setUnboundJobs([]);
     setFinishedJobs([]);
     setAssignPreviewId('');
-    setCritiques([]);
-    setSwarmProgress(null);
   }, [selected?.id]);
 
   useEffect(() => {
@@ -167,6 +176,8 @@ export default function HybridWorkspace() {
     if (!options?.keepTool) setActiveTool(null);
     setSelected(project);
     setStage(nextStage);
+    setCouncil(null);
+    setDiagnosis(null);
     setBusy(true);
     try {
       const [list, latest] = await Promise.all([
@@ -180,13 +191,15 @@ export default function HybridWorkspace() {
       knownVersion.current = latest?.revision || next[0]?.revision || 0;
       knownProjectRevision.current = project.revision;
       if (!options?.preserveToolCache) hydrateToolCache(project, text);
-      const [draftData, diagnosisData, rebuildData] = await Promise.all([
+      const [draftData, diagnosisData, critiqueData, rebuildData] = await Promise.all([
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/draft-preview`).catch(() => null),
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/diagnosis`).catch(() => null),
+        api(`/api/v2/projects/${encodeURIComponent(project.id)}/critique`).catch(() => null),
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/rebuild`).catch(() => null),
       ]);
       setPreview(draftData);
       setDiagnosis(diagnosisData);
+      setCouncil(critiqueData);
       setRebuild(rebuildData);
       setPreflight(null);
       setProposal(null);
@@ -291,6 +304,12 @@ export default function HybridWorkspace() {
     setMessage(err instanceof Error ? err.message : fallback);
   };
 
+  const revealNotes = () => {
+    window.requestAnimationFrame(() => {
+      reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const persistArtefacts = async (): Promise<{ ok: true; project: WorkspaceProject } | { ok: false }> => {
     if (!selected) return { ok: false };
     const { artefacts, manuscriptProposal } = collectToolCache(selected, manuscript);
@@ -381,7 +400,8 @@ export default function HybridWorkspace() {
         body: JSON.stringify({ manuscript }),
       });
       setDiagnosis(result);
-      setMessage('Notes are ready. The page is unchanged.');
+      setMessage('Notes are ready. They are on the paper above the page.');
+      revealNotes();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not read the page.'); }
     finally { setBusy(false); }
   };
@@ -390,31 +410,21 @@ export default function HybridWorkspace() {
     if (!selected) return;
     if (!manuscript.trim()) { setMessage('Write on the page first.'); return; }
     setBusy(true);
-    setSwarmProgress({ done: 0, total: 0 });
-    setMessage('The critics are reading through Atlas…');
+    setMessage('The critics are reading the page…');
     try {
-      const project = briefToProject(briefFromProject(selected));
-      const results = await AIService.getSwarmCritique(
-        manuscript,
-        project.type,
-        project.maturity,
-        [],
-        undefined,
-        (partial, done, total) => {
-          setCritiques([...partial]);
-          setSwarmProgress({ done, total });
-          setMessage(`Critics ${done}/${total}…`);
-        },
-      );
-      setCritiques(results);
-      setMessage(results.length
-        ? 'The critics have spoken. The page is unchanged.'
+      const result = await api(`/api/v2/projects/${selected.id}/critique`, {
+        method: 'POST',
+        body: JSON.stringify({ manuscript }),
+      });
+      setCouncil(result);
+      setMessage(result?.critics?.length
+        ? 'The critics have spoken. Their notes are on the paper above the page.'
         : 'The critics returned nothing. Try again in a moment.');
+      revealNotes();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'The critics could not reach Atlas.');
+      setMessage(error instanceof Error ? error.message : 'The critics could not finish. The page is unchanged.');
     } finally {
       setBusy(false);
-      setSwarmProgress(null);
     }
   };
 
@@ -600,7 +610,7 @@ export default function HybridWorkspace() {
     Idea: Boolean(manuscript.trim()),
     Structure: Boolean(manuscript.trim()),
     Draft: versions.length > 0,
-    Workshop: Boolean(diagnosis?.summary),
+    Workshop: Boolean(diagnosis?.summary || council?.critics?.length),
     Revise: Boolean((rebuild?.changes || []).some((change: any) => change.status === 'accepted')),
     Finish: Boolean(finishedJobs.length),
     Publish: Boolean(preflight?.passed),
@@ -736,8 +746,45 @@ export default function HybridWorkspace() {
                       </div>
                       <button type="button" className="desk-primary" disabled={busy || !manuscript.trim()} onClick={() => void saveVersion()}><Save size={14} /> Save version</button>
                     </div>
+                    {stage === 'Workshop' && workshopNotesOpen && (
+                      <section ref={reportRef} className="desk-report" data-testid="workshop-report">
+                        {readingHolding || readingCritics ? (
+                          <div className="desk-report-block">
+                            <p className="eyebrow">{readingCritics ? 'The critics' : "What's holding"}</p>
+                            <p>{readingCritics ? 'The critics are reading this page…' : 'Reading the page…'}</p>
+                          </div>
+                        ) : null}
+                        {diagnosis && (
+                          <div className="desk-report-block">
+                            <p className="eyebrow">What's holding</p>
+                            <p>{diagnosis.summary}</p>
+                            {(diagnosis.findings || []).slice(0, 8).map((finding: any, index: number) => (
+                              <div key={index} className="desk-critic">
+                                <strong>{finding.category} · {finding.severity}</strong>
+                                {finding.evidence ? <p className="desk-evidence">{finding.evidence}</p> : null}
+                                <p>{finding.recommendation || finding.rationale}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {council && (
+                          <div className="desk-report-block" data-testid="workshop-council">
+                            <p className="eyebrow">The critics</p>
+                            <p>{council.summary}</p>
+                            {(council.critics || []).map((critic, index) => (
+                              <div key={`${critic.role}-${index}`} className="desk-critic" data-testid="desk-critique">
+                                <strong>{critic.name} · {critic.severity}</strong>
+                                <p>{critic.finding}</p>
+                                {critic.evidence ? <p className="desk-evidence">{critic.evidence}</p> : null}
+                                {critic.fix ? <p>{critic.fix}</p> : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    )}
                     <textarea
-                      className="hybrid-manuscript manuscript-page"
+                      className={`hybrid-manuscript manuscript-page${stage === 'Workshop' && workshopNotesOpen ? ' has-workshop-report' : ''}`}
                       value={manuscript}
                       onChange={(event) => setManuscript(event.target.value)}
                       aria-label="Manuscript"
@@ -861,17 +908,12 @@ export default function HybridWorkspace() {
                     </button>
                     <div className="gold-rule" />
                     <p className="desk-field"><span>Critics</span></p>
-                    <p className="desk-muted">Several specialists read this page through Atlas. You choose what to keep.</p>
-                    {swarmProgress && (
-                      <p className="desk-busy" role="status">Critics {swarmProgress.done}/{swarmProgress.total || '…'}</p>
-                    )}
-                    {critiques.map((critique) => (
-                      <div key={critique.id} className="desk-finding" data-testid="desk-critique">
-                        <strong>{critique.agentName} · {critique.severity}</strong>
-                        <span>{critique.content}</span>
-                        {critique.suggestions.slice(0, 3).map((suggestion, index) => (
-                          <span key={index}>{suggestion.text}</span>
-                        ))}
+                    <p className="desk-muted">Four specialists read this page. Their notes appear on the paper above the page. The page does not change.</p>
+                    {council?.summary ? <p>{council.summary}</p> : null}
+                    {(council?.critics || []).slice(0, 4).map((critic, index) => (
+                      <div key={`${critic.role}-${index}`} className="desk-finding" data-testid="rail-critique">
+                        <strong>{critic.name} · {critic.severity}</strong>
+                        <span>{critic.finding || critic.fix}</span>
                       </div>
                     ))}
                     <button
@@ -881,7 +923,7 @@ export default function HybridWorkspace() {
                       disabled={busy || !manuscript.trim()}
                       onClick={() => void runDeskSwarm()}
                     >
-                      Ask the critics
+                      {readingCritics ? 'Reading…' : council ? 'Ask again' : 'Ask the critics'}
                     </button>
                     {!manuscript.trim() && <p className="desk-muted">Write on the page first.</p>}
                   </section>

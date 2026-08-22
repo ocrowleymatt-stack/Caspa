@@ -11,6 +11,7 @@ import {
   getOwnedProject,
   isHybridConflictError,
   latestDiagnosis,
+  latestWorkshopCritique,
   latestDraftPreview,
   latestRebuildPlan,
   getManuscriptVersion,
@@ -21,6 +22,7 @@ import {
   rejectRebuildChange,
   runExportPreflight,
   saveDiagnosis,
+  saveWorkshopCritique,
   saveRebuildPlan,
   exportableManuscript,
   workspaceSnapshot,
@@ -29,6 +31,7 @@ import { callServerAi } from '../services/serverAiHelper';
 import { assertJobBoundToProject, bindJobToProject, getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
 import { getProject, updateProject } from '../services/projectRepository';
 import { parseChapterIndex, pickWorkshopManuscript, selectRebuildChapter, splitManuscript, splitRebuildChapters } from '../services/workspaceRebuild';
+import { buildWorkshopCouncilPrompt, buildWorkshopDiagnosisPrompt, extractJsonObject, normalizeWorkshopCouncil, normalizeWorkshopDiagnosis } from '../services/workspaceCouncil';
 import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
 import { getDoctorSnapshot } from '../services/doctorService';
 
@@ -104,8 +107,7 @@ router.post('/migration/import-legacy', async (_req, res) => {
 });
 
 function parseJson(text: string): any {
-  const clean = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  return JSON.parse(clean);
+  return extractJsonObject(text);
 }
 
 router.get('/projects/:projectId/draft-preview', async (req, res) => {
@@ -193,16 +195,62 @@ router.post('/projects/:projectId/diagnosis', async (req, res) => {
     project.state?.whitePage,
   );
   if (!manuscript) return res.status(400).json({ success: false, message: 'Write on the page first. Diagnosis reads what you can see, and does not change it.' });
-  const prompt = `Act as a rigorous developmental editor. Return ONLY valid JSON with this shape:
-{"summary":"objective assessment","findings":[{"category":"structure|continuity|character|pacing|voice|clarity|evidence","severity":"critical|major|minor","confidence":0.0,"evidence":"specific passage or location","rationale":"why it matters","recommendation":"bounded repair"}]}
-Use evidence from the text. Do not invent facts. Prefer 4-10 high-value findings.
+  let diagnosis;
+  try {
+    diagnosis = normalizeWorkshopDiagnosis(parseJson(await callServerAi(
+      buildWorkshopDiagnosisPrompt({ title: project.title, mode: project.mode, manuscript }),
+      true,
+      { maxTokens: 3500, timeoutMs: 180_000, authorialVoice: 'none' },
+    )));
+  } catch {
+    return res.status(502).json({ success: false, message: 'Workshop could not complete the diagnosis. The manuscript is unchanged.' });
+  }
+  if (!diagnosis.summary && !diagnosis.findings.length) {
+    return res.status(502).json({ success: false, message: 'Workshop returned an empty diagnosis. The page is unchanged — try again.' });
+  }
+  const saved = await saveDiagnosis(user.id, project.id, {
+    versionId: latest?.id || null,
+    summary: diagnosis.summary || 'Diagnosis completed.',
+    findings: diagnosis.findings,
+  });
+  return res.status(201).json({ success: true, data: saved });
+});
 
-PROJECT: ${project.title}\nMODE: ${project.mode}\nMANUSCRIPT:\n${manuscript.slice(0, 80_000)}`;
-  let diagnosis: any;
-  try { diagnosis = parseJson(await callServerAi(prompt, true, { maxTokens: 3500, timeoutMs: 180_000 })); }
-  catch { return res.status(502).json({ success: false, message: 'Workshop could not complete the diagnosis. The manuscript is unchanged.' }); }
-  const findings = Array.isArray(diagnosis.findings) ? diagnosis.findings.slice(0, 20) : [];
-  const saved = await saveDiagnosis(user.id, project.id, { versionId: latest?.id || null, summary: String(diagnosis.summary || 'Diagnosis completed.'), findings });
+router.get('/projects/:projectId/critique', async (req, res) => {
+  return res.json({ success: true, data: await latestWorkshopCritique(requestUser(res).id, req.params.projectId) });
+});
+
+router.post('/projects/:projectId/critique', async (req, res) => {
+  const user = requestUser(res);
+  const project = await getOwnedProject(user.id, req.params.projectId);
+  if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
+  const latest = await latestManuscriptVersion(user.id, project.id);
+  const manuscript = pickWorkshopManuscript(
+    req.body?.manuscript,
+    latest?.content,
+    project.state?.commission?.artefact,
+    project.state?.manuscriptSource,
+    project.state?.whitePage,
+  );
+  if (!manuscript) return res.status(400).json({ success: false, message: 'Write on the page first. The critics read what you can see, and do not change it.' });
+  let council;
+  try {
+    council = normalizeWorkshopCouncil(parseJson(await callServerAi(
+      buildWorkshopCouncilPrompt({ title: project.title, mode: project.mode, manuscript }),
+      true,
+      { maxTokens: 3500, timeoutMs: 180_000, authorialVoice: 'none' },
+    )));
+  } catch {
+    return res.status(502).json({ success: false, message: 'The critics could not finish. The page is unchanged — try again.' });
+  }
+  if (!council.summary && !council.critics.length) {
+    return res.status(502).json({ success: false, message: 'The critics returned an empty report. The page is unchanged — try again.' });
+  }
+  const saved = await saveWorkshopCritique(user.id, project.id, {
+    versionId: latest?.id || null,
+    summary: council.summary || 'The council has spoken.',
+    critics: council.critics,
+  });
   return res.status(201).json({ success: true, data: saved });
 });
 

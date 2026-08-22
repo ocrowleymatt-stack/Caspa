@@ -124,6 +124,10 @@
   resize: vertical;
 }
 
+.hybrid-manuscript.has-workshop-report {
+  min-height: min(36vh, 420px);
+}
+
 #root .caspa-desk textarea.hybrid-manuscript,
 #root .caspa-desk textarea.manuscript-page {
   background: #f4ead6 !important;
@@ -314,6 +318,22 @@
 .desk-metric { font-family: "Cormorant Garamond", Georgia, serif; font-size: 30px; margin: 8px 0; }
 .desk-preview { max-height: 240px; overflow: auto; white-space: pre-wrap; background: #efe4d2; color: #282018; padding: 12px; border-radius: 8px; font: 13px/1.6 Georgia, serif; }
 .desk-finding, .desk-change, .desk-check, .desk-version { display: block; width: 100%; text-align: left; border-top: 1px solid #3b3128; padding: 10px 0; background: transparent; color: inherit; }
+.desk-report {
+  margin: 0 0 16px;
+  padding: 16px 18px 10px;
+  border-radius: 10px;
+  border: 1px solid #4a3f32;
+  background: #f4ead6 !important;
+  color: #1c1610 !important;
+  scroll-margin-top: 16px;
+}
+.desk-report .eyebrow { color: #7a5b22; }
+.desk-report .desk-muted { color: #5c5146; }
+.desk-report-block + .desk-report-block { margin-top: 22px; padding-top: 18px; border-top: 1px solid #d5c7b0; }
+.desk-critic { border-top: 1px solid #d5c7b0; padding: 14px 0 4px; }
+.desk-critic strong { display: block; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+.desk-critic p { margin: 8px 0 0; line-height: 1.55; }
+.desk-evidence { font: italic 18px/1.5 "Cormorant Garamond", Georgia, serif; color: #3a2f24; }
 .desk-check.is-pass { color: #bdd6ad; }
 .desk-check.is-fail { color: #e5ae9e; }
 .workspace-tool-host {

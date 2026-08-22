@@ -394,6 +394,14 @@ test('critic swarm seeds chapters from any page text, including empty stored stu
   assert.match(String(stored.chapters[0]?.content || ''), /clerk washed/);
 });
 
+test('workshop desk no longer runs a browser critic swarm', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const desk = await readFile(new URL('../src/components/HybridWorkspace.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(desk, /getSwarmCritique/);
+  assert.match(desk, /notes are on the paper above the page/);
+  assert.match(desk, /has-workshop-report/);
+});
+
 test('workshop diagnosis prefers the live page over a saved version', () => {
   assert.equal(
     pickWorkshopManuscript('  The clerk washed the glass.  ', 'Old saved chapter.'),
