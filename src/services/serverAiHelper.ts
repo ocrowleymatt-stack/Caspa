@@ -8,6 +8,15 @@
 
 import { callUnifiedRouterChat } from './unifiedRouter';
 import { buildOrganicStimulusBlock } from './literary/organicStimulusService';
+import fictionMaster from '../prompts/ocrowley-fiction-master.json';
+import nonfictionMaster from '../prompts/ocrowley-nonfiction-master.json';
+
+export type AuthorialVoice = 'fiction' | 'nonfiction' | 'none';
+
+export const OCROWLEY_VOICE_MARKERS = {
+  fiction: '[O’CROWLEY FICTION MASTER CONTROL — ALWAYS ACTIVE]',
+  nonfiction: '[O’CROWLEY NON-FICTION MASTER CONTROL — ALWAYS ACTIVE]',
+} as const;
 
 const FICTION_HUMANITY_CONTRACT = `
 CASPA FICTION HUMANITY CONTRACT — APPLY UNLESS THE USER EXPLICITLY REQUESTS AN ESSAY-COLLECTION, FRAGMENTARY, ANTHOLOGY OR LINKED-STORIES FORM
@@ -28,31 +37,56 @@ CASPA FICTION HUMANITY CONTRACT — APPLY UNLESS THE USER EXPLICITLY REQUESTS AN
 `.trim();
 
 function looksLikeCaspaWriting(prompt: string) {
-  return /\bCaspa\b/i.test(prompt) && /(draft|write|rewrite|novel|fiction|chapter|scene|story|spine|prose|literary|poetry|script|musical|seed|planning)/i.test(prompt);
+  return /(draft|write|rewrite|manuscript|novel|fiction|chapter|scene|story|spine|prose|literary|poetry|script|musical|seed|line edit|quality final cut|editor)/i.test(prompt);
 }
 
 function looksNonfiction(prompt: string) {
-  return /(NON-FICTION|nonfiction|Essay \/ article|MODE\s*\n(?:nonfiction|essay)|PROJECT TYPE[^\n]*(?:Non-fiction|Essay))/i.test(prompt);
+  return /(NON-FICTION|nonfiction|Essay \/ article|MODE\s*:?\s*(?:nonfiction|essay)|PROJECT TYPE[^\n]*(?:Non-fiction|Essay)|argument spine|claim→evidence)/i.test(prompt);
 }
 
-async function enrichCreativePrompt(prompt: string) {
-  if (!looksLikeCaspaWriting(prompt) || looksNonfiction(prompt)) return prompt;
+export function authorialVoiceForMode(mode?: string | null): Exclude<AuthorialVoice, 'none'> {
+  return /^(nonfiction|non-fiction|essay)$/i.test(String(mode || '').trim()) ? 'nonfiction' : 'fiction';
+}
+
+function inferAuthorialVoice(prompt: string): AuthorialVoice {
+  if (!looksLikeCaspaWriting(prompt)) return 'none';
+  return looksNonfiction(prompt) ? 'nonfiction' : 'fiction';
+}
+
+/**
+ * Places the stable master control before the variable task. Keeping this prefix
+ * byte-for-byte stable allows compatible providers to cache it across calls.
+ */
+export function applyAuthorialVoice(prompt: string, requested: AuthorialVoice | 'auto' = 'auto') {
+  const voice = requested === 'auto' ? inferAuthorialVoice(prompt) : requested;
+  if (voice === 'none') return prompt;
+
+  const marker = OCROWLEY_VOICE_MARKERS[voice];
+  if (prompt.includes(marker)) return prompt;
+  const master = voice === 'nonfiction' ? nonfictionMaster.prompt : fictionMaster.prompt;
+  return `${marker}\n${master.trim()}\n[END O’CROWLEY MASTER CONTROL]\n\n[CURRENT CASPA TASK]\n${prompt}`;
+}
+
+async function enrichCreativePrompt(prompt: string, requested: AuthorialVoice | 'auto' = 'auto') {
+  const voice = requested === 'auto' ? inferAuthorialVoice(prompt) : requested;
+  const controlledPrompt = applyAuthorialVoice(prompt, voice);
+  if (voice !== 'fiction') return controlledPrompt;
   let stimulus = '';
   try {
     stimulus = await buildOrganicStimulusBlock();
   } catch {
     // Optional anti-pattern stimulus must never block writing.
   }
-  return `${prompt}\n\n${FICTION_HUMANITY_CONTRACT}${stimulus ? `\n\n${stimulus}` : ''}`;
+  return `${controlledPrompt}\n\n${FICTION_HUMANITY_CONTRACT}${stimulus ? `\n\n${stimulus}` : ''}`;
 }
 
 export async function callServerAi(
   prompt: string,
   json = false,
-  opts?: { maxTokens?: number; timeoutMs?: number },
+  opts?: { maxTokens?: number; timeoutMs?: number; authorialVoice?: AuthorialVoice | 'auto' },
 ): Promise<string> {
   const maxTokens = opts?.maxTokens ?? (json ? 4096 : 8192);
-  const routedPrompt = await enrichCreativePrompt(prompt);
+  const routedPrompt = await enrichCreativePrompt(prompt, opts?.authorialVoice ?? 'auto');
 
   // The unified entry point owns the full route:
   // host router -> healthy cloud provider -> next provider -> Ollama survival.
