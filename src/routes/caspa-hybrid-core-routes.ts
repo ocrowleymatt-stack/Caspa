@@ -25,9 +25,9 @@ import {
   workspaceSnapshot,
 } from '../services/hybridCoreRepository';
 import { callServerAi } from '../services/serverAiHelper';
-import { assertJobBoundToProject, getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
+import { assertJobBoundToProject, bindJobToProject, getUserJob, jobSummary, listUserJobs } from '../services/jobQueueService';
 import { getProject, updateProject } from '../services/projectRepository';
-import { splitManuscriptChapters, titlesMatch } from '../services/workspaceRebuild';
+import { splitRebuildChapters, titlesMatch } from '../services/workspaceRebuild';
 import { mergeWorkspaceArtefacts } from '../services/workspaceProjectBridge';
 
 const router = express.Router();
@@ -200,6 +200,7 @@ router.post('/projects/:projectId/recover-job/:jobId', async (req, res) => {
       code: 'JOB_PROJECT_MISMATCH',
     });
   }
+  bindJobToProject(job.id, req.params.projectId);
   const result = job.result as any;
   const content = String(result?.artefact || result?.finalText || '');
   if (!content.trim()) return res.status(409).json({ success: false, message: 'The completed job has no manuscript payload.' });
@@ -315,7 +316,7 @@ router.post('/projects/:projectId/rebuild/analyze', async (req, res) => {
   const latest = await latestManuscriptVersion(user.id, project.id);
   const manuscript = String(latest?.content || project.state?.commission?.artefact || project.state?.manuscriptSource || project.state?.whitePage || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A manuscript is required before rebuild analysis.' });
-  const chapters = splitManuscriptChapters(manuscript);
+  const chapters = splitRebuildChapters(manuscript);
   const prompt = `Analyse this manuscript for structural reconstruction. Return ONLY JSON:
 {"summary":"...","findings":[{"category":"structure|pacing|character|continuity","severity":"critical|major|minor","evidence":"...","recommendation":"...","chapterTitle":"..."}]}
 Do not rewrite prose. Do not invent chapters. Prefer 3-8 findings.
@@ -344,7 +345,7 @@ router.post('/projects/:projectId/rebuild/plan', async (req, res) => {
   const manuscript = String(latest?.content || '');
   if (!manuscript.trim()) return res.status(400).json({ success: false, message: 'A saved version is required before a rebuild plan.' });
   const current = await latestRebuildPlan(user.id, project.id);
-  const chapters = splitManuscriptChapters(manuscript);
+  const chapters = splitRebuildChapters(manuscript);
   const target = String(req.body?.chapterTitle || chapters[0]?.title || '').trim();
   const chapter = chapters.find((item) => titlesMatch(item.title, target)) || chapters[0];
   if (!chapter) return res.status(400).json({ success: false, message: 'No chapter could be isolated for reconstruction.' });

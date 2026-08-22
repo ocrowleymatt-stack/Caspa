@@ -17,6 +17,7 @@ export type ManuscriptChapter = {
   start: number;
   end: number;
   index: number;
+  rebuildable: boolean;
 };
 
 export type SplitManuscript = {
@@ -56,32 +57,37 @@ export function splitManuscript(manuscript: string): SplitManuscript {
   if (!matches.length) {
     return {
       preamble: '',
-      chapters: [{ title: 'Working draft', headingLine: '# Working draft', body: text, start: 0, end: text.length, index: 0 }],
+      chapters: [{ title: 'Working draft', headingLine: '# Working draft', body: text, start: 0, end: text.length, index: 0, rebuildable: true }],
     };
   }
   const preferExplicit = matches.some((match) => isExplicitChapterHeading(headingTitle(match[1])));
-  const chapterMatches = matches.filter((match) => isRebuildChapterHeading(headingTitle(match[1]), { preferExplicit }));
-  if (!chapterMatches.length) {
-    return {
-      preamble: text.replace(/\s+$/, ''),
-      chapters: [],
-    };
-  }
-  const firstHeadingAt = chapterMatches[0].index || 0;
+  const firstHeadingAt = matches[0].index || 0;
   const preamble = text.slice(0, firstHeadingAt).replace(/\s+$/, '');
-  const chapters = chapterMatches.map((match, index) => {
+  const chapters = matches.map((match, index) => {
     const start = match.index || 0;
-    const next = chapterMatches[index + 1]?.index ?? text.length;
+    const next = matches[index + 1]?.index ?? text.length;
     const headingLine = match[1].trim();
     const heading = headingTitle(headingLine);
     const body = text.slice(start, next).replace(/^#+\s+[^\n]+\n?/, '').trim();
-    return { title: heading || `Section ${index + 1}`, headingLine, body, start, end: next, index };
+    return {
+      title: heading || `Section ${index + 1}`,
+      headingLine,
+      body,
+      start,
+      end: next,
+      index,
+      rebuildable: isRebuildChapterHeading(heading, { preferExplicit }),
+    };
   });
   return { preamble, chapters };
 }
 
 export function splitManuscriptChapters(manuscript: string): ManuscriptChapter[] {
   return splitManuscript(manuscript).chapters;
+}
+
+export function splitRebuildChapters(manuscript: string): ManuscriptChapter[] {
+  return splitManuscript(manuscript).chapters.filter((chapter) => chapter.rebuildable);
 }
 
 export function chaptersToManuscript(chapters: Array<{ title: string; body: string; headingLine?: string }>): string {
@@ -106,9 +112,10 @@ export function applyRebuildChanges(manuscript: string, changes: RebuildChange[]
   if (!chapters.length) return manuscript;
   const next = chapters.map((chapter) => {
     const change = accepted.find((item) => changeTargetsChapter(item, chapter, chapters));
-    return change
-      ? { title: chapter.title, headingLine: chapter.headingLine, body: change.proposed.trim() }
-      : { title: chapter.title, headingLine: chapter.headingLine, body: chapter.body };
+    if (!change || !chapter.rebuildable) {
+      return { title: chapter.title, headingLine: chapter.headingLine, body: chapter.body };
+    }
+    return { title: chapter.title, headingLine: chapter.headingLine, body: change.proposed.trim() };
   });
   return assembleManuscript(preamble, next);
 }
@@ -122,10 +129,11 @@ export function changeTargetsChapter(
   chapter: ManuscriptChapter,
   allChapters: ManuscriptChapter[],
 ): boolean {
+  if (!chapter.rebuildable) return false;
   if (Number.isInteger(change.chapterIndex)) {
     return change.chapterIndex === chapter.index;
   }
-  const matches = allChapters.filter((item) => titlesMatch(change.chapterTitle, item.title));
+  const matches = allChapters.filter((item) => item.rebuildable && titlesMatch(change.chapterTitle, item.title));
   if (matches.length !== 1) return false;
   return matches[0].index === chapter.index;
 }

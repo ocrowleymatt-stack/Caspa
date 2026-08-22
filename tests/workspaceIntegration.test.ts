@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DESK_STAGES, findWorkspaceTool, toolsForStage } from '../src/services/workspaceCatalog';
-import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, splitManuscript, splitManuscriptChapters } from '../src/services/workspaceRebuild';
+import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
 import { briefFromProject, collectToolCache, hydrateToolCache, mergeWorkspaceArtefacts, scopedCacheKey } from '../src/services/workspaceProjectBridge';
 import { assertExpectedSourceVersion, HybridConflictError, summarizeVersion } from '../src/services/hybridCoreRepository';
 import { readIngestFile } from '../src/services/workspaceIngest';
-import { assertJobBoundToProject } from '../src/services/jobQueueService';
+import { assertJobBoundToProject, jobMatchesProject } from '../src/services/jobQueueService';
 import { getProjectKey } from '../src/services/researchLibraryService';
 
 test('desk journey includes idea and structure without dropping publish', () => {
@@ -209,17 +209,33 @@ test('identically named projects keep separate canon, research and psychology ca
   assert.equal((fromA.artefacts.psychology as any).id, 'psy-a');
 });
 
-test('title, contents and part headings are not treated as rebuild chapters', () => {
-  const manuscript = '# Harbour Book\n\n# Contents\n\n- Chapter 1\n\n# Part One\n\n# Chapter 1\n\nThe clerk waits.\n\n# Chapter 2\n\nThe sea arrives.';
-  const { preamble, chapters } = splitManuscript(manuscript);
-  assert.match(preamble, /Harbour Book/);
-  assert.match(preamble, /Contents/);
-  assert.match(preamble, /Part One/);
-  assert.deepEqual(chapters.map((chapter) => chapter.title), ['Chapter 1', 'Chapter 2']);
+test('title, contents and part headings stay as boundaries but are not rebuild targets', () => {
+  const manuscript = '# Harbour Book\n\n# Contents\n\n- Chapter 1\n\n# Part One\n\n# Chapter 1\n\nThe clerk waits.\n\n# Part Two\n\nThe middle of the book.\n\n# Chapter 2\n\nThe sea arrives.';
+  const { chapters } = splitManuscript(manuscript);
+  assert.deepEqual(chapters.map((chapter) => chapter.title), ['Harbour Book', 'Contents', 'Part One', 'Chapter 1', 'Part Two', 'Chapter 2']);
+  assert.deepEqual(splitRebuildChapters(manuscript).map((chapter) => chapter.title), ['Chapter 1', 'Chapter 2']);
+  const next = applySingleRebuildChange(manuscript, {
+    id: 'c1',
+    chapterTitle: 'Chapter 1',
+    chapterIndex: chapters.find((chapter) => chapter.title === 'Chapter 1')?.index,
+    currentExcerpt: 'The clerk waits.',
+    proposed: 'The clerk checks the tide.',
+    rationale: 'Tighten.',
+    status: 'accepted',
+  });
+  assert.match(next, /Harbour Book/);
+  assert.match(next, /Contents/);
+  assert.match(next, /Part Two/);
+  assert.match(next, /The middle of the book/);
+  assert.match(next, /The clerk checks the tide/);
+  assert.doesNotMatch(next, /The clerk waits/);
 });
 
-test('finish recovery refuses jobs that are not bound to the open project', () => {
-  assert.throws(() => assertJobBoundToProject({}, 'proj-b'), /does not belong/);
+test('finish recovery allows legacy unbound jobs and refuses a different project', () => {
+  assert.doesNotThrow(() => assertJobBoundToProject({}, 'proj-b'));
+  assert.equal(jobMatchesProject({}, 'proj-b'), true);
+  assert.equal(jobMatchesProject({ projectId: 'proj-b' }, 'proj-b'), true);
+  assert.equal(jobMatchesProject({ projectId: 'proj-a' }, 'proj-b'), false);
   assert.throws(() => assertJobBoundToProject({ projectId: 'proj-a' }, 'proj-b'), /does not belong/);
   assert.doesNotThrow(() => assertJobBoundToProject({ projectId: 'proj-b' }, 'proj-b'));
 });

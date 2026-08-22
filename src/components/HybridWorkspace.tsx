@@ -11,7 +11,7 @@ import {
 } from '../services/workspaceCatalog';
 import { briefFromProject, collectToolCache, hydrateToolCache, type WorkspaceProject } from '../services/workspaceProjectBridge';
 import { extractImageViaVision, readIngestFile } from '../services/workspaceIngest';
-import { splitManuscriptChapters } from '../services/workspaceRebuild';
+import { splitRebuildChapters } from '../services/workspaceRebuild';
 import WorkspaceToolHost from './WorkspaceToolHost';
 
 type Version = {
@@ -29,8 +29,14 @@ const FORMATS = [
   { id: 'adaptation', label: 'Adaptation', note: 'A source already exists' },
 ] as const;
 
+function activeProjectHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const projectId = window.localStorage.getItem('caspa.activeHybridProject');
+  return projectId ? { 'x-caspa-project-id': projectId } : {};
+}
+
 async function api(url: string, init?: RequestInit): Promise<any> {
-  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
+  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...activeProjectHeader(), ...(init?.headers || {}) } });
   const body = await response.json().catch(() => ({}));
   if (response.status === 409 && (body.code === 'REVISION_CONFLICT' || body.code === 'VERSION_CONFLICT')) {
     const error = new Error(body.message || 'Project changed in another session');
@@ -104,10 +110,23 @@ export default function HybridWorkspace() {
     return () => window.clearInterval(timer);
   }, [selected?.id]);
 
-  const openProject = async (project: WorkspaceProject, nextStage: DeskStage = 'Draft') => {
+  useEffect(() => {
+    if (!selected?.id) return;
+    const original = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      if (!headers.has('x-caspa-project-id')) headers.set('x-caspa-project-id', selected.id);
+      return original(input, { ...(init || {}), headers });
+    };
+    return () => {
+      window.fetch = original;
+    };
+  }, [selected?.id]);
+
+  const loadProject = async (project: WorkspaceProject, nextStage: DeskStage, options?: { keepTool?: boolean; preserveToolCache?: boolean }) => {
+    if (!options?.keepTool) setActiveTool(null);
     setSelected(project);
     setStage(nextStage);
-    setActiveTool(null);
     setBusy(true);
     try {
       const [list, latest] = await Promise.all([
@@ -120,7 +139,7 @@ export default function HybridWorkspace() {
       setManuscript(text);
       knownVersion.current = latest?.revision || next[0]?.revision || 0;
       knownProjectRevision.current = project.revision;
-      hydrateToolCache(project, text);
+      if (!options?.preserveToolCache) hydrateToolCache(project, text);
       const [draftData, diagnosisData, rebuildData] = await Promise.all([
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/draft-preview`).catch(() => null),
         api(`/api/v2/projects/${encodeURIComponent(project.id)}/diagnosis`).catch(() => null),
@@ -137,6 +156,24 @@ export default function HybridWorkspace() {
       setMessage(error instanceof Error ? error.message : 'Could not open this project.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openProject = async (project: WorkspaceProject, nextStage: DeskStage = 'Draft') => {
+    await loadProject(project, nextStage);
+  };
+
+  const reloadProject = async () => {
+    if (!selected) return;
+    try {
+      const fresh = await api(`/api/projects/${encodeURIComponent(selected.id)}`);
+      setProjects((current) => current.map((item) => item.id === fresh.id ? fresh : item));
+      await loadProject(fresh, stage, { keepTool: Boolean(activeTool), preserveToolCache: Boolean(activeTool) });
+      setMessage(activeTool
+        ? 'Reloaded the server project. Specialist work in this tool was kept so you can save it against the current revision.'
+        : 'Reloaded the current server project and artefacts.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not reload this project.');
     }
   };
 
@@ -415,7 +452,7 @@ export default function HybridWorkspace() {
   };
 
   const wordCount = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
-  const chapterCount = useMemo(() => splitManuscriptChapters(manuscript).length, [manuscript]);
+  const chapterCount = useMemo(() => splitRebuildChapters(manuscript).length, [manuscript]);
   const brief = selected ? briefFromProject(selected) : null;
   const stageTools = toolsForStage(stage);
   const hybridTools = stage === 'Library' ? [] : contextualTools(stage === 'Idea' || stage === 'Structure' ? 'draft' : stage.toLowerCase() as any);
@@ -475,7 +512,7 @@ export default function HybridWorkspace() {
       )}
 
       {message && <div className="desk-banner" role="status">{message}</div>}
-      {conflict && <div className="desk-banner is-conflict" role="alert">{conflict} <button type="button" className="desk-ghost" onClick={() => selected && void openProject(selected, stage)}>Reload project</button></div>}
+      {conflict && <div className="desk-banner is-conflict" role="alert">{conflict} <button type="button" className="desk-ghost" onClick={() => void reloadProject()}>Reload project</button></div>}
 
       <main className="hybrid-main desk-main">
         {stage === 'Library' || !selected ? (

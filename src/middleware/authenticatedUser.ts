@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
-import { runAsUser } from '../services/requestContext';
+import { projectIdFromRequest, runAsProject, runAsUser } from '../services/requestContext';
 
 export interface CaspaUser {
   id: string;
@@ -35,7 +35,7 @@ export function requireAuthenticatedUser(req: Request, res: Response, next: Next
     groups: clean(req.headers['x-authentik-groups'], 2000).split('|').map((value) => value.trim()).filter(Boolean),
   } satisfies CaspaUser;
   res.locals.caspaUser = user;
-  runAsUser(user, next);
+  runAsUser(user, () => runAsProject(projectIdFromRequest(req), next));
 }
 
 export function requestUser(res: Response): CaspaUser {
