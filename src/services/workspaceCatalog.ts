@@ -54,14 +54,25 @@ export const WORKSPACE_TOOLS: WorkspaceTool[] = [
 ];
 
 export const STAGE_HELP: Record<DeskStage, string> = {
-  Library: 'Server library. Every card is a PostgreSQL project. Create from a sentence, a file, or open existing work.',
-  Idea: 'Ingest a sentence, notes, or a manuscript. Photographs and receipts are OCR’d on attach; if extraction fails, nothing is stored. Promoting sources into the manuscript requires an explicit version.',
-  Structure: 'Reveal Story Bible, characters, psychology, and plot only when you need them. Nothing here overwrites the canonical manuscript.',
-  Draft: 'Write in the page, or ask Caspa for a named chapter preview. Reject leaves the version untouched. Accept creates a new immutable version.',
-  Workshop: 'Diagnose the saved version. Findings are evidence, not edits.',
-  Revise: 'Rip up and rebuild with per-change approval, or open Scalpel, Gold, or Auto Drafter. Earlier versions remain.',
-  Finish: 'Recover interrupted or completed jobs. Polling never re-downloads the whole manuscript.',
-  Publish: 'Preflight the current version, then download that exact checksum. A later save needs a fresh preflight.',
+  Library: 'Your books. Start from a sentence, open a file, or pick up where you left off.',
+  Idea: 'Get the thought onto the page. Attach notes or a photo if you have them. Saving makes this the first version of the book.',
+  Structure: 'Who wants what, and what turns. Rooms here do not overwrite the page until you accept a change.',
+  Draft: 'Write on the page, or name a chapter and ask Caspa for a private preview. Keep it only if it earns a place.',
+  Workshop: 'See what is holding. Diagnosis does not rewrite a word.',
+  Revise: 'Change one chapter at a time. Earlier versions stay.',
+  Finish: 'Collect anything Caspa already finished for this book. Nothing is added until you say so.',
+  Publish: 'Check the saved version, then download that copy. If you keep writing, check again before you export.',
+};
+
+export const STAGE_NEXT: Record<DeskStage, { hint: string; next?: DeskStage; nextLabel?: string }> = {
+  Library: { hint: 'Start a book, or open one you already have.' },
+  Idea: { hint: 'When the idea is on the page, map the people and the spine.', next: 'Structure', nextLabel: 'Next: Structure' },
+  Structure: { hint: 'When you know who it is about, write.', next: 'Draft', nextLabel: 'Next: Draft' },
+  Draft: { hint: 'When you have pages, see what is working.', next: 'Workshop', nextLabel: 'Next: Workshop' },
+  Workshop: { hint: 'When you know the wound, revise one chapter.', next: 'Revise', nextLabel: 'Next: Revise' },
+  Revise: { hint: 'When the turn is true, gather the finished work.', next: 'Finish', nextLabel: 'Next: Finish' },
+  Finish: { hint: 'When the book is the one you mean, take a copy home.', next: 'Publish', nextLabel: 'Next: Publish' },
+  Publish: { hint: 'Check the saved version, then download it.' },
 };
 
 export function deskStageToHybrid(stage: DeskStage): HybridStage | null {

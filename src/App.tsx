@@ -563,26 +563,26 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'linear-gradient(135deg, #120f0a 0%, #312411 55%, #f4efe5 55%, #fffaf2 100%)' }}>
-      <div style={{ width: '100%', maxWidth: 480, borderRadius: 28, padding: 32, ...surface }}>
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'linear-gradient(180deg, #14111c, #0d0b12)', color: '#f4ead6' }}>
+      <div style={{ width: '100%', maxWidth: 480, borderRadius: 28, padding: 32, background: 'rgba(28,24,36,.92)', border: '1px solid rgba(201,167,104,.22)', boxShadow: '0 24px 80px rgba(8,6,12,.4)' }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ width: 72, height: 72, borderRadius: 22, display: 'grid', placeItems: 'center', margin: '0 auto 16px', background: '#d6a846', color: '#1d1408' }}>
+          <div style={{ width: 72, height: 72, borderRadius: 22, display: 'grid', placeItems: 'center', margin: '0 auto 16px', background: '#c9a768', color: '#17110a' }}>
             <Sparkles size={34} />
           </div>
-          <h1 style={{ margin: 0, fontSize: 34, letterSpacing: -1 }}>Caspa</h1>
-          <p style={{ margin: '8px 0 0', color: '#6d6255' }}>Private creative engine. Start in one click — account optional.</p>
+          <h1 style={{ margin: 0, fontSize: 34, letterSpacing: -1, fontFamily: '"Cormorant Garamond", Georgia, serif' }}>Caspa</h1>
+          <p style={{ margin: '8px 0 0', color: '#b9aa98' }}>A private writing desk. Start in one click — account optional.</p>
         </div>
 
-        <button onClick={handleLocalContinue} disabled={loading} style={primaryButton('#d6a846', '#1d1408')}>
+        <button onClick={handleLocalContinue} disabled={loading} style={primaryButton('#c9a768', '#17110a')}>
           <Zap size={18} />
           Continue locally
         </button>
         <p style={{ margin: '10px 0 0', color: '#8a7d6b', fontSize: 13, lineHeight: 1.45, textAlign: 'center' }}>
-          Works offline in this browser. Back up from Settings when you want a server copy.
+          Stays on this machine until you sign in.
         </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0', color: '#9b9184', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
-          <span style={{ height: 1, flex: 1, background: '#eadfce' }} /> or sign in <span style={{ height: 1, flex: 1, background: '#eadfce' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0', color: '#8a7d6b', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
+          <span style={{ height: 1, flex: 1, background: 'rgba(201,167,104,.22)' }} /> or sign in <span style={{ height: 1, flex: 1, background: 'rgba(201,167,104,.22)' }} />
         </div>
 
         <button onClick={handleGoogleSignIn} disabled={loading || !firebaseReady} style={primaryButton('#1f2937', '#fff')}>
@@ -600,7 +600,7 @@ function CaspaLogin({ onLoginSuccess }: { onLoginSuccess?: (user: User) => void 
           </button>
         </form>
 
-        <button type="button" onClick={() => setIsSignUp(!isSignUp)} style={{ width: '100%', border: '1px solid #eadfce', background: '#fffaf2', color: '#4a3b28', borderRadius: 14, padding: 12, marginTop: 14, cursor: 'pointer' }}>
+        <button type="button" onClick={() => setIsSignUp(!isSignUp)} style={{ width: '100%', border: '1px solid rgba(201,167,104,.28)', background: 'transparent', color: '#eee3d2', borderRadius: 14, padding: 12, marginTop: 14, cursor: 'pointer' }}>
           {isSignUp ? 'Already have an account? Sign in' : 'Create new account'}
         </button>
       </div>
@@ -1746,7 +1746,7 @@ function PageShell({ kicker, title, subtitle, children }: { kicker: string; titl
 function LabelledInput({ icon: Icon, label, value, onChange, type, placeholder }: { icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>; label: string; value: string; onChange: (value: string) => void; type: string; placeholder: string }) {
   return (
     <label style={{ display: 'block', marginBottom: 14 }}>
-      <span style={{ display: 'block', color: '#695d4f', fontSize: 13, fontWeight: 700, marginBottom: 7 }}>{label}</span>
+      <span style={{ display: 'block', color: '#b9aa98', fontSize: 13, fontWeight: 700, marginBottom: 7 }}>{label}</span>
       <div style={{ position: 'relative' }}>
         <Icon size={17} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#8b806f' }} />
         <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{ ...inputStyle, paddingLeft: 42 }} />

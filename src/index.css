@@ -317,8 +317,20 @@
 .desk-check.is-pass { color: #bdd6ad; }
 .desk-check.is-fail { color: #e5ae9e; }
 .workspace-tool-host-bar { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.workspace-tool-host-bar .desk-ghost { width: auto; margin-top: 0; }
 .workspace-tool-host-body, .workspace-tool-embed, .workspace-tool-embed-body { min-width: 0; max-width: 100%; overflow: auto; }
 .workspace-tool-embed { max-height: min(80vh, 920px); }
+.desk-more summary {
+  cursor: pointer;
+  color: #d4b36a;
+  font-size: 13px;
+  font-weight: 600;
+}
+.desk-more .desk-chips { margin-top: 12px; }
+#root .caspa-desk textarea.hybrid-manuscript::placeholder,
+#root .caspa-desk textarea.manuscript-page::placeholder {
+  color: #8a7d6c !important;
+}
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 
 @media (max-width: 1024px) {

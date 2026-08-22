@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { canMoveBetweenStages, contextualTools, nextHybridStage } from '../src/services/hybridWorkflow';
 import { manuscriptMetrics } from '../src/services/hybridCoreRepository';
+import { STAGE_HELP, STAGE_NEXT } from '../src/services/workspaceCatalog';
 
 test('hybrid workflow guides forward without trapping the author', () => {
   assert.equal(nextHybridStage('idea'), 'structure');
@@ -17,6 +18,16 @@ test('specialist capabilities appear contextually', () => {
   assert.ok(contextualTools('revise').includes('Gold Refinery'));
   assert.ok(contextualTools('publish').includes('Export and publishing'));
   assert.ok(contextualTools('publish').includes('Imagine'));
+});
+
+test('desk copy stays human and every stage has a next hint', () => {
+  for (const help of Object.values(STAGE_HELP)) {
+    assert.doesNotMatch(help, /PostgreSQL|OCR|checksum|artefact|immutable|preflight/i);
+    assert.ok(help.length > 20);
+  }
+  assert.equal(STAGE_NEXT.Draft.next, 'Workshop');
+  assert.equal(STAGE_NEXT.Publish.next, undefined);
+  assert.match(STAGE_NEXT.Idea.nextLabel || '', /Structure/);
 });
 
 test('manuscript metrics count chapters rather than every subheading', () => {

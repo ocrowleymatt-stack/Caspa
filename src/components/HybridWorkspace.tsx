@@ -4,6 +4,7 @@ import { contextualTools } from '../services/hybridWorkflow';
 import {
   DESK_STAGES,
   STAGE_HELP,
+  STAGE_NEXT,
   findWorkspaceTool,
   toolsForStage,
   type DeskStage,
@@ -58,8 +59,7 @@ function JobIdentity({ job }: { job: any }) {
       <strong>{provenance.title || 'Untitled finished job'}</strong>
       <span>{job.type} · {job.stage} · {new Date(job.updatedAt).toLocaleString()}</span>
       <span>
-        {Number.isFinite(provenance.wordCount) ? `${Number(provenance.wordCount).toLocaleString()} words` : 'Word count unknown'}
-        {provenance.checksum ? ` · ${String(provenance.checksum).slice(0, 12)}` : ' · no checksum'}
+        {Number.isFinite(provenance.wordCount) ? `${Number(provenance.wordCount).toLocaleString()} words` : 'Length unknown'}
       </span>
       {provenance.brief ? <span>{provenance.brief}</span> : null}
     </>
@@ -115,10 +115,10 @@ export default function HybridWorkspace() {
     setLastSave(snap.lastSave || '');
     setRecoveryAvailable(Boolean(snap.recovery?.available));
     if (snap.latestVersion?.revision && knownVersion.current && snap.latestVersion.revision > knownVersion.current) {
-      setConflict(`Another session saved immutable version ${snap.latestVersion.revision}. Reload this desk before saving or accepting changes.`);
+      setConflict(`Another window saved version ${snap.latestVersion.revision}. Reload before you save or accept changes.`);
     }
     if (snap.project?.revision && knownProjectRevision.current && snap.project.revision !== knownProjectRevision.current) {
-      setConflict((current) => current || 'This project changed in another tab. Reload before saving artefacts. Local revision was not advanced.');
+      setConflict((current) => current || 'This book changed in another tab. Reload before you save.');
     }
   };
 
@@ -203,8 +203,8 @@ export default function HybridWorkspace() {
       setProjects((current) => current.map((item) => item.id === fresh.id ? fresh : item));
       await loadProject(fresh, stage, { keepTool: Boolean(activeTool), preserveToolCache: Boolean(activeTool) });
       setMessage(activeTool
-        ? 'Reloaded the server project. Specialist work in this tool was kept so you can save it against the current revision.'
-        : 'Reloaded the current server project and artefacts.');
+        ? 'Reloaded the book. Work in this room was kept so you can save it.'
+        : 'Reloaded this book.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not reload this project.');
     }
@@ -231,7 +231,7 @@ export default function HybridWorkspace() {
       });
       setProjects((current) => [project, ...current]);
       setShowNewProject(false); setNewTitle(''); setNewIdea('');
-      setMessage('Project created on the server. Nothing has been written into a manuscript yet.');
+      setMessage('Project ready. The page is empty until you write, paste, or ask Caspa.');
       await openProject(project, 'Idea');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not create the project.'); setBusy(false); }
   };
@@ -241,12 +241,12 @@ export default function HybridWorkspace() {
     if (!selected) {
       if (file.type.startsWith('image/')) {
         setNewIdea((current) => current || `Image ready after create: ${file.name}`);
-        setMessage('Create the server project first, then attach the image so Caspa can extract its text.');
+        setMessage('Create the book first, then attach the image.');
         return;
       }
       const read = await readIngestFile(file);
       setNewIdea(read.text.slice(0, 4000));
-      setMessage(`Loaded ${file.name}. Create the server project to keep it.`);
+      setMessage(`Loaded ${file.name}. Create the book to keep it.`);
       return;
     }
     setBusy(true);
@@ -267,12 +267,12 @@ export default function HybridWorkspace() {
       });
       setSelected(result.project);
       knownProjectRevision.current = result.project.revision;
-      setMessage(`${file.name} attached with extracted text. The manuscript was not overwritten.`);
+      setMessage(`${file.name} attached. The page was not overwritten.`);
       if (promote && read.text.trim()) {
         await saveVersion(read.text, `Imported · ${file.name}`, 'ingest-promoted');
       }
     } catch (error) {
-      handleConflict(error, 'Could not ingest that file.');
+      handleConflict(error, 'Could not open that file.');
     } finally { setBusy(false); }
   };
 
@@ -298,7 +298,7 @@ export default function HybridWorkspace() {
       if (manuscriptProposal) setProposal(manuscriptProposal);
       return { ok: true, project: result.project };
     } catch (error) {
-      handleConflict(error, 'Could not save project artefacts. The specialist tool stays open so the work is not discarded.');
+      handleConflict(error, 'Could not save that work. The room stays open so nothing is lost.');
       return { ok: false };
     }
   };
@@ -338,12 +338,12 @@ export default function HybridWorkspace() {
 
   const prepareDraft = async () => {
     if (!selected || !draftTitle.trim()) return;
-    setBusy(true); setMessage('Preparing a private continuity-checked preview…');
+    setBusy(true); setMessage('Writing a private preview…');
     try {
       const result = await api(`/api/v2/projects/${encodeURIComponent(selected.id)}/draft-preview`, {
         method: 'POST', body: JSON.stringify({ mode: manuscript.trim() ? 'append' : 'opening', chapterTitle: draftTitle, targetWords: 1200 }),
       });
-      setPreview(result); setMessage('Preview ready. The manuscript has not changed.');
+      setPreview(result); setMessage('Preview ready. The page has not changed.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Draft preview failed.'); }
     finally { setBusy(false); }
   };
@@ -355,10 +355,10 @@ export default function HybridWorkspace() {
       if (accept) {
         const version = await api(`/api/v2/draft-previews/${preview.id}/accept`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
         setVersions((current) => [version, ...current]); setManuscript(version.content); knownVersion.current = version.revision;
-        setMessage(`Accepted as immutable version ${version.revision}.`);
+        setMessage(`Kept as version ${version.revision}.`);
         setPreview(null);
       } else {
-        await api(`/api/v2/draft-previews/${preview.id}/reject`, { method: 'POST', body: '{}' }); setMessage('Preview rejected. The manuscript was not changed.');
+        await api(`/api/v2/draft-previews/${preview.id}/reject`, { method: 'POST', body: '{}' }); setMessage('Preview thrown away. The page is unchanged.');
         setPreview(null);
       }
     } catch (error) { handleConflict(error, 'Could not handle the preview.'); }
@@ -367,8 +367,8 @@ export default function HybridWorkspace() {
 
   const runDiagnosis = async () => {
     if (!selected) return;
-    setBusy(true); setMessage('Workshop is examining the current immutable manuscript…');
-    try { const result = await api(`/api/v2/projects/${selected.id}/diagnosis`, { method: 'POST', body: '{}' }); setDiagnosis(result); setMessage('Evidence-backed diagnosis completed. The manuscript is unchanged.'); }
+    setBusy(true); setMessage('Reading the saved book…');
+    try { const result = await api(`/api/v2/projects/${selected.id}/diagnosis`, { method: 'POST', body: '{}' }); setDiagnosis(result); setMessage('Notes are ready. The page is unchanged.'); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Diagnosis failed.'); }
     finally { setBusy(false); }
   };
@@ -379,7 +379,7 @@ export default function HybridWorkspace() {
     try {
       const result = await api(`/api/v2/projects/${selected.id}/rebuild/analyze`, { method: 'POST', body: '{}' });
       setRebuild(result);
-      setMessage('Rebuild analysis complete. No text was changed.');
+      setMessage('Looked at the structure. No text was changed.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Rebuild analysis failed.'); }
     finally { setBusy(false); }
   };
@@ -388,7 +388,7 @@ export default function HybridWorkspace() {
     if (!selected || rebuildChapterIndex === '') return;
     const chapter = splitManuscript(manuscript, { projectTitle: selected?.title }).chapters.find((item) => item.index === rebuildChapterIndex);
     if (!chapter?.rebuildable) {
-      setMessage('Choose a rebuildable chapter.');
+      setMessage('Choose a chapter to rewrite.');
       return;
     }
     setBusy(true);
@@ -398,7 +398,7 @@ export default function HybridWorkspace() {
         body: JSON.stringify({ chapterIndex: chapter.index, chapterTitle: chapter.title }),
       });
       setRebuild(result);
-      setMessage('Reconstruction plan ready. Preview the replacement before accepting.');
+      setMessage('Rewrite ready. Read it before you keep it.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Rebuild plan failed.'); }
     finally { setBusy(false); }
   };
@@ -413,11 +413,11 @@ export default function HybridWorkspace() {
         setVersions((current) => [result.version, ...current]);
         setManuscript(result.version.content);
         knownVersion.current = result.version.revision;
-        setMessage(`Accepted rebuild as immutable version ${result.version.revision}.`);
+        setMessage(`Kept the rewrite as version ${result.version.revision}.`);
       } else {
         const plan = await api(`/api/v2/rebuild-plans/${rebuild.id}/changes/${changeId}/reject`, { method: 'POST', body: '{}' });
         setRebuild(plan);
-        setMessage('Change rejected. The manuscript was not changed.');
+        setMessage('Rewrite thrown away. The page is unchanged.');
       }
     } catch (error) { handleConflict(error, 'Could not handle that rebuild change.'); }
     finally { setBusy(false); }
@@ -452,21 +452,21 @@ export default function HybridWorkspace() {
       const version = await api(`/api/v2/projects/${selected.id}/recover-job/${jobId}`, { method: 'POST', body: '{}' });
       setVersions((current) => current.some((item) => item.id === version.id) ? current : [version, ...current]);
       setManuscript(version.content); knownVersion.current = version.revision;
-      setMessage(`Finish result secured as immutable version ${version.revision}.`);
+      setMessage(`Kept as version ${version.revision}.`);
     } catch (error) { handleConflict(error, 'Could not recover the finished job.'); }
     finally { setBusy(false); }
   };
 
   const assignJob = async (jobId: string) => {
     if (!selected || assignPreviewId !== jobId) {
-      setMessage('Preview the finished job before assigning it to this project.');
+      setMessage('Look at the finished work before you attach it.');
       return;
     }
     setBusy(true);
     try {
       await api(`/api/v2/projects/${selected.id}/jobs/${jobId}/assign`, { method: 'POST', body: JSON.stringify({ authorConfirmed: true }) });
       setAssignPreviewId('');
-      setMessage('Job assigned to this project. Recover it to create a version.');
+      setMessage('Attached to this book. Keep it if you want a version.');
       refreshFinishJobs();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not assign that job.');
@@ -481,8 +481,8 @@ export default function HybridWorkspace() {
     try {
       const result = await api(`/api/v2/projects/${selected.id}/export-preflight`, { method: 'POST', body: '{}' });
       setPreflight(result);
-      setMessage(result.passed ? 'Publish preflight passed. The current immutable version is ready to download.' : 'Publish preflight found items to resolve.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Publish preflight failed.'); }
+      setMessage(result.passed ? 'This version is ready to download.' : 'A few things still need attention before you export.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not check this version.'); }
     finally { setBusy(false); }
   };
 
@@ -505,7 +505,7 @@ export default function HybridWorkspace() {
       knownVersion.current = version.revision;
       setProposal(null);
       setLastSave(version.createdAt);
-      setMessage(`Saved immutable version ${version.revision}.`);
+      setMessage(`Saved as version ${version.revision}.`);
     } catch (error) {
       handleConflict(error, 'Could not save this version.');
     } finally {
@@ -537,6 +537,29 @@ export default function HybridWorkspace() {
   const hybridTools = stage === 'Library' ? [] : contextualTools(stage === 'Idea' || stage === 'Structure' ? 'draft' : stage.toLowerCase() as any);
   const leftVersion = versions.find((item) => item.id === compareLeft) || versions[1];
   const rightVersion = versions.find((item) => item.id === compareRight) || versions[0];
+  const stageGuide = STAGE_NEXT[stage];
+  const formatLabel = FORMATS.find((item) => item.id === selected?.mode)?.label || selected?.mode || '';
+  const shownTools = new Set(
+    stage === 'Idea' ? ['Research Desk']
+      : stage === 'Structure' ? ['Brainstorm', 'Story Bible', 'Character Forge', 'Psychology Studio', 'Plot Architect']
+      : stage === 'Draft' ? ['Writing Studio', 'Auto Drafter']
+      : stage === 'Workshop' ? ['Critic Swarm']
+      : stage === 'Revise' ? ['Rip & Fix', 'Auto Drafter', 'Scalpel', 'Gold Refinery', 'Version compare']
+      : stage === 'Publish' ? ['Imagine']
+      : []
+  );
+  const extraTools = (stageTools.length ? stageTools.map((tool) => tool.label) : hybridTools)
+    .filter((label, index, list) => list.indexOf(label) === index && !shownTools.has(label));
+  const stageComplete: Record<DeskStage, boolean> = {
+    Library: projects.length > 0,
+    Idea: Boolean(manuscript.trim()),
+    Structure: Boolean(manuscript.trim()),
+    Draft: versions.length > 0,
+    Workshop: Boolean(diagnosis),
+    Revise: Boolean((rebuild?.changes || []).some((change: any) => change.status === 'accepted')),
+    Finish: Boolean(finishedJobs.length),
+    Publish: Boolean(preflight?.passed),
+  };
 
   return (
     <div className="hybrid-workspace caspa-desk">
@@ -556,11 +579,11 @@ export default function HybridWorkspace() {
 
       {selected && (
         <div className="desk-status" data-testid="desk-status">
-          <span>Stage <strong>{stage}</strong></span>
-          <span>Last server save <strong>{lastSave ? new Date(lastSave).toLocaleString() : 'none yet'}</strong></span>
-          <span>{wordCount.toLocaleString()} words · {chapterCount} chapter{chapterCount === 1 ? '' : 's'}</span>
-          <span>{versions.length} version{versions.length === 1 ? '' : 's'}</span>
-          <span>Recovery <strong>{recoveryAvailable ? 'available' : 'idle'}</strong></span>
+          <span><strong>{selected.title}</strong></span>
+          <span>{wordCount.toLocaleString()} words</span>
+          <span>{versions.length ? `${versions.length} saved version${versions.length === 1 ? '' : 's'}` : 'Not saved yet'}</span>
+          {lastSave && <span>Saved {new Date(lastSave).toLocaleString()}</span>}
+          {recoveryAvailable && <span>A finished job is waiting</span>}
         </div>
       )}
 
@@ -574,7 +597,7 @@ export default function HybridWorkspace() {
             className={stage === item ? 'is-active' : ''}
             data-testid={`desk-stage-${item.toLowerCase()}`}
           >
-            <span>{stage === item || (selected && DESK_STAGES.indexOf(stage) > index) ? <Check size={12} /> : index + 1}</span>
+            <span>{stageComplete[item] ? <Check size={12} /> : index + 1}</span>
             {item}
           </button>
         ))}
@@ -582,10 +605,9 @@ export default function HybridWorkspace() {
 
       {helpOpen && (
         <aside className="literary-card desk-help" data-testid="desk-help">
-          <p className="eyebrow">This stage</p>
+          <p className="eyebrow">Where you are</p>
           <p>{STAGE_HELP[stage]}</p>
-          <div className="gold-rule" />
-          {stageTools.map((tool) => <p key={tool.id}><strong>{tool.label}.</strong> {tool.help}</p>)}
+          <p className="desk-muted">{stageGuide.hint}</p>
         </aside>
       )}
 
@@ -597,13 +619,13 @@ export default function HybridWorkspace() {
           <div className="desk-library">
             <div className="desk-library-head">
               <div>
-                <p className="eyebrow">Author workspace</p>
+                <p className="eyebrow">Your desk</p>
                 <h2>Your work</h2>
-                <p className="desk-muted">Open a book, or start from a sentence. Work is saved on the server, not only in this browser.</p>
+                <p className="desk-muted">Open a book, or start from a sentence.</p>
               </div>
               <div className="desk-row">
-                <button type="button" className="desk-ghost" onClick={() => { setShowNewProject(true); setActiveTool(null); }}>New project</button>
-                <button type="button" className="desk-ghost" onClick={() => { setShowNewProject(true); fileInput.current?.click(); }}>Ingest a file</button>
+                <button type="button" className="desk-ghost" onClick={() => { setShowNewProject(true); setActiveTool(null); }}>New book</button>
+                <button type="button" className="desk-ghost" onClick={() => { setShowNewProject(true); fileInput.current?.click(); }}>Open a file</button>
               </div>
             </div>
 
@@ -627,7 +649,7 @@ export default function HybridWorkspace() {
                 </label>
                 <div className="desk-row">
                   <button type="button" className="desk-primary" disabled={busy} onClick={() => void createNewProject()}>Create project</button>
-                  <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach text, manuscript or image</button>
+                  <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach a file</button>
                 </div>
               </section>
             )}
@@ -637,8 +659,8 @@ export default function HybridWorkspace() {
                 <button className="hybrid-project-card literary-card" key={project.id} onClick={() => void openProject(project)}>
                   <BookOpen size={18} />
                   <h3>{project.title}</h3>
-                  <div className="desk-muted">{project.mode} · project revision {project.revision}</div>
-                  <div className="desk-muted">{new Date(project.updatedAt).toLocaleString()}</div>
+                  <div className="desk-muted">{FORMATS.find((item) => item.id === project.mode)?.label || project.mode}</div>
+                  <div className="desk-muted">{new Date(project.updatedAt).toLocaleDateString()}</div>
                 </button>
               ))}
               {!projects.length && !busy && <div className="literary-card desk-empty">Your desk is clear. Start with a sentence.</div>}
@@ -669,14 +691,20 @@ export default function HybridWorkspace() {
                       </div>
                       <button type="button" className="desk-primary" disabled={busy || !manuscript.trim()} onClick={() => void saveVersion()}><Save size={14} /> Save version</button>
                     </div>
-                    <textarea className="hybrid-manuscript manuscript-page" value={manuscript} onChange={(event) => setManuscript(event.target.value)} aria-label="Manuscript" />
+                    <textarea
+                      className="hybrid-manuscript manuscript-page"
+                      value={manuscript}
+                      onChange={(event) => setManuscript(event.target.value)}
+                      aria-label="Manuscript"
+                      placeholder="Write here. A sentence is enough to start."
+                    />
                   </section>
                 )}
 
                 {proposal && (
                   <section className="literary-card desk-proposal" data-testid="manuscript-proposal">
-                    <p className="eyebrow">Proposed manuscript change</p>
-                    <p>A specialist tool produced replacement text. Accepting creates a new immutable version. Rejecting leaves the canonical manuscript untouched.</p>
+                    <p className="eyebrow">Caspa wrote a replacement</p>
+                    <p>Keep it as a new version, or throw it away. The page does not change until you keep it.</p>
                     <div className="desk-preview">{proposal.slice(0, 4000)}</div>
                     <div className="desk-row">
                       <button type="button" className="desk-ghost" onClick={() => setProposal(null)}>Reject proposal</button>
@@ -688,35 +716,40 @@ export default function HybridWorkspace() {
 
               <aside className="hybrid-sidebar">
                 <section className="literary-card">
-                  <div className="desk-card-kicker"><ShieldCheck size={14} /> This manuscript</div>
+                  <div className="desk-card-kicker"><ShieldCheck size={14} /> This book</div>
                   <div className="desk-metric">{wordCount.toLocaleString()} words</div>
-                  <p className="desk-muted">{chapterCount} chapters · {versions.length ? `${versions.length} immutable versions` : 'Ready for a first version'}</p>
+                  <p className="desk-muted">{formatLabel}{chapterCount ? ` · ${chapterCount} chapter${chapterCount === 1 ? '' : 's'}` : ''}{versions.length ? ` · ${versions.length} saved` : ' · not saved yet'}</p>
+                  <p className="desk-muted">{stageGuide.hint}</p>
+                  {stageGuide.next && (
+                    <button type="button" className="desk-primary" onClick={() => void changeStage(stageGuide.next!)}>{stageGuide.nextLabel}</button>
+                  )}
                 </section>
 
                 <section className="literary-card">
-                  <div className="desk-card-kicker"><FileClock size={14} /> Version history</div>
+                  <div className="desk-card-kicker"><FileClock size={14} /> Saved versions</div>
                   {versions.slice(0, 8).map((version) => (
                     <button key={version.id} type="button" className="desk-version" onClick={() => void revealVersion(version.id)}>
                       <strong>v{version.revision} · {version.name}</strong>
-                      <span>{version.wordCount.toLocaleString()} words · {new Date(version.createdAt).toLocaleString()}</span>
+                      <span>{version.wordCount.toLocaleString()} words · {new Date(version.createdAt).toLocaleDateString()}</span>
                     </button>
                   ))}
+                  {!versions.length && <p className="desk-muted">Nothing saved yet. Write, then save a version.</p>}
                 </section>
 
                 {stage === 'Idea' && (
                   <section className="literary-card">
-                    <p className="eyebrow">Idea / ingest</p>
-                    <p className="desk-muted">Attach notes or a manuscript. Images are OCR’d on attach; if extraction fails, nothing is stored. Promotion into the manuscript is explicit.</p>
-                    <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach file or image</button>
-                    <button type="button" className="desk-primary" disabled={!manuscript.trim()} onClick={() => void saveVersion(manuscript, 'Imported manuscript', 'ingest-promoted')}>Save current text as first version</button>
-                    <button type="button" className="desk-ghost" onClick={() => void openTool('research')}>Open Research Desk</button>
+                    <p className="eyebrow">Get it down</p>
+                    <p className="desk-muted">Type on the page, or attach notes. Saving makes this the first version of the book.</p>
+                    <button type="button" className="desk-ghost" onClick={() => fileInput.current?.click()}>Attach a file</button>
+                    <button type="button" className="desk-primary" disabled={!manuscript.trim()} onClick={() => void saveVersion(manuscript, 'First version', 'ingest-promoted')}>Save as first version</button>
+                    <button type="button" className="desk-ghost" onClick={() => void openTool('research')}>Research Desk</button>
                   </section>
                 )}
 
                 {stage === 'Structure' && (
                   <section className="literary-card">
-                    <p className="eyebrow">Structure</p>
-                    <p className="desk-muted">These engines read this PostgreSQL project and write artefacts back to it.</p>
+                    <p className="eyebrow">People and spine</p>
+                    <p className="desk-muted">Open a room when you need it. Nothing here overwrites the page until you accept a change.</p>
                     {['Brainstorm', 'Story Bible', 'Character Forge', 'Psychology Studio', 'Plot Architect'].map((label) => (
                       <button key={label} type="button" className="desk-ghost" onClick={() => void openTool(label)}>{label}</button>
                     ))}
@@ -768,17 +801,17 @@ export default function HybridWorkspace() {
                           <div key={index} className="desk-finding"><strong>{finding.category} · {finding.severity}</strong><span>{finding.recommendation || finding.rationale}</span></div>
                         ))}
                       </>
-                    ) : <p className="desk-muted">Run a server-owned diagnosis against the current version.</p>}
-                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runDiagnosis()}>{diagnosis ? 'Run new diagnosis' : 'Diagnose manuscript'}</button>
+                    ) :                     <p className="desk-muted">Ask Caspa what is holding. The page does not change.</p>}
+                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runDiagnosis()}>{diagnosis ? 'Look again' : 'Read the book'}</button>
                     <button type="button" className="desk-ghost" onClick={() => void openTool('Critic Swarm')}>Critic Swarm</button>
                   </section>
                 )}
 
                 {stage === 'Revise' && (
                   <section className="literary-card" data-testid="rebuild-panel">
-                    <p className="eyebrow">Rip up and rebuild</p>
-                    <p className="desk-muted">Analyse without modifying. Then choose one chapter, plan it, preview it, and accept or reject that change. Title, contents and part headings stay as structure.</p>
-                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void analyzeRebuild()}>1. Analyse structure</button>
+                    <p className="eyebrow">One chapter at a time</p>
+                    <p className="desk-muted">Look first. Then choose a chapter, see the rewrite, and keep it only if it is better.</p>
+                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void analyzeRebuild()}>1. Look at the structure</button>
                     {rebuild?.analysis?.summary && <p>{rebuild.analysis.summary}</p>}
                     <label className="desk-field">
                       <span>Chapter to rebuild</span>
@@ -796,7 +829,7 @@ export default function HybridWorkspace() {
                         ))}
                       </select>
                     </label>
-                    <button type="button" className="desk-ghost" disabled={busy || !selectedRebuildChapter?.rebuildable} onClick={() => void planRebuild()}>2. Plan chosen chapter</button>
+                    <button type="button" className="desk-ghost" disabled={busy || !selectedRebuildChapter?.rebuildable} onClick={() => void planRebuild()}>2. Rewrite this chapter</button>
                     {(rebuild?.changes || []).map((change: any) => (
                       <div key={change.id} className="desk-change">
                         <strong>{change.chapterTitle} · {change.status}</strong>
@@ -833,18 +866,18 @@ export default function HybridWorkspace() {
 
                 {stage === 'Finish' && (
                   <section className="literary-card">
-                    <p className="eyebrow">Recovery Centre</p>
-                    <p className="desk-muted">Only jobs already assigned to this project can become a version. Unassigned jobs stay listed separately until you attach them.</p>
+                    <p className="eyebrow">Finished work</p>
+                    <p className="desk-muted">If Caspa already finished a chapter for this book, you can keep it as a version here.</p>
                     <div data-testid="finish-recover-panel">
                       {finishedJobs.length ? finishedJobs.map((job) => (
                         <button key={job.id} type="button" className="desk-ghost" onClick={() => void recoverJob(job.id)}>
                           <JobIdentity job={job} />
                         </button>
-                      )) : <p className="desk-muted">No completed jobs are assigned to this project.</p>}
+                      )) : <p className="desk-muted">Nothing waiting for this book.</p>}
                     </div>
                     <div className="gold-rule" />
-                    <p className="eyebrow">Unassigned jobs</p>
-                    <p className="desk-muted">Preview title, brief, length and checksum before assigning. Assignment does not write a version.</p>
+                    <p className="eyebrow">Unattached work</p>
+                    <p className="desk-muted">Look before you attach. Attaching does not change the page.</p>
                     <div data-testid="finish-assign-panel">
                       {unboundJobs.length ? unboundJobs.map((job) => (
                         <div key={job.id} className="desk-change" data-testid="unbound-job">
@@ -861,35 +894,37 @@ export default function HybridWorkspace() {
                             <button type="button" className="desk-ghost" onClick={() => setAssignPreviewId(job.id)}>Preview before assigning</button>
                           )}
                         </div>
-                      )) : <p className="desk-muted">No unassigned completed jobs.</p>}
+                      )) : <p className="desk-muted">Nothing left unattached.</p>}
                     </div>
                   </section>
                 )}
 
                 {stage === 'Publish' && (
                   <section className="literary-card">
-                    <p className="eyebrow">Publish gate</p>
-                    <p className="desk-muted">The export gate checks the current immutable version. Any later save requires a fresh preflight.</p>
+                    <p className="eyebrow">Take it home</p>
+                    <p className="desk-muted">Check the saved version, then download that copy. If you keep writing, check again.</p>
                     {preflight?.checks?.map((check: any) => (
                       <div key={check.id} className={check.passed ? 'desk-check is-pass' : 'desk-check is-fail'}>
                         <strong>{check.passed ? '✓' : '✗'} {check.label}</strong>
                         <span>{check.detail}</span>
                       </div>
                     ))}
-                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runPreflight()}>Run publish preflight</button>
-                    {preflight?.passed && selected && <a className="desk-primary" href={`/api/v2/projects/${encodeURIComponent(selected.id)}/export.txt`}>Download verified manuscript</a>}
+                    <button type="button" className="desk-ghost" disabled={busy} onClick={() => void runPreflight()}>Check this version</button>
+                    {preflight?.passed && selected && <a className="desk-primary" href={`/api/v2/projects/${encodeURIComponent(selected.id)}/export.txt`}>Download the book</a>}
                     <button type="button" className="desk-ghost" onClick={() => void openTool('design')}>Imagine</button>
                   </section>
                 )}
 
-                <section className="literary-card">
-                  <p className="eyebrow">Contextual tools</p>
-                  <div className="desk-chips">
-                    {(stageTools.length ? stageTools.map((tool) => tool.label) : hybridTools).map((tool) => (
-                      <button key={tool} type="button" onClick={() => void openTool(tool)}>{tool}</button>
-                    ))}
-                  </div>
-                </section>
+                {extraTools.length > 0 && (
+                  <details className="literary-card desk-more">
+                    <summary>More for this stage</summary>
+                    <div className="desk-chips">
+                      {extraTools.map((tool) => (
+                        <button key={tool} type="button" onClick={() => void openTool(tool)}>{tool}</button>
+                      ))}
+                    </div>
+                  </details>
+                )}
               </aside>
             </div>
           </>

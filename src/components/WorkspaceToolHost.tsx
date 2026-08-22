@@ -84,8 +84,8 @@ export default function WorkspaceToolHost({
           <p className="workspace-help-copy">{meta?.help}</p>
         </div>
         <div className="desk-row">
-          <button type="button" className="desk-ghost" onClick={onSave}>Save artefacts</button>
-          <button type="button" className="desk-ghost" onClick={onClose}>Close tool</button>
+          <button type="button" className="desk-ghost" onClick={onSave}>Save this work</button>
+          <button type="button" className="desk-ghost" onClick={onClose}>Back to the page</button>
         </div>
       </header>
       <div className="workspace-tool-host-body">{body}</div>
