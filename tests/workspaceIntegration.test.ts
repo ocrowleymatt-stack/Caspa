@@ -4,7 +4,7 @@ import { DESK_STAGES, findWorkspaceTool, toolsForStage } from '../src/services/w
 import { applyRebuildChanges, applySingleRebuildChange, detectManuscriptProposal, selectRebuildChapter, splitManuscript, splitManuscriptChapters, splitRebuildChapters } from '../src/services/workspaceRebuild';
 import { briefFromProject, collectToolCache, hydrateToolCache, mergeWorkspaceArtefacts, scopedCacheKey } from '../src/services/workspaceProjectBridge';
 import { activateUserDatabase, deactivateUserDatabase } from '../src/services/userDatabaseService';
-import { isSensitiveProjectCacheKey } from '../src/services/workspaceCacheKeys';
+import { bindAuthentikCacheOwner, cacheOwnerScope, isSensitiveProjectCacheKey } from '../src/services/workspaceCacheKeys';
 import { assertExpectedSourceVersion, HybridConflictError, summarizeVersion } from '../src/services/hybridCoreRepository';
 import { readIngestFile } from '../src/services/workspaceIngest';
 import { assertJobBoundToProject, jobMatchesProject } from '../src/services/jobQueueService';
@@ -223,6 +223,7 @@ test('manuscript caches are user-scoped and do not survive sign-out', () => {
     updatedAt: '2026-08-22T00:00:00.000Z',
     state: { brief: { idea: 'tide' }, research: [{ id: 'note-a' }] },
   };
+  bindAuthentikCacheOwner('author-a');
   hydrateToolCache(project, '# Ch\n\nSECRET MANUSCRIPT');
   assert.match(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-a')) || '', /SECRET MANUSCRIPT/);
   deactivateUserDatabase('author-a');
@@ -231,6 +232,33 @@ test('manuscript caches are user-scoped and do not survive sign-out', () => {
   const packed = JSON.parse(localStorage.getItem('atlas.userdb.author-a') || '{}');
   assert.ok(!Object.keys(packed).some((key) => isSensitiveProjectCacheKey(key)));
   assert.doesNotMatch(JSON.stringify(packed), /SECRET MANUSCRIPT/);
+});
+
+test('manuscript caches follow Authentik uid, not the local Firebase mount', () => {
+  installMemoryStorage();
+  activateUserDatabase('firebase-same');
+  bindAuthentikCacheOwner('ak-alice');
+  const project = {
+    id: 'proj-a',
+    title: 'Harbour Book',
+    mode: 'novel',
+    revision: 1,
+    updatedAt: '2026-08-22T00:00:00.000Z',
+    state: { brief: { idea: 'tide' } },
+  };
+  hydrateToolCache(project, '# Ch\n\nSECRET-ALICE');
+  const aliceKey = scopedCacheKey('caspa.whitePage', 'proj-a');
+  assert.match(localStorage.getItem(aliceKey) || '', /SECRET-ALICE/);
+  assert.equal(localStorage.getItem('atlas.activeUserDb'), 'firebase-same');
+  assert.equal(cacheOwnerScope(), 'ak-alice');
+  assert.notEqual(cacheOwnerScope(), 'firebase-same');
+
+  bindAuthentikCacheOwner('ak-bob');
+  assert.equal(localStorage.getItem(aliceKey), null);
+  assert.equal(cacheOwnerScope(), 'ak-bob');
+  hydrateToolCache(project, '# Ch\n\nSECRET-BOB');
+  assert.match(localStorage.getItem(scopedCacheKey('caspa.whitePage', 'proj-a')) || '', /SECRET-BOB/);
+  assert.notEqual(scopedCacheKey('caspa.whitePage', 'proj-a'), aliceKey);
 });
 
 test('title, contents and part headings stay as boundaries but are not rebuild targets', () => {

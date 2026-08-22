@@ -22,7 +22,7 @@ function clean(value: unknown, max = 320): string {
 export function requireAuthenticatedUser(req: Request, res: Response, next: NextFunction): void {
   const expectedSecret = String(process.env.CASPA_PROXY_SHARED_SECRET || '');
   const suppliedSecret = clean(req.headers['x-caspa-proxy-secret'], 500);
-  const id = clean(req.headers['x-authentik-uid'] || req.headers['x-caspa-user-id']);
+  const id = clean(req.headers['x-authentik-uid']);
   if (!expectedSecret || !suppliedSecret || !safeEqual(expectedSecret, suppliedSecret) || !id) {
     res.status(401).json({ success: false, message: 'Authentication required' });
     return;
@@ -30,8 +30,8 @@ export function requireAuthenticatedUser(req: Request, res: Response, next: Next
 
   const user = {
     id,
-    email: clean(req.headers['x-authentik-email'] || req.headers['x-caspa-user-email']),
-    name: clean(req.headers['x-authentik-name'] || req.headers['x-caspa-user-name']),
+    email: clean(req.headers['x-authentik-email']),
+    name: clean(req.headers['x-authentik-name']),
     groups: clean(req.headers['x-authentik-groups'], 2000).split('|').map((value) => value.trim()).filter(Boolean),
   } satisfies CaspaUser;
   res.locals.caspaUser = user;
@@ -45,7 +45,7 @@ export function requestUser(res: Response): CaspaUser {
 }
 
 export function parseOpsGroups(raw = process.env.CASPA_OPS_GROUPS): string[] {
-  return String(raw || 'authentik Admins,caspa-ops,ops,admin')
+  return String(raw || '')
     .split(/[,|]/)
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
@@ -53,8 +53,10 @@ export function parseOpsGroups(raw = process.env.CASPA_OPS_GROUPS): string[] {
 
 export function userIsOperator(user: Pick<CaspaUser, 'groups'> | undefined | null): boolean {
   if (!user) return false;
-  const allowed = new Set(parseOpsGroups());
-  return user.groups.some((group) => allowed.has(group.trim().toLowerCase()));
+  const allowed = parseOpsGroups();
+  if (!allowed.length) return false;
+  const permitted = new Set(allowed);
+  return user.groups.some((group) => permitted.has(group.trim().toLowerCase()));
 }
 
 export function requireOperator(_req: Request, res: Response, next: NextFunction): void {

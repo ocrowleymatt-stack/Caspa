@@ -38,6 +38,10 @@ router.get('/build', (_req, res) => {
   return res.json({ success: true, data: { stamp: getBuildStamp() } });
 });
 
+router.get('/me', (_req, res) => {
+  return res.json({ success: true, data: { id: requestUser(res).id } });
+});
+
 router.get('/doctor', requireOperator, async (_req, res) => {
   return res.json({ success: true, data: await getDoctorSnapshot() });
 });

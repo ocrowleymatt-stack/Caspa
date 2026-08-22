@@ -130,3 +130,36 @@ test('vision hourly quota survives an in-process restart', () => {
   if (!afterRestart.ok) assert.equal(afterRestart.status, 429);
   assert.equal(fs.existsSync(path.join(dataDir, 'caspa-vision-quota.json')), true);
 });
+
+test('vision rejects permissive base64 that Node would otherwise decode', () => {
+  resetVisionGuardForTests();
+  assert.equal(validateVisionImage(`${png}!!!!`, 'image/png').ok, false);
+  assert.equal(validateVisionImage(png.slice(0, -1), 'image/png').ok, false);
+  assert.equal(validateVisionImage(`${png}=`, 'image/png').ok, false);
+  assert.equal(validateVisionImage('abc', 'image/png').ok, false);
+});
+
+test('vision concurrency and spend ceilings persist across process memory loss', () => {
+  resetVisionGuardForTests();
+  const first = acquireVisionSlot('user-d');
+  assert.equal(first.ok, true);
+  resetVisionGuardMemoryForTests();
+  const stillBusy = acquireVisionSlot('user-d');
+  assert.equal(stillBusy.ok, false);
+  if (first.ok) first.release();
+
+  const blockedSpend = acquireVisionSlot('user-e', { tokens: 500_000, costCents: 1 });
+  assert.equal(blockedSpend.ok, false);
+  if (!blockedSpend.ok) assert.equal(blockedSpend.status, 429);
+});
+
+test('a stale vision quota lock does not disable OCR', () => {
+  resetVisionGuardForTests();
+  const lock = path.join(dataDir, 'caspa-vision-quota.json.lock');
+  fs.writeFileSync(lock, 'stale');
+  const aged = new Date(Date.now() - 30_000);
+  fs.utimesSync(lock, aged, aged);
+  const slot = acquireVisionSlot('user-lock');
+  assert.equal(slot.ok, true, 'stale lock should be stolen');
+  if (slot.ok) slot.release();
+});

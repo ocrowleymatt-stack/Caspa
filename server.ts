@@ -28,7 +28,7 @@ import caspaHybridCoreRoutes from './src/routes/caspa-hybrid-core-routes';
 import caspaJobRoutes from './src/routes/caspa-job-routes';
 import pdfUploadRoutes from './src/services/pdf-upload-routes';
 import { requestUser, requireAuthenticatedUser } from './src/middleware/authenticatedUser';
-import { acquireVisionSlot, validateVisionImage } from './src/services/visionGuard';
+import { acquireVisionSlot, estimateVisionSpend, validateVisionImage } from './src/services/visionGuard';
 import { ensureProjectSchema } from './src/services/projectRepository';
 import { ensureHybridCoreSchema } from './src/services/hybridCoreRepository';
 import { publicHealthPayload } from './src/services/publicHealth';
@@ -272,15 +272,12 @@ app.post("/api/ai/image-grok", async (req, res) => {
 // Accepts base64-encoded image and returns extracted text via Grok vision
 app.post("/api/ai/vision", async (req, res) => {
   const user = requestUser(res);
-  const slot = acquireVisionSlot(user.id);
-  if (slot.ok === false) return res.status(slot.status).json({ message: slot.message });
-
-  const imageBase64 = String(req.body?.imageBase64 || '');
-  const validated = validateVisionImage(imageBase64, req.body?.mimeType);
+  const validated = validateVisionImage(req.body?.imageBase64, req.body?.mimeType);
   if (validated.ok === false) {
-    slot.release();
     return res.status(validated.status).json({ message: validated.message });
   }
+  const slot = acquireVisionSlot(user.id, estimateVisionSpend(validated));
+  if (slot.ok === false) return res.status(slot.status).json({ message: slot.message });
 
   const apiKey = process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
   if (!apiKey) {
@@ -297,7 +294,7 @@ app.post("/api/ai/vision", async (req, res) => {
         messages: [{
           role: "user",
           content: [
-            { type: "image_url", image_url: { url: `data:${validated.mimeType};base64,${imageBase64.replace(/\s+/g, '')}` } },
+            { type: "image_url", image_url: { url: `data:${validated.mimeType};base64,${validated.base64}` } },
             { type: "text", text: "Extract and transcribe ALL text visible in this image. Preserve paragraph structure, headings, bullet points, and formatting as closely as possible. If there is no text, describe the visual content in detail instead." }
           ]
         }],

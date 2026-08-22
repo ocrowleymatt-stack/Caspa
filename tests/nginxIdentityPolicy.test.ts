@@ -29,6 +29,18 @@ test('empty or missing nginx identity config is rejected', () => {
   assert.equal(empty.ok, false);
 });
 
+test('nginx configs that leave X-Caspa-User-Id uncleared are rejected', () => {
+  const result = evaluateNginxIdentityConfig(fs.readFileSync(path.join(fixtures, 'fallback-id.conf'), 'utf8'));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /x-caspa-user-id/i);
+});
+
+test('nginx configs that rename client identity variables are rejected', () => {
+  const result = evaluateNginxIdentityConfig(fs.readFileSync(path.join(fixtures, 'derived-client.conf'), 'utf8'));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /client-derived|client-supplied|authentik_uid/i);
+});
+
 test('verify-nginx-identity.sh fails closed on a client-header fixture', () => {
   const script = path.join(process.cwd(), 'scripts', 'verify-nginx-identity.sh');
   const unsafe = spawnSync('bash', [script], {

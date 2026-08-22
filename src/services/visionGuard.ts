@@ -1,4 +1,5 @@
-import { closeSync, existsSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, renameSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { getDataDir } from './dataPaths';
 import { assertImageLimits, inspectImageGeometry } from './imageGeometry';
@@ -10,6 +11,11 @@ export const MAX_USER_PER_HOUR = 12;
 export const MAX_USER_PER_DAY = 36;
 const MAX_USER_CONCURRENT = 1;
 const MAX_GLOBAL_CONCURRENT = 3;
+const LOCK_STALE_MS = 8_000;
+const LOCK_WAIT_MS = 2_500;
+const INFLIGHT_STALE_MS = 10 * 60 * 1000;
+const DEFAULT_RESERVE_TOKENS = 6_000;
+const DEFAULT_RESERVE_CENTS = 6;
 
 const MAGIC: Array<{ mime: string; test: (bytes: Uint8Array) => boolean }> = [
   { mime: 'image/jpeg', test: (bytes) => bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff },
@@ -19,23 +25,41 @@ const MAGIC: Array<{ mime: string; test: (bytes: Uint8Array) => boolean }> = [
   { mime: 'image/webp', test: (bytes) => bytes.length > 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50 },
 ];
 
-const userInflight = new Map<string, number>();
-let globalInflight = 0;
-
 type QuotaUser = {
   hourKey: string;
   hourCount: number;
   dayKey: string;
   dayCount: number;
+  dayTokens: number;
+  dayCostCents: number;
+};
+
+type InflightEntry = {
+  userId: string;
+  token: string;
+  startedAt: number;
+  tokens: number;
+  costCents: number;
 };
 
 type QuotaFile = {
+  dayKey: string;
+  globalDayTokens: number;
+  globalDayCostCents: number;
   users: Record<string, QuotaUser>;
+  inflight: InflightEntry[];
 };
 
+export type VisionSpend = { tokens: number; costCents: number };
+
 export type VisionValidation =
-  | { ok: true; mimeType: string; byteLength: number; width: number; height: number }
+  | { ok: true; mimeType: string; byteLength: number; width: number; height: number; base64: string }
   | { ok: false; status: number; message: string };
+
+function envInt(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
 
 function quotaPath(): string {
   return path.join(getDataDir(), 'caspa-vision-quota.json');
@@ -49,35 +73,63 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function stealStaleLock(lock: string): void {
+  try {
+    if (!existsSync(lock)) return;
+    if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) unlinkSync(lock);
+  } catch {
+    /* another worker may have removed it */
+  }
+}
+
 function withQuotaLock<T>(fn: () => T): T {
   const lock = lockPath();
   const started = Date.now();
   while (true) {
+    stealStaleLock(lock);
     try {
       const fd = openSync(lock, 'wx');
       try {
+        writeFileSync(fd, `${process.pid}\n${Date.now()}`);
+        try { utimesSync(lock, new Date(), new Date()); } catch { /* best-effort freshness */ }
         return fn();
       } finally {
         closeSync(fd);
         try { unlinkSync(lock); } catch { /* already gone */ }
       }
     } catch (error) {
-      if (Date.now() - started > 2000) throw error;
-      sleepSync(15);
+      if (Date.now() - started > LOCK_WAIT_MS) throw error;
+      sleepSync(20);
     }
   }
 }
 
-function readQuotaFile(): QuotaFile {
+function emptyQuota(now: Date): QuotaFile {
+  return {
+    dayKey: utcDayKey(now),
+    globalDayTokens: 0,
+    globalDayCostCents: 0,
+    users: {},
+    inflight: [],
+  };
+}
+
+function readQuotaFile(now: Date): QuotaFile {
   try {
-    if (!existsSync(quotaPath())) return { users: {} };
-    const parsed = JSON.parse(readFileSync(quotaPath(), 'utf8')) as QuotaFile;
-    if (!parsed || typeof parsed !== 'object' || !parsed.users || typeof parsed.users !== 'object') {
-      return { users: {} };
-    }
-    return parsed;
+    if (!existsSync(quotaPath())) return emptyQuota(now);
+    const parsed = JSON.parse(readFileSync(quotaPath(), 'utf8')) as Partial<QuotaFile>;
+    if (!parsed || typeof parsed !== 'object') return emptyQuota(now);
+    const dayKey = utcDayKey(now);
+    const sameDay = parsed.dayKey === dayKey;
+    return {
+      dayKey,
+      globalDayTokens: sameDay ? Number(parsed.globalDayTokens) || 0 : 0,
+      globalDayCostCents: sameDay ? Number(parsed.globalDayCostCents) || 0 : 0,
+      users: parsed.users && typeof parsed.users === 'object' ? parsed.users : {},
+      inflight: Array.isArray(parsed.inflight) ? parsed.inflight : [],
+    };
   } catch {
-    return { users: {} };
+    return emptyQuota(now);
   }
 }
 
@@ -99,44 +151,130 @@ function utcDayKey(now: Date): string {
 function liveQuota(entry: QuotaUser | undefined, now: Date): QuotaUser {
   const hourKey = utcHourKey(now);
   const dayKey = utcDayKey(now);
+  const sameDay = entry?.dayKey === dayKey;
   return {
     hourKey,
     hourCount: entry?.hourKey === hourKey ? entry.hourCount : 0,
     dayKey,
-    dayCount: entry?.dayKey === dayKey ? entry.dayCount : 0,
+    dayCount: sameDay ? entry.dayCount : 0,
+    dayTokens: sameDay ? entry.dayTokens || 0 : 0,
+    dayCostCents: sameDay ? entry.dayCostCents || 0 : 0,
   };
 }
 
-function reserveDurableQuota(userId: string): { ok: true } | { ok: false; status: number; message: string } {
-  return withQuotaLock<{ ok: true } | { ok: false; status: number; message: string }>(() => {
-    const now = new Date();
-    const file = readQuotaFile();
-    const next: QuotaFile = { users: {} };
-    for (const [id, raw] of Object.entries(file.users)) {
-      const live = liveQuota(raw, now);
-      if (live.hourCount > 0 || live.dayCount > 0) next.users[id] = live;
-    }
-    const current = liveQuota(next.users[userId], now);
-    if (current.hourCount >= MAX_USER_PER_HOUR) {
-      return { ok: false, status: 429, message: 'Vision limit reached for this hour. Try again later.' };
-    }
-    if (current.dayCount >= MAX_USER_PER_DAY) {
-      return { ok: false, status: 429, message: 'Daily vision quota reached. Try again tomorrow.' };
-    }
-    next.users[userId] = {
-      hourKey: current.hourKey,
-      hourCount: current.hourCount + 1,
-      dayKey: current.dayKey,
-      dayCount: current.dayCount + 1,
-    };
-    writeQuotaFile(next);
-    return { ok: true };
-  });
+function liveInflight(entries: InflightEntry[], now: number): InflightEntry[] {
+  return entries.filter((entry) => now - entry.startedAt < INFLIGHT_STALE_MS);
+}
+
+export function estimateVisionSpend(image: { width: number; height: number; byteLength: number }): VisionSpend {
+  const tiles = Math.max(1, Math.ceil(image.width / 768) * Math.ceil(image.height / 768));
+  const tokens = tiles * 255 + 4096 + Math.ceil(Math.max(1, image.byteLength) / 1024);
+  return { tokens, costCents: Math.max(1, Math.ceil(tokens / 800)) };
+}
+
+function decodeStrictBase64(raw: string): Buffer | null {
+  const compact = raw.replace(/\s+/g, '');
+  if (!compact || compact.length % 4 !== 0) return null;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) return null;
+  if (compact.includes('=') && !/^[A-Za-z0-9+/]+={1,2}$/.test(compact)) return null;
+  const expected = compact.endsWith('==') ? (compact.length / 4) * 3 - 2 : compact.endsWith('=') ? (compact.length / 4) * 3 - 1 : (compact.length / 4) * 3;
+  const bytes = Buffer.from(compact, 'base64');
+  if (!bytes.length || bytes.length !== expected) return null;
+  const roundTrip = bytes.toString('base64').replace(/=+$/, '');
+  const compactBare = compact.replace(/=+$/, '');
+  if (roundTrip !== compactBare) return null;
+  return bytes;
+}
+
+function reserveDurableQuota(
+  userId: string,
+  spend: VisionSpend,
+): { ok: true; token: string } | { ok: false; status: number; message: string } {
+  try {
+    return withQuotaLock<{ ok: true; token: string } | { ok: false; status: number; message: string }>(() => {
+      const now = new Date();
+      const nowMs = now.getTime();
+      const file = readQuotaFile(now);
+      const inflight = liveInflight(file.inflight, nowMs);
+      if (inflight.filter((entry) => entry.userId === userId).length >= MAX_USER_CONCURRENT) {
+        return { ok: false, status: 429, message: 'A vision request is already running for this account.' };
+      }
+      if (inflight.length >= MAX_GLOBAL_CONCURRENT) {
+        return { ok: false, status: 429, message: 'Vision is busy. Try again in a moment.' };
+      }
+
+      const next: QuotaFile = {
+        dayKey: file.dayKey,
+        globalDayTokens: file.globalDayTokens,
+        globalDayCostCents: file.globalDayCostCents,
+        users: {},
+        inflight,
+      };
+      for (const [id, raw] of Object.entries(file.users)) {
+        const live = liveQuota(raw, now);
+        if (live.hourCount > 0 || live.dayCount > 0 || live.dayTokens > 0) next.users[id] = live;
+      }
+      const current = liveQuota(next.users[userId], now);
+      if (current.hourCount >= MAX_USER_PER_HOUR) {
+        return { ok: false, status: 429, message: 'Vision limit reached for this hour. Try again later.' };
+      }
+      if (current.dayCount >= MAX_USER_PER_DAY) {
+        return { ok: false, status: 429, message: 'Daily vision quota reached. Try again tomorrow.' };
+      }
+      if (current.dayTokens + spend.tokens > envInt('CASPA_VISION_DAILY_TOKEN_CEILING', 80_000)) {
+        return { ok: false, status: 429, message: 'Daily vision token ceiling reached. Try again tomorrow.' };
+      }
+      if (current.dayCostCents + spend.costCents > envInt('CASPA_VISION_DAILY_COST_CENTS', 800)) {
+        return { ok: false, status: 429, message: 'Daily vision spend ceiling reached. Try again tomorrow.' };
+      }
+      if (next.globalDayTokens + spend.tokens > envInt('CASPA_VISION_GLOBAL_DAILY_TOKEN_CEILING', 400_000)) {
+        return { ok: false, status: 429, message: 'Vision token ceiling reached. Try again tomorrow.' };
+      }
+      if (next.globalDayCostCents + spend.costCents > envInt('CASPA_VISION_GLOBAL_DAILY_COST_CENTS', 4_000)) {
+        return { ok: false, status: 429, message: 'Vision spend ceiling reached. Try again tomorrow.' };
+      }
+
+      const token = randomUUID();
+      next.users[userId] = {
+        hourKey: current.hourKey,
+        hourCount: current.hourCount + 1,
+        dayKey: current.dayKey,
+        dayCount: current.dayCount + 1,
+        dayTokens: current.dayTokens + spend.tokens,
+        dayCostCents: current.dayCostCents + spend.costCents,
+      };
+      next.globalDayTokens += spend.tokens;
+      next.globalDayCostCents += spend.costCents;
+      next.inflight.push({
+        userId,
+        token,
+        startedAt: nowMs,
+        tokens: spend.tokens,
+        costCents: spend.costCents,
+      });
+      writeQuotaFile(next);
+      return { ok: true, token };
+    });
+  } catch {
+    return { ok: false, status: 503, message: 'Vision is busy. Try again in a moment.' };
+  }
+}
+
+function releaseInflight(token: string): void {
+  try {
+    withQuotaLock(() => {
+      const now = new Date();
+      const file = readQuotaFile(now);
+      file.inflight = liveInflight(file.inflight, now.getTime()).filter((entry) => entry.token !== token);
+      writeQuotaFile(file);
+    });
+  } catch {
+    /* stale lock/inflight expire on the next reserve */
+  }
 }
 
 export function resetVisionGuardMemoryForTests(): void {
-  userInflight.clear();
-  globalInflight = 0;
+  /* durable inflight/quota live on disk so a process restart cannot reset them */
 }
 
 export function resetVisionGuardForTests(): void {
@@ -156,13 +294,10 @@ export function validateVisionImage(imageBase64: unknown, mimeType: unknown): Vi
   if (raw.length > MAX_BASE64_CHARS) return { ok: false, status: 413, message: 'Image is too large. Use a file under 3 MB.' };
   if (!/^[A-Za-z0-9+/=\s]+$/.test(raw)) return { ok: false, status: 400, message: 'Image payload is not valid base64.' };
 
-  let bytes: Buffer;
-  try {
-    bytes = Buffer.from(raw.replace(/\s+/g, ''), 'base64');
-  } catch {
-    return { ok: false, status: 400, message: 'Image payload is not valid base64.' };
-  }
-  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) {
+  const compact = raw.replace(/\s+/g, '');
+  const bytes = decodeStrictBase64(compact);
+  if (!bytes) return { ok: false, status: 400, message: 'Image payload is not valid base64.' };
+  if (bytes.length > MAX_IMAGE_BYTES) {
     return { ok: false, status: 413, message: 'Image is too large. Use a file under 3 MB.' };
   }
 
@@ -186,32 +321,28 @@ export function validateVisionImage(imageBase64: unknown, mimeType: unknown): Vi
     byteLength: bytes.length,
     width: geometry.width,
     height: geometry.height,
+    base64: compact,
   };
 }
 
-export function acquireVisionSlot(userId: string): { ok: true; release: () => void } | { ok: false; status: number; message: string } {
+export function acquireVisionSlot(
+  userId: string,
+  spend?: Partial<VisionSpend>,
+): { ok: true; release: () => void } | { ok: false; status: number; message: string } {
   const id = String(userId || '').trim();
   if (!id) return { ok: false, status: 401, message: 'Authentication required' };
-  if ((userInflight.get(id) || 0) >= MAX_USER_CONCURRENT) {
-    return { ok: false, status: 429, message: 'A vision request is already running for this account.' };
-  }
-  if (globalInflight >= MAX_GLOBAL_CONCURRENT) {
-    return { ok: false, status: 429, message: 'Vision is busy. Try again in a moment.' };
-  }
-
-  const reserved = reserveDurableQuota(id);
+  const reserved = reserveDurableQuota(id, {
+    tokens: Math.max(1, Math.floor(spend?.tokens || DEFAULT_RESERVE_TOKENS)),
+    costCents: Math.max(1, Math.floor(spend?.costCents || DEFAULT_RESERVE_CENTS)),
+  });
   if (reserved.ok === false) return reserved;
-
-  userInflight.set(id, (userInflight.get(id) || 0) + 1);
-  globalInflight += 1;
   let released = false;
   return {
     ok: true,
     release() {
       if (released) return;
       released = true;
-      userInflight.set(id, Math.max(0, (userInflight.get(id) || 1) - 1));
-      globalInflight = Math.max(0, globalInflight - 1);
+      releaseInflight(reserved.token);
     },
   };
 }

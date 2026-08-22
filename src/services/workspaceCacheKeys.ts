@@ -1,4 +1,5 @@
 export const ACTIVE_HYBRID_PROJECT_KEY = 'caspa.activeHybridProject';
+export const AUTHENTIK_OWNER_KEY = 'atlas.authentikUid';
 
 export const SENSITIVE_CACHE_PREFIXES = [
   'caspa.whitePage.',
@@ -12,7 +13,22 @@ export const SENSITIVE_CACHE_PREFIXES = [
 
 export function cacheOwnerScope(): string {
   if (typeof localStorage === 'undefined') return 'anon';
-  return String(localStorage.getItem('atlas.activeUserDb') || 'anon').trim() || 'anon';
+  return String(localStorage.getItem(AUTHENTIK_OWNER_KEY) || 'anon').trim() || 'anon';
+}
+
+export function bindAuthentikCacheOwner(uid: string): void {
+  if (typeof localStorage === 'undefined') return;
+  const next = String(uid || '').trim();
+  if (!next) return;
+  const previous = String(localStorage.getItem(AUTHENTIK_OWNER_KEY) || '').trim();
+  if (previous && previous !== next) clearSensitiveProjectCaches();
+  localStorage.setItem(AUTHENTIK_OWNER_KEY, next);
+}
+
+export function clearAuthentikCacheOwner(): void {
+  if (typeof localStorage === 'undefined') return;
+  clearSensitiveProjectCaches();
+  localStorage.removeItem(AUTHENTIK_OWNER_KEY);
 }
 
 export function scopedCacheKey(

@@ -10,7 +10,7 @@
  */
 
 import { scheduleServerProjectSync } from './serverProjectSync';
-import { clearSensitiveProjectCaches, isSensitiveProjectCacheKey } from './workspaceCacheKeys';
+import { clearAuthentikCacheOwner, clearSensitiveProjectCaches, isSensitiveProjectCacheKey } from './workspaceCacheKeys';
 
 const ACTIVE_SCOPE_KEY = 'atlas.activeUserDb';
 const USER_DB_PREFIX = 'atlas.userdb.';
@@ -120,13 +120,13 @@ export function activateUserDatabase(uid: string): void {
 export function deactivateUserDatabase(uid?: string): void {
   const current = localStorage.getItem(ACTIVE_SCOPE_KEY);
   if (!current) {
-    clearSensitiveProjectCaches();
+    clearAuthentikCacheOwner();
     clearActiveWorkspace();
     return;
   }
   if (!uid || safeScope(uid) === current) {
     writeUserDatabase(current, collectActiveWorkspaceEntries());
-    clearSensitiveProjectCaches();
+    clearAuthentikCacheOwner();
     clearActiveWorkspace();
     localStorage.removeItem(ACTIVE_SCOPE_KEY);
   }
