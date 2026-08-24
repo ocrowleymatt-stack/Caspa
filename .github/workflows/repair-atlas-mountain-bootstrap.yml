@@ -1,0 +1,74 @@
+name: Execute Atlas Mountain bootstrap now
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-atlas-mountain-bootstrap.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; echo "identity=$name"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Install dedicated Mountain OIDC receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote=/tmp/atlas-mountain-oidc-bootstrap
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
+          scp -i ~/.ssh/id_ed25519 -r deployment/atlas-mountain-oidc/. root@"$ATLAS_HOST":"$remote/"
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" \
+            "bash '$remote/bootstrap.sh' '$remote'; rc=\$?; rm -rf '$remote'; exit \$rc"
+
+      - name: Verify bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          systemctl is-active --quiet atlas-mountain-deploy-receiver.service
+          nginx -t >/dev/null
+          curl -fsS --max-time 3 http://127.0.0.1:3016/health >/dev/null
+          curl -fsS --max-time 5 http://127.0.0.1:3002/health >/dev/null
+          echo 'receiver_service=active'
+          echo 'receiver_local_health=ok'
+          echo 'nginx=valid'
+          echo 'openwebui=healthy'
+          REMOTE
+          status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__atlas_mountain_deploy/v1 || true)"
+          test "$status" = 401
+          curl -fsS --max-time 8 https://atlas.ocrowley.com/health >/dev/null
+          echo "receiver_public_unauthenticated=$status"
+          echo 'existing_atlas_public_health=ok'
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
