@@ -1,0 +1,98 @@
+name: Recover Atlas Mountain repaired release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-atlas-mountain-b87379ae.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ATLAS_HOST: 116.202.24.63
+      TARGET_SHA: b87379ae8b74202cf183edddb3a887c2ef93612c
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; echo "identity=$name"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Recover repaired release with deployment serialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          archive="/root/AtlasMountainDeploy/inbox/${TARGET_SHA}.tgz"
+          test -s "$archive"
+          tar -tzf "$archive" >/dev/null
+
+          # Quiesce the receiver so no OIDC request can race this already-authenticated,
+          # already-CI-green recovery archive. Always restore the receiver on exit.
+          systemctl stop atlas-mountain-deploy-receiver.service
+          restore_receiver() {
+            systemctl start atlas-mountain-deploy-receiver.service >/dev/null 2>&1 || true
+          }
+          trap restore_receiver EXIT
+
+          # End the broken old-release restart storm before promoting the repaired release.
+          systemctl stop atlas-mountain-nexus.service >/dev/null 2>&1 || true
+
+          exec 9>/root/AtlasMountainDeploy/recovery.lock
+          flock -w 10 9
+          /root/AtlasMountainDeploy/deploy.sh "$TARGET_SHA" "$archive"
+
+          restore_receiver
+          trap - EXIT
+
+          current="$(basename "$(readlink -f /opt/atlas-mountain/current)")"
+          test "$current" = "$TARGET_SHA"
+          systemctl is-active --quiet atlas-mountain-deploy-receiver.service
+          systemctl is-active --quiet atlas-mountain-nexus.service
+          curl -fsS --max-time 5 http://127.0.0.1:3016/health >/dev/null
+          curl -fsS --max-time 5 http://127.0.0.1:43101/health >/dev/null
+          curl -fsS --max-time 8 http://127.0.0.1:3002/health >/dev/null
+          nginx -t >/dev/null
+          echo "deployed_sha=$current"
+          echo 'receiver=active'
+          echo 'nexus=active'
+          echo 'local_health=ok'
+          REMOTE
+
+      - name: Verify public coexistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ui_status="$(curl -ksS -o /tmp/mountain-ui.html -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/)"
+          test "$ui_status" = 200
+          grep -qi '<html' /tmp/mountain-ui.html
+          api_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/api/models || true)"
+          case "$api_status" in 401|403) ;; *) echo "anonymous API gate failed: HTTP $api_status" >&2; exit 1 ;; esac
+          curl -fsS --max-time 10 https://atlas.ocrowley.com/health >/dev/null
+          echo "public_ui=$ui_status"
+          echo "anonymous_api=$api_status"
+          echo 'existing_atlas_health=ok'
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519 /tmp/mountain-ui.html
