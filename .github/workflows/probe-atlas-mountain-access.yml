@@ -1,0 +1,64 @@
+name: Probe Atlas Mountain access from Caspa
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-atlas-mountain-access.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          selected=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; selected="$name"; break; fi
+          done
+          test -n "$key" || { echo 'hetzner_secret_available=false'; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          echo 'hetzner_secret_available=true'
+          echo "hetzner_identity_name=$selected"
+
+      - name: Probe live host read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "host=$(hostname)"
+          echo "node=$(node --version 2>/dev/null || echo missing)"
+          echo "nginx=$(nginx -t >/dev/null 2>&1 && echo valid || echo invalid)"
+          echo "openwebui=$(curl -fsS --max-time 3 http://127.0.0.1:3002/health >/dev/null 2>&1 && echo healthy || echo unavailable)"
+          if GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new' \
+             git ls-remote git@github.com:ocrowleymatt-stack/atlas-mountain.git HEAD >/tmp/mountain-head 2>/dev/null; then
+            echo 'server_github_mountain_access=true'
+            echo "mountain_head=$(awk 'NR==1 {print $1}' /tmp/mountain-head)"
+          else
+            echo 'server_github_mountain_access=false'
+          fi
+          rm -f /tmp/mountain-head
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
