@@ -1,0 +1,26 @@
+[Unit]
+Description=Atlas Mountain Nexus
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atlasmountain
+Group=atlasmountain
+WorkingDirectory=/opt/atlas-mountain/current
+EnvironmentFile=/etc/atlas-mountain/atlas.env
+ExecStart=/usr/bin/env node /opt/atlas-mountain/current/services/nexus/dist/index.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/atlas-mountain
+CapabilityBoundingSet=
+LockPersonality=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
