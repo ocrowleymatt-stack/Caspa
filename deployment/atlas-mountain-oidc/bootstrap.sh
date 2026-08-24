@@ -87,6 +87,7 @@ if ! nginx -t; then
 fi
 
 systemctl daemon-reload
+systemctl reset-failed "$SERVICE" >/dev/null 2>&1 || true
 systemctl enable --now "$SERVICE"
 systemctl restart "$SERVICE"
 for _ in $(seq 1 20); do
