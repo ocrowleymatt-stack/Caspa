@@ -1,3 +1,4 @@
+# Temporary operational workflow. Do not merge.
 name: Apply Atlas v12 static root fix
 
 on:
