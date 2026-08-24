@@ -47,9 +47,17 @@ jobs:
           set -euo pipefail
           remote=/tmp/atlas-mountain-umask-fix
           ssh -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
-          scp -i ~/.ssh/id_ed25519 -r deployment/atlas-mountain-oidc/. root@"$ATLAS_HOST":"$remote/"
+          scp -i ~/.ssh/id_ed25519 \
+            deployment/atlas-mountain-oidc/bootstrap.sh \
+            deployment/atlas-mountain-oidc/receiver.mjs \
+            deployment/atlas-mountain-oidc/deploy.sh \
+            deployment/atlas-mountain-oidc/atlas-mountain-deploy-receiver.service \
+            deployment/atlas-mountain-oidc/atlas-mountain-nexus.service \
+            deployment/atlas-mountain-oidc/nginx-app.conf \
+            deployment/atlas-mountain-oidc/nginx-receiver.conf \
+            root@"$ATLAS_HOST":"$remote/"
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" \
-            "bash '$remote/bootstrap.sh' '$remote' && rm -rf '$remote'"
+            "test -s '$remote/bootstrap.sh' && bash '$remote/bootstrap.sh' '$remote' && rm -rf '$remote'"
 
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
