@@ -56,9 +56,11 @@ jobs:
           echo '--- receiver unit status ---'
           systemctl status atlas-mountain-deploy-receiver.service --no-pager -l 2>&1 | tail -n 30 || true
           echo '--- receiver journal ---'
-          journalctl -u atlas-mountain-deploy-receiver.service -n 40 --no-pager -o cat 2>&1 || true
+          journalctl -u atlas-mountain-deploy-receiver.service -n 20 --no-pager -o cat 2>&1 || true
           REMOTE
 
       - name: Cleanup
         if: always()
         run: rm -f ~/.ssh/id_ed25519
+
+# Reprobe after bootstrap sandbox-path fix.
