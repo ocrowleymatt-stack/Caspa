@@ -24,7 +24,15 @@ command -v npm >/dev/null
 command -v nginx >/dev/null
 node_major="$(node -p 'process.versions.node.split(`.`)[0]')"
 (( node_major >= 22 )) || { echo "Node 22+ required; found $node_major" >&2; exit 2; }
-nginx -t >/dev/null
+
+# The deploy receiver runs in a strict systemd filesystem namespace. Validate
+# nginx without touching the live pid or error-log files: both are irrelevant
+# to syntax validation and must not require extra write access from the receiver.
+nginx_test() {
+  nginx -t -g 'pid /tmp/atlas-mountain-nginx-test.pid; error_log stderr notice;'
+}
+
+nginx_test >/dev/null
 curl -fsS --max-time 5 http://127.0.0.1:3002/health >/dev/null
 
 if ! id atlasmountain >/dev/null 2>&1; then
@@ -178,9 +186,9 @@ text = text[:close] + '    include /etc/nginx/snippets/atlas-mountain-v12.conf;\
 open(path, 'w', encoding='utf-8').write(text)
 PY
 
-if ! nginx -t; then
+if ! nginx_test; then
   cp -a "$backup" "$vhost"
-  nginx -t >/dev/null 2>&1 || true
+  nginx_test >/dev/null 2>&1 || true
   echo 'nginx validation failed; restored vhost' >&2
   exit 2
 fi
