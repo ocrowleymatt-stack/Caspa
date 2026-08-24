@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
+# The deploy child extracts and builds the immutable release. Keep repository
+# secrets explicitly protected by file modes, but use the normal service umask
+# so generated Vite assets are 0644 and directories are traversable by nginx.
+UMask=0022
 WorkingDirectory=/root/AtlasMountainDeploy
 ExecStart=/usr/bin/env node /root/AtlasMountainDeploy/receiver.mjs
 Restart=on-failure
