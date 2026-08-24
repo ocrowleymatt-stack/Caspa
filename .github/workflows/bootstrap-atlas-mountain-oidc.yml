@@ -1,0 +1,96 @@
+name: Bootstrap Atlas Mountain OIDC deploy bridge
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'deployment/atlas-mountain-oidc/**'
+      - '.github/workflows/bootstrap-atlas-mountain-oidc.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deployment/atlas-mountain-oidc/**'
+      - '.github/workflows/bootstrap-atlas-mountain-oidc.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate fixed deployment bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check deployment/atlas-mountain-oidc/receiver.mjs
+          bash -n deployment/atlas-mountain-oidc/deploy.sh
+          bash -n deployment/atlas-mountain-oidc/bootstrap.sh
+          grep -Fq "ocrowleymatt-stack/atlas-mountain" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "1343069841" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "274130919" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "127.0.0.1:43101" deployment/atlas-mountain-oidc/nginx-app.conf
+          grep -Fq "127.0.0.1:3016" deployment/atlas-mountain-oidc/nginx-receiver.conf
+          echo 'mountain_oidc_bridge_validation=true'
+
+  bootstrap:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select current live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          selected=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; selected="$name"; break; fi
+          done
+          test -n "$key" || { echo 'No live server SSH credential is configured.' >&2; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          echo "live_server_identity=$selected"
+
+      - name: Install dedicated Mountain receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote=/tmp/atlas-mountain-oidc-bootstrap
+          ssh -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
+          scp -i ~/.ssh/id_ed25519 -r deployment/atlas-mountain-oidc/. root@"$ATLAS_HOST":"$remote/"
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" \
+            "bash '$remote/bootstrap.sh' '$remote' && rm -rf '$remote'"
+
+      - name: Verify receiver without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 -X POST \
+            -H 'Content-Type: application/json' --data '{}' \
+            https://atlas.ocrowley.com/__atlas_mountain_deploy/v1)"
+          test "$status" = 401
+          curl -fsS --max-time 10 https://atlas.ocrowley.com/health >/dev/null
+          echo "mountain_receiver_public_unauthenticated=$status"
+          echo 'existing_atlas_still_healthy=true'
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
