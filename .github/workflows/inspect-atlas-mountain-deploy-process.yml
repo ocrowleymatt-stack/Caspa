@@ -1,0 +1,62 @@
+name: Inspect Atlas Mountain deploy process
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-atlas-mountain-deploy-process.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Inspect process tree and archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo 'receiver_process:'
+          systemctl show atlas-mountain-deploy-receiver.service -p MainPID -p ActiveState -p SubState --no-pager || true
+          echo 'process_tree:'
+          receiver_pid="$(systemctl show atlas-mountain-deploy-receiver.service -p MainPID --value 2>/dev/null || true)"
+          if [ -n "$receiver_pid" ] && [ "$receiver_pid" != 0 ]; then
+            ps -eo pid,ppid,etimes,stat,comm,args --forest | awk -v pid="$receiver_pid" '$1==pid || $2==pid || seen[$2] {seen[$1]=1; print}' || true
+            pstree -ap "$receiver_pid" 2>/dev/null || true
+          fi
+          echo 'matching_processes:'
+          pgrep -af 'AtlasMountainDeploy|atlas-mountain|npm|node' | tail -n 40 || true
+          echo 'archive_test:'
+          archive=/root/AtlasMountainDeploy/inbox/d3400dda19dc9bec9737d2e185811d233bc84fc9.tgz
+          if [ -s "$archive" ]; then
+            echo "archive_bytes=$(stat -c '%s' "$archive")"
+            echo "archive_entries=$(tar -tzf "$archive" 2>/dev/null | wc -l)"
+            tar -tzf "$archive" 2>/dev/null | head -n 12 || true
+          fi
+          echo 'filesystem:'
+          ls -ld /opt/atlas-mountain /opt/atlas-mountain/releases /var/lib/atlas-mountain /etc/atlas-mountain 2>&1 || true
+          REMOTE
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
