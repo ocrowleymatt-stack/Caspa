@@ -20,6 +20,7 @@ const WORKFLOW_REF = 'ocrowleymatt-stack/atlas-mountain/.github/workflows/deploy
 const WORKFLOW_NAME = 'Deploy Atlas Mountain to Hetzner';
 const USED_JTI_FILE = '/root/AtlasMountainDeploy/used-jti.json';
 const INBOX = '/root/AtlasMountainDeploy/inbox';
+const DEPLOY_RUNNER = '/root/AtlasMountainDeploy/deploy-runner.sh';
 
 let jwksCache = { expires: 0, keys: [] };
 
@@ -145,7 +146,7 @@ fs.mkdirSync(INBOX, { recursive: true, mode: 0o700 });
 const server = http.createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && request.url === HEALTH_PATH) {
-      return send(response, 200, { ok: true, service: 'AtlasMountainDeployReceiver', version: '1.0.0' });
+      return send(response, 200, { ok: true, service: 'AtlasMountainDeployReceiver', version: '1.1.0' });
     }
     if (request.url !== DEPLOY_PATH) return send(response, 404, { ok: false, error: 'not_found' });
     if (request.method !== 'POST') return send(response, 405, { ok: false, error: 'method_not_allowed' });
@@ -169,9 +170,11 @@ const server = http.createServer(async (request, response) => {
     const expectedHash = String(payload.archiveSha256 || '').toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(expectedHash) || sha256(archive) !== expectedHash) throw new Error('archive_hash');
 
+    const runId = String(claims.run_id || '');
     const archivePath = path.join(INBOX, `${commitSha}.tgz`);
     fs.writeFileSync(archivePath, archive, { mode: 0o600 });
-    const processResult = spawnSync('/root/AtlasMountainDeploy/deploy.sh', [commitSha, archivePath], {
+    console.log(`${new Date().toISOString()} deploy_start sha=${commitSha} run_id=${runId || 'unknown'}`);
+    const processResult = spawnSync(DEPLOY_RUNNER, [commitSha, archivePath, runId], {
       encoding: 'utf8',
       timeout: 480000,
       maxBuffer: 4 * 1024 * 1024,
@@ -180,7 +183,17 @@ const server = http.createServer(async (request, response) => {
     const stdout = String(processResult.stdout || '');
     const stderr = String(processResult.stderr || '');
     if (processResult.error) throw new Error(`deploy_spawn:${processResult.error.message}`);
+    if (processResult.status === 75) {
+      console.warn(`${new Date().toISOString()} deploy_busy sha=${commitSha} run_id=${runId || 'unknown'}`);
+      return send(response, 409, {
+        ok: false,
+        error: 'deploy_busy',
+        deployedSha: commitSha,
+        runId,
+      });
+    }
     if (processResult.status !== 0) {
+      console.error(`${new Date().toISOString()} deploy_failed sha=${commitSha} run_id=${runId || 'unknown'} status=${processResult.status}`);
       return send(response, 500, {
         ok: false,
         error: 'deploy_failed',
@@ -189,10 +202,11 @@ const server = http.createServer(async (request, response) => {
         stderr: stderr.slice(-16000),
       });
     }
+    console.log(`${new Date().toISOString()} deploy_success sha=${commitSha} run_id=${runId || 'unknown'}`);
     return send(response, 200, {
       ok: true,
       deployedSha: commitSha,
-      runId: String(claims.run_id || ''),
+      runId,
       stdout: stdout.slice(-16000),
     });
   } catch (error) {

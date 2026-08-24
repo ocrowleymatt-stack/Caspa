@@ -9,6 +9,7 @@ SERVICE=atlas-mountain-deploy-receiver.service
 [[ "$EUID" -eq 0 ]] || { echo 'bootstrap must run as root' >&2; exit 2; }
 command -v node >/dev/null
 command -v nginx >/dev/null
+command -v flock >/dev/null
 nginx -t >/dev/null
 curl -fsS --max-time 5 http://127.0.0.1:3002/health >/dev/null
 
@@ -21,13 +22,14 @@ fi
 
 # Every path named in the receiver's ReadWritePaths must exist before systemd
 # creates the service mount namespace, otherwise systemd exits with 226/NAMESPACE.
-install -d -o root -g root -m 0700 "$TARGET" "$TARGET/inbox" "$TARGET/backups"
+install -d -o root -g root -m 0700 "$TARGET" "$TARGET/inbox" "$TARGET/backups" "$TARGET/logs"
 install -d -o root -g root -m 0755 /opt/atlas-mountain /opt/atlas-mountain/releases /var/www/atlas-mountain /etc/nginx/snippets
 install -d -o root -g atlasmountain -m 0750 /etc/atlas-mountain
 install -d -o atlasmountain -g atlasmountain -m 0750 /var/lib/atlas-mountain /var/lib/atlas-mountain/workspace
 
 install -o root -g root -m 0600 "$SOURCE_DIR/receiver.mjs" "$TARGET/receiver.mjs"
 install -o root -g root -m 0700 "$SOURCE_DIR/deploy.sh" "$TARGET/deploy.sh"
+install -o root -g root -m 0700 "$SOURCE_DIR/deploy-runner.sh" "$TARGET/deploy-runner.sh"
 install -o root -g root -m 0644 "$SOURCE_DIR/atlas-mountain-nexus.service" "$TARGET/atlas-mountain-nexus.service"
 install -o root -g root -m 0644 "$SOURCE_DIR/nginx-app.conf" "$TARGET/nginx-app.conf"
 install -o root -g root -m 0644 "$SOURCE_DIR/nginx-receiver.conf" "$RECEIVER_SNIPPET"
