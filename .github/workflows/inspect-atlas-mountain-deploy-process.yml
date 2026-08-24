@@ -22,7 +22,7 @@ jobs:
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
     steps:
-      - name: Inspect process tree and archive
+      - name: Inspect live authentication routing
         shell: bash
         run: |
           set -euo pipefail
@@ -37,25 +37,23 @@ jobs:
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -u
-          echo 'receiver_process:'
-          systemctl show atlas-mountain-deploy-receiver.service -p MainPID -p ActiveState -p SubState --no-pager || true
-          echo 'process_tree:'
-          receiver_pid="$(systemctl show atlas-mountain-deploy-receiver.service -p MainPID --value 2>/dev/null || true)"
-          if [ -n "$receiver_pid" ] && [ "$receiver_pid" != 0 ]; then
-            ps -eo pid,ppid,etimes,stat,comm,args --forest | awk -v pid="$receiver_pid" '$1==pid || $2==pid || seen[$2] {seen[$1]=1; print}' || true
-            pstree -ap "$receiver_pid" 2>/dev/null || true
-          fi
-          echo 'matching_processes:'
-          pgrep -af 'AtlasMountainDeploy|atlas-mountain|npm|node' | tail -n 40 || true
-          echo 'archive_test:'
-          archive=/root/AtlasMountainDeploy/inbox/d3400dda19dc9bec9737d2e185811d233bc84fc9.tgz
-          if [ -s "$archive" ]; then
-            echo "archive_bytes=$(stat -c '%s' "$archive")"
-            echo "archive_entries=$(tar -tzf "$archive" 2>/dev/null | wc -l)"
-            tar -tzf "$archive" 2>/dev/null | head -n 12 || true
-          fi
-          echo 'filesystem:'
-          ls -ld /opt/atlas-mountain /opt/atlas-mountain/releases /var/lib/atlas-mountain /etc/atlas-mountain 2>&1 || true
+          echo 'relevant_nginx_configuration:'
+          nginx -T 2>/dev/null | grep -n -E -C 8 'atlas\.ocrowley\.com|auth_request|127\.0\.0\.1:3002|/api/v1/auths|oauth|sso' | head -n 600 || true
+          echo 'openwebui_auth_probe:'
+          status="$(curl -sS -o /tmp/atlas-auth-probe -w '%{http_code}' --max-time 5 http://127.0.0.1:3002/api/v1/auths/ || true)"
+          echo "status=$status"
+          python3 - <<'PY'
+import json
+p='/tmp/atlas-auth-probe'
+try:
+    data=json.load(open(p))
+    if isinstance(data, dict): print('body=dict:' + ','.join(sorted(data.keys())))
+    elif isinstance(data, list): print('body=list:length=' + str(len(data)))
+    else: print('body=json:' + type(data).__name__)
+except Exception:
+    print('body=non_json_or_empty')
+PY
+          rm -f /tmp/atlas-auth-probe
           REMOTE
       - name: Cleanup
         if: always()
