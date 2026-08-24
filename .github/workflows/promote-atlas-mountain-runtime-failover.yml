@@ -1,0 +1,114 @@
+name: Promote Atlas Mountain runtime failover release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/promote-atlas-mountain-runtime-failover.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ATLAS_HOST: 116.202.24.63
+      TARGET_SHA: ed2b9d0bcfef72c48bd3003a19eda58cb9aff4e4
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; echo "identity=$name"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Promote verified release
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "TARGET_SHA='$TARGET_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          archive="/root/AtlasMountainDeploy/inbox/${TARGET_SHA}.tgz"
+          test -s "$archive"
+          tar -tzf "$archive" >/dev/null
+
+          systemctl stop atlas-mountain-deploy-receiver.service
+          restore_receiver() {
+            systemctl start atlas-mountain-deploy-receiver.service >/dev/null 2>&1 || true
+            for _ in $(seq 1 20); do
+              curl -fsS --max-time 2 http://127.0.0.1:3016/health >/dev/null 2>&1 && return 0
+              sleep 1
+            done
+            return 1
+          }
+          trap 'restore_receiver || true' EXIT
+
+          exec 9>/root/AtlasMountainDeploy/recovery.lock
+          flock -w 10 9
+          /root/AtlasMountainDeploy/deploy.sh "$TARGET_SHA" "$archive"
+
+          restore_receiver
+          trap - EXIT
+
+          current="$(basename "$(readlink -f /opt/atlas-mountain/current)")"
+          test "$current" = "$TARGET_SHA"
+          systemctl is-active --quiet atlas-mountain-nexus.service
+          systemctl is-active --quiet atlas-mountain-deploy-receiver.service
+          curl -fsS --max-time 5 http://127.0.0.1:43101/health >/dev/null
+          curl -fsS --max-time 5 http://127.0.0.1:3016/health >/dev/null
+          nginx -t >/dev/null
+          echo "deployed_sha=$current"
+          REMOTE
+
+      - name: Prove Think runtime fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          conversation_json="$(curl -fsS --max-time 10 -H 'Content-Type: application/json' -d '{"target":"nexus/reason"}' http://127.0.0.1:43101/api/conversations)"
+          conversation_id="$(printf '%s' "$conversation_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["conversations"][0]["id"])')"
+          test -n "$conversation_id"
+
+          response="$(curl -fsS --max-time 90 -N -H 'Content-Type: application/json' \
+            -d '{"target":"nexus/reason","content":"Reply with exactly OK."}' \
+            "http://127.0.0.1:43101/api/conversations/${conversation_id}/messages")"
+
+          printf '%s\n' "$response" | grep -F '"type":"assistant.completed"' >/dev/null
+          if printf '%s\n' "$response" | grep -F '"type":"stream.failed"' >/dev/null; then
+            echo 'runtime fallback smoke test emitted stream.failed' >&2
+            exit 1
+          fi
+          echo 'nexus_reason_runtime_fallback_smoke=passed'
+          REMOTE
+
+      - name: Verify public boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ui_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/)"
+          test "$ui_status" = 200
+          api_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/api/models || true)"
+          case "$api_status" in 401|403) ;; *) exit 1 ;; esac
+          curl -fsS --max-time 10 https://atlas.ocrowley.com/health >/dev/null
+          echo "public_ui=$ui_status"
+          echo "anonymous_api=$api_status"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
