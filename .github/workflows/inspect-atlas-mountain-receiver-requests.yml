@@ -1,0 +1,49 @@
+name: Inspect Atlas Mountain receiver requests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-atlas-mountain-receiver-requests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Inspect receiver request evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo 'inbox:'
+          find /root/AtlasMountainDeploy/inbox -maxdepth 1 -type f -printf '%TY-%Tm-%TdT%TH:%TM:%TSZ %f %s\n' 2>/dev/null | sort || true
+          echo 'receiver_since_0434:'
+          journalctl -u atlas-mountain-deploy-receiver.service --since '2026-08-24 04:34:00 UTC' --no-pager -o cat 2>&1 || true
+          echo 'release_dirs:'
+          find /opt/atlas-mountain/releases -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true
+          REMOTE
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
