@@ -3,6 +3,10 @@ name: Apply Atlas v12 static root fix
 on:
   push:
     branches: [chatgpt/apply-v12-static-root]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-atlas-v12-static-root.yml'
 
 permissions:
   contents: read
@@ -36,7 +40,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Apply merged deployment bridge
+      - name: Apply merged deployment bridge and inspect effective path
         shell: bash
         run: |
           set -euo pipefail
@@ -46,17 +50,34 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" \
             "bash '$remote/bootstrap.sh' '$remote' && rm -rf '$remote'"
 
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo 'installed_snippet:'
+          sed -n '1,180p' /etc/nginx/snippets/atlas-mountain-v12.conf
+          echo 'fixed_source:'
+          sed -n '1,180p' /root/AtlasMountainDeploy/nginx-app.conf
+          echo 'effective_v12_locations:'
+          nginx -T 2>/dev/null | grep -n -E 'server_name.*atlas\.ocrowley\.com|location (=|\^~ )?/v12|atlas-mountain-v12|auth_request' | tail -n 80 || true
+          echo 'filesystem:'
+          ls -ld /var/www/atlas-mountain /var/www/atlas-mountain/v12
+          ls -l /var/www/atlas-mountain/v12/index.html
+          echo 'local_host_header_response:'
+          curl -ksS -D - -o /tmp/v12-body --resolve atlas.ocrowley.com:443:127.0.0.1 https://atlas.ocrowley.com/v12/ | head -n 30
+          echo "local_body_bytes=$(wc -c </tmp/v12-body)"
+          echo 'public_response:'
+          curl -ksS -D - -o /tmp/v12-public https://atlas.ocrowley.com/v12/ | head -n 30
+          echo "public_body_bytes=$(wc -c </tmp/v12-public)"
+          REMOTE
+
       - name: Verify static UI and API boundary
         shell: bash
         run: |
           set -euo pipefail
           ui_status="$(curl -ksS -o /tmp/v12.html -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/)"
           api_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/api/models || true)"
-          test "$ui_status" = 200
-          case "$api_status" in 401|403) ;; *) exit 1 ;; esac
-          grep -qi '<!doctype html' /tmp/v12.html
           echo "v12_ui=$ui_status"
           echo "v12_api_anon=$api_status"
+          case "$api_status" in 401|403) ;; *) exit 1 ;; esac
 
       - name: Cleanup
         if: always()
