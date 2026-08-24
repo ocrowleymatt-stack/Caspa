@@ -1,5 +1,6 @@
 name: Execute Atlas Mountain bootstrap now
 
+# Re-run after correcting systemd sandbox path ordering.
 on:
   pull_request:
     branches: [main]
