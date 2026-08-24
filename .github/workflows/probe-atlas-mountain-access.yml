@@ -31,32 +31,28 @@ jobs:
           for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
             if [ -n "${!name:-}" ]; then key="${!name}"; selected="$name"; break; fi
           done
-          test -n "$key" || { echo 'hetzner_secret_available=false'; exit 1; }
+          test -n "$key"
           mkdir -p ~/.ssh
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-          echo 'hetzner_secret_available=true'
           echo "hetzner_identity_name=$selected"
 
-      - name: Probe live host read-only
+      - name: Probe Mountain receiver read-only
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           echo "host=$(hostname)"
-          echo "node=$(node --version 2>/dev/null || echo missing)"
           echo "nginx=$(nginx -t >/dev/null 2>&1 && echo valid || echo invalid)"
           echo "openwebui=$(curl -fsS --max-time 3 http://127.0.0.1:3002/health >/dev/null 2>&1 && echo healthy || echo unavailable)"
-          if GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new' \
-             git ls-remote git@github.com:ocrowleymatt-stack/atlas-mountain.git HEAD >/tmp/mountain-head 2>/dev/null; then
-            echo 'server_github_mountain_access=true'
-            echo "mountain_head=$(awk 'NR==1 {print $1}' /tmp/mountain-head)"
-          else
-            echo 'server_github_mountain_access=false'
-          fi
-          rm -f /tmp/mountain-head
+          echo "receiver_service=$(systemctl is-active atlas-mountain-deploy-receiver.service 2>/dev/null || true)"
+          echo "receiver_local=$(curl -fsS --max-time 3 http://127.0.0.1:3016/health >/dev/null 2>&1 && echo healthy || echo unavailable)"
+          echo "receiver_include=$(nginx -T 2>&1 | grep -q 'atlas-mountain-deploy-receiver.conf' && echo present || echo absent)"
+          status=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__atlas_mountain_deploy/v1 || true)
+          echo "receiver_public_unauthenticated=${status:-000}"
+          echo "existing_atlas_public=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/health || true)"
           REMOTE
 
       - name: Cleanup
