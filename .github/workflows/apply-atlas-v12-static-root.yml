@@ -41,29 +41,39 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect live and staged Atlas paths
+      - name: Apply merged deployment bridge
         shell: bash
         run: |
           set -euo pipefail
+          remote=/tmp/atlas-mountain-umask-fix
+          ssh -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
+          scp -i ~/.ssh/id_ed25519 -r deployment/atlas-mountain-oidc/. root@"$ATLAS_HOST":"$remote/"
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" \
+            "bash '$remote/bootstrap.sh' '$remote' && rm -rf '$remote'"
+
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          target=/opt/atlas-mountain/releases/b44acd95658e0ccec845c0287674f6887d450bc6/apps/desktop/dist/index.html
-          echo 'current_release:'
-          readlink -f /opt/atlas-mountain/current || true
-          echo 'staged_index:'
-          stat -c 'mode=%a owner=%U group=%G size=%s path=%n' "$target"
-          echo 'staged_path_walk:'
-          namei -l "$target"
-          echo 'staged_assets:'
-          find "$(dirname "$target")/assets" -maxdepth 1 -type f -printf '%m %u %g %f\n' | sort | head -n 20
-          echo 'nginx_identity:'
-          ps -o user=,group=,comm= -C nginx | head -n 10 || true
-          echo 'live_web_index:'
-          stat -c 'mode=%a owner=%U group=%G size=%s path=%n' /var/www/atlas-mountain/v12/index.html
-          namei -l /var/www/atlas-mountain/v12/index.html
-          echo 'current_public_status:'
-          curl -ksS -o /dev/null -w 'ui=%{http_code}\n' --max-time 10 https://atlas.ocrowley.com/v12/
-          curl -ksS -o /dev/null -w 'api=%{http_code}\n' --max-time 10 https://atlas.ocrowley.com/v12/api/models || true
+          # A failed deployment may have left the experimental static snippet live.
+          # Restore the now-merged stable snippet before the next OIDC promotion.
+          install -o root -g root -m 0644 /root/AtlasMountainDeploy/nginx-app.conf /etc/nginx/snippets/atlas-mountain-v12.conf
+          nginx -t >/dev/null
+          systemctl reload nginx
+
+          receiver_pid="$(systemctl show atlas-mountain-deploy-receiver.service -p MainPID --value)"
+          test -n "$receiver_pid" && test "$receiver_pid" != 0
+          grep -Eq '^Umask:[[:space:]]+0022$' "/proc/${receiver_pid}/status"
+          systemctl is-active --quiet atlas-mountain-deploy-receiver.service
+          systemctl is-active --quiet atlas-mountain-nexus.service
+          curl -fsS --max-time 5 http://127.0.0.1:3016/health >/dev/null
+          curl -fsS --max-time 5 http://127.0.0.1:43101/health >/dev/null
+
+          ui="$(curl -ksS -o /tmp/v12-restored.html -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/)"
+          api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/v12/api/models || true)"
+          test "$ui" = 200
+          case "$api" in 401|403) ;; *) exit 1 ;; esac
+          echo 'receiver_umask=0022'
+          echo "v12_ui=$ui"
+          echo "v12_api_anon=$api"
           REMOTE
 
       - name: Cleanup
