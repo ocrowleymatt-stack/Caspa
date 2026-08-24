@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 7
     env:
       ATLAS_HOST: 116.202.24.63
-      EXPECTED_SHA: d3400dda19dc9bec9737d2e185811d233bc84fc9
+      EXPECTED_SHA: b87379ae8b74202cf183edddb3a887c2ef93612c
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
       ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
