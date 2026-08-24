@@ -25,11 +25,39 @@ command -v nginx >/dev/null
 node_major="$(node -p 'process.versions.node.split(`.`)[0]')"
 (( node_major >= 22 )) || { echo "Node 22+ required; found $node_major" >&2; exit 2; }
 
-# The deploy receiver runs in a strict systemd filesystem namespace. Validate
-# nginx without touching the live pid or error-log files: both are irrelevant
-# to syntax validation and must not require extra write access from the receiver.
+# The deploy receiver runs in a strict systemd filesystem namespace. Validate a
+# temporary top-level nginx config that points pid/error logging at PrivateTmp,
+# while still loading the real /etc/nginx include tree. This validates the same
+# vhosts without opening the live runtime pid or log files.
 nginx_test() {
-  nginx -t -g 'pid /tmp/atlas-mountain-nginx-test.pid; error_log stderr notice;'
+  local test_conf
+  test_conf="$(mktemp /tmp/atlas-mountain-nginx.XXXXXX.conf)"
+  python3 - /etc/nginx/nginx.conf "$test_conf" <<'PY'
+import re, sys
+source, dest = sys.argv[1:]
+text = open(source, encoding='utf-8').read()
+text, pid_count = re.subn(
+    r'(?m)^\s*pid\s+[^;]+;',
+    'pid /tmp/atlas-mountain-nginx-test.pid;',
+    text,
+    count=1,
+)
+if pid_count == 0:
+    text = 'pid /tmp/atlas-mountain-nginx-test.pid;\n' + text
+text, error_count = re.subn(
+    r'(?m)^\s*error_log\s+[^;]+;',
+    'error_log stderr notice;',
+    text,
+    count=1,
+)
+if error_count == 0:
+    text = 'error_log stderr notice;\n' + text
+open(dest, 'w', encoding='utf-8').write(text)
+PY
+  nginx -t -p /etc/nginx/ -c "$test_conf"
+  local rc=$?
+  rm -f "$test_conf" /tmp/atlas-mountain-nginx-test.pid
+  return "$rc"
 }
 
 nginx_test >/dev/null
