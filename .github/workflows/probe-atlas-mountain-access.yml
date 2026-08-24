@@ -47,6 +47,7 @@ jobs:
           echo "host=$(hostname)"
           echo "nginx=$(nginx -t >/dev/null 2>&1 && echo valid || echo invalid)"
           echo "openwebui=$(curl -fsS --max-time 3 http://127.0.0.1:3002/health >/dev/null 2>&1 && echo healthy || echo unavailable)"
+          echo "sandbox_paths=$(test -d /etc/atlas-mountain -a -d /opt/atlas-mountain -a -d /var/lib/atlas-mountain -a -d /var/www/atlas-mountain && echo present || echo missing)"
           echo "receiver_service=$(systemctl is-active atlas-mountain-deploy-receiver.service 2>/dev/null || true)"
           echo "receiver_local=$(curl -fsS --max-time 3 http://127.0.0.1:3016/health >/dev/null 2>&1 && echo healthy || echo unavailable)"
           echo "receiver_include=$(nginx -T 2>&1 | grep -q 'atlas-mountain-deploy-receiver.conf' && echo present || echo absent)"
@@ -54,13 +55,13 @@ jobs:
           echo "receiver_public_unauthenticated=${status:-000}"
           echo "existing_atlas_public=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/health || true)"
           echo '--- receiver unit status ---'
-          systemctl status atlas-mountain-deploy-receiver.service --no-pager -l 2>&1 | tail -n 30 || true
+          systemctl status atlas-mountain-deploy-receiver.service --no-pager -l 2>&1 | tail -n 20 || true
           echo '--- receiver journal ---'
-          journalctl -u atlas-mountain-deploy-receiver.service -n 20 --no-pager -o cat 2>&1 || true
+          journalctl -u atlas-mountain-deploy-receiver.service -n 12 --no-pager -o cat 2>&1 || true
           REMOTE
 
       - name: Cleanup
         if: always()
         run: rm -f ~/.ssh/id_ed25519
 
-# Reprobe after bootstrap sandbox-path fix.
+# Confirm after corrected bootstrap has had time to run.
