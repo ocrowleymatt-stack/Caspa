@@ -1,0 +1,52 @@
+name: Diagnose Atlas Mountain receiver
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-atlas-mountain-receiver.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Connect and inspect receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; echo "identity=$name"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo "service_state=$(systemctl is-active atlas-mountain-deploy-receiver.service 2>/dev/null || true)"
+          echo "service_enabled=$(systemctl is-enabled atlas-mountain-deploy-receiver.service 2>/dev/null || true)"
+          systemctl status atlas-mountain-deploy-receiver.service --no-pager -l 2>&1 | tail -n 30 || true
+          echo '--- journal ---'
+          journalctl -u atlas-mountain-deploy-receiver.service -n 60 --no-pager -o cat 2>&1 || true
+          echo '--- files ---'
+          ls -l /root/AtlasMountainDeploy/receiver.mjs /root/AtlasMountainDeploy/deploy.sh /etc/systemd/system/atlas-mountain-deploy-receiver.service 2>&1 || true
+          echo "port3016=$(ss -ltnp 2>/dev/null | grep -c ':3016 ' || true)"
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
