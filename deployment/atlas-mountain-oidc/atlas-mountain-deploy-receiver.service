@@ -15,10 +15,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-# deploy.sh runs `nginx -t` before promotion. nginx opens its existing pid file
-# during validation, so grant write access to that one runtime file rather than
-# weakening ProtectSystem or making all of /run writable.
-ReadWritePaths=/root/AtlasMountainDeploy /opt/atlas-mountain /var/lib/atlas-mountain /var/www/atlas-mountain /etc/atlas-mountain /etc/nginx /etc/systemd/system /run/nginx.pid
+ReadWritePaths=/root/AtlasMountainDeploy /opt/atlas-mountain /var/lib/atlas-mountain /var/www/atlas-mountain /etc/atlas-mountain /etc/nginx /etc/systemd/system
 
 [Install]
 WantedBy=multi-user.target
