@@ -60,6 +60,27 @@ PY
   return "$rc"
 }
 
+# Publish browser assets with deterministic public-read permissions. Do not use
+# cp -a here: it preserves the build directory's mode onto WEB_ROOT, which can
+# make nginx lose traversal/read access even though the individual files exist.
+publish_static_tree() {
+  local source_dir="$1"
+  test -s "$source_dir/index.html"
+  rm -rf "$WEB_ROOT"
+  install -d -o root -g root -m 0755 "$WEB_ROOT"
+  cp -R "$source_dir"/. "$WEB_ROOT"/
+  chown -R root:root "$WEB_ROOT"
+  find "$WEB_ROOT" -type d -exec chmod 0755 {} +
+  find "$WEB_ROOT" -type f -exec chmod 0644 {} +
+  test -s "$WEB_ROOT/index.html"
+
+  local nginx_user
+  nginx_user="$(awk '$1 == "user" {gsub(/;/, "", $2); print $2; exit}' /etc/nginx/nginx.conf 2>/dev/null || true)"
+  if [[ -n "$nginx_user" ]] && id "$nginx_user" >/dev/null 2>&1; then
+    runuser -u "$nginx_user" -- test -r "$WEB_ROOT/index.html"
+  fi
+}
+
 nginx_test >/dev/null
 curl -fsS --max-time 5 http://127.0.0.1:3002/health >/dev/null
 
@@ -222,9 +243,7 @@ if ! nginx_test; then
 fi
 
 if [[ -L "$CURRENT_LINK" ]]; then PREVIOUS="$(readlink -f "$CURRENT_LINK")"; fi
-rm -rf "$WEB_ROOT"
-install -d -o root -g root -m 0755 "$WEB_ROOT"
-cp -a "$RELEASE_DIR/apps/desktop/dist"/. "$WEB_ROOT"/
+publish_static_tree "$RELEASE_DIR/apps/desktop/dist"
 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 
 rollback_runtime() {
@@ -233,9 +252,7 @@ rollback_runtime() {
     echo 'atlas_mountain_runtime_rollback=true' >&2
     if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
       ln -sfn "$PREVIOUS" "$CURRENT_LINK"
-      rm -rf "$WEB_ROOT"
-      install -d -o root -g root -m 0755 "$WEB_ROOT"
-      cp -a "$PREVIOUS/apps/desktop/dist"/. "$WEB_ROOT"/ 2>/dev/null || true
+      publish_static_tree "$PREVIOUS/apps/desktop/dist" 2>/dev/null || true
       systemctl restart "$SERVICE" >/dev/null 2>&1 || true
     fi
   fi
