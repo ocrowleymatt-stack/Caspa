@@ -1,6 +1,7 @@
 name: Bootstrap Atlas Mountain OIDC deploy bridge
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -38,7 +39,7 @@ jobs:
           echo 'mountain_oidc_bridge_validation=true'
 
   bootstrap:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 8
