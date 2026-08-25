@@ -92,6 +92,28 @@ jobs:
           echo "mountain_receiver_public_unauthenticated=$status"
           echo 'existing_atlas_still_healthy=true'
 
+      - name: Inspect Mountain static edge
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== STATIC PATH ==='
+          namei -l /var/www/atlas-mountain/v12/index.html 2>&1 || true
+          stat -c 'path=%n mode=%a owner=%U group=%G size=%s' /var/www/atlas-mountain/v12/index.html 2>&1 || true
+          find /var/www/atlas-mountain/v12 -maxdepth 2 -printf '%M %u:%g %p\n' 2>/dev/null | head -40 || true
+          echo '=== LOCAL HTTPS V12 ==='
+          code="$(curl -ksS -o /tmp/atlas-v12-diagnostic.html -w '%{http_code}' --max-time 10 --resolve atlas.ocrowley.com:443:127.0.0.1 https://atlas.ocrowley.com/v12/ 2>/dev/null || true)"
+          echo "local_v12_status=${code:-000}"
+          head -c 240 /tmp/atlas-v12-diagnostic.html 2>/dev/null || true
+          echo
+          echo '=== MOUNTAIN NGINX INCLUDE ==='
+          grep -RFn 'atlas-mountain-v12.conf' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true
+          sed -n '1,220p' /etc/nginx/snippets/atlas-mountain-v12.conf 2>/dev/null || true
+          echo '=== RECENT NGINX ERRORS ==='
+          tail -n 120 /var/log/nginx/error.log 2>/dev/null | grep -E 'v12|atlas-mountain|permission|not found|open\(\)' || true
+          REMOTE
+
       - name: Cleanup
         if: always()
         run: rm -f ~/.ssh/id_ed25519
