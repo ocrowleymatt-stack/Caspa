@@ -29,14 +29,21 @@ jobs:
         run: |
           set -euo pipefail
           node --check deployment/atlas-mountain-oidc/receiver.mjs
+          node --check deployment/atlas-mountain-oidc/portal-receiver.mjs
           bash -n deployment/atlas-mountain-oidc/deploy.sh
           bash -n deployment/atlas-mountain-oidc/bootstrap.sh
+          bash -n deployment/atlas-mountain-oidc/bootstrap-portal-receiver.sh
+          bash -n deployment/atlas-mountain-oidc/portal-deploy-runner.sh
           grep -Fq "ocrowleymatt-stack/atlas-mountain" deployment/atlas-mountain-oidc/receiver.mjs
           grep -Fq "1343069841" deployment/atlas-mountain-oidc/receiver.mjs
-          grep -Fq "274130919" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "ocrowleymatt-stack/ocrowley-evidence-portal" deployment/atlas-mountain-oidc/portal-receiver.mjs
+          grep -Fq "1261391891" deployment/atlas-mountain-oidc/portal-receiver.mjs
+          grep -Fq "274130919" deployment/atlas-mountain-oidc/portal-receiver.mjs
           grep -Fq "127.0.0.1:43101" deployment/atlas-mountain-oidc/nginx-app.conf
           grep -Fq "127.0.0.1:3016" deployment/atlas-mountain-oidc/nginx-receiver.conf
+          grep -Fq "127.0.0.1:3017" deployment/atlas-mountain-oidc/nginx-receiver.conf
           echo 'mountain_oidc_bridge_validation=true'
+          echo 'portal_oidc_bridge_validation=true'
 
   bootstrap:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -70,7 +77,7 @@ jobs:
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
           echo "live_server_identity=$selected"
 
-      - name: Install dedicated Mountain receiver
+      - name: Install Atlas and Portal deployment receivers
         shell: bash
         run: |
           set -euo pipefail
@@ -78,18 +85,19 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
           scp -i ~/.ssh/id_ed25519 -r deployment/atlas-mountain-oidc/. root@"$ATLAS_HOST":"$remote/"
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" \
-            "bash '$remote/bootstrap.sh' '$remote' && rm -rf '$remote'"
+            "bash '$remote/bootstrap.sh' '$remote' && bash '$remote/bootstrap-portal-receiver.sh' '$remote' && rm -rf '$remote'"
 
-      - name: Verify receiver without credentials
+      - name: Verify receivers without credentials
         shell: bash
         run: |
           set -euo pipefail
-          status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 -X POST \
-            -H 'Content-Type: application/json' --data '{}' \
-            https://atlas.ocrowley.com/__atlas_mountain_deploy/v1)"
-          test "$status" = 401
+          mountain="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__atlas_mountain_deploy/v1)"
+          portal="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__portal_deploy/v1)"
+          test "$mountain" = 401
+          test "$portal" = 401
           curl -fsS --max-time 10 https://atlas.ocrowley.com/health >/dev/null
-          echo "mountain_receiver_public_unauthenticated=$status"
+          echo "mountain_receiver_public_unauthenticated=$mountain"
+          echo "portal_receiver_public_unauthenticated=$portal"
           echo 'existing_atlas_still_healthy=true'
 
       - name: Inspect Mountain static edge
