@@ -1,0 +1,84 @@
+name: Diagnose Atlas external edge selector
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-atlas-edge.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: External DNS and HTTPS route
+        shell: bash
+        run: |
+          set -u
+          echo '=== EXTERNAL DNS ==='
+          getent ahosts atlas.ocrowley.com || true
+          echo '=== EXTERNAL V12 HEADERS ==='
+          curl -ksS -D - -o /tmp/v12-body --max-time 10 https://atlas.ocrowley.com/v12/ || true
+          echo '=== EXTERNAL V12 BODY PREFIX ==='
+          head -c 240 /tmp/v12-body 2>/dev/null || true
+          echo
+          echo '=== EXTERNAL DEVICE BRIDGE ==='
+          curl -ksS -D - -o /tmp/bridge-body -X POST --max-time 10 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true
+          head -c 240 /tmp/bridge-body 2>/dev/null || true
+          echo
+
+      - name: Select server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Audit live nginx sockets and Atlas selectors
+        shell: bash
+        run: |
+          set -u
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== NGINX INCLUDE GLOBS ==='
+          grep -nE '^[[:space:]]*include[[:space:]]+' /etc/nginx/nginx.conf || true
+          echo '=== 443 SOCKETS ==='
+          ss -ltnp | grep -E '(:443[[:space:]])' || true
+          echo '=== SERVER DNS ==='
+          getent ahosts atlas.ocrowley.com || true
+          echo '=== LOOPBACK SNI V12 ==='
+          curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -D - -o /tmp/atlas-loop-v12 --max-time 10 https://atlas.ocrowley.com/v12/ || true
+          echo '=== PUBLIC-IP SNI V12 ==='
+          curl -ksS --resolve atlas.ocrowley.com:443:116.202.24.63 -D - -o /tmp/atlas-ip-v12 --max-time 10 https://atlas.ocrowley.com/v12/ || true
+          echo '=== NORMAL DNS V12 ==='
+          curl -ksS -D - -o /tmp/atlas-dns-v12 --max-time 10 https://atlas.ocrowley.com/v12/ || true
+          echo '=== DEVICE BRIDGE THREE PATHS ==='
+          printf 'direct='; curl -sS -o /dev/null -w '%{http_code}\n' -X POST --max-time 10 http://127.0.0.1:43101/device-bridge/device/not-a-device/poll || true
+          printf 'loopback_sni='; curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' -X POST --max-time 10 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true
+          printf 'public_ip_sni='; curl -ksS --resolve atlas.ocrowley.com:443:116.202.24.63 -o /dev/null -w '%{http_code}\n' -X POST --max-time 10 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true
+          printf 'normal_dns='; curl -ksS -o /dev/null -w '%{http_code}\n' -X POST --max-time 10 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true
+          echo '=== ACTIVE NGINX ATLAS/LISTENER MANIFEST ==='
+          nginx -T 2>&1 | grep -nE '^# configuration file|^[[:space:]]*listen[[:space:]].*443|^[[:space:]]*server_name|/v12|atlas-mountain|116\.202\.24\.63' | tail -n 500 || true
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
