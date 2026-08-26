@@ -17,11 +17,15 @@ LEGACY_ENV=/root/.atlas-secrets/atlas-router.env
 VHOST_SNIPPET=/etc/nginx/snippets/atlas-mountain-v12.conf
 FIXED=/root/AtlasMountainDeploy
 SERVICE=atlas-mountain-nexus.service
+PUBLIC_HOST=atlas.ocrowley.com
 PREVIOUS=""
+NGINX_BACKUP_DIR=""
+NGINX_MANIFEST=""
 
 command -v node >/dev/null
 command -v npm >/dev/null
 command -v nginx >/dev/null
+command -v python3 >/dev/null
 node_major="$(node -p 'process.versions.node.split(`.`)[0]')"
 (( node_major >= 22 )) || { echo "Node 22+ required; found $node_major" >&2; exit 2; }
 
@@ -29,10 +33,9 @@ node_major="$(node -p 'process.versions.node.split(`.`)[0]')"
 # temporary top-level nginx config that points pid/error logging at PrivateTmp,
 # while still loading the real /etc/nginx include tree. This validates the same
 # vhosts without opening the live runtime pid or log files.
-nginx_test() {
-  local test_conf
-  test_conf="$(mktemp /tmp/atlas-mountain-nginx.XXXXXX.conf)"
-  python3 - /etc/nginx/nginx.conf "$test_conf" <<'PY'
+make_nginx_test_conf() {
+  local dest="$1"
+  python3 - /etc/nginx/nginx.conf "$dest" <<'PY'
 import re, sys
 source, dest = sys.argv[1:]
 text = open(source, encoding='utf-8').read()
@@ -54,10 +57,52 @@ if error_count == 0:
     text = 'error_log stderr notice;\n' + text
 open(dest, 'w', encoding='utf-8').write(text)
 PY
+}
+
+nginx_test() {
+  local test_conf
+  test_conf="$(mktemp /tmp/atlas-mountain-nginx.XXXXXX.conf)"
+  make_nginx_test_conf "$test_conf"
   nginx -t -p /etc/nginx/ -c "$test_conf"
   local rc=$?
   rm -f "$test_conf" /tmp/atlas-mountain-nginx-test.pid
   return "$rc"
+}
+
+# Emit the real loaded config paths through the same sandbox-safe top-level
+# config used by nginx_test. The Atlas release helper consumes these as seed
+# files, so it does not depend on a naked `nginx -T` succeeding inside the
+# receiver's systemd namespace.
+nginx_effective_paths() {
+  local test_conf dump_file rc
+  test_conf="$(mktemp /tmp/atlas-mountain-nginx.XXXXXX.conf)"
+  dump_file="$(mktemp /tmp/atlas-mountain-nginx-dump.XXXXXX.txt)"
+  make_nginx_test_conf "$test_conf"
+  set +e
+  nginx -T -p /etc/nginx/ -c "$test_conf" >"$dump_file" 2>&1
+  rc=$?
+  set -e
+  if (( rc != 0 )); then
+    cat "$dump_file" >&2
+    rm -f "$test_conf" "$dump_file" /tmp/atlas-mountain-nginx-test.pid
+    return "$rc"
+  fi
+  python3 - "$dump_file" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding='utf-8', errors='replace')
+seen = set()
+for match in re.finditer(r'^# configuration file (?P<path>/[^:]+):\s*$', text, flags=re.M):
+    path = Path(match.group('path'))
+    try:
+        resolved = path.resolve()
+    except OSError:
+        continue
+    if resolved.is_file() and str(resolved) not in seen:
+        seen.add(str(resolved))
+        print(resolved)
+PY
+  rm -f "$test_conf" "$dump_file" /tmp/atlas-mountain-nginx-test.pid
 }
 
 # Publish browser assets with deterministic public-read permissions. Do not use
@@ -78,6 +123,21 @@ publish_static_tree() {
   nginx_user="$(awk '$1 == "user" {gsub(/;/, "", $2); print $2; exit}' /etc/nginx/nginx.conf 2>/dev/null || true)"
   if [[ -n "$nginx_user" ]] && id "$nginx_user" >/dev/null 2>&1; then
     runuser -u "$nginx_user" -- test -r "$WEB_ROOT/index.html"
+  fi
+}
+
+restore_nginx() {
+  if [[ -n "$NGINX_MANIFEST" && -f "$NGINX_MANIFEST" && -s "$RELEASE_DIR/deploy/hetzner/mount-nginx-snippet.py" ]]; then
+    python3 "$RELEASE_DIR/deploy/hetzner/mount-nginx-snippet.py" restore --manifest "$NGINX_MANIFEST" || true
+    nginx_test >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+  fi
+}
+
+cleanup_nginx_backup() {
+  if [[ -n "$NGINX_BACKUP_DIR" ]]; then
+    rm -rf "$NGINX_BACKUP_DIR"
+    NGINX_BACKUP_DIR=""
+    NGINX_MANIFEST=""
   fi
 }
 
@@ -109,6 +169,8 @@ runuser -u atlasmountain -- env HOME="$DATA_DIR" PATH="$PATH" bash -lc \
 
 test -s "$RELEASE_DIR/apps/desktop/dist/index.html"
 test -s "$RELEASE_DIR/services/nexus/dist/index.js"
+test -s "$RELEASE_DIR/deploy/hetzner/nginx-atlas-mountain-v12.conf"
+test -s "$RELEASE_DIR/deploy/hetzner/mount-nginx-snippet.py"
 
 # Build the Nexus EnvironmentFile without executing repository code as root.
 python3 - "$LEGACY_ENV" "$ENV_FILE" <<'PY'
@@ -177,68 +239,35 @@ PY
 chown root:atlasmountain "$ENV_FILE"
 
 install -o root -g root -m 0644 "$FIXED/atlas-mountain-nexus.service" "/etc/systemd/system/$SERVICE"
-install -o root -g root -m 0644 "$FIXED/nginx-app.conf" "$VHOST_SNIPPET"
+# The immutable Atlas release owns the application edge contract. The deploy
+# bridge owns transport/authentication only; keeping a second fixed app snippet
+# here caused production to lag behind Device Bridge/dev/bootstrap routes.
+install -o root -g root -m 0644 "$RELEASE_DIR/deploy/hetzner/nginx-atlas-mountain-v12.conf" "$VHOST_SNIPPET"
 
-# Add one managed include to the existing atlas.ocrowley.com vhost, never replace it.
-mapfile -t candidates < <(
+mapfile -t named_candidates < <(
   grep -RIl --include='*.conf' --include='*' 'atlas\.ocrowley\.com' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null \
     | while read -r f; do readlink -f "$f"; done | sort -u
 )
-vhost=""
-for candidate in "${candidates[@]}"; do
-  if grep -Eq 'server_name[^;]*atlas\.ocrowley\.com' "$candidate"; then vhost="$candidate"; break; fi
-done
-[[ -n "$vhost" ]] || { echo 'atlas.ocrowley.com nginx vhost not found' >&2; exit 2; }
-backup="${vhost}.atlas-mountain.$(date -u +%Y%m%dT%H%M%SZ).bak"
-cp -a "$vhost" "$backup"
+mapfile -t effective_candidates < <(nginx_effective_paths)
+mapfile -t mount_candidates < <(
+  {
+    printf '%s\n' "${named_candidates[@]:-}"
+    printf '%s\n' "${effective_candidates[@]:-}"
+  } | sed '/^$/d' | sort -u
+)
+(( ${#mount_candidates[@]} > 0 )) || { echo 'no loaded nginx config paths discovered' >&2; exit 2; }
 
-python3 - "$vhost" <<'PY'
-import re, sys
-path = sys.argv[1]
-text = open(path, encoding='utf-8').read()
-include_path = '/etc/nginx/snippets/atlas-mountain-v12.conf'
-if include_path in text:
-    raise SystemExit(0)
-m = re.search(r'server_name\s+[^;]*\batlas\.ocrowley\.com\b[^;]*;', text)
-if not m:
-    raise SystemExit('server_name not found')
-starts = list(re.finditer(r'\bserver\s*\{', text[:m.start()]))
-if not starts:
-    raise SystemExit('server block start not found')
-open_pos = text.find('{', starts[-1].start())
-depth = 0
-quote = None
-comment = False
-escape = False
-close = None
-for i in range(open_pos, len(text)):
-    c = text[i]
-    if comment:
-        if c == '\n': comment = False
-        continue
-    if quote:
-        if escape: escape = False
-        elif c == '\\': escape = True
-        elif c == quote: quote = None
-        continue
-    if c == '#': comment = True; continue
-    if c in ('"', "'"): quote = c; continue
-    if c == '{': depth += 1
-    elif c == '}':
-        depth -= 1
-        if depth == 0:
-            close = i
-            break
-if close is None or close < m.end():
-    raise SystemExit('server block end not found')
-text = text[:close] + '    include /etc/nginx/snippets/atlas-mountain-v12.conf;\n' + text[close:]
-open(path, 'w', encoding='utf-8').write(text)
-PY
+NGINX_BACKUP_DIR="$(mktemp -d /tmp/atlas-nginx-backup.XXXXXX)"
+NGINX_MANIFEST="$NGINX_BACKUP_DIR/manifest.json"
+python3 "$RELEASE_DIR/deploy/hetzner/mount-nginx-snippet.py" apply \
+  --backup-dir "$NGINX_BACKUP_DIR/files" \
+  --manifest "$NGINX_MANIFEST" \
+  "${mount_candidates[@]}"
 
 if ! nginx_test; then
-  cp -a "$backup" "$vhost"
-  nginx_test >/dev/null 2>&1 || true
-  echo 'nginx validation failed; restored vhost' >&2
+  restore_nginx
+  cleanup_nginx_backup
+  echo 'nginx validation failed; restored every Atlas edge file' >&2
   exit 2
 fi
 
@@ -255,7 +284,9 @@ rollback_runtime() {
       publish_static_tree "$PREVIOUS/apps/desktop/dist" 2>/dev/null || true
       systemctl restart "$SERVICE" >/dev/null 2>&1 || true
     fi
+    restore_nginx
   fi
+  cleanup_nginx_backup
   exit "$rc"
 }
 trap rollback_runtime EXIT
@@ -277,7 +308,47 @@ case "$api_status" in 401|403) ;; *) echo "anonymous v12 API gate failed: HTTP $
 ui_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
 [[ "$ui_status" == '200' ]] || { echo "v12 static UI unavailable: HTTP ${ui_status:-000}" >&2; exit 2; }
 
+# Device Bridge must reach Nexus on the host-selected Atlas vhost. The external
+# GitHub workflow separately verifies the true public socket after this deploy.
+direct_bridge_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -X POST http://127.0.0.1:43101/device-bridge/device/not-a-device/poll || true)"
+local_bridge_status="$(curl -ksS --resolve "${PUBLIC_HOST}:443:127.0.0.1" -o /dev/null -w '%{http_code}' --max-time 8 -X POST "https://${PUBLIC_HOST}/v12/device-bridge/device/not-a-device/poll" || true)"
+public_bridge_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST "https://${PUBLIC_HOST}/v12/device-bridge/device/not-a-device/poll" || true)"
+[[ "$direct_bridge_status" == '401' ]] || { echo "direct Nexus Device Bridge probe failed: HTTP ${direct_bridge_status:-000}" >&2; exit 2; }
+[[ "$local_bridge_status" == '401' ]] || { echo "local SNI Device Bridge probe failed: HTTP ${local_bridge_status:-000}" >&2; exit 2; }
+
+echo "atlas_bridge_probe=direct_nexus:${direct_bridge_status:-000},local_sni:${local_bridge_status:-000},public_dns:${public_bridge_status:-000}"
+python3 - "$NGINX_MANIFEST" <<'PY'
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path, encoding='utf-8'))
+except Exception as error:
+    print('atlas_nginx_manifest_error=' + type(error).__name__)
+else:
+    compact = {
+        'matching_https_blocks': data.get('matching_https_blocks'),
+        'effective_config_files': data.get('effective_config_files'),
+        'resolved_public_addresses': data.get('resolved_public_addresses'),
+        'address_specific_listener_targets': data.get('address_specific_listener_targets'),
+        'public_listeners_added': data.get('public_listeners_added'),
+        'ipv6_listeners_added': data.get('ipv6_listeners_added'),
+        'static_edge_routes_added': data.get('static_edge_routes_added'),
+        'files': [
+            {
+                'path': row.get('path'),
+                'matching_https_blocks': row.get('matching_https_blocks'),
+                'public_listeners_added': row.get('public_listeners_added'),
+                'static_edge_routes_added': row.get('static_edge_routes_added'),
+                'ipv6_listeners_added': row.get('ipv6_listeners_added'),
+            }
+            for row in data.get('files', [])
+        ],
+    }
+    print('atlas_nginx_manifest=' + json.dumps(compact, separators=(',', ':')))
+PY
+
 trap - EXIT
+cleanup_nginx_backup
 rm -f "$ARCHIVE"
 find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
   | sort -nr | awk 'NR>5 {print $2}' | xargs -r rm -rf
@@ -286,3 +357,5 @@ echo 'atlas_mountain_deploy=true'
 echo "deployed_sha=$SHA"
 echo "public_ui_status=$ui_status"
 echo "anonymous_api_status=$api_status"
+echo "device_bridge_local_status=$local_bridge_status"
+echo "device_bridge_public_dns_status=$public_bridge_status"
