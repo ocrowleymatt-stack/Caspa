@@ -224,7 +224,7 @@ dest.update({
     'NEXUS_PORT': '43101',
     'NEXUS_DATABASE_PATH': '/var/lib/atlas-mountain/atlas.db',
     'NEXUS_FILESYSTEM_ROOT': '/var/lib/atlas-mountain/workspace',
-    'NEXUS_ALLOW_FILESYSTEM_WRITE': 'false',
+    'NEXUS_ALLOW_FILESYSTEM_WRITE': 'true',
     'ATLAS_BASE_PATH': '/v12/',
 })
 os.makedirs(os.path.dirname(dest_path), exist_ok=True)
@@ -244,17 +244,19 @@ install -o root -g root -m 0644 "$FIXED/atlas-mountain-nexus.service" "/etc/syst
 # here caused production to lag behind Device Bridge/dev/bootstrap routes.
 install -o root -g root -m 0644 "$RELEASE_DIR/deploy/hetzner/nginx-atlas-mountain-v12.conf" "$VHOST_SNIPPET"
 
-mapfile -t named_candidates < <(
-  grep -RIl --include='*.conf' --include='*' 'atlas\.ocrowley\.com' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null \
-    | while read -r f; do readlink -f "$f"; done | sort -u
-)
+# Prefer exactly the files nginx says are loaded. The old fallback recursively
+# grepped conf.d and mutated timestamped .bak files that nginx never included.
 mapfile -t effective_candidates < <(nginx_effective_paths)
-mapfile -t mount_candidates < <(
-  {
-    printf '%s\n' "${named_candidates[@]:-}"
-    printf '%s\n' "${effective_candidates[@]:-}"
-  } | sed '/^$/d' | sort -u
-)
+if (( ${#effective_candidates[@]} > 0 )); then
+  mount_candidates=("${effective_candidates[@]}")
+else
+  mapfile -t mount_candidates < <(
+    {
+      find /etc/nginx/conf.d -maxdepth 1 -type f -name '*.conf' -print 2>/dev/null
+      find -L /etc/nginx/sites-enabled -maxdepth 1 -type f -print 2>/dev/null
+    } | while read -r file; do readlink -f "$file"; done | sort -u
+  )
+fi
 (( ${#mount_candidates[@]} > 0 )) || { echo 'no loaded nginx config paths discovered' >&2; exit 2; }
 
 NGINX_BACKUP_DIR="$(mktemp -d /tmp/atlas-nginx-backup.XXXXXX)"
@@ -301,12 +303,21 @@ done
 curl -fsS --max-time 5 http://127.0.0.1:43101/health >/dev/null
 systemctl reload nginx
 
-# Existing Atlas stays live and the new API must reject an anonymous request.
+# The anonymous UI intentionally redirects to Atlas's own login shell. The API
+# remains authentication-gated; the login shell itself must be a real Atlas
+# document, not a redirect loop or legacy application.
 curl -fsS --max-time 8 https://atlas.ocrowley.com/health >/dev/null
 api_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/api/models || true)"
 case "$api_status" in 401|403) ;; *) echo "anonymous v12 API gate failed: HTTP ${api_status:-000}" >&2; exit 2 ;; esac
-ui_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
-[[ "$ui_status" == '200' ]] || { echo "v12 static UI unavailable: HTTP ${ui_status:-000}" >&2; exit 2; }
+ui_headers="$(mktemp /tmp/atlas-v12-headers.XXXXXX)"
+ui_status="$(curl -ksS -D "$ui_headers" -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
+[[ "$ui_status" == '302' ]] || { echo "anonymous v12 UI did not redirect to Atlas login: HTTP ${ui_status:-000}" >&2; cat "$ui_headers" >&2 || true; exit 2; }
+grep -Eqi '^location:[[:space:]]*(https://atlas\.ocrowley\.com)?/v12/login([[:space:]]|$)' "$ui_headers" || { echo 'v12 UI redirect target was not /v12/login' >&2; cat "$ui_headers" >&2 || true; exit 2; }
+login_body="$(mktemp /tmp/atlas-login-body.XXXXXX)"
+login_status="$(curl -ksS -o "$login_body" -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/login || true)"
+[[ "$login_status" == '200' ]] || { echo "Atlas login shell unavailable: HTTP ${login_status:-000}" >&2; exit 2; }
+grep -qi '<!doctype html' "$login_body" || { echo 'Atlas login route did not return the application shell' >&2; exit 2; }
+rm -f "$ui_headers" "$login_body"
 
 # Device Bridge must reach Nexus on the host-selected Atlas vhost. The external
 # GitHub workflow separately verifies the true public socket after this deploy.
@@ -315,6 +326,7 @@ local_bridge_status="$(curl -ksS --resolve "${PUBLIC_HOST}:443:127.0.0.1" -o /de
 public_bridge_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST "https://${PUBLIC_HOST}/v12/device-bridge/device/not-a-device/poll" || true)"
 [[ "$direct_bridge_status" == '401' ]] || { echo "direct Nexus Device Bridge probe failed: HTTP ${direct_bridge_status:-000}" >&2; exit 2; }
 [[ "$local_bridge_status" == '401' ]] || { echo "local SNI Device Bridge probe failed: HTTP ${local_bridge_status:-000}" >&2; exit 2; }
+[[ "$public_bridge_status" == '401' ]] || { echo "public DNS Device Bridge probe failed: HTTP ${public_bridge_status:-000}" >&2; exit 2; }
 
 echo "atlas_bridge_probe=direct_nexus:${direct_bridge_status:-000},local_sni:${local_bridge_status:-000},public_dns:${public_bridge_status:-000}"
 python3 - "$NGINX_MANIFEST" <<'PY'
@@ -356,6 +368,7 @@ find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
 echo 'atlas_mountain_deploy=true'
 echo "deployed_sha=$SHA"
 echo "public_ui_status=$ui_status"
+echo "public_login_status=$login_status"
 echo "anonymous_api_status=$api_status"
 echo "device_bridge_local_status=$local_bridge_status"
 echo "device_bridge_public_dns_status=$public_bridge_status"
