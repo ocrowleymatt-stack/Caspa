@@ -9,6 +9,7 @@ User=atlasmountain
 Group=atlasmountain
 WorkingDirectory=/opt/atlas-mountain/current
 EnvironmentFile=/etc/atlas-mountain/atlas.env
+Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
 ExecStart=/usr/bin/env node /opt/atlas-mountain/current/services/nexus/dist/index.js
 Restart=on-failure
 RestartSec=3
