@@ -1,0 +1,22 @@
+[Unit]
+Description=O'Crowley Portal OIDC deployment receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0022
+WorkingDirectory=/root/PortalDeploy
+ExecStart=/usr/bin/env node /root/PortalDeploy/portal-receiver.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/PortalDeploy /opt/ocrowley-evidence-portal /var/lib/ocrowley-evidence-portal /etc/ocrowley-evidence-portal /etc/nginx /etc/systemd/system /var/log/nginx
+
+[Install]
+WantedBy=multi-user.target
