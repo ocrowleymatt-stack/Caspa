@@ -15,6 +15,7 @@ import {
   selectAttemptOrder,
   sharedCircuitBreaker,
 } from './aiRouterPolicy';
+import { callWithNexusRecovery } from './nexusRecovery';
 import {
   callHostUnifiedRouter,
   unifiedRouterConfigured,
@@ -82,10 +83,18 @@ function shouldTryUnifiedRouter(opts: RouterFailoverOptions, primary: string, we
   return true;
 }
 
+function recoveryContext(mode: IntelligenceMode, task: TaskKind, webRequired: boolean, provider: string) {
+  return { mode, task, webRequired, provider };
+}
+
 /**
  * Canonical Atlas failover path.
  *
  * - Host Unified Router (Atlas) is first when UNIFIED_ROUTER_URL is set.
+ * - Every executable provider/local attempt is wrapped by the Nexus recovery
+ *   fabric. Safe transient failures receive one bounded retry only when Nexus
+ *   classifies them as retryable; persistent failures then continue through the
+ *   existing circuit-breaker/fallback chain.
  * - Only configured, healthy cloud providers are attempted after that.
  * - Billing/quota failures quarantine a provider for longer than transient errors.
  * - Successful providers are immediately restored to healthy state.
@@ -120,11 +129,18 @@ export async function callWithProviderFailover(
 
   if (shouldTryUnifiedRouter(opts, primary, webRequired)) {
     try {
-      const hosted = await callHostUnifiedRouter(prompt, {
-        json: opts.json,
-        maxTokens: opts.maxTokens,
-        timeoutMs: unifiedHostTimeoutMs(mode, task, opts.maxTokens),
-      });
+      const hosted = await callWithNexusRecovery(
+        () => callHostUnifiedRouter(prompt, {
+          json: opts.json,
+          maxTokens: opts.maxTokens,
+          timeoutMs: unifiedHostTimeoutMs(mode, task, opts.maxTokens),
+        }),
+        {
+          operation: 'router.unified',
+          safeToRetry: true,
+          context: recoveryContext(mode, task, webRequired, 'unified'),
+        },
+      );
       return { text: hosted.text, model: hosted.model, provider: 'unified', attempts };
     } catch (error: any) {
       attempts.push({
@@ -148,11 +164,18 @@ export async function callWithProviderFailover(
   if (localFirst) {
     localAttempted = true;
     try {
-      const local = await callOllamaModelHunt(prompt, {
-        json: opts.json,
-        maxTokens: opts.maxTokens,
-        mode,
-      });
+      const local = await callWithNexusRecovery(
+        () => callOllamaModelHunt(prompt, {
+          json: opts.json,
+          maxTokens: opts.maxTokens,
+          mode,
+        }),
+        {
+          operation: 'router.ollama.local-first',
+          safeToRetry: true,
+          context: recoveryContext(mode, task, webRequired, 'ollama'),
+        },
+      );
       return { text: local.text, model: local.model, provider: 'ollama', attempts };
     } catch (error: any) {
       attempts.push({
@@ -200,7 +223,14 @@ export async function callWithProviderFailover(
   for (const providerName of ordered) {
     const provider = providerName as CloudProvider;
     try {
-      const result = await callCloudProvider(provider, prompt, { ...opts, mode, task });
+      const result = await callWithNexusRecovery(
+        () => callCloudProvider(provider, prompt, { ...opts, mode, task }),
+        {
+          operation: `router.cloud.${provider}`,
+          safeToRetry: true,
+          context: recoveryContext(mode, task, webRequired, provider),
+        },
+      );
       sharedCircuitBreaker.recordSuccess(provider);
       return { ...result, attempts };
     } catch (error: any) {
@@ -242,11 +272,18 @@ export async function callWithProviderFailover(
   // answer. If all real search lanes fail, surface retrieval failure explicitly.
   if (!webRequired && !opts.disableLocalFallback && !opts.strictProvider && !localAttempted) {
     try {
-      const local = await callOllamaModelHunt(prompt, {
-        json: opts.json,
-        maxTokens: opts.maxTokens,
-        mode,
-      });
+      const local = await callWithNexusRecovery(
+        () => callOllamaModelHunt(prompt, {
+          json: opts.json,
+          maxTokens: opts.maxTokens,
+          mode,
+        }),
+        {
+          operation: 'router.ollama.fallback',
+          safeToRetry: true,
+          context: recoveryContext(mode, task, webRequired, 'ollama'),
+        },
+      );
       return {
         text: local.text,
         model: local.model,
