@@ -7,12 +7,16 @@ Wants=network-online.target
 Type=simple
 User=atlasmountain
 Group=atlasmountain
+UMask=0022
 WorkingDirectory=/opt/atlas-mountain/current
 EnvironmentFile=/etc/atlas-mountain/atlas.env
 Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
-ExecStart=/usr/bin/env node /opt/atlas-mountain/current/services/nexus/dist/index.js
+ExecStartPre=+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/repair-workspace.sh
+ExecStart=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/start-nexus.sh
+ExecStartPost=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/verify-nexus-runtime.sh
 Restart=on-failure
 RestartSec=3
+TimeoutStartSec=90
 TimeoutStopSec=20
 NoNewPrivileges=true
 PrivateTmp=true
