@@ -1,0 +1,127 @@
+name: Diagnose Atlas nginx edge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-atlas-nginx.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key" || { echo 'No live server SSH credential is configured.' >&2; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Inspect Atlas nginx routing only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'python3 -' <<'PY'
+          from __future__ import annotations
+          import re
+          import subprocess
+          from pathlib import Path
+
+          HOST = 'atlas.ocrowley.com'
+          paths = [Path('/etc/nginx/conf.d/auth-gateway.conf')]
+
+          def blocks(source: str):
+              for match in re.finditer(r'\bserver\s*\{', source):
+                  start = match.start()
+                  brace = source.find('{', start)
+                  depth = 0
+                  quote = None
+                  escape = False
+                  comment = False
+                  for i in range(brace, len(source)):
+                      ch = source[i]
+                      if comment:
+                          if ch == '\n': comment = False
+                          continue
+                      if quote:
+                          if escape: escape = False
+                          elif ch == '\\': escape = True
+                          elif ch == quote: quote = None
+                          continue
+                      if ch == '#': comment = True; continue
+                      if ch in ('"', "'"): quote = ch; continue
+                      if ch == '{': depth += 1
+                      elif ch == '}':
+                          depth -= 1
+                          if depth == 0:
+                              yield source[start:i+1]
+                              break
+
+          def sanitize(text: str) -> str:
+              out=[]
+              for line in text.splitlines():
+                  low=line.lower()
+                  if any(term in low for term in ('ssl_certificate_key', 'authorization ', 'password', 'secret', 'token')):
+                      out.append(re.sub(r'(^\s*[^\s]+).*', r'\1 [redacted];', line))
+                  else:
+                      out.append(line)
+              return '\n'.join(out)
+
+          print('atlas_nginx_diag_begin')
+          for path in paths:
+              print(f'file={path} exists={path.exists()}')
+              if not path.exists(): continue
+              source=path.read_text(errors='replace')
+              for idx, block in enumerate(blocks(source), 1):
+                  if HOST in block or '/var/www/atlas-mountain' in block or 'atlas-mountain-v12.conf' in block:
+                      print(f'--- relevant_server_block_{idx} ---')
+                      print(sanitize(block))
+
+          snippet=Path('/etc/nginx/snippets/atlas-mountain-v12.conf')
+          print(f'snippet_exists={snippet.exists()}')
+          if snippet.exists():
+              text=snippet.read_text(errors='replace')
+              for pattern in ('location = /v12/api', 'location ^~ /v12/api/', 'location ^~ /v12/', 'location = /__atlas_mountain_web_auth'):
+                  print(f'snippet_has[{pattern}]={pattern in text}')
+
+          result=subprocess.run(['nginx','-T'], capture_output=True, text=True)
+          print(f'nginx_T_status={result.returncode}')
+          for line in result.stderr.splitlines():
+              if 'emerg' in line.lower() or 'error' in line.lower() or 'conflicting' in line.lower():
+                  print('nginx_T_error='+line[:500])
+
+          probes=[
+              ('direct_nexus','http://127.0.0.1:43101/api/models',[]),
+              ('local_sni','https://atlas.ocrowley.com/v12/api/models',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
+              ('public_dns','https://atlas.ocrowley.com/v12/api/models',['-k']),
+              ('local_ui','https://atlas.ocrowley.com/v12/',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
+          ]
+          for name,url,extra in probes:
+              p=subprocess.run(['curl','-sS','-o','/dev/null','-w','%{http_code}','--max-time','10',*extra,url],capture_output=True,text=True)
+              print(f'probe_{name}={p.stdout.strip() or "000"}')
+          print('atlas_nginx_diag_end')
+          PY
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
