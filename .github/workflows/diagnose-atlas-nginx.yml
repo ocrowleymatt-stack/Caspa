@@ -1,4 +1,4 @@
-# One-shot break-glass edge repair trigger: 2026-08-28T12:12Z
+# One-shot recovery probe trigger: 2026-08-28T12:13Z outer-edge
 name: Diagnose Atlas nginx edge
 
 on:
@@ -38,63 +38,69 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Repair Atlas human edge in break-glass mode
+      - name: Inspect Atlas outer nginx edge
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          snippet=/etc/nginx/snippets/atlas-mountain-v12.conf
-          test -s "$snippet"
-          backup="${snippet}.pre-breakglass-$(date -u +%Y%m%dT%H%M%SZ)"
-          cp -a "$snippet" "$backup"
-          restore() {
-            cp -a "$backup" "$snippet"
-            nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
-          }
-          trap 'rc=$?; if (( rc != 0 )); then restore; echo atlas_breakglass_edge_rollback=true >&2; fi; exit $rc' EXIT
-
-          python3 - "$snippet" <<'PY'
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'python3 -' <<'PY'
           from pathlib import Path
-          import sys
-          path=Path(sys.argv[1])
-          text=path.read_text(encoding='utf-8')
-          needle='auth_request /__atlas_mountain_auth;'
-          count=text.count(needle)
-          if count < 3:
-              raise SystemExit(f'expected at least 3 human auth_request directives, found {count}')
-          text=text.replace(needle, 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS')
-          # Paired-device authentication must remain intact.
-          if 'auth_request /__atlas_mountain_device_auth;' not in text:
-              raise SystemExit('paired-device auth directive missing; refusing repair')
-          path.write_text(text, encoding='utf-8')
-          print(f'atlas_breakglass_human_auth_directives_disabled={count}')
+          import re, subprocess
+
+          p=Path('/etc/nginx/conf.d/auth-gateway.conf')
+          text=p.read_text(errors='replace') if p.exists() else ''
+
+          def blocks(source):
+              for m in re.finditer(r'\bserver\s*\{', source):
+                  start=m.start(); brace=source.find('{',start); depth=0; quote=None; esc=False; comment=False
+                  for i in range(brace,len(source)):
+                      ch=source[i]
+                      if comment:
+                          if ch=='\n': comment=False
+                          continue
+                      if quote:
+                          if esc: esc=False
+                          elif ch=='\\': esc=True
+                          elif ch==quote: quote=None
+                          continue
+                      if ch=='#': comment=True; continue
+                      if ch in ('"',"'"): quote=ch; continue
+                      if ch=='{': depth+=1
+                      elif ch=='}':
+                          depth-=1
+                          if depth==0:
+                              yield source[start:i+1]
+                              break
+
+          print('atlas_outer_edge_diag_begin')
+          print('auth_gateway_exists='+str(p.exists()).lower())
+          for block in blocks(text):
+              if 'atlas.ocrowley.com' not in block:
+                  continue
+              for line in block.splitlines():
+                  low=line.lower()
+                  if any(term in low for term in ('server_name','include ','auth_request','error_page 401','proxy_pass','location = /','location ^~ /v12','location = /v12','43105','43101')):
+                      if any(secret in low for secret in ('authorization','token','password','secret','ssl_certificate_key')):
+                          continue
+                      print(line[:1200])
+
+          print('--- recent_atlas_nginx_errors ---')
+          log=Path('/var/log/nginx/error.log')
+          if log.exists():
+              for raw in log.read_text(errors='replace').splitlines()[-2000:]:
+                  low=raw.lower()
+                  if ('atlas.ocrowley.com' in low or '43105' in low or 'auth request' in low or 'auth_request' in low or '/v12/' in low) and ('12:11:' in raw or '12:10:' in raw or '12:12:' in raw):
+                      line=re.sub(r'(?i)(authorization|token|secret|password)[=: ]+[^ ,;]+', r'\1=[redacted]', raw)
+                      print(line[:1500])
+
+          for name,url,extra in [
+              ('direct','http://127.0.0.1:43101/api/models',[]),
+              ('local','https://atlas.ocrowley.com/v12/api/models',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
+              ('public','https://atlas.ocrowley.com/v12/api/models',['-k']),
+          ]:
+              r=subprocess.run(['curl','-sS','-o','/dev/null','-w','%{http_code}','--max-time','8',*extra,url],capture_output=True,text=True)
+              print(f'probe_{name}={r.stdout.strip() or "000"}')
+          print('atlas_outer_edge_diag_end')
           PY
-
-          nginx -t
-          systemctl reload nginx
-
-          direct_api="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:43101/api/models || true)"
-          local_api="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/api/models || true)"
-          public_api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/api/models || true)"
-          local_ui="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
-          public_ui="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
-          device_bridge="$(curl -ksS -X POST -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true)"
-          device_api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/device-api/models || true)"
-
-          echo "atlas_breakglass_probe=direct_api:${direct_api},local_api:${local_api},public_api:${public_api},local_ui:${local_ui},public_ui:${public_ui},device_bridge:${device_bridge},device_api:${device_api}"
-          [[ "$direct_api" == 200 ]]
-          [[ "$local_api" == 200 ]]
-          [[ "$public_api" == 200 ]]
-          [[ "$local_ui" == 200 ]]
-          [[ "$public_ui" == 200 ]]
-          [[ "$device_bridge" == 401 ]]
-          case "$device_api" in 401|403) ;; *) echo "device API protection failed: $device_api" >&2; exit 1 ;; esac
-
-          trap - EXIT
-          echo atlas_breakglass_edge_live=true
-          echo "atlas_breakglass_backup=$backup"
-          REMOTE
 
       - name: Cleanup
         if: always()
