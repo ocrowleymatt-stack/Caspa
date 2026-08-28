@@ -1,4 +1,4 @@
-# One-shot Atlas service startup diagnostic: 2026-08-28T12:59Z
+# One-shot Atlas break-glass edge restore: 2026-08-28T13:02Z
 name: Diagnose Atlas nginx edge
 
 on:
@@ -38,24 +38,55 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect failed Atlas service startup
+      - name: Restore Atlas human edge in break-glass mode
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
-          set -u
-          echo '=== CURRENT RELEASE ==='
-          readlink -f /opt/atlas-mountain/current || true
-          echo '=== SERVICE STATUS ==='
-          systemctl status atlas-mountain-nexus.service --no-pager -l || true
-          echo '=== SERVICE UNIT ==='
-          systemctl cat atlas-mountain-nexus.service --no-pager || true
-          echo '=== FAILED START JOURNAL ==='
-          journalctl -u atlas-mountain-nexus.service --since '2026-08-28 12:56:45 UTC' --until '2026-08-28 12:58:10 UTC' --no-pager -o short-iso | tail -n 220 || true
-          echo '=== CURRENT PROBES ==='
-          printf 'direct_api='; curl -sS -o /dev/null -w '%{http_code}\n' --max-time 5 http://127.0.0.1:43101/api/models || true
-          printf 'public_api='; curl -ksS -o /dev/null -w '%{http_code}\n' --max-time 5 https://atlas.ocrowley.com/v12/api/models || true
-          printf 'public_ui='; curl -ksS -o /dev/null -w '%{http_code}\n' --max-time 5 https://atlas.ocrowley.com/v12/ || true
+          set -euo pipefail
+          snippet=/etc/nginx/snippets/atlas-mountain-v12.conf
+          test -s "$snippet"
+          direct_api="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:43101/api/models || true)"
+          [[ "$direct_api" == 200 ]] || { echo "Nexus is not public/healthy: $direct_api" >&2; exit 1; }
+          backup="${snippet}.pre-public-edge-$(date -u +%Y%m%dT%H%M%SZ)"
+          cp -a "$snippet" "$backup"
+          restore() {
+            cp -a "$backup" "$snippet"
+            nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+          }
+          trap 'rc=$?; if (( rc != 0 )); then restore; echo atlas_public_edge_rollback=true >&2; fi; exit $rc' EXIT
+
+          python3 - "$snippet" <<'PY'
+          from pathlib import Path
+          import re, sys
+          path=Path(sys.argv[1])
+          text=path.read_text(encoding='utf-8')
+          # Disable only the human Atlas auth subrequest. Device auth remains untouched.
+          updated, count = re.subn(r'auth_request\s+/__atlas_mountain_(?:auth|web_auth);', 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS', text)
+          if count == 0 and 'TEMPORARY BREAK-GLASS HUMAN ACCESS' not in text:
+              # Older rollback snippets use this exact legacy name.
+              updated, count = re.subn(r'auth_request\s+/__atlas_mountain_auth;', 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS', text)
+          if count == 0 and 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS' not in updated:
+              raise SystemExit('no human Atlas auth_request directive found')
+          if 'auth_request /__atlas_mountain_device_auth;' not in updated:
+              raise SystemExit('paired-device auth directive missing; refusing repair')
+          path.write_text(updated, encoding='utf-8')
+          print(f'atlas_human_auth_requests_disabled={count}')
+          PY
+
+          nginx -t
+          systemctl reload nginx
+          sleep 1
+          local_api="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/api/models || true)"
+          public_api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/api/models || true)"
+          local_ui="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/ || true)"
+          public_ui="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/ || true)"
+          device_bridge="$(curl -ksS -X POST -o /dev/null -w '%{http_code}' --max-time 6 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true)"
+          echo "atlas_public_edge_probe=direct:${direct_api},local_api:${local_api},public_api:${public_api},local_ui:${local_ui},public_ui:${public_ui},device_bridge:${device_bridge}"
+          [[ "$local_api" == 200 && "$public_api" == 200 && "$local_ui" == 200 && "$public_ui" == 200 ]]
+          [[ "$device_bridge" == 401 ]]
+          trap - EXIT
+          echo atlas_public_edge_live=true
           REMOTE
 
       - name: Cleanup
