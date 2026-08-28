@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
+# Read-only live diagnostic for Atlas native-auth/nginx routing.
 probe() {
   local name="$1"; shift
   echo "--- $name ---"
