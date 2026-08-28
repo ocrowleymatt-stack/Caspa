@@ -14,6 +14,9 @@ EnvironmentFile=/etc/atlas-mountain/atlas.env
 # stack is repaired. Machine/deploy and paired-device authentication are
 # separate lanes and remain enforced.
 Environment=NEXUS_NATIVE_AUTH_ENABLED=false
+# Empty disables the legacy OpenWebUI/SSO API auth fallback as well. Without
+# this, native-auth=false still left /api behind the old human auth validator.
+Environment=NEXUS_OPENWEBUI_AUTH_BASE_URL=
 Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
 ExecStartPre=+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/repair-workspace.sh
 ExecStart=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/start-nexus.sh
