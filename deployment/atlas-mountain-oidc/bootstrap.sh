@@ -148,14 +148,21 @@ done
 curl -fsS --max-time 5 http://127.0.0.1:3016/health >/dev/null
 systemctl reload nginx
 
-# Public route exists but rejects requests without a signed GitHub OIDC token.
-status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST \
+# Public routes exist but reject requests without the correct signed GitHub OIDC token.
+deploy_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST \
   -H 'Content-Type: application/json' --data '{}' \
   https://atlas.ocrowley.com/__atlas_mountain_deploy/v1 || true)"
-[[ "$status" == '401' ]] || { echo "unexpected public receiver status: ${status:-000}" >&2; exit 2; }
+[[ "$deploy_status" == '401' ]] || { echo "unexpected public deploy receiver status: ${deploy_status:-000}" >&2; exit 2; }
+
+music_status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST \
+  -H 'Content-Type: application/json' --data '{}' \
+  https://atlas.ocrowley.com/__atlas_mountain_music_runtime/v1 || true)"
+[[ "$music_status" == '401' ]] || { echo "unexpected public music runtime receiver status: ${music_status:-000}" >&2; exit 2; }
+
 curl -fsS --max-time 8 https://atlas.ocrowley.com/health >/dev/null
 
 echo 'atlas_mountain_receiver_bootstrap=true'
 echo 'receiver_local_health=ok'
-echo "receiver_public_unauthenticated=$status"
+echo "receiver_public_unauthenticated=$deploy_status"
+echo "music_runtime_receiver_public_unauthenticated=$music_status"
 echo 'existing_atlas_health=ok'
