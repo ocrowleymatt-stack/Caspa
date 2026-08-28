@@ -1,3 +1,4 @@
+# One-shot recovery probe trigger: 2026-08-28
 name: Diagnose Atlas nginx edge
 
 on:
