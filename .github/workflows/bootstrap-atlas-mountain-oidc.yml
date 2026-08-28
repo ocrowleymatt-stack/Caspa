@@ -30,6 +30,7 @@ jobs:
           set -euo pipefail
           node --check deployment/atlas-mountain-oidc/receiver.mjs
           node --check deployment/atlas-mountain-oidc/portal-receiver.mjs
+          python3 -m py_compile deployment/atlas-mountain-oidc/mount-music-runtime-receiver.py
           bash -n deployment/atlas-mountain-oidc/deploy.sh
           bash -n deployment/atlas-mountain-oidc/bootstrap.sh
           bash -n deployment/atlas-mountain-oidc/bootstrap-portal-receiver.sh
@@ -39,7 +40,8 @@ jobs:
           grep -Fq "atlas-mountain-music-runtime" deployment/atlas-mountain-oidc/receiver.mjs
           grep -Fq "provision-runpod-music.yml@refs/heads/main" deployment/atlas-mountain-oidc/receiver.mjs
           grep -Fq "/__atlas_mountain_music_runtime/v1" deployment/atlas-mountain-oidc/receiver.mjs
-          grep -Fq "/__atlas_mountain_music_runtime/v1" deployment/atlas-mountain-oidc/nginx-receiver.conf
+          grep -Fq "/__atlas_mountain_music_runtime/v1" deployment/atlas-mountain-oidc/nginx-music-runtime-receiver.conf
+          grep -Fq "atlas-mountain-music-runtime-receiver.conf" deployment/atlas-mountain-oidc/mount-music-runtime-receiver.py
           grep -Fq "ocrowleymatt-stack/ocrowley-evidence-portal" deployment/atlas-mountain-oidc/portal-receiver.mjs
           grep -Fq "1261391891" deployment/atlas-mountain-oidc/portal-receiver.mjs
           grep -Fq "274130919" deployment/atlas-mountain-oidc/portal-receiver.mjs
@@ -48,6 +50,7 @@ jobs:
           grep -Fq "127.0.0.1:3017" deployment/atlas-mountain-oidc/nginx-receiver.conf
           echo 'mountain_oidc_bridge_validation=true'
           echo 'mountain_music_runtime_oidc_bridge_validation=true'
+          echo 'mountain_music_runtime_multi_vhost_mount_validation=true'
           echo 'portal_oidc_bridge_validation=true'
 
   bootstrap:
@@ -124,7 +127,7 @@ jobs:
           head -c 240 /tmp/atlas-v12-diagnostic.html 2>/dev/null || true
           echo
           echo '=== MOUNTAIN NGINX INCLUDE ==='
-          grep -RFn 'atlas-mountain-v12.conf' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true
+          grep -RFn 'atlas-mountain-v12.conf\|atlas-mountain-music-runtime-receiver.conf' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true
           sed -n '1,220p' /etc/nginx/snippets/atlas-mountain-v12.conf 2>/dev/null || true
           echo '=== RECENT NGINX ERRORS ==='
           tail -n 120 /var/log/nginx/error.log 2>/dev/null | grep -E 'v12|atlas-mountain|permission|not found|open\(\)' || true

@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 TARGET=/root/AtlasMountainDeploy
 RECEIVER_SNIPPET=/etc/nginx/snippets/atlas-mountain-deploy-receiver.conf
+MUSIC_RECEIVER_SNIPPET=/etc/nginx/snippets/atlas-mountain-music-runtime-receiver.conf
 SERVICE=atlas-mountain-deploy-receiver.service
 QISKIT_VENV=/var/lib/atlas-mountain/qiskit-venv
 QISKIT_VERSION=2.5.1
@@ -79,9 +80,11 @@ PY
 install -o root -g root -m 0600 "$SOURCE_DIR/receiver.mjs" "$TARGET/receiver.mjs"
 install -o root -g root -m 0700 "$SOURCE_DIR/deploy.sh" "$TARGET/deploy.sh"
 install -o root -g root -m 0700 "$SOURCE_DIR/deploy-runner.sh" "$TARGET/deploy-runner.sh"
+install -o root -g root -m 0700 "$SOURCE_DIR/mount-music-runtime-receiver.py" "$TARGET/mount-music-runtime-receiver.py"
 install -o root -g root -m 0644 "$SOURCE_DIR/atlas-mountain-nexus.service" "$TARGET/atlas-mountain-nexus.service"
 install -o root -g root -m 0644 "$SOURCE_DIR/nginx-app.conf" "$TARGET/nginx-app.conf"
 install -o root -g root -m 0644 "$SOURCE_DIR/nginx-receiver.conf" "$RECEIVER_SNIPPET"
+install -o root -g root -m 0644 "$SOURCE_DIR/nginx-music-runtime-receiver.conf" "$MUSIC_RECEIVER_SNIPPET"
 install -o root -g root -m 0644 "$SOURCE_DIR/atlas-mountain-deploy-receiver.service" "/etc/systemd/system/$SERVICE"
 
 mapfile -t candidates < <(
@@ -129,6 +132,11 @@ if close is None or close < m.end(): raise SystemExit('server block end not foun
 text=text[:close]+'    include /etc/nginx/snippets/atlas-mountain-deploy-receiver.conf;\n'+text[close:]
 open(path,'w',encoding='utf-8').write(text)
 PY
+
+# Atlas currently has more than one effective HTTPS edge. Mount the narrow Music
+# receiver into every Atlas-serving block so public DNS cannot land on a sibling
+# static/auth vhost that answers the POST itself instead of proxying it.
+python3 "$TARGET/mount-music-runtime-receiver.py"
 
 if ! nginx -t; then
   cp -a "$backup" "$vhost"
