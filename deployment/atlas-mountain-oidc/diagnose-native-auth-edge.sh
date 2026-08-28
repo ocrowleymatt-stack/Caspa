@@ -2,6 +2,7 @@
 set -u
 
 # Read-only live diagnostic for Atlas native-auth/nginx routing.
+# Triggered after the native-auth service-unit deployment attempt.
 probe() {
   local name="$1"; shift
   echo "--- $name ---"
@@ -42,6 +43,6 @@ else
 fi
 
 echo '--- recent_nexus_journal ---'
-journalctl -u atlas-mountain-nexus.service --since '-10 minutes' --no-pager -n 180 2>&1 || true
+journalctl -u atlas-mountain-nexus.service --since '-15 minutes' --no-pager -n 260 2>&1 || true
 
 echo "atlas_native_auth_edge_diagnostic_end"
