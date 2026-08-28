@@ -10,20 +10,32 @@ Group=atlasmountain
 UMask=0022
 WorkingDirectory=/opt/atlas-mountain/current
 EnvironmentFile=/etc/atlas-mountain/atlas.env
-# TEMPORARY BREAK-GLASS MODE: keep Atlas available while the legacy edge/auth
-# stack is repaired. Machine/deploy and paired-device authentication are
-# separate lanes and remain enforced.
-Environment=NEXUS_NATIVE_AUTH_ENABLED=false
-# Empty disables the legacy OpenWebUI/SSO API auth fallback as well. Without
-# this, native-auth=false still left /api behind the old human auth validator.
-Environment=NEXUS_OPENWEBUI_AUTH_BASE_URL=
+# Native Atlas accounts are the production human-auth authority. The runtime
+# still supports an explicit NEXUS_AUTH_MODE=public break-glass override when
+# deliberately configured, but deployments must not enable it by default.
+Environment=NEXUS_NATIVE_AUTH_ENABLED=true
 Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
+Environment=ATLAS_COMPUTE_PYTHON=/var/lib/atlas-mountain/compute-venv/bin/python
 ExecStartPre=+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/repair-workspace.sh
+# Atlas Compute Fabric is a specialist deterministic runtime. Installation is
+# non-fatal and time-bounded so package/network trouble cannot hold general
+# Nexus offline; stdlib fallbacks remain usable and compute.catalogue reports
+# exactly which specialist libraries are live.
+ExecStartPre=-+/usr/bin/timeout 120s /usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/install-compute-runtime.sh
+# Music DSP is an important specialist capability but must not be allowed to
+# take the general assistant offline if apt/network repair is temporarily
+# unavailable. Music Dungeon will expose the missing capability and invoke the
+# recovery fabric rather than pretending analysis/mastering succeeded.
+ExecStartPre=-+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/install-music-runtime.sh
+# Browser QA is important but must never make Nexus unavailable. The leading '-'
+# makes installation failure non-fatal; the Website Studio/immune layer then
+# treats missing Playwright as an explicit quality-gate incident.
+ExecStartPre=-+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/install-playwright-runtime.sh
 ExecStart=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/start-nexus.sh
 ExecStartPost=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/verify-nexus-runtime.sh
 Restart=on-failure
 RestartSec=3
-TimeoutStartSec=90
+TimeoutStartSec=180
 TimeoutStopSec=20
 NoNewPrivileges=true
 PrivateTmp=true
