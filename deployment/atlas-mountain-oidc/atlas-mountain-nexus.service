@@ -10,6 +10,10 @@ Group=atlasmountain
 UMask=0022
 WorkingDirectory=/opt/atlas-mountain/current
 EnvironmentFile=/etc/atlas-mountain/atlas.env
+# TEMPORARY BREAK-GLASS MODE: keep Atlas available while the legacy edge/auth
+# stack is repaired. Machine/deploy and paired-device authentication are
+# separate lanes and remain enforced.
+Environment=NEXUS_NATIVE_AUTH_ENABLED=false
 Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
 ExecStartPre=+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/repair-workspace.sh
 ExecStart=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/start-nexus.sh
