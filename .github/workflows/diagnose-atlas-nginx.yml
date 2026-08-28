@@ -1,4 +1,4 @@
-# One-shot recovery probe trigger: 2026-08-28 error-context
+# One-shot recovery probe trigger: 2026-08-28 service-failure-context
 name: Diagnose Atlas nginx edge
 
 on:
@@ -38,7 +38,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect Atlas nginx routing only
+      - name: Inspect Atlas edge and Nexus service
         shell: bash
         run: |
           set -euo pipefail
@@ -48,91 +48,50 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          HOST = 'atlas.ocrowley.com'
-          paths = [Path('/etc/nginx/conf.d/auth-gateway.conf')]
+          def run(args):
+              return subprocess.run(args, capture_output=True, text=True)
 
-          def blocks(source: str):
-              for match in re.finditer(r'\bserver\s*\{', source):
-                  start = match.start()
-                  brace = source.find('{', start)
-                  depth = 0
-                  quote = None
-                  escape = False
-                  comment = False
-                  for i in range(brace, len(source)):
-                      ch = source[i]
-                      if comment:
-                          if ch == '\n': comment = False
-                          continue
-                      if quote:
-                          if escape: escape = False
-                          elif ch == '\\': escape = True
-                          elif ch == quote: quote = None
-                          continue
-                      if ch == '#': comment = True; continue
-                      if ch in ('"', "'"): quote = ch; continue
-                      if ch == '{': depth += 1
-                      elif ch == '}':
-                          depth -= 1
-                          if depth == 0:
-                              yield source[start:i+1]
-                              break
+          print('atlas_recovery_diag_begin')
+          current=Path('/opt/atlas-mountain/current')
+          try:
+              print('current_release='+str(current.resolve()).rsplit('/',1)[-1])
+          except Exception as exc:
+              print('current_release_error='+type(exc).__name__)
 
-          def sanitize(text: str) -> str:
-              out=[]
-              for line in text.splitlines():
-                  low=line.lower()
-                  if any(term in low for term in ('ssl_certificate_key', 'authorization ', 'password', 'secret', 'token')):
-                      out.append(re.sub(r'(^\s*[^\s]+).*', r'\1 [redacted];', line))
-                  else:
-                      out.append(line)
-              return '\n'.join(out)
+          status=run(['systemctl','is-active','atlas-mountain-nexus.service'])
+          print('nexus_service_active='+status.stdout.strip())
+          show=run(['systemctl','show','atlas-mountain-nexus.service','-p','Result','-p','ExecMainStatus','-p','ExecStartPost'])
+          for line in show.stdout.splitlines():
+              if line.startswith(('Result=','ExecMainStatus=','ExecStartPost=')):
+                  print(line[:1200])
 
-          print('atlas_nginx_diag_begin')
-          for path in paths:
-              print(f'file={path} exists={path.exists()}')
-              if not path.exists(): continue
-              source=path.read_text(errors='replace')
-              for idx, block in enumerate(blocks(source), 1):
-                  if HOST in block or '/var/www/atlas-mountain' in block or 'atlas-mountain-v12.conf' in block:
-                      print(f'--- relevant_server_block_{idx} ---')
-                      print(sanitize(block))
-
-          snippet=Path('/etc/nginx/snippets/atlas-mountain-v12.conf')
-          print(f'snippet_exists={snippet.exists()}')
-          if snippet.exists():
-              text=snippet.read_text(errors='replace')
-              for pattern in ('location = /v12/api', 'location ^~ /v12/api/', 'location ^~ /v12/', 'location = /__atlas_mountain_web_auth'):
-                  print(f'snippet_has[{pattern}]={pattern in text}')
-
-          result=subprocess.run(['nginx','-T'], capture_output=True, text=True)
-          print(f'nginx_T_status={result.returncode}')
-          for line in result.stderr.splitlines():
-              if 'emerg' in line.lower() or 'error' in line.lower() or 'conflicting' in line.lower():
-                  print('nginx_T_error='+line[:500])
+          unit=run(['systemctl','cat','atlas-mountain-nexus.service'])
+          print('--- nexus_unit_auth_controls ---')
+          for line in unit.stdout.splitlines():
+              if any(key in line for key in ('NEXUS_NATIVE_AUTH_ENABLED','NEXUS_OPENWEBUI_AUTH_BASE_URL','NEXUS_AUTH_MODE','ExecStartPost','ExecStart=')):
+                  print(line[:1000])
 
           probes=[
-              ('direct_nexus','http://127.0.0.1:43101/api/models',[]),
-              ('local_sni','https://atlas.ocrowley.com/v12/api/models',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
-              ('public_dns','https://atlas.ocrowley.com/v12/api/models',['-k']),
+              ('direct_health','http://127.0.0.1:43101/health',[]),
+              ('direct_api','http://127.0.0.1:43101/api/models',[]),
+              ('local_api','https://atlas.ocrowley.com/v12/api/models',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
+              ('public_api','https://atlas.ocrowley.com/v12/api/models',['-k']),
               ('local_ui','https://atlas.ocrowley.com/v12/',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
+              ('public_ui','https://atlas.ocrowley.com/v12/',['-k']),
+              ('device_bridge','https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll',['-k','-X','POST']),
           ]
           for name,url,extra in probes:
-              p=subprocess.run(['curl','-sS','-o','/dev/null','-w','%{http_code}','--max-time','10',*extra,url],capture_output=True,text=True)
+              p=run(['curl','-sS','-o','/dev/null','-w','%{http_code}','--max-time','8',*extra,url])
               print(f'probe_{name}={p.stdout.strip() or "000"}')
 
-          log=Path('/var/log/nginx/error.log')
-          print(f'nginx_error_log_exists={log.exists()}')
-          if log.exists():
-              selected=[]
-              for line in log.read_text(errors='replace').splitlines()[-1500:]:
-                  low=line.lower()
-                  if any(term in low for term in ('/v12/api', 'auth request', 'auth_request', '43101', 'upstream', 'internal redirection cycle')):
-                      line=re.sub(r'(?i)(authorization|token|secret|password)=?[^ ,;]*', r'\1=[redacted]', line)
-                      selected.append(line[:1200])
-              print('--- recent_relevant_nginx_errors ---')
-              for line in selected[-120:]: print(line)
-          print('atlas_nginx_diag_end')
+          journal=run(['journalctl','-u','atlas-mountain-nexus.service','--since','2026-08-28 11:44:00 UTC','--no-pager','-n','180'])
+          print('--- nexus_recent_failures ---')
+          for raw in journal.stdout.splitlines():
+              low=raw.lower()
+              if any(term in low for term in ('failed','failure','error','gate','permission denied','read-only','no such file','status=')):
+                  line=re.sub(r'(?i)(authorization|token|secret|password|api[_-]?key)[=: ]+[^ ,;]+', r'\1=[redacted]', raw)
+                  print(line[:1400])
+          print('atlas_recovery_diag_end')
           PY
 
       - name: Cleanup
