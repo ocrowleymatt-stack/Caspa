@@ -1,4 +1,4 @@
-# One-shot recovery probe trigger: 2026-08-28
+# One-shot recovery probe trigger: 2026-08-28 error-context
 name: Diagnose Atlas nginx edge
 
 on:
@@ -120,6 +120,18 @@ jobs:
           for name,url,extra in probes:
               p=subprocess.run(['curl','-sS','-o','/dev/null','-w','%{http_code}','--max-time','10',*extra,url],capture_output=True,text=True)
               print(f'probe_{name}={p.stdout.strip() or "000"}')
+
+          log=Path('/var/log/nginx/error.log')
+          print(f'nginx_error_log_exists={log.exists()}')
+          if log.exists():
+              selected=[]
+              for line in log.read_text(errors='replace').splitlines()[-1500:]:
+                  low=line.lower()
+                  if any(term in low for term in ('/v12/api', 'auth request', 'auth_request', '43101', 'upstream', 'internal redirection cycle')):
+                      line=re.sub(r'(?i)(authorization|token|secret|password)=?[^ ,;]*', r'\1=[redacted]', line)
+                      selected.append(line[:1200])
+              print('--- recent_relevant_nginx_errors ---')
+              for line in selected[-120:]: print(line)
           print('atlas_nginx_diag_end')
           PY
 
