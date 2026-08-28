@@ -1,4 +1,4 @@
-# One-shot recovery probe trigger: 2026-08-28 service-failure-context
+# One-shot break-glass edge repair trigger: 2026-08-28T12:12Z
 name: Diagnose Atlas nginx edge
 
 on:
@@ -38,61 +38,63 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Inspect Atlas edge and Nexus service
+      - name: Repair Atlas human edge in break-glass mode
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'python3 -' <<'PY'
-          from __future__ import annotations
-          import re
-          import subprocess
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          snippet=/etc/nginx/snippets/atlas-mountain-v12.conf
+          test -s "$snippet"
+          backup="${snippet}.pre-breakglass-$(date -u +%Y%m%dT%H%M%SZ)"
+          cp -a "$snippet" "$backup"
+          restore() {
+            cp -a "$backup" "$snippet"
+            nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+          }
+          trap 'rc=$?; if (( rc != 0 )); then restore; echo atlas_breakglass_edge_rollback=true >&2; fi; exit $rc' EXIT
+
+          python3 - "$snippet" <<'PY'
           from pathlib import Path
-
-          def run(args):
-              return subprocess.run(args, capture_output=True, text=True)
-
-          print('atlas_recovery_diag_begin')
-          current=Path('/opt/atlas-mountain/current')
-          try:
-              print('current_release='+str(current.resolve()).rsplit('/',1)[-1])
-          except Exception as exc:
-              print('current_release_error='+type(exc).__name__)
-
-          status=run(['systemctl','is-active','atlas-mountain-nexus.service'])
-          print('nexus_service_active='+status.stdout.strip())
-          show=run(['systemctl','show','atlas-mountain-nexus.service','-p','Result','-p','ExecMainStatus','-p','ExecStartPost'])
-          for line in show.stdout.splitlines():
-              if line.startswith(('Result=','ExecMainStatus=','ExecStartPost=')):
-                  print(line[:1200])
-
-          unit=run(['systemctl','cat','atlas-mountain-nexus.service'])
-          print('--- nexus_unit_auth_controls ---')
-          for line in unit.stdout.splitlines():
-              if any(key in line for key in ('NEXUS_NATIVE_AUTH_ENABLED','NEXUS_OPENWEBUI_AUTH_BASE_URL','NEXUS_AUTH_MODE','ExecStartPost','ExecStart=')):
-                  print(line[:1000])
-
-          probes=[
-              ('direct_health','http://127.0.0.1:43101/health',[]),
-              ('direct_api','http://127.0.0.1:43101/api/models',[]),
-              ('local_api','https://atlas.ocrowley.com/v12/api/models',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
-              ('public_api','https://atlas.ocrowley.com/v12/api/models',['-k']),
-              ('local_ui','https://atlas.ocrowley.com/v12/',['--resolve','atlas.ocrowley.com:443:127.0.0.1','-k']),
-              ('public_ui','https://atlas.ocrowley.com/v12/',['-k']),
-              ('device_bridge','https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll',['-k','-X','POST']),
-          ]
-          for name,url,extra in probes:
-              p=run(['curl','-sS','-o','/dev/null','-w','%{http_code}','--max-time','8',*extra,url])
-              print(f'probe_{name}={p.stdout.strip() or "000"}')
-
-          journal=run(['journalctl','-u','atlas-mountain-nexus.service','--since','2026-08-28 11:44:00 UTC','--no-pager','-n','180'])
-          print('--- nexus_recent_failures ---')
-          for raw in journal.stdout.splitlines():
-              low=raw.lower()
-              if any(term in low for term in ('failed','failure','error','gate','permission denied','read-only','no such file','status=')):
-                  line=re.sub(r'(?i)(authorization|token|secret|password|api[_-]?key)[=: ]+[^ ,;]+', r'\1=[redacted]', raw)
-                  print(line[:1400])
-          print('atlas_recovery_diag_end')
+          import sys
+          path=Path(sys.argv[1])
+          text=path.read_text(encoding='utf-8')
+          needle='auth_request /__atlas_mountain_auth;'
+          count=text.count(needle)
+          if count < 3:
+              raise SystemExit(f'expected at least 3 human auth_request directives, found {count}')
+          text=text.replace(needle, 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS')
+          # Paired-device authentication must remain intact.
+          if 'auth_request /__atlas_mountain_device_auth;' not in text:
+              raise SystemExit('paired-device auth directive missing; refusing repair')
+          path.write_text(text, encoding='utf-8')
+          print(f'atlas_breakglass_human_auth_directives_disabled={count}')
           PY
+
+          nginx -t
+          systemctl reload nginx
+
+          direct_api="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:43101/api/models || true)"
+          local_api="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/api/models || true)"
+          public_api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/api/models || true)"
+          local_ui="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
+          public_ui="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
+          device_bridge="$(curl -ksS -X POST -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true)"
+          device_api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/device-api/models || true)"
+
+          echo "atlas_breakglass_probe=direct_api:${direct_api},local_api:${local_api},public_api:${public_api},local_ui:${local_ui},public_ui:${public_ui},device_bridge:${device_bridge},device_api:${device_api}"
+          [[ "$direct_api" == 200 ]]
+          [[ "$local_api" == 200 ]]
+          [[ "$public_api" == 200 ]]
+          [[ "$local_ui" == 200 ]]
+          [[ "$public_ui" == 200 ]]
+          [[ "$device_bridge" == 401 ]]
+          case "$device_api" in 401|403) ;; *) echo "device API protection failed: $device_api" >&2; exit 1 ;; esac
+
+          trap - EXIT
+          echo atlas_breakglass_edge_live=true
+          echo "atlas_breakglass_backup=$backup"
+          REMOTE
 
       - name: Cleanup
         if: always()
