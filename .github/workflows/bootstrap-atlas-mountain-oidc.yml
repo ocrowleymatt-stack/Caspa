@@ -36,6 +36,10 @@ jobs:
           bash -n deployment/atlas-mountain-oidc/portal-deploy-runner.sh
           grep -Fq "ocrowleymatt-stack/atlas-mountain" deployment/atlas-mountain-oidc/receiver.mjs
           grep -Fq "1343069841" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "atlas-mountain-music-runtime" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "provision-runpod-music.yml@refs/heads/main" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "/__atlas_mountain_music_runtime/v1" deployment/atlas-mountain-oidc/receiver.mjs
+          grep -Fq "/__atlas_mountain_music_runtime/v1" deployment/atlas-mountain-oidc/nginx-receiver.conf
           grep -Fq "ocrowleymatt-stack/ocrowley-evidence-portal" deployment/atlas-mountain-oidc/portal-receiver.mjs
           grep -Fq "1261391891" deployment/atlas-mountain-oidc/portal-receiver.mjs
           grep -Fq "274130919" deployment/atlas-mountain-oidc/portal-receiver.mjs
@@ -43,6 +47,7 @@ jobs:
           grep -Fq "127.0.0.1:3016" deployment/atlas-mountain-oidc/nginx-receiver.conf
           grep -Fq "127.0.0.1:3017" deployment/atlas-mountain-oidc/nginx-receiver.conf
           echo 'mountain_oidc_bridge_validation=true'
+          echo 'mountain_music_runtime_oidc_bridge_validation=true'
           echo 'portal_oidc_bridge_validation=true'
 
   bootstrap:
@@ -92,11 +97,14 @@ jobs:
         run: |
           set -euo pipefail
           mountain="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__atlas_mountain_deploy/v1)"
+          music="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__atlas_mountain_music_runtime/v1)"
           portal="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__portal_deploy/v1)"
           test "$mountain" = 401
+          test "$music" = 401
           test "$portal" = 401
           curl -fsS --max-time 10 https://atlas.ocrowley.com/health >/dev/null
           echo "mountain_receiver_public_unauthenticated=$mountain"
+          echo "mountain_music_runtime_receiver_public_unauthenticated=$music"
           echo "portal_receiver_public_unauthenticated=$portal"
           echo 'existing_atlas_still_healthy=true'
 
