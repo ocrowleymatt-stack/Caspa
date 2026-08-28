@@ -1,0 +1,108 @@
+name: Verify Atlas Music runtime on Hetzner once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-atlas-music-live-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Verify Music runtime from Nexus environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test -s /etc/atlas-mountain/atlas.env
+          set -a
+          . /etc/atlas-mountain/atlas.env
+          set +a
+
+          media=false
+          renderer=false
+          base=false
+          nexus=false
+
+          if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+            media=true
+          fi
+          if curl -fsS --max-time 5 http://127.0.0.1:43101/health >/dev/null 2>&1; then
+            nexus=true
+          fi
+
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          headers=()
+          if [ -n "${ATLAS_MUSIC_GPU_API_KEY:-}" ]; then
+            headers=(-H "Authorization: Bearer ${ATLAS_MUSIC_GPU_API_KEY}")
+          fi
+          if [ -n "${ATLAS_MUSIC_GPU_NATIVE_URL:-}" ] && \
+             curl -fsS --max-time 20 "${headers[@]}" "${ATLAS_MUSIC_GPU_NATIVE_URL%/}/v1/models" > "$tmp" 2>/dev/null; then
+            python3 - "$tmp" <<'PY'
+import json,re,sys
+payload=json.load(open(sys.argv[1]))
+data=payload.get('data')
+items=data if isinstance(data,list) else (data.get('models',[]) if isinstance(data,dict) else [])
+names=[]
+for item in items:
+    if isinstance(item,str): names.append(item)
+    elif isinstance(item,dict): names.append(str(item.get('id') or item.get('name') or ''))
+assert any(re.search(r'acestep.*turbo', name, re.I) for name in names), names
+PY
+            renderer=true
+            python3 - "$tmp" <<'PY'
+import json,re,sys
+payload=json.load(open(sys.argv[1]))
+data=payload.get('data')
+items=data if isinstance(data,list) else (data.get('models',[]) if isinstance(data,dict) else [])
+names=[]
+for item in items:
+    if isinstance(item,str): names.append(item)
+    elif isinstance(item,dict): names.append(str(item.get('id') or item.get('name') or ''))
+assert any(re.search(r'acestep.*base', name, re.I) for name in names), names
+PY
+            base=true
+          fi
+
+          echo "atlas_nexus_healthy=$nexus"
+          echo "atlas_music_media_runtime=$media"
+          echo "atlas_music_gpu_renderer=$renderer"
+          echo "atlas_music_gpu_base_model=$base"
+          test "$nexus" = true
+          test "$media" = true
+          test "$renderer" = true
+          test "$base" = true
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
