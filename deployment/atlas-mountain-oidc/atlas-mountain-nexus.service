@@ -10,13 +10,12 @@ Group=atlasmountain
 UMask=0022
 WorkingDirectory=/opt/atlas-mountain/current
 EnvironmentFile=/etc/atlas-mountain/atlas.env
-# TEMPORARY BREAK-GLASS MODE: keep Atlas available while the legacy edge/auth
-# stack is repaired. Machine/deploy and paired-device authentication are
-# separate lanes and remain enforced.
-Environment=NEXUS_NATIVE_AUTH_ENABLED=false
-# Empty disables the legacy OpenWebUI/SSO API auth fallback as well. Without
-# this, native-auth=false still left /api behind the old human auth validator.
-Environment=NEXUS_OPENWEBUI_AUTH_BASE_URL=
+# Atlas-native accounts are the normal production human-auth authority. Keep
+# this fixed receiver-side copy aligned with the immutable Atlas release unit:
+# nginx's /__atlas_mountain_auth subrequest depends on the loopback auth sidecar
+# being available on 127.0.0.1:43105. Break-glass public mode must be an explicit
+# runtime override, never the receiver bootstrap default.
+Environment=NEXUS_NATIVE_AUTH_ENABLED=true
 Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
 ExecStartPre=+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/repair-workspace.sh
 ExecStart=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/start-nexus.sh
