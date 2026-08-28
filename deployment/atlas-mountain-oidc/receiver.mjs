@@ -7,20 +7,37 @@ import { spawnSync } from 'node:child_process';
 const HOST = '127.0.0.1';
 const PORT = 3016;
 const DEPLOY_PATH = '/__atlas_mountain_deploy/v1';
+const MUSIC_RUNTIME_PATH = '/__atlas_mountain_music_runtime/v1';
 const HEALTH_PATH = '/health';
 const MAX_BODY = 20 * 1024 * 1024;
+const MAX_MUSIC_RUNTIME_BODY = 16 * 1024;
 const ISSUER = 'https://token.actions.githubusercontent.com';
 const JWKS_URL = `${ISSUER}/.well-known/jwks`;
-const AUDIENCE = 'atlas-mountain-deploy';
 const REPOSITORY = 'ocrowleymatt-stack/atlas-mountain';
 const REPOSITORY_ID = '1343069841';
 const OWNER_ID = '274130919';
 const REF = 'refs/heads/main';
-const WORKFLOW_REF = 'ocrowleymatt-stack/atlas-mountain/.github/workflows/deploy-hetzner.yml@refs/heads/main';
-const WORKFLOW_NAME = 'Deploy Atlas Mountain to Hetzner';
 const USED_JTI_FILE = '/root/AtlasMountainDeploy/used-jti.json';
 const INBOX = '/root/AtlasMountainDeploy/inbox';
 const DEPLOY_RUNNER = '/root/AtlasMountainDeploy/deploy-runner.sh';
+const ATLAS_ENV_FILE = '/etc/atlas-mountain/atlas.env';
+const NEXUS_SERVICE = 'atlas-mountain-nexus.service';
+const NEXUS_HEALTH = 'http://127.0.0.1:43101/health';
+
+const AUTH_PROFILES = Object.freeze({
+  [DEPLOY_PATH]: Object.freeze({
+    audience: 'atlas-mountain-deploy',
+    workflowRef: 'ocrowleymatt-stack/atlas-mountain/.github/workflows/deploy-hetzner.yml@refs/heads/main',
+    workflowName: 'Deploy Atlas Mountain to Hetzner',
+    eventNames: new Set(['push', 'workflow_dispatch']),
+  }),
+  [MUSIC_RUNTIME_PATH]: Object.freeze({
+    audience: 'atlas-mountain-music-runtime',
+    workflowRef: 'ocrowleymatt-stack/atlas-mountain/.github/workflows/provision-runpod-music.yml@refs/heads/main',
+    workflowName: 'Provision RunPod Music ACE-Step',
+    eventNames: new Set(['workflow_dispatch']),
+  }),
+});
 
 let jwksCache = { expires: 0, keys: [] };
 
@@ -54,11 +71,11 @@ async function getJwks() {
   }
 }
 
-function audienceMatches(audience) {
-  return audience === AUDIENCE || (Array.isArray(audience) && audience.includes(AUDIENCE));
+function audienceMatches(audience, expected) {
+  return audience === expected || (Array.isArray(audience) && audience.includes(expected));
 }
 
-async function verifyToken(token) {
+async function verifyToken(token, profile) {
   const parts = String(token || '').split('.');
   if (parts.length !== 3) throw new Error('jwt_shape');
   const [headerPart, payloadPart, signaturePart] = parts;
@@ -79,7 +96,7 @@ async function verifyToken(token) {
 
   const now = Math.floor(Date.now() / 1000);
   if (claims.iss !== ISSUER) throw new Error('claim_iss');
-  if (!audienceMatches(claims.aud)) throw new Error('claim_aud');
+  if (!audienceMatches(claims.aud, profile.audience)) throw new Error('claim_aud');
   if (!Number.isFinite(Number(claims.exp)) || Number(claims.exp) < now - 15) throw new Error('claim_exp');
   if (Number.isFinite(Number(claims.nbf)) && Number(claims.nbf) > now + 30) throw new Error('claim_nbf');
   if (!Number.isFinite(Number(claims.iat)) || Number(claims.iat) > now + 30) throw new Error('claim_iat');
@@ -88,9 +105,9 @@ async function verifyToken(token) {
   if (String(claims.repository_owner_id) !== OWNER_ID) throw new Error('claim_owner_id');
   if (claims.repository_visibility !== 'private') throw new Error('claim_visibility');
   if (claims.ref !== REF || claims.ref_type !== 'branch') throw new Error('claim_ref');
-  if (claims.workflow_ref !== WORKFLOW_REF) throw new Error('claim_workflow_ref');
-  if (claims.workflow !== WORKFLOW_NAME) throw new Error('claim_workflow');
-  if (!['push', 'workflow_dispatch'].includes(claims.event_name)) throw new Error('claim_event');
+  if (claims.workflow_ref !== profile.workflowRef) throw new Error('claim_workflow_ref');
+  if (claims.workflow !== profile.workflowName) throw new Error('claim_workflow');
+  if (!profile.eventNames.has(claims.event_name)) throw new Error('claim_event');
   if (!String(claims.sub || '').includes('atlas-mountain')) throw new Error('claim_sub');
   if (!/^[0-9a-f]{40}$/i.test(String(claims.sha || ''))) throw new Error('claim_sha');
   if (!claims.jti || String(claims.jti).length < 16) throw new Error('claim_jti');
@@ -123,13 +140,13 @@ function send(response, status, data) {
   response.end(body);
 }
 
-async function readBody(request) {
+async function readBody(request, maxBody = MAX_BODY) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     request.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY) {
+      if (size > maxBody) {
         reject(new Error('body_too_large'));
         request.destroy();
         return;
@@ -141,14 +158,108 @@ async function readBody(request) {
   });
 }
 
+function validatePayloadSha(payload, claims) {
+  const commitSha = String(payload.sha || '');
+  if (commitSha !== String(claims.sha)) throw new Error('payload_sha_mismatch');
+  if (!/^[0-9a-f]{40}$/i.test(commitSha)) throw new Error('payload_sha');
+  return commitSha;
+}
+
+function atomicWritePreservingMetadata(target, text) {
+  const directory = path.dirname(target);
+  const basename = path.basename(target);
+  const temporary = path.join(directory, `.${basename}.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+  const existing = fs.statSync(target);
+  const mode = existing.mode & 0o777;
+  const fd = fs.openSync(temporary, 'wx', mode);
+  try {
+    fs.writeFileSync(fd, text, 'utf8');
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.chownSync(temporary, existing.uid, existing.gid);
+  fs.chmodSync(temporary, mode);
+  fs.renameSync(temporary, target);
+}
+
+function renderMusicRuntimeEnvironment(original, nativeUrl, apiKey) {
+  const lines = String(original || '')
+    .split(/\r?\n/)
+    .filter((line) => !/^ATLAS_MUSIC_GPU_(?:NATIVE_URL|API_KEY)=/.test(line));
+  while (lines.length && lines.at(-1) === '') lines.pop();
+  lines.push(`ATLAS_MUSIC_GPU_NATIVE_URL=${nativeUrl}`);
+  lines.push(`ATLAS_MUSIC_GPU_API_KEY=${apiKey}`);
+  return `${lines.join('\n')}\n`;
+}
+
+function restartNexusAndVerify() {
+  const restart = spawnSync('systemctl', ['restart', NEXUS_SERVICE], {
+    encoding: 'utf8',
+    timeout: 180000,
+    maxBuffer: 256 * 1024,
+    env: { PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' },
+  });
+  if (restart.error) throw new Error(`music_runtime_restart_spawn:${restart.error.message}`);
+  if (restart.status !== 0) throw new Error(`music_runtime_restart_status_${restart.status}`);
+
+  const health = spawnSync('bash', ['-lc', `for i in $(seq 1 60); do curl -fsS --max-time 3 ${NEXUS_HEALTH} >/dev/null && exit 0; sleep 1; done; exit 1`], {
+    encoding: 'utf8',
+    timeout: 75000,
+    maxBuffer: 64 * 1024,
+    env: { PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' },
+  });
+  if (health.error) throw new Error(`music_runtime_health_spawn:${health.error.message}`);
+  if (health.status !== 0) throw new Error('music_runtime_nexus_unhealthy');
+}
+
+function installMusicRuntime(payload, claims) {
+  const commitSha = validatePayloadSha(payload, claims);
+  const nativeUrl = String(payload.nativeUrl || '').trim();
+  const apiKey = String(payload.apiKey || '').trim();
+  if (!/^https:\/\/[A-Za-z0-9_-]{5,128}-8001\.proxy\.runpod\.net\/?$/.test(nativeUrl)) {
+    throw new Error('music_runtime_native_url');
+  }
+  if (!/^[A-Za-z0-9_-]{40,128}$/.test(apiKey)) throw new Error('music_runtime_api_key');
+  if (!fs.existsSync(ATLAS_ENV_FILE)) throw new Error('music_runtime_env_missing');
+
+  const original = fs.readFileSync(ATLAS_ENV_FILE, 'utf8');
+  const updated = renderMusicRuntimeEnvironment(original, nativeUrl.replace(/\/$/, ''), apiKey);
+  atomicWritePreservingMetadata(ATLAS_ENV_FILE, updated);
+  try {
+    restartNexusAndVerify();
+  } catch (error) {
+    try {
+      atomicWritePreservingMetadata(ATLAS_ENV_FILE, original);
+      restartNexusAndVerify();
+    } catch (rollbackError) {
+      console.error('music_runtime_rollback_failed', rollbackError?.message || rollbackError);
+    }
+    throw error;
+  }
+
+  const runId = String(claims.run_id || '');
+  console.log(`${new Date().toISOString()} music_runtime_installed sha=${commitSha} run_id=${runId || 'unknown'}`);
+  return {
+    ok: true,
+    installed: true,
+    sha: commitSha,
+    runId,
+    nexusRestarted: true,
+    keys: ['ATLAS_MUSIC_GPU_NATIVE_URL', 'ATLAS_MUSIC_GPU_API_KEY'],
+  };
+}
+
 fs.mkdirSync(INBOX, { recursive: true, mode: 0o700 });
 
 const server = http.createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && request.url === HEALTH_PATH) {
-      return send(response, 200, { ok: true, service: 'AtlasMountainDeployReceiver', version: '1.1.0' });
+      return send(response, 200, { ok: true, service: 'AtlasMountainDeployReceiver', version: '1.2.0' });
     }
-    if (request.url !== DEPLOY_PATH) return send(response, 404, { ok: false, error: 'not_found' });
+
+    const profile = AUTH_PROFILES[request.url];
+    if (!profile) return send(response, 404, { ok: false, error: 'not_found' });
     if (request.method !== 'POST') return send(response, 405, { ok: false, error: 'method_not_allowed' });
     if (!String(request.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
       return send(response, 415, { ok: false, error: 'content_type' });
@@ -156,15 +267,17 @@ const server = http.createServer(async (request, response) => {
 
     const authorization = String(request.headers.authorization || '');
     if (!authorization.startsWith('Bearer ')) return send(response, 401, { ok: false, error: 'missing_bearer' });
-    const claims = await verifyToken(authorization.slice(7));
+    const claims = await verifyToken(authorization.slice(7), profile);
     consumeJti(String(claims.jti), Number(claims.exp));
 
-    const raw = await readBody(request);
+    const raw = await readBody(request, request.url === MUSIC_RUNTIME_PATH ? MAX_MUSIC_RUNTIME_BODY : MAX_BODY);
     const payload = JSON.parse(raw.toString('utf8'));
-    const commitSha = String(payload.sha || '');
-    if (commitSha !== String(claims.sha)) throw new Error('payload_sha_mismatch');
-    if (!/^[0-9a-f]{40}$/i.test(commitSha)) throw new Error('payload_sha');
 
+    if (request.url === MUSIC_RUNTIME_PATH) {
+      return send(response, 200, installMusicRuntime(payload, claims));
+    }
+
+    const commitSha = validatePayloadSha(payload, claims);
     const archive = Buffer.from(String(payload.archiveB64 || ''), 'base64');
     if (!archive.length || archive.length > 14 * 1024 * 1024) throw new Error('archive_size');
     const expectedHash = String(payload.archiveSha256 || '').toLowerCase();
