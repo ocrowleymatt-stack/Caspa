@@ -1,0 +1,92 @@
+name: Restore Atlas production auth
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/atlas-auth-emergency-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+    steps:
+      - name: Select server SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${PRIVATEKEY2:-}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Install fail-closed Atlas Nexus service
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          source_unit=/root/AtlasMountainDeploy/atlas-mountain-nexus.service
+          live_unit=/etc/systemd/system/atlas-mountain-nexus.service
+          test -s "$source_unit"
+          grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$source_unit"
+          grep -qx 'Environment=SEARXNG_BASE_URL=http://127.0.0.1:8888/' "$source_unit"
+
+          backup="${live_unit}.pre-auth-repair.$(date -u +%Y%m%dT%H%M%SZ)"
+          test -f "$live_unit" && cp -a "$live_unit" "$backup" || true
+          install -o root -g root -m 0644 "$source_unit" "$live_unit"
+          systemctl daemon-reload
+          systemctl restart atlas-mountain-nexus.service
+
+          ready=false
+          for _ in $(seq 1 45); do
+            if curl -fsS --max-time 3 http://127.0.0.1:43101/health >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            echo 'atlas_nexus_restart_ready=false' >&2
+            systemctl status atlas-mountain-nexus.service --no-pager -l >&2 || true
+            journalctl -u atlas-mountain-nexus.service -n 80 --no-pager >&2 || true
+            # Fail closed rather than restoring an intentionally public service.
+            systemctl stop atlas-mountain-nexus.service || true
+            exit 1
+          fi
+          echo 'atlas_nexus_restart_ready=true'
+          systemctl is-active --quiet atlas-mountain-nexus.service
+          REMOTE
+
+      - name: Verify public auth boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://atlas.ocrowley.com'
+          for _ in $(seq 1 20); do
+            api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$base/v12/api/models" || true)"
+            login="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$base/v12/login" || true)"
+            auth="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$base/v12/auth/status" || true)"
+            echo "atlas_auth_probe=api:${api:-000},login:${login:-000},status:${auth:-000}"
+            if [[ "$api" == 401 || "$api" == 403 ]] && [[ "$login" == 200 ]] && [[ "$auth" == 200 ]]; then
+              echo 'atlas_public_auth_fail_closed=true'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'Atlas public auth boundary did not recover; stopping Nexus to remain fail-closed.' >&2
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" \
+            'systemctl stop atlas-mountain-nexus.service || true'
+          exit 1
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
