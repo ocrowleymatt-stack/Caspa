@@ -1,0 +1,151 @@
+name: Atlas break-glass edge hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/atlas-breakglass-edge-hotfix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key" || { echo 'No live server SSH credential is configured.' >&2; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Apply transactional public API break-glass
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          snippet=/etc/nginx/snippets/atlas-mountain-v12.conf
+          test -s "$snippet"
+          backup="/root/AtlasMountainDeploy/backups/atlas-mountain-v12.breakglass.$(date -u +%Y%m%dT%H%M%SZ).conf"
+          install -d -m 0700 /root/AtlasMountainDeploy/backups
+          cp -a "$snippet" "$backup"
+
+          restore() {
+            cp -a "$backup" "$snippet"
+            nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+          }
+          trap 'rc=$?; if (( rc != 0 )); then restore; echo atlas_breakglass_edge_rollback=true >&2; fi; exit $rc' EXIT
+
+          python3 - "$snippet" <<'PY'
+          from pathlib import Path
+          import re, sys
+
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding='utf-8')
+
+          def locate_block(source: str, signature: str):
+              start = source.find(signature)
+              if start < 0:
+                  raise SystemExit(f'missing nginx location: {signature}')
+              brace = source.find('{', start)
+              depth = 0
+              quote = None
+              escape = False
+              comment = False
+              for i in range(brace, len(source)):
+                  ch = source[i]
+                  if comment:
+                      if ch == '\n': comment = False
+                      continue
+                  if quote:
+                      if escape: escape = False
+                      elif ch == '\\': escape = True
+                      elif ch == quote: quote = None
+                      continue
+                  if ch == '#': comment = True; continue
+                  if ch in ('"', "'"): quote = ch; continue
+                  if ch == '{': depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                      if depth == 0: return start, i + 1
+              raise SystemExit(f'unclosed nginx location: {signature}')
+
+          def public_api(block: str) -> str:
+              if re.search(r'(?m)^\s*auth_request\s+', block):
+                  block = re.sub(r'(?m)^(\s*)auth_request\s+[^;]+;', r'\1auth_request off;', block)
+              else:
+                  block = block.replace('{', '{\n    auth_request off;', 1)
+              if re.search(r'(?m)^\s*proxy_set_header\s+X-Atlas-Device-Authenticated\s+', block, re.I):
+                  block = re.sub(
+                      r'(?mi)^(\s*)proxy_set_header\s+X-Atlas-Device-Authenticated\s+[^;]+;',
+                      r'\1proxy_set_header X-Atlas-Device-Authenticated "1";',
+                      block,
+                  )
+              else:
+                  marker = '    proxy_set_header Host $host;'
+                  if marker in block:
+                      block = block.replace(marker, marker + '\n    proxy_set_header X-Atlas-Device-Authenticated "1";', 1)
+                  else:
+                      block = block.replace('{', '{\n    proxy_set_header X-Atlas-Device-Authenticated "1";', 1)
+              return block
+
+          for signature in ('location = /v12/api {', 'location ^~ /v12/api/ {'):
+              start, end = locate_block(text, signature)
+              text = text[:start] + public_api(text[start:end]) + text[end:]
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          nginx -t
+          systemctl reload nginx
+
+          for _ in $(seq 1 10); do
+            api="$(curl -ksS -o /tmp/atlas-breakglass-models.json -w '%{http_code}' --max-time 5 https://atlas.ocrowley.com/v12/api/models || true)"
+            [[ "$api" == 200 ]] && break
+            sleep 1
+          done
+          ui="$(curl -ksS -o /tmp/atlas-breakglass-ui.html -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/ || true)"
+          device="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 https://atlas.ocrowley.com/v12/device-api/models || true)"
+          deploy="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' --data '{}' https://atlas.ocrowley.com/__atlas_mountain_deploy/v1 || true)"
+
+          [[ "${api:-000}" == 200 ]] || { echo "break-glass API failed: ${api:-000}" >&2; exit 1; }
+          [[ "${ui:-000}" == 200 ]] || { echo "break-glass UI failed: ${ui:-000}" >&2; exit 1; }
+          case "${device:-000}" in 401|403) ;; *) echo "device API unexpectedly public: ${device:-000}" >&2; exit 1 ;; esac
+          [[ "${deploy:-000}" == 401 ]] || { echo "deploy receiver auth changed unexpectedly: ${deploy:-000}" >&2; exit 1; }
+          python3 - /tmp/atlas-breakglass-models.json <<'PYJSON'
+          import json, sys
+          value=json.load(open(sys.argv[1], encoding='utf-8'))
+          assert isinstance(value, (dict, list))
+          PYJSON
+          grep -qi '<!doctype html' /tmp/atlas-breakglass-ui.html
+
+          echo 'atlas_breakglass_edge_live=true'
+          echo "atlas_breakglass_api_status=$api"
+          echo "atlas_breakglass_ui_status=$ui"
+          echo "atlas_device_api_status=$device"
+          echo "atlas_deploy_receiver_unauthenticated=$deploy"
+          trap - EXIT
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
