@@ -10,13 +10,18 @@ Group=atlasmountain
 UMask=0022
 WorkingDirectory=/opt/atlas-mountain/current
 EnvironmentFile=/etc/atlas-mountain/atlas.env
-# TEMPORARY BREAK-GLASS MODE: expose the human Atlas UI/API without login while
-# the native-login edge is repaired. Current Atlas maps this explicit false value
-# to NEXUS_AUTH_MODE=public. Deployment OIDC and paired-device auth remain separate.
-Environment=NEXUS_NATIVE_AUTH_ENABLED=false
+# Native Atlas accounts are the production human-auth authority. Keep the
+# receiver-owned service fail-closed; temporary public break-glass mode must
+# never be part of the normal deployment path.
+Environment=NEXUS_NATIVE_AUTH_ENABLED=true
 Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
 Environment=ATLAS_COMPUTE_PYTHON=/var/lib/atlas-mountain/compute-venv/bin/python
+# Production Research/OSINT always has a loopback-only self-hosted baseline.
+Environment=SEARXNG_BASE_URL=http://127.0.0.1:8888/
 ExecStartPre=+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/repair-workspace.sh
+# Keep local search available. A healthy existing container is reused; repair is
+# time-bounded and runs with the privileged '+' systemd command prefix.
+ExecStartPre=+/usr/bin/timeout 180s /usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/ensure-searxng.sh
 # Atlas Compute Fabric is a specialist deterministic runtime. Installation is
 # non-fatal and time-bounded so package/network trouble cannot hold general
 # Nexus offline; stdlib fallbacks remain usable and compute.catalogue reports
@@ -32,10 +37,12 @@ ExecStartPre=-+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/inst
 # treats missing Playwright as an explicit quality-gate incident.
 ExecStartPre=-+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/install-playwright-runtime.sh
 ExecStart=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/start-nexus.sh
+# External live-result quality is diagnostic, not an availability dependency.
+ExecStartPost=-/usr/bin/timeout 45s /usr/bin/node /opt/atlas-mountain/current/deploy/hetzner/smoke-research-search.mjs
 ExecStartPost=/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/verify-nexus-runtime.sh
 Restart=on-failure
 RestartSec=3
-TimeoutStartSec=180
+TimeoutStartSec=240
 TimeoutStopSec=20
 NoNewPrivileges=true
 PrivateTmp=true
