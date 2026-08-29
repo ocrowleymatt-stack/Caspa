@@ -28,23 +28,45 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Install fail-closed Atlas Nexus service
+      - name: Restore current-release service with native auth enabled
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          source_unit=/root/AtlasMountainDeploy/atlas-mountain-nexus.service
           live_unit=/etc/systemd/system/atlas-mountain-nexus.service
-          test -s "$source_unit"
-          grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$source_unit"
-          grep -qx 'Environment=SEARXNG_BASE_URL=http://127.0.0.1:8888/' "$source_unit"
 
-          backup="${live_unit}.pre-auth-repair.$(date -u +%Y%m%dT%H%M%SZ)"
-          test -f "$live_unit" && cp -a "$live_unit" "$backup" || true
-          install -o root -g root -m 0644 "$source_unit" "$live_unit"
+          # The previous emergency attempt preserved the exact service that was
+          # successfully running the currently deployed Atlas release. Reuse that
+          # compatible unit and change only the intentional break-glass auth flag.
+          compatible=''
+          while IFS= read -r candidate; do
+            if grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=false' "$candidate" 2>/dev/null; then
+              compatible="$candidate"
+              break
+            fi
+          done < <(find /etc/systemd/system -maxdepth 1 -type f \
+            -name 'atlas-mountain-nexus.service.pre-auth-repair.*' -printf '%T@ %p\n' \
+            | sort -nr | cut -d' ' -f2-)
+
+          test -n "$compatible" || { echo 'No compatible pre-repair Atlas service backup found.' >&2; exit 1; }
+          repaired="$(mktemp /tmp/atlas-nexus-auth.XXXXXX.service)"
+          cp -a "$compatible" "$repaired"
+          sed -i 's/^Environment=NEXUS_NATIVE_AUTH_ENABLED=false$/Environment=NEXUS_NATIVE_AUTH_ENABLED=true/' "$repaired"
+          grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$repaired"
+          ! grep -q '^Environment=NEXUS_NATIVE_AUTH_ENABLED=false$' "$repaired"
+          echo 'atlas_compatible_unit_found=true'
+
+          install -o root -g root -m 0644 "$repaired" "$live_unit"
+          rm -f "$repaired"
           systemctl daemon-reload
-          systemctl restart atlas-mountain-nexus.service
+          if ! systemctl restart atlas-mountain-nexus.service; then
+            echo 'atlas_nexus_restart_command=false' >&2
+            systemctl status atlas-mountain-nexus.service --no-pager -l >&2 || true
+            journalctl -u atlas-mountain-nexus.service -n 100 --no-pager >&2 || true
+            systemctl stop atlas-mountain-nexus.service || true
+            exit 1
+          fi
 
           ready=false
           for _ in $(seq 1 45); do
@@ -57,8 +79,7 @@ jobs:
           if [[ "$ready" != true ]]; then
             echo 'atlas_nexus_restart_ready=false' >&2
             systemctl status atlas-mountain-nexus.service --no-pager -l >&2 || true
-            journalctl -u atlas-mountain-nexus.service -n 80 --no-pager >&2 || true
-            # Fail closed rather than restoring an intentionally public service.
+            journalctl -u atlas-mountain-nexus.service -n 100 --no-pager >&2 || true
             systemctl stop atlas-mountain-nexus.service || true
             exit 1
           fi
