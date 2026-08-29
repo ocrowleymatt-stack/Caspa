@@ -28,58 +28,92 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Restore current-release service with native auth enabled
+      - name: Remove break-glass overrides and start native auth
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          live_unit=/etc/systemd/system/atlas-mountain-nexus.service
+          service=atlas-mountain-nexus.service
+          live_unit=/etc/systemd/system/$service
+          dropin=/etc/systemd/system/${service}.d/90-breakglass-public.conf
+          live_snippet=/etc/nginx/snippets/atlas-mountain-v12.conf
+          release_root="$(readlink -f /opt/atlas-mountain/current)"
+          release_snippet="$release_root/deploy/hetzner/nginx-atlas-mountain-v12.conf"
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          backup=/root/AtlasMountainDeploy/auth-repair-$stamp
+          install -d -o root -g root -m 0700 "$backup"
 
-          compatible="$(find /etc/systemd/system -maxdepth 1 -type f \
-            -name 'atlas-mountain-nexus.service.pre-auth-repair.*' -printf '%T@ %p\n' \
-            | sort -nr | head -1 | cut -d' ' -f2-)"
-          test -n "$compatible" || { echo 'No preserved pre-repair Atlas service unit found.' >&2; exit 1; }
-          echo 'atlas_preserved_unit_found=true'
+          # Stay fail-closed while changing the edge.
+          systemctl stop "$service" || true
 
-          repaired="$(mktemp /tmp/atlas-nexus-auth.XXXXXX.service)"
-          cp -a "$compatible" "$repaired"
-          if grep -q '^Environment=NEXUS_NATIVE_AUTH_ENABLED=' "$repaired"; then
-            sed -i 's/^Environment=NEXUS_NATIVE_AUTH_ENABLED=.*$/Environment=NEXUS_NATIVE_AUTH_ENABLED=true/' "$repaired"
-          else
-            sed -i '/^EnvironmentFile=/a Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$repaired"
+          test -s "$live_unit"
+          test -s "$release_snippet"
+          grep -q 'auth_request /__atlas_mountain_auth;' "$release_snippet"
+          ! grep -q 'TEMPORARY BREAK-GLASS HUMAN ACCESS' "$release_snippet"
+          ! grep -q 'auth_request off;.*BREAK-GLASS' "$release_snippet"
+          echo 'atlas_release_snippet_clean=true'
+
+          cp -a "$live_unit" "$backup/atlas-mountain-nexus.service"
+          cp -a "$live_snippet" "$backup/atlas-mountain-v12.conf"
+          if [[ -f "$dropin" ]]; then cp -a "$dropin" "$backup/90-breakglass-public.conf"; fi
+
+          # The compatible current-release unit is already repaired to native auth.
+          grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$live_unit"
+          rm -f "$dropin"
+          rmdir /etc/systemd/system/${service}.d 2>/dev/null || true
+
+          # Restore the immutable release's own authenticated nginx contract.
+          install -o root -g root -m 0644 "$release_snippet" "$live_snippet"
+          ! grep -q 'TEMPORARY BREAK-GLASS HUMAN ACCESS' "$live_snippet"
+          grep -q 'location = /v12/api' "$live_snippet"
+          grep -q 'auth_request /__atlas_mountain_auth;' "$live_snippet"
+
+          if ! nginx -t; then
+            cp -a "$backup/atlas-mountain-v12.conf" "$live_snippet"
+            [[ -f "$backup/90-breakglass-public.conf" ]] && { install -d -m 0755 /etc/systemd/system/${service}.d; cp -a "$backup/90-breakglass-public.conf" "$dropin"; }
+            systemctl daemon-reload
+            echo 'atlas_nginx_auth_restore=false' >&2
+            exit 1
           fi
-          grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$repaired"
-          ! grep -q '^Environment=NEXUS_NATIVE_AUTH_ENABLED=false$' "$repaired"
-
-          install -o root -g root -m 0644 "$repaired" "$live_unit"
-          rm -f "$repaired"
+          systemctl reload nginx
           systemctl daemon-reload
-          if ! systemctl restart atlas-mountain-nexus.service; then
-            echo 'atlas_nexus_restart_command=false' >&2
-            systemctl status atlas-mountain-nexus.service --no-pager -l >&2 || true
-            journalctl -u atlas-mountain-nexus.service -n 100 --no-pager >&2 || true
-            systemctl stop atlas-mountain-nexus.service || true
+
+          # Prove no effective break-glass override survives systemd composition.
+          effective="$(systemctl cat "$service")"
+          grep -q '^Environment=NEXUS_NATIVE_AUTH_ENABLED=true$' <<<"$effective"
+          ! grep -q '^Environment=NEXUS_NATIVE_AUTH_ENABLED=false$' <<<"$effective"
+          echo 'atlas_systemd_breakglass_removed=true'
+          echo 'atlas_nginx_breakglass_removed=true'
+
+          if ! systemctl start "$service"; then
+            echo 'atlas_nexus_start_command=false' >&2
+            systemctl status "$service" --no-pager -l >&2 || true
+            journalctl -u "$service" -n 120 --no-pager >&2 || true
+            systemctl stop "$service" || true
             exit 1
           fi
 
-          ready=false
+          auth_ready=false
+          nexus_ready=false
           for _ in $(seq 1 45); do
-            if curl -fsS --max-time 3 http://127.0.0.1:43101/health >/dev/null 2>&1; then
-              ready=true
-              break
-            fi
+            curl -fsS --max-time 2 http://127.0.0.1:43105/health >/dev/null 2>&1 && auth_ready=true || true
+            curl -fsS --max-time 2 http://127.0.0.1:43101/health >/dev/null 2>&1 && nexus_ready=true || true
+            [[ "$auth_ready" == true && "$nexus_ready" == true ]] && break
             sleep 1
           done
-          if [[ "$ready" != true ]]; then
-            echo 'atlas_nexus_restart_ready=false' >&2
-            systemctl status atlas-mountain-nexus.service --no-pager -l >&2 || true
-            journalctl -u atlas-mountain-nexus.service -n 100 --no-pager >&2 || true
-            systemctl stop atlas-mountain-nexus.service || true
+          echo "atlas_native_auth_local_ready=$auth_ready"
+          echo "atlas_nexus_local_ready=$nexus_ready"
+          if [[ "$auth_ready" != true || "$nexus_ready" != true ]]; then
+            systemctl status "$service" --no-pager -l >&2 || true
+            journalctl -u "$service" -n 160 --no-pager >&2 || true
+            systemctl stop "$service" || true
             exit 1
           fi
-          echo 'atlas_nexus_restart_ready=true'
-          systemctl is-active --quiet atlas-mountain-nexus.service
+
+          anon_check="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:43105/check || true)"
+          test "$anon_check" = 401
+          echo 'atlas_native_auth_local_anonymous=401'
           REMOTE
 
       - name: Verify public auth boundary
@@ -91,8 +125,9 @@ jobs:
             api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$base/v12/api/models" || true)"
             login="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$base/v12/login" || true)"
             auth="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$base/v12/auth/status" || true)"
-            echo "atlas_auth_probe=api:${api:-000},login:${login:-000},status:${auth:-000}"
-            if [[ "$api" == 401 || "$api" == 403 ]] && [[ "$login" == 200 ]] && [[ "$auth" == 200 ]]; then
+            root="$(curl -ksS -D /tmp/atlas-root-h -o /dev/null -w '%{http_code}' --max-time 10 "$base/" || true)"
+            echo "atlas_auth_probe=api:${api:-000},login:${login:-000},status:${auth:-000},root:${root:-000}"
+            if [[ "$api" == 401 || "$api" == 403 ]] && [[ "$login" == 200 ]] && [[ "$auth" == 200 ]] && [[ "$root" =~ ^30[12378]$ ]]; then
               echo 'atlas_public_auth_fail_closed=true'
               exit 0
             fi
