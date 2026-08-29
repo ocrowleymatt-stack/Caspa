@@ -1,4 +1,4 @@
-name: Probe Hetzner private Atlas source access
+name: Probe Hetzner Atlas runner
 
 on:
   push:
@@ -28,31 +28,43 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Probe private Atlas repository from Hetzner
+      - name: Probe Atlas Actions runner on Hetzner
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
-          set -u
-          repo='git@github.com:ocrowleymatt-stack/atlas-mountain.git'
-          if command -v git >/dev/null 2>&1; then
-            echo 'server_git=true'
-          else
-            echo 'server_git=false'
-            exit 0
-          fi
-          if GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8' \
-             timeout 20s git ls-remote "$repo" HEAD >/dev/null 2>&1; then
-            echo 'atlas_private_repo_ssh_read=true'
-          else
-            echo 'atlas_private_repo_ssh_read=false'
-          fi
-          if command -v gh >/dev/null 2>&1 && timeout 8s gh auth status >/dev/null 2>&1; then
-            echo 'server_gh_auth=true'
-          else
-            echo 'server_gh_auth=false'
-          fi
-          test -d /opt/atlas-mountain/current && echo 'atlas_current_release_present=true' || echo 'atlas_current_release_present=false'
+          set -euo pipefail
+
+          mapfile -t units < <(systemctl list-unit-files --type=service --no-legend 2>/dev/null \
+            | awk '$1 ~ /^actions\.runner\./ {print $1}')
+          echo "actions_runner_units=${#units[@]}"
+          for unit in "${units[@]}"; do
+            state="$(systemctl is-active "$unit" 2>/dev/null || true)"
+            enabled="$(systemctl is-enabled "$unit" 2>/dev/null || true)"
+            printf 'actions_runner_unit=%s state=%s enabled=%s\n' "$unit" "$state" "$enabled"
+          done
+
+          mapfile -t configs < <(find /root /home /opt /srv -maxdepth 5 -type f -name .runner -print 2>/dev/null | head -20)
+          echo "actions_runner_configs=${#configs[@]}"
+          for config in "${configs[@]}"; do
+            python3 - "$config" <<'PY'
+          import json,sys
+          p=sys.argv[1]
+          try:
+              d=json.load(open(p))
+          except Exception:
+              print('actions_runner_config=unreadable')
+              raise SystemExit
+          # Only non-secret identity metadata; never emit tokens/credentials.
+          print('actions_runner_config=' + p)
+          print('actions_runner_name=' + str(d.get('agentName') or d.get('name') or 'unknown'))
+          print('actions_runner_pool=' + str(d.get('poolName') or d.get('poolId') or 'unknown'))
+          print('actions_runner_server=' + str(d.get('gitHubUrl') or d.get('serverUrl') or 'unknown'))
+          PY
+          done
+
+          listeners="$(pgrep -af 'Runner.Listener|runsvc.sh' 2>/dev/null | wc -l | tr -d ' ')"
+          echo "actions_runner_listener_processes=$listeners"
           REMOTE
 
       - name: Cleanup
