@@ -36,26 +36,21 @@ jobs:
           set -euo pipefail
           live_unit=/etc/systemd/system/atlas-mountain-nexus.service
 
-          # The previous emergency attempt preserved the exact service that was
-          # successfully running the currently deployed Atlas release. Reuse that
-          # compatible unit and change only the intentional break-glass auth flag.
-          compatible=''
-          while IFS= read -r candidate; do
-            if grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=false' "$candidate" 2>/dev/null; then
-              compatible="$candidate"
-              break
-            fi
-          done < <(find /etc/systemd/system -maxdepth 1 -type f \
+          compatible="$(find /etc/systemd/system -maxdepth 1 -type f \
             -name 'atlas-mountain-nexus.service.pre-auth-repair.*' -printf '%T@ %p\n' \
-            | sort -nr | cut -d' ' -f2-)
+            | sort -nr | head -1 | cut -d' ' -f2-)"
+          test -n "$compatible" || { echo 'No preserved pre-repair Atlas service unit found.' >&2; exit 1; }
+          echo 'atlas_preserved_unit_found=true'
 
-          test -n "$compatible" || { echo 'No compatible pre-repair Atlas service backup found.' >&2; exit 1; }
           repaired="$(mktemp /tmp/atlas-nexus-auth.XXXXXX.service)"
           cp -a "$compatible" "$repaired"
-          sed -i 's/^Environment=NEXUS_NATIVE_AUTH_ENABLED=false$/Environment=NEXUS_NATIVE_AUTH_ENABLED=true/' "$repaired"
+          if grep -q '^Environment=NEXUS_NATIVE_AUTH_ENABLED=' "$repaired"; then
+            sed -i 's/^Environment=NEXUS_NATIVE_AUTH_ENABLED=.*$/Environment=NEXUS_NATIVE_AUTH_ENABLED=true/' "$repaired"
+          else
+            sed -i '/^EnvironmentFile=/a Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$repaired"
+          fi
           grep -qx 'Environment=NEXUS_NATIVE_AUTH_ENABLED=true' "$repaired"
           ! grep -q '^Environment=NEXUS_NATIVE_AUTH_ENABLED=false$' "$repaired"
-          echo 'atlas_compatible_unit_found=true'
 
           install -o root -g root -m 0644 "$repaired" "$live_unit"
           rm -f "$repaired"
