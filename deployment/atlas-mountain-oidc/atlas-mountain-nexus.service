@@ -10,10 +10,10 @@ Group=atlasmountain
 UMask=0022
 WorkingDirectory=/opt/atlas-mountain/current
 EnvironmentFile=/etc/atlas-mountain/atlas.env
-# Native Atlas accounts are the production human-auth authority. The runtime
-# still supports an explicit NEXUS_AUTH_MODE=public break-glass override when
-# deliberately configured, but deployments must not enable it by default.
-Environment=NEXUS_NATIVE_AUTH_ENABLED=true
+# TEMPORARY BREAK-GLASS MODE: expose the human Atlas UI/API without login while
+# the native-login edge is repaired. Current Atlas maps this explicit false value
+# to NEXUS_AUTH_MODE=public. Deployment OIDC and paired-device auth remain separate.
+Environment=NEXUS_NATIVE_AUTH_ENABLED=false
 Environment=ATLAS_QUANTUM_PYTHON=/var/lib/atlas-mountain/qiskit-venv/bin/python
 Environment=ATLAS_COMPUTE_PYTHON=/var/lib/atlas-mountain/compute-venv/bin/python
 ExecStartPre=+/usr/bin/env bash /opt/atlas-mountain/current/deploy/hetzner/repair-workspace.sh
