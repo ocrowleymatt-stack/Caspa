@@ -1,0 +1,60 @@
+name: Probe Hetzner private Atlas source access
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/atlas-private-repo-server-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+    steps:
+      - name: Select server SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${PRIVATEKEY2:-}" || { echo 'PRIVATEKEY2 is unavailable' >&2; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$PRIVATEKEY2" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Probe private Atlas repository from Hetzner
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          repo='git@github.com:ocrowleymatt-stack/atlas-mountain.git'
+          if command -v git >/dev/null 2>&1; then
+            echo 'server_git=true'
+          else
+            echo 'server_git=false'
+            exit 0
+          fi
+          if GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=8' \
+             timeout 20s git ls-remote "$repo" HEAD >/dev/null 2>&1; then
+            echo 'atlas_private_repo_ssh_read=true'
+          else
+            echo 'atlas_private_repo_ssh_read=false'
+          fi
+          if command -v gh >/dev/null 2>&1 && timeout 8s gh auth status >/dev/null 2>&1; then
+            echo 'server_gh_auth=true'
+          else
+            echo 'server_gh_auth=false'
+          fi
+          test -d /opt/atlas-mountain/current && echo 'atlas_current_release_present=true' || echo 'atlas_current_release_present=false'
+          REMOTE
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
