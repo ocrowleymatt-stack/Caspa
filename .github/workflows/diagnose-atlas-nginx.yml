@@ -1,4 +1,4 @@
-# One-shot Atlas break-glass edge restore: 2026-08-28T13:02Z
+# One-shot Atlas break-glass edge restore: 2026-08-29T04:48Z
 name: Diagnose Atlas nginx edge
 
 on:
@@ -44,28 +44,62 @@ jobs:
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
+          service=atlas-mountain-nexus.service
+          dropin_dir=/etc/systemd/system/atlas-mountain-nexus.service.d
+          dropin="$dropin_dir/90-breakglass-public.conf"
           snippet=/etc/nginx/snippets/atlas-mountain-v12.conf
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
           test -s "$snippet"
-          direct_api="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:43101/api/models || true)"
-          [[ "$direct_api" == 200 ]] || { echo "Nexus is not public/healthy: $direct_api" >&2; exit 1; }
-          backup="${snippet}.pre-public-edge-$(date -u +%Y%m%dT%H%M%SZ)"
-          cp -a "$snippet" "$backup"
-          restore() {
-            cp -a "$backup" "$snippet"
+          install -d -o root -g root -m 0755 "$dropin_dir"
+
+          snippet_backup="${snippet}.pre-public-edge-${stamp}"
+          cp -a "$snippet" "$snippet_backup"
+          dropin_existed=false
+          dropin_backup=""
+          if [[ -f "$dropin" ]]; then
+            dropin_existed=true
+            dropin_backup="${dropin}.pre-${stamp}"
+            cp -a "$dropin" "$dropin_backup"
+          fi
+
+          restore_all() {
+            cp -a "$snippet_backup" "$snippet" 2>/dev/null || true
+            if [[ "$dropin_existed" == true && -n "$dropin_backup" ]]; then
+              cp -a "$dropin_backup" "$dropin" 2>/dev/null || true
+            else
+              rm -f "$dropin"
+            fi
+            systemctl daemon-reload >/dev/null 2>&1 || true
+            systemctl restart "$service" >/dev/null 2>&1 || true
             nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
           }
-          trap 'rc=$?; if (( rc != 0 )); then restore; echo atlas_public_edge_rollback=true >&2; fi; exit $rc' EXIT
+          trap 'rc=$?; if (( rc != 0 )); then restore_all; echo atlas_breakglass_rollback=true >&2; fi; exit $rc' EXIT
+
+          cat >"$dropin" <<'EOF'
+          [Service]
+          # TEMPORARY BREAK-GLASS: disable human Atlas auth only.
+          # Machine deployment OIDC and paired-device bearer validation are separate.
+          Environment=NEXUS_NATIVE_AUTH_ENABLED=false
+          Environment=NEXUS_OPENWEBUI_AUTH_BASE_URL=
+          EOF
+          chmod 0644 "$dropin"
+          systemctl daemon-reload
+          systemctl restart "$service"
+          for _ in $(seq 1 30); do
+            curl -fsS --max-time 2 http://127.0.0.1:43101/health >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:43101/health >/dev/null
+
+          direct_api="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:43101/api/models || true)"
+          [[ "$direct_api" == 200 ]] || { echo "Nexus break-glass API is not public/healthy: $direct_api" >&2; exit 1; }
 
           python3 - "$snippet" <<'PY'
           from pathlib import Path
           import re, sys
           path=Path(sys.argv[1])
           text=path.read_text(encoding='utf-8')
-          # Disable only the human Atlas auth subrequest. Device auth remains untouched.
           updated, count = re.subn(r'auth_request\s+/__atlas_mountain_(?:auth|web_auth);', 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS', text)
-          if count == 0 and 'TEMPORARY BREAK-GLASS HUMAN ACCESS' not in text:
-              # Older rollback snippets use this exact legacy name.
-              updated, count = re.subn(r'auth_request\s+/__atlas_mountain_auth;', 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS', text)
           if count == 0 and 'auth_request off; # TEMPORARY BREAK-GLASS HUMAN ACCESS' not in updated:
               raise SystemExit('no human Atlas auth_request directive found')
           if 'auth_request /__atlas_mountain_device_auth;' not in updated:
@@ -77,15 +111,23 @@ jobs:
           nginx -t
           systemctl reload nginx
           sleep 1
+
           local_api="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/api/models || true)"
           public_api="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/api/models || true)"
           local_ui="$(curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/ || true)"
           public_ui="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 6 -H 'Connection: close' https://atlas.ocrowley.com/v12/ || true)"
           device_bridge="$(curl -ksS -X POST -o /dev/null -w '%{http_code}' --max-time 6 https://atlas.ocrowley.com/v12/device-bridge/device/not-a-device/poll || true)"
-          echo "atlas_public_edge_probe=direct:${direct_api},local_api:${local_api},public_api:${public_api},local_ui:${local_ui},public_ui:${public_ui},device_bridge:${device_bridge}"
+          deploy_receiver="$(curl -ksS -X POST -H 'Content-Type: application/json' --data '{}' -o /dev/null -w '%{http_code}' --max-time 6 https://atlas.ocrowley.com/__atlas_mountain_deploy/v1 || true)"
+          music_receiver="$(curl -ksS -X POST -H 'Content-Type: application/json' --data '{}' -o /dev/null -w '%{http_code}' --max-time 6 https://atlas.ocrowley.com/__atlas_mountain_music_runtime/v1 || true)"
+
+          echo "atlas_public_edge_probe=direct:${direct_api},local_api:${local_api},public_api:${public_api},local_ui:${local_ui},public_ui:${public_ui},device_bridge:${device_bridge},deploy_receiver:${deploy_receiver},music_receiver:${music_receiver}"
           [[ "$local_api" == 200 && "$public_api" == 200 && "$local_ui" == 200 && "$public_ui" == 200 ]]
           [[ "$device_bridge" == 401 ]]
+          [[ "$deploy_receiver" == 401 ]]
+          [[ "$music_receiver" == 401 ]]
+
           trap - EXIT
+          rm -f "$dropin_backup" 2>/dev/null || true
           echo atlas_public_edge_live=true
           REMOTE
 
