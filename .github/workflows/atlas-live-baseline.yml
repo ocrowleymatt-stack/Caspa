@@ -1,0 +1,48 @@
+name: Capture Atlas live baseline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/atlas-live-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe unauthenticated Atlas surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://atlas.ocrowley.com'
+          probe() {
+            local name="$1" path="$2"
+            local headers
+            headers="$(mktemp)"
+            code="$(curl -ksS -D "$headers" -o /dev/null -w '%{http_code}' --max-time 15 "$base$path" || true)"
+            location="$(tr -d '\r' < "$headers" | awk 'BEGIN{IGNORECASE=1} /^location:[[:space:]]*/ {sub(/^[^:]*:[[:space:]]*/, ""); print; exit}')"
+            printf 'atlas_probe=%s status=%s location=%s\n' "$name" "${code:-000}" "${location:-none}"
+            rm -f "$headers"
+          }
+          probe root '/'
+          probe ui '/v12/'
+          probe login '/v12/login'
+          probe auth_status '/v12/auth/status'
+          probe api_models '/v12/api/models'
+
+          receiver_code="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 15 \
+            -X POST -H 'Content-Type: application/json' --data '{}' \
+            "$base/__atlas_mountain_deploy/v1" || true)"
+          echo "atlas_probe=deploy_receiver_unauthenticated status=${receiver_code:-000}"
+
+          case "$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 15 "$base/v12/api/models" || true)" in
+            401|403) echo 'atlas_api_fail_closed=true' ;;
+            *) echo 'atlas_api_fail_closed=false'; exit 1 ;;
+          esac
+          test "$receiver_code" = 401
+          echo 'atlas_receiver_fail_closed=true'
