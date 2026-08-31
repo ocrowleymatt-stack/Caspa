@@ -45,25 +45,25 @@ replacements = [
     ('nginx-atlas-mountain-v12.conf', 'nginx-atlas-mountain-root.conf'),
     ("'ATLAS_BASE_PATH': '/v12/',", "'ATLAS_BASE_PATH': '/',"),
     ('https://atlas.ocrowley.com/v12/api/models', 'https://atlas.ocrowley.com/api/models'),
-    ('https://atlas.ocrowley.com/v12/', 'https://atlas.ocrowley.com/'),
-    ('https://atlas.ocrowley.com/v12/login', 'https://atlas.ocrowley.com/login'),
+    ('/v12/login', '/login'),
     ('https://${PUBLIC_HOST}/v12/device-bridge/device/not-a-device/poll', 'https://${PUBLIC_HOST}/device-bridge/device/not-a-device/poll'),
-    (r"^location:[[:space:]]*(https://atlas\\.ocrowley\\.com)?/v12/login([[:space:]]|$)", r"^location:[[:space:]]*(https://atlas\\.ocrowley\\.com)?/login([[:space:]]|$)"),
+    ('https://atlas.ocrowley.com/v12/', 'https://atlas.ocrowley.com/'),
 ]
 for old, new in replacements:
     if old not in out:
         raise SystemExit(f'root deploy adapter contract drift: missing {old!r}')
     out = out.replace(old, new)
 
-# The root cut-over intentionally removes /v12 as the application base. Keep the
-# legacy script's diagnostics/messages harmless, but reject any remaining live
-# URL/config dependency that would route the deployment back through /v12.
+# Reject stale live dependencies that would quietly re-install the retired
+# application topology. Diagnostic wording may still mention v12; executable
+# paths, URLs and environment settings may not.
 for forbidden in (
     'WEB_ROOT=/var/www/atlas-mountain/v12',
     'VHOST_SNIPPET=/etc/nginx/snippets/atlas-mountain-v12.conf',
     "'ATLAS_BASE_PATH': '/v12/'",
     'https://atlas.ocrowley.com/v12/api/models',
     'https://${PUBLIC_HOST}/v12/device-bridge/',
+    '/v12/login',
 ):
     if forbidden in out:
         raise SystemExit(f'root deploy adapter left stale contract: {forbidden}')
