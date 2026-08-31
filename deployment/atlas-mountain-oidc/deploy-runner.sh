@@ -2,6 +2,12 @@
 set -euo pipefail
 umask 077
 
+# systemd services commonly start with a restricted PATH. The authoritative
+# Atlas deploy script verifies and reloads host services such as nginx, whose
+# binary lives in /usr/sbin on Debian/Ubuntu. Keep the receiver deterministic
+# rather than depending on an interactive root shell's environment.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+
 SHA="${1:?commit sha required}"
 ARCHIVE="${2:?archive path required}"
 RUN_ID="${3:-unknown}"
