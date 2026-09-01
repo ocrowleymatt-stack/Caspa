@@ -1,0 +1,97 @@
+name: Bootstrap Atlas Mountain receiver v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'deployment/atlas-mountain-oidc/receiver.mjs'
+      - 'deployment/atlas-mountain-oidc/atlas-mountain-deploy-receiver.service'
+      - '.github/workflows/bootstrap-atlas-mountain-receiver-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install-receiver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ATLAS_HOST: 116.202.24.63
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select live server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=''; selected=''
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; selected="$name"; break; fi
+          done
+          test -n "$key" || { echo 'No live server SSH credential is configured.' >&2; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+          echo "live_server_identity=$selected"
+
+      - name: Install receiver v2 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote=/tmp/atlas-receiver-v2
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
+          scp -i ~/.ssh/id_ed25519 \
+            deployment/atlas-mountain-oidc/receiver.mjs \
+            deployment/atlas-mountain-oidc/atlas-mountain-deploy-receiver.service \
+            root@"$ATLAS_HOST":"$remote/"
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          remote=/tmp/atlas-receiver-v2
+          target=/root/AtlasMountainDeploy
+          service=atlas-mountain-deploy-receiver.service
+          install -d -o root -g root -m 0700 "$target" "$target/inbox" "$target/artifact-work" "$target/control-status" "$target/logs"
+          node --check "$remote/receiver.mjs"
+          install -o root -g root -m 0600 "$remote/receiver.mjs" "$target/receiver.mjs"
+          install -o root -g root -m 0644 "$remote/atlas-mountain-deploy-receiver.service" "/etc/systemd/system/$service"
+          systemctl daemon-reload
+          systemctl restart "$service"
+          for i in $(seq 1 20); do
+            body="$(curl -fsS --max-time 3 http://127.0.0.1:3016/health 2>/dev/null || true)"
+            if printf '%s' "$body" | grep -q '"version":"2.0.0"'; then
+              echo "$body"
+              break
+            fi
+            sleep 1
+          done
+          body="$(curl -fsS --max-time 5 http://127.0.0.1:3016/health)"
+          printf '%s' "$body" | grep -q '"artifactControl":true'
+          nginx -t
+          rm -rf "$remote"
+          echo 'atlas_receiver_v2_local=true'
+          REMOTE
+
+      - name: Verify public control boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl -ksS -o /tmp/receiver-response.json -w '%{http_code}' --max-time 10 \
+            -X POST -H 'Content-Type: application/json' --data '{}' \
+            https://atlas.ocrowley.com/__atlas_mountain_deploy/v1)"
+          test "$status" = 401
+          grep -q 'missing_bearer' /tmp/receiver-response.json
+          root="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 https://atlas.ocrowley.com/)"
+          case "$root" in 200|301|302|303|307|308) ;; *) echo "Unexpected Atlas root status: $root" >&2; exit 1 ;; esac
+          echo "atlas_receiver_v2_public_auth=true status=$status"
+          echo "atlas_existing_root_responding=true status=$root"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519 /tmp/receiver-response.json
