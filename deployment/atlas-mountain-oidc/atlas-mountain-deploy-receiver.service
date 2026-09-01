@@ -7,9 +7,6 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-# The deploy child extracts and builds the immutable release. Keep repository
-# secrets explicitly protected by file modes, but use the normal service umask
-# so generated Vite assets are 0644 and directories are traversable by nginx.
 UMask=0022
 WorkingDirectory=/root/AtlasMountainDeploy
 ExecStart=/usr/bin/env node /root/AtlasMountainDeploy/receiver.mjs
@@ -19,10 +16,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-# nginx -t opens configured access-log files even when using an isolated pid and
-# error log. Permit only nginx's own log directory; the rest of /var/log stays
-# read-only inside the deployment receiver namespace.
-ReadWritePaths=/root/AtlasMountainDeploy /opt/atlas-mountain /var/lib/atlas-mountain /var/www/atlas-mountain /etc/atlas-mountain /etc/nginx /etc/systemd/system /var/log/nginx
+ReadWritePaths=/root/AtlasMountainDeploy /opt/atlas-mountain /var/lib/atlas-mountain /var/www/atlas-mountain /etc/atlas-mountain /etc/nginx /etc/systemd/system /var/log/nginx /run/lock
 
 [Install]
 WantedBy=multi-user.target
