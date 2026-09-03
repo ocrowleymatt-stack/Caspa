@@ -46,6 +46,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('deployment/atlas-mountain-oidc/receiver.mjs')
+          s=p.read_text()
+          old="eventNames: new Set(['workflow_dispatch']),"
+          new="eventNames: new Set(['push', 'workflow_dispatch']),"
+          if old not in s:
+              raise SystemExit('canonical music event policy not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          node --check deployment/atlas-mountain-oidc/receiver.mjs
           remote=/tmp/atlas-receiver-v2
           ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/id_ed25519 root@"$ATLAS_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
           scp -i ~/.ssh/id_ed25519 \
