@@ -1,0 +1,45 @@
+name: Diagnose Atlas hostnames once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-atlas-hostnames-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"; test -n "$key"
+          mkdir -p ~/.ssh; printf '%s\n' "$key" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect both public hostnames
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          for host in atlas.ocrowley.com atlas2.ocrowley.com; do
+            echo "===== $host ====="
+            curl -k -sS -I "https://127.0.0.1/" -H "Host: $host" | sed -n '1,20p' || true
+            curl -k -sS -L --max-redirs 3 "https://127.0.0.1/" -H "Host: $host" -o "/tmp/${host}.body" || true
+            echo "bytes=$(wc -c <"/tmp/${host}.body" 2>/dev/null || echo 0)"
+            grep -Eo '<title>[^<]+|ATLAS[^<]{0,80}|Caspa[^<]{0,80}' "/tmp/${host}.body" | head -20 || true
+          done
+          echo "===== nginx atlas host mappings ====="
+          nginx -T 2>/dev/null | grep -n -A25 -B5 -E 'server_name (atlas|atlas2)\.ocrowley\.com' || true
+          REMOTE
