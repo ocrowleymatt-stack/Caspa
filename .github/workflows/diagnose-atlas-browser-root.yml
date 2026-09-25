@@ -1,0 +1,61 @@
+name: Diagnose what browser gets from Atlas root
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-atlas-browser-root.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Inspect nginx, HTML, JS and cache headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "--- nginx atlas vhost ---"
+          nginx -T 2>/dev/null | grep -n -A80 -B10 "atlas2.ocrowley.com" | head -140 || true
+          echo "--- root response ---"
+          curl -k -sS -D /tmp/root.headers -o /tmp/root.body https://127.0.0.1/ -H 'Host: atlas2.ocrowley.com'
+          cat /tmp/root.headers
+          head -80 /tmp/root.body
+          echo "--- atlas response ---"
+          curl -k -sS -D /tmp/atlas.headers -o /tmp/atlas.body https://127.0.0.1/atlas -H 'Host: atlas2.ocrowley.com'
+          cat /tmp/atlas.headers
+          head -80 /tmp/atlas.body
+          echo "--- login response ---"
+          curl -k -sS -D /tmp/login.headers -o /tmp/login.body https://127.0.0.1/__atlas/login -H 'Host: atlas2.ocrowley.com'
+          cat /tmp/login.headers
+          head -60 /tmp/login.body
+          echo "--- active build entry ---"
+          grep -oE '/assets/[^"]+\.js|assets/[^"]+\.js' /tmp/root.body | head -5 || true
+          echo "--- current release ---"
+          readlink -f /opt/atlas-unified/current
+          echo "--- service env/exe ---"
+          systemctl show atlas-unified.service -p ExecStart -p WorkingDirectory -p Environment --no-pager
+          REMOTE
