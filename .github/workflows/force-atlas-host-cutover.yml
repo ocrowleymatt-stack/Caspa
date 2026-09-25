@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/force-atlas-host-cutover.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,51 +31,58 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Cut over old hostname
+
+      - name: Cut over old hostname structurally
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          file=/etc/nginx/conf.d/zzz-atlas-auth.conf
-          cp "$file" "/var/backups/zzz-atlas-auth.conf.$(date -u +%Y%m%dT%H%M%SZ).bak"
-          python3 - <<'PY'
-from pathlib import Path
-p=Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
-s=p.read_text()
-start=s.find('server_name atlas.ocrowley.com;')
-if start < 0:
-    raise SystemExit('atlas.ocrowley.com server block not found')
-block_start=s.rfind('server {',0,start)
-block_end=s.find('\n}',start)
-if block_start < 0 or block_end < 0:
-    raise SystemExit('atlas.ocrowley.com block boundaries not found')
-block=s[block_start:block_end+2]
-old='''    location / {
-        proxy_pass http://127.0.0.1:8790;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_redirect off;
-    }'''
-new='''    location / {
-        return 302 https://atlas2.ocrowley.com$request_uri;
-    }'''
-if old not in block:
-    if 'return 302 https://atlas2.ocrowley.com$request_uri;' in block:
-        raise SystemExit(0)
-    raise SystemExit('old proxy location not found')
-p.write_text(s[:block_start]+block.replace(old,new,1)+s[block_end+2:])
-PY
-          nginx -t
-          systemctl reload nginx
-          curl -k -sS -I https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | tee /tmp/old-atlas.headers
-          grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/old-atlas.headers
-          REMOTE
+          cat <<'PY' | ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" python3 -
+          from pathlib import Path
+          import re, shutil, datetime
+          p=Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
+          s=p.read_text()
+          marker='server_name atlas.ocrowley.com;'
+          pos=s.find(marker)
+          if pos<0:
+              raise SystemExit('atlas.ocrowley.com server block not found')
+          start=s.rfind('server {',0,pos)
+          if start<0:
+              raise SystemExit('enclosing server block not found')
+          depth=0
+          end=None
+          for i in range(start,len(s)):
+              if s[i]=='{':
+                  depth+=1
+              elif s[i]=='}':
+                  depth-=1
+                  if depth==0:
+                      end=i+1
+                      break
+          if end is None:
+              raise SystemExit('unbalanced server block')
+          block=s[start:end]
+          if 'return 302 https://atlas2.ocrowley.com$request_uri;' in block:
+              print('already_cut_over=true')
+              raise SystemExit(0)
+          loc=re.search(r'(?ms)^\s*location\s+/\s*\{.*?^\s*\}',block)
+          if not loc:
+              raise SystemExit('catch-all location / not found')
+          backup=Path('/var/backups')/f"zzz-atlas-auth.before-cutover-{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.conf"
+          shutil.copy2(p,backup)
+          replacement='''    location / {
+                  return 302 https://atlas2.ocrowley.com$request_uri;
+              }'''
+          newblock=block[:loc.start()]+replacement+block[loc.end():]
+          p.write_text(s[:start]+newblock+s[end:])
+          print(f'backup={backup}')
+          print('patched=true')
+          PY
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'nginx -t && systemctl reload nginx'
+
       - name: Verify public redirect
         shell: bash
         run: |
           set -euo pipefail
           curl -sS -I https://atlas.ocrowley.com/ | tee /tmp/public.headers
-          grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/public.headers
+          grep -Eqi '^HTTP/.* 30[12378]' /tmp/public.headers
+          grep -Eqi '^location: https://atlas2\.ocrowley\.com/' /tmp/public.headers
