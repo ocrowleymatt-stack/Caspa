@@ -1,0 +1,42 @@
+name: Inspect current Atlas canonical nginx block
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-atlas-canonical-nginx.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"; test -n "$key"
+          mkdir -p ~/.ssh; printf '%s\n' "$key" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Read current vhost and probes
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '--- zzz-atlas-auth.conf ---'
+          sed -n '1,220p' /etc/nginx/conf.d/zzz-atlas-auth.conf
+          echo '--- effective atlas.ocrowley.com block ---'
+          nginx -T 2>/dev/null | grep -n -A45 -B5 'server_name atlas.ocrowley.com' | head -100
+          echo '--- local host response ---'
+          curl -k -sS -D - -o /tmp/a https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | sed -n '1,30p'
+          echo '--- body markers ---'
+          grep -Eo '<title>[^<]+|ATLAS[^<]{0,100}|Caspa[^<]{0,100}' /tmp/a | head -30 || true
+          REMOTE
