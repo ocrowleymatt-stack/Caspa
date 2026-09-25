@@ -1,0 +1,54 @@
+name: Cut canonical Atlas hostname to R8
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cutover-atlas-r8-simple.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Apply canonical hostname cutover
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 scripts/cutover-atlas-r8.sh "${ATLAS_USER}@${ATLAS_HOST}:/tmp/cutover-atlas-r8.sh"
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "chmod 700 /tmp/cutover-atlas-r8.sh && /tmp/cutover-atlas-r8.sh"
+
+      - name: Verify public canonical host
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers="$(curl -sS -I https://atlas.ocrowley.com/)"
+          printf '%s\n' "$headers"
+          printf '%s\n' "$headers" | grep -qiE '^HTTP/.* (200|303)'
+          if printf '%s\n' "$headers" | grep -qi 'x-nextjs-cache'; then
+            echo 'Old Next.js frontend still serves atlas.ocrowley.com' >&2
+            exit 1
+          fi
+          curl -fsS https://atlas.ocrowley.com/__atlas/login | grep -q 'Sign in to private Atlas'
