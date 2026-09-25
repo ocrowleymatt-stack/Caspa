@@ -1,4 +1,4 @@
-name: Diagnose Atlas hostnames once
+name: Cut over old Atlas hostname using proven runner
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  cutover:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -20,26 +20,41 @@ jobs:
       ATLAS_HOST: 116.202.24.63
       ATLAS_USER: root
     steps:
-      - name: SSH setup
+      - name: Select SSH key
         shell: bash
         run: |
           set -euo pipefail
-          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"; test -n "$key"
-          mkdir -p ~/.ssh; printf '%s\n' "$key" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Inspect both public hostnames
+
+      - name: Redirect atlas.ocrowley.com to Atlas2
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          for host in atlas.ocrowley.com atlas2.ocrowley.com; do
-            echo "===== $host ====="
-            curl -k -sS -I "https://127.0.0.1/" -H "Host: $host" | sed -n '1,20p' || true
-            curl -k -sS -L --max-redirs 3 "https://127.0.0.1/" -H "Host: $host" -o "/tmp/${host}.body" || true
-            echo "bytes=$(wc -c <"/tmp/${host}.body" 2>/dev/null || echo 0)"
-            grep -Eo '<title>[^<]+|ATLAS[^<]{0,80}|Caspa[^<]{0,80}' "/tmp/${host}.body" | head -20 || true
-          done
-          echo "===== nginx atlas host mappings ====="
-          nginx -T 2>/dev/null | grep -n -A25 -B5 -E 'server_name (atlas|atlas2)\.ocrowley\.com' || true
+          file=/etc/nginx/conf.d/zzz-atlas-auth.conf
+          cp "$file" "/var/backups/zzz-atlas-auth-before-atlas2-cutover.conf"
+          python3 -c 'from pathlib import Path; p=Path("/etc/nginx/conf.d/zzz-atlas-auth.conf"); s=p.read_text(); old="    location / {\n        proxy_pass http://127.0.0.1:8790;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_redirect off;\n    }"; new="    location / {\n        return 302 https://atlas2.ocrowley.com$request_uri;\n    }"; assert new in s or old in s, "expected old Atlas location block missing"; p.write_text(s if new in s else s.replace(old,new,1))'
+          nginx -t
+          systemctl reload nginx
+          echo "--- atlas.ocrowley.com ---"
+          curl -k -sSI https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | sed -n '1,15p'
+          echo "--- agentic route still present ---"
+          nginx -T 2>/dev/null | grep -n -A22 'server_name atlas.ocrowley.com' | head -55
           REMOTE
+
+      - name: Verify public redirect
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers="$(curl -sSI https://atlas.ocrowley.com/)"
+          printf '%s\n' "$headers"
+          printf '%s\n' "$headers" | grep -qi '^location: https://atlas2.ocrowley.com/'
