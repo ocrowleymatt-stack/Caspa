@@ -82,13 +82,8 @@ jobs:
           grep -Rqs 'One project context for conversation, deep research, evidence, writing, music, and product work' /opt/atlas-unified/current/apps/caspa/dist
           grep -Rqs 'Ask Atlas what you need' /opt/atlas-unified/current/apps/caspa/dist
 
-          read -r user pass < <(python3 - <<'PY'
-import json
-c=json.load(open('/etc/atlas-unified/runtime.json'))
-print(c['basicUser'], c['basicPassword'])
-PY
-)
-          curl -kfsS -u "$user:$pass" -H 'Host: atlas.ocrowley.com' https://127.0.0.1/ -o /tmp/atlas-r7-root.html
+          creds="$(python3 -c 'import json; c=json.load(open("/etc/atlas-unified/runtime.json")); print(c["basicUser"]+":"+c["basicPassword"])')"
+          curl -kfsS -u "$creds" -H 'Host: atlas.ocrowley.com' https://127.0.0.1/ -o /tmp/atlas-r7-root.html
           bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/atlas-r7-root.html | head -1 || true)"
           if [ -n "$bundle" ]; then
             curl -kfsS -u "$user:$pass" -H 'Host: atlas.ocrowley.com' "https://127.0.0.1/$bundle" -o /tmp/atlas-r7-root.js
@@ -101,3 +96,5 @@ PY
           systemctl is-active --quiet atlas-unified.service
           curl -fsS http://127.0.0.1:3110/health >/dev/null
           REMOTE
+
+# corrected workflow syntax trigger
