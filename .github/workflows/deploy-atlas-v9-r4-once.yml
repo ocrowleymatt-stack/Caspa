@@ -1,0 +1,114 @@
+name: Deploy verified Atlas V9 R4 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-atlas-v9-r4-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas2-production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      RELEASE_SHA256: e28083dc1503b6b76d3f507ae88d40f8e317dc65f516533c283e0200d74602ad
+      RELEASE_COMMIT: d8eb2b01e45035e0921192fa57c91687b2bffff9
+      HOST_FINGERPRINT: SHA256:GRmOheYEA9Dtz0yWweJ0dPbga9aOrd2HDm2eO71NCmM
+
+    steps:
+      - name: Download exact green release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://uccf00561d8d1eab2840f15dc3a2.dl.dropboxusercontent.com/cd/0/get/DIxkdmXdlsMGaDKzbougBqHPUJ53bkH3siN5HmGx3Qfij5mqVNO4fJ-OWZDLPIKPMwKPDpc1UpJTUnYFwxHEnp3k2PwDZJFCQfeBFEeUdxCVAh12k-64_3mvWDjUXoOLNe7Yd9FiHe-33V6GiGx838KC9PqGViwdXX4nWynSo03mFg/file?c_luid=8fc45fd4" \
+            -o /tmp/atlas-release.zip
+          echo "$RELEASE_SHA256  /tmp/atlas-release.zip" | sha256sum -c -
+          rm -rf /tmp/atlas-release-src
+          mkdir -p /tmp/atlas-release-src
+          unzip -q /tmp/atlas-release.zip -d /tmp/atlas-release-src
+          SRC=/tmp/atlas-release-src/ATLAS_RELEASE_CANDIDATE_V9_25SEP2026/atlas
+          test -f "$SRC/tools/deployment/update-private-release.py"
+          tar -C "$SRC" -czf /tmp/atlas-release.tar.gz .
+          sha256sum /tmp/atlas-release.tar.gz | tee /tmp/atlas-release.tar.gz.sha256
+          cp "$SRC/tools/deployment/update-private-release.py" /tmp/update-private-release.py
+
+      - name: Select SSH credential and pin Atlas host
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          selected=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; selected="$name"; break; fi
+          done
+          if [ -z "$key" ]; then
+            echo "::error::No Atlas SSH deployment secret exists in the Caspa repository."
+            exit 41
+          fi
+          echo "Using configured deployment credential: $selected"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -t ed25519 "$ATLAS_HOST" > /tmp/atlas_host_key 2>/dev/null
+          test -s /tmp/atlas_host_key
+          actual="$(ssh-keygen -lf /tmp/atlas_host_key -E sha256 | awk '{print $2}')"
+          echo "Atlas host fingerprint: $actual"
+          test "$actual" = "$HOST_FINGERPRINT"
+          cat /tmp/atlas_host_key > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload release to Atlas host
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+            /tmp/atlas-release.tar.gz /tmp/update-private-release.py \
+            "${ATLAS_USER}@${ATLAS_HOST}:/tmp/"
+
+      - name: Build and atomically activate Atlas release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_sha="$(awk '{print $1}' /tmp/atlas-release.tar.gz.sha256)"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+            "${ATLAS_USER}@${ATLAS_HOST}" \
+            "python3 /tmp/update-private-release.py --archive /tmp/atlas-release.tar.gz --sha256 '$archive_sha' --commit '$RELEASE_COMMIT'"
+
+      - name: Verify production
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+            "${ATLAS_USER}@${ATLAS_HOST}" 'set -e
+              systemctl is-active --quiet atlas-unified.service
+              curl -fsS --max-time 10 http://127.0.0.1:3110/health
+              test "$(basename "$(readlink -f /opt/atlas-unified/current)")" = "d8eb2b01e45035e0921192fa57c91687b2bffff9"
+            '
+          curl -fsS --max-time 15 https://atlas2.ocrowley.com/health
+
+      - name: Clean transfer files
+        if: always()
+        shell: bash
+        run: |
+          if [ -f ~/.ssh/id_ed25519 ] && [ -s ~/.ssh/known_hosts ]; then
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 \
+              "${ATLAS_USER}@${ATLAS_HOST}" \
+              'rm -f /tmp/atlas-release.tar.gz /tmp/update-private-release.py' || true
+          fi
