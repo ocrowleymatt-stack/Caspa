@@ -74,3 +74,5 @@ PY
           printf '%s\n' "$headers" | grep -qi '^location: https://atlas2.ocrowley.com/'
 
 # trigger hostname cutover
+
+# manual trigger refresh 2026-09-25T14:56Z
