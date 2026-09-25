@@ -2,8 +2,7 @@ name: Apply Atlas hostname cutover now
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - '.github/workflows/apply-atlas-host-cutover-now.yml'
   workflow_dispatch:
@@ -14,63 +13,139 @@ permissions:
 jobs:
   cutover:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       ATLAS_HOST: 116.202.24.63
       ATLAS_USER: root
+
     steps:
-      - name: Configure SSH
+      - name: Select SSH key
         shell: bash
         run: |
           set -euo pipefail
-          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
           test -n "$key"
           mkdir -p ~/.ssh
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Cut old Atlas hostname over
+      - name: Cut atlas.ocrowley.com over to Atlas unified service
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/cutover.py <<'PY'
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'python3 -' <<'PY'
           from pathlib import Path
           from datetime import datetime, timezone
+
           p = Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
           s = p.read_text()
-          old = """    location / {
-                  proxy_pass http://127.0.0.1:8790;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_redirect off;
-              }"""
-          new = """    location / {
-                  return 302 https://atlas2.ocrowley.com$request_uri;
-              }"""
-          backup = Path('/var/backups') / ('zzz-atlas-auth.conf.before-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
+          backup = p.with_name(p.name + '.before-atlas-unified-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '.bak')
           backup.write_text(s)
-          if old in s:
-              p.write_text(s.replace(old, new, 1))
-          elif 'return 302 https://atlas2.ocrowley.com$request_uri;' not in s:
-              raise SystemExit('Expected atlas.ocrowley.com root proxy block was not found')
+
+          target = 'server_name atlas.ocrowley.com;'
+          pos = s.find(target)
+          if pos < 0:
+              raise SystemExit('atlas.ocrowley.com TLS server block not found')
+
+          server_start = s.rfind('server {', 0, pos)
+          if server_start < 0:
+              raise SystemExit('containing server block not found')
+
+          i = server_start + len('server {')
+          depth = 1
+          server_end = None
+          while i < len(s):
+              if s[i] == '{':
+                  depth += 1
+              elif s[i] == '}':
+                  depth -= 1
+                  if depth == 0:
+                      server_end = i + 1
+                      break
+              i += 1
+          if server_end is None:
+              raise SystemExit('unterminated server block')
+
+          block = s[server_start:server_end]
+          loc_marker = 'location / {'
+          loc_start = block.find(loc_marker)
+          if loc_start < 0:
+              raise SystemExit('location / block not found')
+
+          j = loc_start + len(loc_marker)
+          depth = 1
+          loc_end = None
+          while j < len(block):
+              if block[j] == '{':
+                  depth += 1
+              elif block[j] == '}':
+                  depth -= 1
+                  if depth == 0:
+                      loc_end = j + 1
+                      break
+              j += 1
+          if loc_end is None:
+              raise SystemExit('unterminated location / block')
+
+          new_location = '''location / {
+              proxy_pass http://127.0.0.1:3110;
+              proxy_http_version 1.1;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto https;
+              proxy_set_header Connection "";
+              proxy_read_timeout 300s;
+              proxy_send_timeout 300s;
+          }'''
+
+          new_block = block[:loc_start] + new_location + block[loc_end:]
+          p.write_text(s[:server_start] + new_block + s[server_end:])
           print(f'backup={backup}')
           PY
-          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/cutover.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/cutover-atlas-host.py"
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "python3 /tmp/cutover-atlas-host.py && nginx -t && systemctl reload nginx"
 
-      - name: Verify exact public hostname
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'nginx -t && systemctl reload nginx'
+
+      - name: Verify old hostname now serves new Atlas gateway
         shell: bash
         run: |
           set -euo pipefail
           sleep 1
-          curl -sS -D /tmp/headers -o /dev/null https://atlas.ocrowley.com/
-          cat /tmp/headers
-          grep -qi '^HTTP/.* 302' /tmp/headers
-          grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/headers
-          curl -sS -D /tmp/newheaders -o /dev/null https://atlas2.ocrowley.com/
-          cat /tmp/newheaders
+
+          echo '--- atlas.ocrowley.com root ---'
+          curl -sS -D /tmp/root.headers -o /tmp/root.body https://atlas.ocrowley.com/
+          cat /tmp/root.headers
+          grep -qi '^HTTP/.* 303' /tmp/root.headers
+          grep -qi '^location: /__atlas/login?next=%2F' /tmp/root.headers
+
+          echo '--- atlas.ocrowley.com /atlas ---'
+          curl -sS -D /tmp/atlas.headers -o /tmp/atlas.body https://atlas.ocrowley.com/atlas
+          cat /tmp/atlas.headers
+          grep -qi '^HTTP/.* 303' /tmp/atlas.headers
+          grep -qi '^location: /__atlas/login?next=%2Fatlas' /tmp/atlas.headers
+
+          echo '--- Atlas login marker ---'
+          curl -sS https://atlas.ocrowley.com/__atlas/login -o /tmp/login.html
+          grep -q 'Sign in to private Atlas' /tmp/login.html
+          grep -q 'ATLAS · PRIVATE STAGING' /tmp/login.html
+
+          echo '--- agentic route remains separately configured ---'
+          status="$(curl -sS -o /tmp/agentic.out -w '%{http_code}' https://atlas.ocrowley.com/api/agentic/ || true)"
+          case "$status" in
+            200|401|403|404|405) ;;
+            *) echo "Unexpected agentic route status: $status" >&2; exit 1 ;;
+          esac
+
+          echo 'hostname_cutover=verified'
+
+# forced direct cutover trigger
