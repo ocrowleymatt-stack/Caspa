@@ -1,0 +1,59 @@
+name: Fix Atlas canonical hostname upstream
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-atlas-canonical-upstream.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Point atlas.ocrowley.com at Atlas unified
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" '
+            set -euo pipefail
+            f=/etc/nginx/conf.d/zzz-atlas-auth.conf
+            n=$(grep -c "proxy_pass http://127.0.0.1:8790;" "$f" || true)
+            echo "old_upstream_matches=$n"
+            test "$n" -eq 1
+            cp "$f" "/var/backups/zzz-atlas-auth.before-3110-$(date -u +%Y%m%dT%H%M%SZ).conf"
+            sed -i "s|proxy_pass http://127.0.0.1:8790;|proxy_pass http://127.0.0.1:3110;|" "$f"
+            grep -n "proxy_pass http://127.0.0.1:3110;" "$f"
+            nginx -t
+            systemctl reload nginx
+          '
+
+      - name: Verify public canonical hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "--- atlas.ocrowley.com ---"
+          curl -sS -I https://atlas.ocrowley.com/ | tee /tmp/headers
+          grep -qi '^location: /__atlas/login?next=%2F' /tmp/headers
+          echo "--- atlas2.ocrowley.com ---"
+          curl -sS -I https://atlas2.ocrowley.com/ | sed -n '1,20p'
