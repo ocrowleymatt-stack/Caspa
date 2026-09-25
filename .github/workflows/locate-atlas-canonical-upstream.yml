@@ -1,0 +1,43 @@
+name: Locate live Atlas canonical upstream
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/locate-atlas-canonical-upstream.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"; test -n "$key"
+          mkdir -p ~/.ssh; printf '%s\n' "$key" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Locate live Atlas hostname config
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" '
+            set -e
+            echo "--- files mentioning atlas.ocrowley.com ---"
+            grep -RIl "server_name atlas.ocrowley.com" /etc/nginx 2>/dev/null || true
+            echo "--- files mentioning 8790 ---"
+            grep -RIn "8790" /etc/nginx 2>/dev/null || true
+            echo "--- zzz file ---"
+            sed -n "1,220p" /etc/nginx/conf.d/zzz-atlas-auth.conf 2>/dev/null || true
+            echo "--- effective block ---"
+            nginx -T 2>/dev/null | grep -n -A24 -B4 "server_name atlas.ocrowley.com" || true
+          '
