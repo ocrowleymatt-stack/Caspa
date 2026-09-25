@@ -76,3 +76,5 @@ PY
 # trigger hostname cutover
 
 # manual trigger refresh 2026-09-25T14:56Z
+
+# forced cutover trigger 2026-09-25T15:00:00+01:00
