@@ -1,0 +1,103 @@
+name: Deploy verified Atlas R7 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-atlas-r7-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas2-production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      OUTER_SHA256: 839965854bf8dac4e756a0331042684aaa373bc34b69543c3d01da4fe37d0129
+      RELEASE_SHA256: 12b5ed9283578f1e4b45d340477ad9fe8f02ef436fdd6dbe61b99e10300977ba
+      RELEASE_COMMIT: dcdecd732cfbfa4940f795dd139bbc96a34a5bc3
+      RELEASE_URL: 'https://sdmntprukwest.oaiusercontent.com/files/00000000-15a0-8243-8cce-ca689334f2bc/raw?se=2026-09-25T18%3A48%3A29Z&sp=r&sv=2026-02-06&sr=b&scid=2432b290-58f7-5cf5-87fa-ed5a6d0677c4&skoid=56822d8b-6cfd-42ed-a00d-1452dca42036&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-25T18%3A30%3A34Z&ske=2026-09-26T18%3A30%3A34Z&sks=b&skv=2026-02-06&sig=SUas8pbHptu9xgFPOrsLSd3RnGFwnYutnyjuc/di7hQ%3D'
+
+    steps:
+      - name: Download exact verified R7 artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 "$RELEASE_URL" -o /tmp/atlas-r7-artifact.zip
+          echo "$OUTER_SHA256  /tmp/atlas-r7-artifact.zip" | sha256sum -c -
+          rm -rf /tmp/atlas-r7-artifact /tmp/atlas-release-src
+          mkdir -p /tmp/atlas-r7-artifact /tmp/atlas-release-src
+          unzip -q /tmp/atlas-r7-artifact.zip -d /tmp/atlas-r7-artifact
+          echo "$RELEASE_SHA256  /tmp/atlas-r7-artifact/ATLAS_R7_25SEP2026.zip" | sha256sum -c -
+          unzip -q /tmp/atlas-r7-artifact/ATLAS_R7_25SEP2026.zip -d /tmp/atlas-release-src
+          tar -C /tmp/atlas-release-src -czf /tmp/atlas-release.tar.gz .
+          sha256sum /tmp/atlas-release.tar.gz | tee /tmp/atlas-release.tar.gz.sha256
+          cp /tmp/atlas-release-src/tools/deployment/update-private-release.py /tmp/update-private-release.py
+
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload and activate R7
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/atlas-release.tar.gz /tmp/update-private-release.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/"
+          archive_sha="$(awk '{print $1}' /tmp/atlas-release.tar.gz.sha256)"
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}"             "python3 /tmp/update-private-release.py --archive /tmp/atlas-release.tar.gz --sha256 '$archive_sha' --commit '$RELEASE_COMMIT'"
+
+      - name: Verify R7 on the actual Atlas hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test "$(basename "$(readlink -f /opt/atlas-unified/current)")" = "dcdecd732cfbfa4940f795dd139bbc96a34a5bc3"
+          grep -Rqs 'Create studio candidates' /opt/atlas-unified/current/apps/caspa/dist
+          grep -Rqs 'Compose, audition, master and quality-check music' /opt/atlas-unified/current/apps/caspa/dist
+          grep -Rqs 'One project context for conversation, deep research, evidence, writing, music, and product work' /opt/atlas-unified/current/apps/caspa/dist
+          grep -Rqs 'Ask Atlas what you need' /opt/atlas-unified/current/apps/caspa/dist
+
+          read -r user pass < <(python3 - <<'PY'
+import json
+c=json.load(open('/etc/atlas-unified/runtime.json'))
+print(c['basicUser'], c['basicPassword'])
+PY
+)
+          curl -kfsS -u "$user:$pass" -H 'Host: atlas.ocrowley.com' https://127.0.0.1/ -o /tmp/atlas-r7-root.html
+          bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/atlas-r7-root.html | head -1 || true)"
+          if [ -n "$bundle" ]; then
+            curl -kfsS -u "$user:$pass" -H 'Host: atlas.ocrowley.com' "https://127.0.0.1/$bundle" -o /tmp/atlas-r7-root.js
+            grep -q 'Create studio candidates' /tmp/atlas-r7-root.js
+            grep -q 'Ask Atlas what you need' /tmp/atlas-r7-root.js
+            echo "atlas.ocrowley.com bundle contains R7 markers"
+          else
+            echo "No direct asset path in authenticated root HTML; release dist markers verified on active symlink."
+          fi
+          systemctl is-active --quiet atlas-unified.service
+          curl -fsS http://127.0.0.1:3110/health >/dev/null
+          REMOTE
