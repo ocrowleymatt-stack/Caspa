@@ -58,3 +58,5 @@ jobs:
           headers="$(curl -sSI https://atlas.ocrowley.com/)"
           printf '%s\n' "$headers"
           printf '%s\n' "$headers" | grep -qi '^location: https://atlas2.ocrowley.com/'
+
+# inspect current cutover state 2026-09-25T15:55Z
