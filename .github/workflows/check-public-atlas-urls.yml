@@ -1,0 +1,20 @@
+name: Check public Atlas URLs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/check-public-atlas-urls.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for u in https://atlas.ocrowley.com/ https://atlas2.ocrowley.com/ https://atlas2.ocrowley.com/atlas; do
+            echo "===== $u ====="
+            curl -sS -I "$u" | sed -n '1,20p'
+          done
