@@ -1,4 +1,4 @@
-name: Inspect current Atlas old-host block
+name: Fix Atlas old-host proxy headers
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  fix:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -30,9 +30,65 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-      - name: Print live Atlas host block
+
+      - name: Add same-origin proxy headers
         shell: bash
         run: |
           set -euo pipefail
+          cat > /tmp/fix-atlas-proxy.py <<'PY'
+          from pathlib import Path
+          p=Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
+          s=p.read_text()
+          old="""    location / {
+                  proxy_pass http://127.0.0.1:3110;
+              }"""
+          old2="""    location / {
+              proxy_pass http://127.0.0.1:3110;
+          }"""
+          new="""    location / {
+              proxy_pass http://127.0.0.1:3110;
+              proxy_http_version 1.1;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto https;
+              proxy_set_header Connection "";
+              proxy_read_timeout 300s;
+              proxy_send_timeout 300s;
+              proxy_redirect off;
+          }"""
+          if new in s:
+              print('headers already present')
+          elif old in s:
+              p.write_text(s.replace(old,new,1))
+              print('headers added')
+          elif old2 in s:
+              p.write_text(s.replace(old2,new,1))
+              print('headers added')
+          else:
+              raise SystemExit('simple Atlas proxy block not found')
+          PY
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/fix-atlas-proxy.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/fix-atlas-proxy.py"
           ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
-            "nginx -T 2>/dev/null | sed -n '350,405p'; echo '---'; curl -k -sSI https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | sed -n '1,20p'"
+            'cp /etc/nginx/conf.d/zzz-atlas-auth.conf /var/backups/zzz-atlas-auth.before-origin-fix.bak && python3 /tmp/fix-atlas-proxy.py && nginx -t && systemctl reload nginx'
+
+      - name: Verify same-origin behaviour
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- root ---'
+          curl -sSI https://atlas.ocrowley.com/ | sed -n '1,20p'
+          echo '--- login GET ---'
+          curl -sS https://atlas.ocrowley.com/__atlas/login | grep -q 'Sign in to private Atlas'
+          echo '--- same-origin POST must not be rejected as cross-origin ---'
+          code="$(curl -sS -o /tmp/post.body -w '%{http_code}' -X POST https://atlas.ocrowley.com/__atlas/login \
+            -H 'Origin: https://atlas.ocrowley.com' \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data 'username=invalid&password=invalid&next=%2F')"
+          cat /tmp/post.body | head -10
+          test "$code" != "403"
+          if grep -q 'Cross-origin staging requests are not accepted' /tmp/post.body; then
+            echo 'same-origin POST still rejected' >&2
+            exit 1
+          fi
+          echo "same_origin_post_status=$code"
