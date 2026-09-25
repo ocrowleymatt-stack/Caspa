@@ -83,3 +83,5 @@ PY
           fi
           printf '%s\n' "$h" | grep -qiE '^HTTP/.* (200|303)'
           curl -sS https://atlas.ocrowley.com/__atlas/login | grep -q 'Sign in to private Atlas'
+
+# force direct hostname cutover
