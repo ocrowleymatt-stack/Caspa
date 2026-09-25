@@ -1,0 +1,78 @@
+name: Deploy verified Atlas R6 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-atlas-r6-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas2-production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      OUTER_SHA256: 4ceb7994cb8460a1b7c17443b4d8ec957511291fff747b9134189ab1a9020f34
+      RELEASE_SHA256: b5d29e8735058a47307cfcc3fcc156a2a8a3d32758dfcd37f01d02a3eae02cb0
+      RELEASE_COMMIT: 7e711bca1318aedddea195bf3010624b3ddbfcfd
+      RELEASE_URL: 'https://sdmntprnortheu.oaiusercontent.com/files/00000000-c730-81f4-86cd-8ab4073e9c70/raw?se=2026-09-25T13%3A36%3A54Z&sp=r&sv=2026-02-06&sr=b&scid=d6d7de0e-b7f9-5322-8f09-6d312f91aac3&skoid=56822d8b-6cfd-42ed-a00d-1452dca42036&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-25T08%3A26%3A51Z&ske=2026-09-26T08%3A26%3A51Z&sks=b&skv=2026-02-06&sig=wjgjNhSNb5vl3ki/sG5AuDlduR%2B%2BgKLnOwyLygUw/PQ%3D'
+
+    steps:
+      - name: Download exact green release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 "$RELEASE_URL" -o /tmp/atlas-r6-artifact.zip
+          echo "$OUTER_SHA256  /tmp/atlas-r6-artifact.zip" | sha256sum -c -
+          rm -rf /tmp/atlas-r6-artifact /tmp/atlas-release-src
+          mkdir -p /tmp/atlas-r6-artifact /tmp/atlas-release-src
+          unzip -q /tmp/atlas-r6-artifact.zip -d /tmp/atlas-r6-artifact
+          echo "$RELEASE_SHA256  /tmp/atlas-r6-artifact/ATLAS_R6_25SEP2026.zip" | sha256sum -c -
+          unzip -q /tmp/atlas-r6-artifact/ATLAS_R6_25SEP2026.zip -d /tmp/atlas-release-src
+          tar -C /tmp/atlas-release-src -czf /tmp/atlas-release.tar.gz .
+          sha256sum /tmp/atlas-release.tar.gz | tee /tmp/atlas-release.tar.gz.sha256
+          cp /tmp/atlas-release-src/tools/deployment/update-private-release.py /tmp/update-private-release.py
+
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload and activate
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/atlas-release.tar.gz /tmp/update-private-release.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/"
+          archive_sha="$(awk '{print $1}' /tmp/atlas-release.tar.gz.sha256)"
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}"             "python3 /tmp/update-private-release.py --archive /tmp/atlas-release.tar.gz --sha256 '$archive_sha' --commit '$RELEASE_COMMIT'"
+
+      - name: Verify production
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'systemctl is-active --quiet atlas-unified.service && curl -fsS --max-time 10 http://127.0.0.1:3110/health'
+          curl -fsS --max-time 15 https://atlas2.ocrowley.com/health
