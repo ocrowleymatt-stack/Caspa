@@ -84,3 +84,5 @@ jobs:
           grep -q 'location: /__atlas/login' /tmp/h || test "$(grep -c 'HTTP/2 200' /tmp/h)" -gt 0
           nginx -T 2>/dev/null | grep -n -A20 'server_name atlas.ocrowley.com' | head -40
           REMOTE
+
+# direct same-origin proxy cutover trigger
