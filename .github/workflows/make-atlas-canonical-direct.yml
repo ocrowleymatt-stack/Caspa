@@ -30,48 +30,20 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Build exact patch script
-        shell: bash
-        run: |
-          cat > /tmp/patch_atlas_nginx.py <<'PY'
-          from pathlib import Path
-          import time
-
-          p = Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
-          s = p.read_text()
-
-          old = """    location / {
-              return 302 https://atlas2.ocrowley.com$request_uri;
-          }"""
-
-          new = """    location / {
-              proxy_pass http://127.0.0.1:3110;
-              proxy_http_version 1.1;
-              proxy_set_header Host $host;
-              proxy_set_header X-Real-IP $remote_addr;
-              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto https;
-              proxy_set_header Connection "";
-              proxy_read_timeout 300s;
-              proxy_send_timeout 300s;
-              add_header Cache-Control "no-store" always;
-          }"""
-
-          if old not in s:
-              raise SystemExit('Expected redirect block not found')
-
-          backup = Path(f'/var/backups/zzz-atlas-auth.before-direct-proxy-{int(time.time())}.conf')
-          backup.write_text(s)
-          p.write_text(s.replace(old, new, 1))
-          print(f'backup={backup}')
-          PY
-
-      - name: Apply direct proxy cutover
+      - name: Switch canonical hostname to Atlas unified
         shell: bash
         run: |
           set -euo pipefail
-          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/patch_atlas_nginx.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/patch_atlas_nginx.py"
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'python3 /tmp/patch_atlas_nginx.py && nginx -t && systemctl reload nginx'
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" '
+            set -euo pipefail
+            f=/etc/nginx/conf.d/zzz-atlas-auth.conf
+            grep -q "return 302 https://atlas2.ocrowley.com" "$f"
+            cp "$f" "/var/backups/zzz-atlas-auth.before-direct-$(date -u +%Y%m%dT%H%M%SZ).conf"
+            sed -i "s@return 302 https://atlas2.ocrowley.com.*;@proxy_pass http://127.0.0.1:3110;@" "$f"
+            grep -n -A4 -B2 "server_name atlas.ocrowley.com" "$f"
+            nginx -t
+            systemctl reload nginx
+          '
 
       - name: Verify canonical hostname
         shell: bash
@@ -80,6 +52,6 @@ jobs:
           curl -sS -I https://atlas.ocrowley.com/ | tee /tmp/h
           grep -qi '^location: /__atlas/login?next=%2F' /tmp/h
           if grep -qi 'atlas2.ocrowley.com' /tmp/h; then
-            echo 'Unexpected redirect to atlas2 remains' >&2
+            echo 'Canonical hostname still redirects to atlas2' >&2
             exit 1
           fi
