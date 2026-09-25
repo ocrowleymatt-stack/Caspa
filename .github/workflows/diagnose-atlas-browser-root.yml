@@ -2,7 +2,8 @@ name: Diagnose what browser gets from Atlas root
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - '.github/workflows/diagnose-atlas-browser-root.yml'
   workflow_dispatch:
@@ -36,49 +37,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "bash -s" <<'REMOTE'
           set -euo pipefail
           file=/etc/nginx/conf.d/zzz-atlas-auth.conf
           cp "$file" "/var/backups/zzz-atlas-auth.conf.$(date -u +%Y%m%dT%H%M%SZ).bak"
-          python3 - <<'PY'
-from pathlib import Path
-p=Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
-s=p.read_text()
-needle='proxy_pass http://127.0.0.1:8790;'
-if needle in s:
-    s=s.replace(needle,'return 302 https://atlas2.ocrowley.com$request_uri;',1)
-    lines=s.splitlines()
-    out=[]
-    skip=False
-    for line in lines:
-        if 'return 302 https://atlas2.ocrowley.com$request_uri;' in line:
-            out.append(line)
-            skip=True
-            continue
-        if skip and any(x in line for x in [
-            'proxy_set_header Host $host;',
-            'proxy_set_header X-Real-IP $remote_addr;',
-            'proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;',
-            'proxy_set_header X-Forwarded-Proto $scheme;',
-            'proxy_redirect off;'
-        ]):
-            continue
-        if skip and line.strip()=='}':
-            out.append(line)
-            skip=False
-            continue
-        out.append(line)
-    p.write_text('\n'.join(out)+'\n')
-elif 'return 302 https://atlas2.ocrowley.com$request_uri;' not in s:
-    raise SystemExit('Neither old proxy nor new redirect found')
-PY
+          perl -0pi -e 's#location / \{\n\s*proxy_pass http://127\.0\.0\.1:8790;\n\s*proxy_set_header Host \$host;\n\s*proxy_set_header X-Real-IP \$remote_addr;\n\s*proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n\s*proxy_set_header X-Forwarded-Proto \$scheme;\n\s*proxy_redirect off;\n\s*\}#location / {\n        return 302 https://atlas2.ocrowley.com\$request_uri;\n    }#s' "$file"
+          grep -q 'return 302 https://atlas2.ocrowley.com$request_uri;' "$file"
           nginx -t
           systemctl reload nginx
-          echo "--- local old host ---"
           curl -k -sS -I https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | tee /tmp/old.headers
           grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/old.headers
           REMOTE
-      - name: Verify public old hostname redirects
+
+      - name: Verify public redirect
         shell: bash
         run: |
           set -euo pipefail
