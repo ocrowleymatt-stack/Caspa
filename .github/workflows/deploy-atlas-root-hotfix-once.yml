@@ -1,0 +1,87 @@
+name: Deploy Atlas root hotfix once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-atlas-root-hotfix-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas2-production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      OUTER_SHA256: 2fda2611edead79687a330f603f1d4128678a0e966663209419a17314d22017b
+      RELEASE_SHA256: d4a3b058fb717d350639cf392404703271034cdfe6067dfb9157ecd5c8e3a4d5
+      RELEASE_COMMIT: eee2f064f231d5a941ddffec0fb207cbf2badf89
+      RELEASE_URL: 'https://sdmntprdenmarkeast.oaiusercontent.com/files/00000000-9cbc-8210-be39-722501c04d36/raw?se=2026-09-25T14%3A37%3A37Z&sp=r&sv=2026-02-06&sr=b&scid=a139b255-bffb-5161-b5e7-18627e85326f&skoid=56822d8b-6cfd-42ed-a00d-1452dca42036&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-25T13%3A23%3A25Z&ske=2026-09-26T13%3A23%3A25Z&sks=b&skv=2026-02-06&sig=1DVZFCOxXHJ/Q0o1sCG5i/4ORZnTrntrqyBgHm%2BRpXw%3D'
+
+    steps:
+      - name: Download exact verified hotfix artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 "$RELEASE_URL" -o /tmp/atlas-root-artifact.zip
+          echo "$OUTER_SHA256  /tmp/atlas-root-artifact.zip" | sha256sum -c -
+          rm -rf /tmp/atlas-root-artifact /tmp/atlas-release-src
+          mkdir -p /tmp/atlas-root-artifact /tmp/atlas-release-src
+          unzip -q /tmp/atlas-root-artifact.zip -d /tmp/atlas-root-artifact
+          echo "$RELEASE_SHA256  /tmp/atlas-root-artifact/ATLAS_ROOT_HOTFIX_25SEP2026.zip" | sha256sum -c -
+          unzip -q /tmp/atlas-root-artifact/ATLAS_ROOT_HOTFIX_25SEP2026.zip -d /tmp/atlas-release-src
+          tar -C /tmp/atlas-release-src -czf /tmp/atlas-release.tar.gz .
+          sha256sum /tmp/atlas-release.tar.gz | tee /tmp/atlas-release.tar.gz.sha256
+          cp /tmp/atlas-release-src/tools/deployment/update-private-release.py /tmp/update-private-release.py
+
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload and activate
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/atlas-release.tar.gz /tmp/update-private-release.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/"
+          archive_sha="$(awk '{print $1}' /tmp/atlas-release.tar.gz.sha256)"
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}"             "python3 /tmp/update-private-release.py --archive /tmp/atlas-release.tar.gz --sha256 '$archive_sha' --commit '$RELEASE_COMMIT'"
+
+      - name: Verify canonical root live
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'systemctl is-active --quiet atlas-unified.service'
+          curl -fsS --max-time 15 https://atlas2.ocrowley.com/ -o /tmp/root.html
+          curl -fsS --max-time 15 https://atlas2.ocrowley.com/atlas -o /tmp/atlas.html
+          root_bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/root.html | head -1)"
+          atlas_bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/atlas.html | head -1)"
+          test -n "$root_bundle"
+          test "$root_bundle" = "$atlas_bundle"
+          curl -fsS --max-time 15 "https://atlas2.ocrowley.com/$root_bundle" -o /tmp/root.js
+          grep -q 'Computer & apps' /tmp/root.js
+          grep -q 'Search thoroughly' /tmp/root.js
+          curl -fsS --max-time 15 https://atlas2.ocrowley.com/health
