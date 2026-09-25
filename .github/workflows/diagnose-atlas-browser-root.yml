@@ -1,4 +1,4 @@
-name: Diagnose what browser gets from Atlas root
+name: Inspect current Atlas old-host block
 
 on:
   push:
@@ -6,13 +6,12 @@ on:
       - main
     paths:
       - '.github/workflows/diagnose-atlas-browser-root.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  diagnose:
+  inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -20,9 +19,8 @@ jobs:
       HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
       ATLAS_HOST: 116.202.24.63
       ATLAS_USER: root
-
     steps:
-      - name: Select SSH key
+      - name: SSH setup
         shell: bash
         run: |
           set -euo pipefail
@@ -32,28 +30,9 @@ jobs:
           printf '%s\n' "$key" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
-
-      - name: Cut old Atlas hostname over to new Atlas
+      - name: Print live Atlas host block
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "bash -s" <<'REMOTE'
-          set -euo pipefail
-          file=/etc/nginx/conf.d/zzz-atlas-auth.conf
-          cp "$file" "/var/backups/zzz-atlas-auth.conf.$(date -u +%Y%m%dT%H%M%SZ).bak"
-          perl -0pi -e 's#location / \{\n\s*proxy_pass http://127\.0\.0\.1:8790;\n\s*proxy_set_header Host \$host;\n\s*proxy_set_header X-Real-IP \$remote_addr;\n\s*proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n\s*proxy_set_header X-Forwarded-Proto \$scheme;\n\s*proxy_redirect off;\n\s*\}#location / {\n        return 302 https://atlas2.ocrowley.com\$request_uri;\n    }#s' "$file"
-          grep -q 'return 302 https://atlas2.ocrowley.com$request_uri;' "$file"
-          nginx -t
-          systemctl reload nginx
-          curl -k -sS -I https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | tee /tmp/old.headers
-          grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/old.headers
-          REMOTE
-
-      - name: Verify public redirect
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -sS -I https://atlas.ocrowley.com/ | tee /tmp/public.headers
-          grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/public.headers
-
-# inspect-current-atlas-host-block 2026-09-25T16:18Z
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "nginx -T 2>/dev/null | sed -n '350,405p'; echo '---'; curl -k -sSI https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | sed -n '1,20p'"
