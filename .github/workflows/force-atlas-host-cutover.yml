@@ -1,0 +1,80 @@
+name: Force Atlas hostname cutover
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/force-atlas-host-cutover.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Cut over old hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          file=/etc/nginx/conf.d/zzz-atlas-auth.conf
+          cp "$file" "/var/backups/zzz-atlas-auth.conf.$(date -u +%Y%m%dT%H%M%SZ).bak"
+          python3 - <<'PY'
+from pathlib import Path
+p=Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
+s=p.read_text()
+start=s.find('server_name atlas.ocrowley.com;')
+if start < 0:
+    raise SystemExit('atlas.ocrowley.com server block not found')
+block_start=s.rfind('server {',0,start)
+block_end=s.find('\n}',start)
+if block_start < 0 or block_end < 0:
+    raise SystemExit('atlas.ocrowley.com block boundaries not found')
+block=s[block_start:block_end+2]
+old='''    location / {
+        proxy_pass http://127.0.0.1:8790;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+    }'''
+new='''    location / {
+        return 302 https://atlas2.ocrowley.com$request_uri;
+    }'''
+if old not in block:
+    if 'return 302 https://atlas2.ocrowley.com$request_uri;' in block:
+        raise SystemExit(0)
+    raise SystemExit('old proxy location not found')
+p.write_text(s[:block_start]+block.replace(old,new,1)+s[block_end+2:])
+PY
+          nginx -t
+          systemctl reload nginx
+          curl -k -sS -I https://127.0.0.1/ -H 'Host: atlas.ocrowley.com' | tee /tmp/old-atlas.headers
+          grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/old-atlas.headers
+          REMOTE
+      - name: Verify public redirect
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS -I https://atlas.ocrowley.com/ | tee /tmp/public.headers
+          grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/public.headers
