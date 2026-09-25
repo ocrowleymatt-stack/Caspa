@@ -55,3 +55,5 @@ jobs:
           set -euo pipefail
           curl -sS -I https://atlas.ocrowley.com/ | tee /tmp/public.headers
           grep -qi '^location: https://atlas2.ocrowley.com/' /tmp/public.headers
+
+# inspect-current-atlas-host-block 2026-09-25T16:18Z
