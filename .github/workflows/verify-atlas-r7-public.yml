@@ -1,0 +1,58 @@
+name: Verify Atlas R7 on public hostname
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-atlas-r7-public.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"; test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Verify active release and atlas.ocrowley.com bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "current=$(readlink -f /opt/atlas-unified/current)"
+          test "$(basename "$(readlink -f /opt/atlas-unified/current)")" = "dcdecd732cfbfa4940f795dd139bbc96a34a5bc3"
+          grep -Rqs 'Create studio candidates' /opt/atlas-unified/current/apps/caspa/dist
+          grep -Rqs 'Ask Atlas what you need' /opt/atlas-unified/current/apps/caspa/dist
+
+          creds="$(python3 -c 'import json; c=json.load(open("/etc/atlas-unified/runtime.json")); print(c["basicUser"]+":"+c["basicPassword"])')"
+          curl -kfsS -u "$creds" -H 'Host: atlas.ocrowley.com' https://127.0.0.1/ -o /tmp/r7-root.html
+          bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/r7-root.html | head -1)"
+          test -n "$bundle"
+          echo "bundle=$bundle"
+          curl -kfsS -u "$creds" -H 'Host: atlas.ocrowley.com' "https://127.0.0.1/$bundle" -o /tmp/r7-root.js
+          grep -q 'Create studio candidates' /tmp/r7-root.js
+          grep -q 'Compose, audition, master and quality-check music' /tmp/r7-root.js
+          grep -q 'Ask Atlas what you need' /tmp/r7-root.js
+          if grep -q 'Command workspace' /tmp/r7-root.js; then
+            echo 'Old Command workspace marker is still present in the served bundle.' >&2
+            exit 1
+          fi
+          echo 'atlas.ocrowley.com is serving the R7 bundle'
+          REMOTE
