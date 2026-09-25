@@ -1,0 +1,32 @@
+name: Verify public Atlas DNS and redirect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-public-atlas-dns.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check DNS and HTTP path
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "--- DNS atlas.ocrowley.com ---"
+          getent ahosts atlas.ocrowley.com || true
+          echo "--- DNS atlas2.ocrowley.com ---"
+          getent ahosts atlas2.ocrowley.com || true
+          echo "--- atlas headers ---"
+          curl -sS -I https://atlas.ocrowley.com/ | tee /tmp/atlas.headers
+          echo "--- follow atlas redirect ---"
+          curl -sS -L -D /tmp/follow.headers -o /tmp/follow.body --max-redirs 5 https://atlas.ocrowley.com/
+          cat /tmp/follow.headers
+          echo "body_bytes=$(wc -c </tmp/follow.body)"
+          grep -Eo '<title>[^<]+' /tmp/follow.body | head -5 || true
+          grep -Eo 'ATLAS[^<]{0,80}|Caspa[^<]{0,80}' /tmp/follow.body | head -20 || true
