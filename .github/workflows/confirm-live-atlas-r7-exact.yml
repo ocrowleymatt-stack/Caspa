@@ -1,0 +1,58 @@
+name: Confirm live Atlas R7 exact bundle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/confirm-live-atlas-r7-exact.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  confirm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"; test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Confirm active release and served bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          current="$(basename "$(readlink -f /opt/atlas-unified/current)")"
+          echo "current=$current"
+          test "$current" = "76c05bb0377c958ba634a4d04e9394c93ceca683"
+          creds="$(python3 - <<'PY'
+import json
+c=json.load(open('/etc/atlas-unified/runtime.json'))
+print(c['basicUser']+':'+c['basicPassword'])
+PY
+)"
+          curl -kfsS -u "$creds" -H 'Host: atlas.ocrowley.com' https://127.0.0.1/ -o /tmp/root.html
+          bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/root.html | head -1)"
+          test -n "$bundle"
+          echo "bundle=$bundle"
+          curl -kfsS -u "$creds" -H 'Host: atlas.ocrowley.com' "https://127.0.0.1/$bundle" -o /tmp/root.js
+          grep -q 'Create studio candidates' /tmp/root.js
+          grep -q 'Compose, audition, master and quality-check music' /tmp/root.js
+          grep -q 'Ask Atlas what you need' /tmp/root.js
+          grep -q 'Web / Product' /tmp/root.js
+          if grep -q 'Command workspace' /tmp/root.js; then echo "OLD_MARKER_PRESENT"; exit 1; fi
+          echo "R7_EXACT_LIVE=true"
+          REMOTE
