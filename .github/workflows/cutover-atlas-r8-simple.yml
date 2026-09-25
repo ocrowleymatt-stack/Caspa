@@ -52,3 +52,5 @@ jobs:
             exit 1
           fi
           curl -fsS https://atlas.ocrowley.com/__atlas/login | grep -q 'Sign in to private Atlas'
+
+# verify authenticated R8 bundle after cutover
