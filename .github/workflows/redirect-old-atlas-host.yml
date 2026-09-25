@@ -69,3 +69,5 @@ curl -k -sSI https://127.0.0.1/ -H "Host: atlas.ocrowley.com" | sed -n "1,12p"'
           h="$(curl -sSI https://atlas.ocrowley.com/)"
           printf '%s\n' "$h"
           printf '%s\n' "$h" | grep -qi '^location: https://atlas2.ocrowley.com/'
+
+# trigger 2026-09-25T14:56Z
