@@ -74,3 +74,23 @@ login="$(curl -k -fsS https://127.0.0.1/__atlas/login -H 'Host: atlas.ocrowley.c
 printf '%s' "$login" | grep -q 'Sign in to private Atlas'
 
 echo 'canonical_atlas_cutover=true'
+
+python3 - <<'PY' >/tmp/atlas-r8-basic
+import base64,json
+cfg=json.load(open('/etc/atlas-unified/runtime.json'))
+print('Basic '+base64.b64encode((cfg['basicUser']+':'+cfg['basicPassword']).encode()).decode())
+PY
+auth="$(cat /tmp/atlas-r8-basic)"
+curl -k -fsS -H 'Host: atlas.ocrowley.com' -H "Authorization: $auth" https://127.0.0.1/ -o /tmp/atlas-r8-root.html
+bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/atlas-r8-root.html | head -1)"
+test -n "$bundle"
+curl -k -fsS -H 'Host: atlas.ocrowley.com' -H "Authorization: $auth" "https://127.0.0.1/$bundle" -o /tmp/atlas-r8-bundle.js
+grep -q 'One project context for conversation, deep research, evidence, writing, music, and product work.' /tmp/atlas-r8-bundle.js
+grep -q 'From brief to technical master candidate' /tmp/atlas-r8-bundle.js
+grep -q 'Search thoroughly' /tmp/atlas-r8-bundle.js
+if grep -q 'Command workspace' /tmp/atlas-r8-bundle.js; then
+  echo 'Old Command workspace marker remains in active canonical bundle' >&2
+  exit 1
+fi
+echo "r8_bundle=$bundle"
+echo 'r8_authenticated_bundle=true'
