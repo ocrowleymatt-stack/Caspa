@@ -1,0 +1,77 @@
+name: Deploy verified Atlas V9 R5B once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-atlas-v9-r5b-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas2-production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+      RELEASE_SHA256: 31c73bf1d14dcd453c3ad885a6fb09826265917ddf36769cc69ce10cdcffc65f
+      RELEASE_COMMIT: 46b7eed7725c8e9f6c59f2169484f3f600ee9607
+
+    steps:
+      - name: Download exact green release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://uc7159cca682507108bab75cd223.dl.dropboxusercontent.com/cd/0/get/DIyEeTLHE1SUERPT3kG89eGfZGeM9GkNuvohebe2PoBOiOqgYFfIsnh_YzbVc-wnYRVg3T9THjqJBCeNX6aM2DTnr5OvJHdQ37Db3oGj8tYh1vbclekS6xOH-EmO9fQJ1xuFLHWeNmj-1qIAQGv2dZxgkDiSBq2Nynpsfn7L6V7z0Q/file?c_luid=8fc45fd4" \
+            -o /tmp/atlas-release.zip
+          echo "$RELEASE_SHA256  /tmp/atlas-release.zip" | sha256sum -c -
+          rm -rf /tmp/atlas-release-src && mkdir -p /tmp/atlas-release-src
+          unzip -q /tmp/atlas-release.zip -d /tmp/atlas-release-src
+          SRC=/tmp/atlas-release-src/ATLAS_RELEASE_CANDIDATE_V9_25SEP2026/atlas
+          tar -C "$SRC" -czf /tmp/atlas-release.tar.gz .
+          sha256sum /tmp/atlas-release.tar.gz | tee /tmp/atlas-release.tar.gz.sha256
+          cp "$SRC/tools/deployment/update-private-release.py" /tmp/update-private-release.py
+
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload and activate
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/atlas-release.tar.gz /tmp/update-private-release.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/"
+          archive_sha="$(awk '{print $1}' /tmp/atlas-release.tar.gz.sha256)"
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "python3 /tmp/update-private-release.py --archive /tmp/atlas-release.tar.gz --sha256 '$archive_sha' --commit '$RELEASE_COMMIT'"
+
+      - name: Verify production
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'systemctl is-active --quiet atlas-unified.service && curl -fsS --max-time 10 http://127.0.0.1:3110/health'
+          curl -fsS --max-time 15 https://atlas2.ocrowley.com/health
