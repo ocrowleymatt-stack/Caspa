@@ -72,3 +72,5 @@ PY
           headers="$(curl -sS -I https://atlas.ocrowley.com/)"
           printf '%s\n' "$headers"
           printf '%s\n' "$headers" | grep -qi '^location: https://atlas2.ocrowley.com/'
+
+# trigger hostname cutover
