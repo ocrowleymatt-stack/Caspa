@@ -1,0 +1,65 @@
+name: Diagnose live Atlas R6 content once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-atlas-r6-live-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Inspect live release and bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "current=$(readlink -f /opt/atlas-unified/current)"
+          echo "service=$(systemctl is-active atlas-unified.service)"
+          echo "--- health ---"
+          curl -fsS http://127.0.0.1:3110/health || true
+          echo
+          echo "--- atlas html ---"
+          curl -fsS http://127.0.0.1:3110/atlas -o /tmp/atlas-live.html
+          grep -oE 'assets/[^"]+\.(js|css)' /tmp/atlas-live.html | sort -u || true
+          echo "--- release markers in source/build ---"
+          grep -RIl --exclude-dir=node_modules -E 'Computer & apps|Search thoroughly|Delete message|Deep research' /opt/atlas-unified/current/apps/caspa/dist /opt/atlas-unified/current/apps/caspa/src 2>/dev/null | head -50 || true
+          echo "--- built bundle markers ---"
+          if grep -Rqs 'Computer & apps' /opt/atlas-unified/current/apps/caspa/dist 2>/dev/null; then echo computer_apps_in_dist=true; else echo computer_apps_in_dist=false; fi
+          if grep -Rqs 'Search thoroughly' /opt/atlas-unified/current/apps/caspa/dist 2>/dev/null; then echo search_thoroughly_in_dist=true; else echo search_thoroughly_in_dist=false; fi
+          if grep -Rqs 'Delete message' /opt/atlas-unified/current/apps/caspa/dist 2>/dev/null; then echo delete_message_in_dist=true; else echo delete_message_in_dist=false; fi
+          echo "--- source markers ---"
+          if grep -Rqs 'Computer & apps' /opt/atlas-unified/current/apps/caspa/src 2>/dev/null; then echo computer_apps_in_source=true; else echo computer_apps_in_source=false; fi
+          if grep -Rqs 'Search thoroughly' /opt/atlas-unified/current/apps/caspa/src 2>/dev/null; then echo search_thoroughly_in_source=true; else echo search_thoroughly_in_source=false; fi
+          REMOTE
