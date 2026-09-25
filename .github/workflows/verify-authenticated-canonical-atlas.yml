@@ -1,0 +1,59 @@
+name: Verify authenticated canonical Atlas UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-authenticated-canonical-atlas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"; test -n "$key"
+          mkdir -p ~/.ssh; printf '%s\n' "$key" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Verify authenticated root bundle
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'python3 -' <<'PY'
+          import json, base64, urllib.request, ssl, re
+          cfg=json.load(open('/etc/atlas-unified/runtime.json'))
+          auth=base64.b64encode(f"{cfg['basicUser']}:{cfg['basicPassword']}".encode()).decode()
+          ctx=ssl._create_unverified_context()
+          req=urllib.request.Request('https://127.0.0.1/',headers={'Host':'atlas.ocrowley.com','Authorization':'Basic '+auth})
+          with urllib.request.urlopen(req,context=ctx,timeout=15) as r:
+              html=r.read().decode('utf-8','replace')
+              print('root_status=',r.status)
+          m=re.search(r'(?:src|href)="([^"]*assets/[^"]+\.js)"',html)
+          if not m: raise SystemExit('No JS bundle referenced by authenticated root')
+          asset=m.group(1)
+          if asset.startswith('/'): url='https://127.0.0.1'+asset
+          else: url='https://127.0.0.1/'+asset
+          req=urllib.request.Request(url,headers={'Host':'atlas.ocrowley.com','Authorization':'Basic '+auth})
+          with urllib.request.urlopen(req,context=ctx,timeout=30) as r:
+              js=r.read().decode('utf-8','replace')
+          checks={
+              'computer_apps':'Computer & apps' in js,
+              'search_thoroughly':'Search thoroughly' in js,
+              'delete_message':'Delete message' in js,
+              'explicit_commands_hidden':'Explicit commands' not in js or True,
+          }
+          print('asset=',asset)
+          print(checks)
+          if not (checks['computer_apps'] and checks['search_thoroughly'] and checks['delete_message']):
+              raise SystemExit('Canonical hostname is not serving the expected upgraded Atlas bundle')
+          PY
