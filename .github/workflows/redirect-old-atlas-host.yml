@@ -1,0 +1,71 @@
+name: Redirect old Atlas host to Atlas2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/redirect-old-atlas-host.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  redirect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: SSH setup
+        run: |
+          set -euo pipefail
+          key=""
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY; do
+            if [ -n "${!name:-}" ]; then key="${!name}"; break; fi
+          done
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Cut over old hostname
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'python3 - <<'"'"'PY'"'"'
+from pathlib import Path
+p=Path("/etc/nginx/conf.d/zzz-atlas-auth.conf")
+s=p.read_text()
+old="""    location / {
+        proxy_pass http://127.0.0.1:8790;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+    }"""
+new="""    location / {
+        return 302 https://atlas2.ocrowley.com$request_uri;
+    }"""
+if new in s:
+    print("redirect already present")
+elif old in s:
+    backup=Path("/var/backups/zzz-atlas-auth.pre-atlas2-cutover.conf")
+    backup.write_text(s)
+    p.write_text(s.replace(old,new,1))
+    print("redirect installed")
+else:
+    raise SystemExit("expected atlas.ocrowley.com location block not found")
+PY
+nginx -t
+systemctl reload nginx
+curl -k -sSI https://127.0.0.1/ -H "Host: atlas.ocrowley.com" | sed -n "1,12p"'
+      - name: Verify public old hostname redirects
+        run: |
+          set -euo pipefail
+          h="$(curl -sSI https://atlas.ocrowley.com/)"
+          printf '%s\n' "$h"
+          printf '%s\n' "$h" | grep -qi '^location: https://atlas2.ocrowley.com/'
