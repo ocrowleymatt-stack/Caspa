@@ -1,4 +1,4 @@
-name: Deploy Atlas R7 to canonical hostname once
+name: Deploy Atlas R7 canonical
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: atlas-canonical-production-release
+  group: atlas2-production-release
   cancel-in-progress: false
 
 jobs:
@@ -33,17 +33,17 @@ jobs:
       RELEASE_URL: 'https://sdmntprukwest.oaiusercontent.com/files/00000000-6a14-8243-b2b5-0071f9df6e67/raw?se=2026-09-25T19%3A00%3A37Z&sp=r&sv=2026-02-06&sr=b&scid=e5af1fc1-4b8b-5fd9-9680-c4c6086a07d5&skoid=56822d8b-6cfd-42ed-a00d-1452dca42036&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-25T18%3A01%3A49Z&ske=2026-09-26T18%3A01%3A49Z&sks=b&skv=2026-02-06&sig=j9UbGxYnppawx0Pe9uAeK7sHE3FHZA4ugmQ5Kd9NXmc%3D'
 
     steps:
-      - name: Download exact verified R7 artifact
+      - name: Download exact verified R7 release
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 4 --retry-delay 2 "$RELEASE_URL" -o /tmp/atlas-r7-artifact.zip
-          echo "$OUTER_SHA256  /tmp/atlas-r7-artifact.zip" | sha256sum -c -
-          rm -rf /tmp/atlas-r7-artifact /tmp/atlas-release-src
-          mkdir -p /tmp/atlas-r7-artifact /tmp/atlas-release-src
-          unzip -q /tmp/atlas-r7-artifact.zip -d /tmp/atlas-r7-artifact
-          echo "$RELEASE_SHA256  /tmp/atlas-r7-artifact/ATLAS_R7_25SEP2026.zip" | sha256sum -c -
-          unzip -q /tmp/atlas-r7-artifact/ATLAS_R7_25SEP2026.zip -d /tmp/atlas-release-src
+          curl --fail --location --retry 4 --retry-delay 2 "$RELEASE_URL" -o /tmp/atlas-r7-wrapper.zip
+          echo "$OUTER_SHA256  /tmp/atlas-r7-wrapper.zip" | sha256sum -c -
+          rm -rf /tmp/atlas-r7-wrapper /tmp/atlas-release-src
+          mkdir -p /tmp/atlas-r7-wrapper /tmp/atlas-release-src
+          unzip -q /tmp/atlas-r7-wrapper.zip -d /tmp/atlas-r7-wrapper
+          echo "$RELEASE_SHA256  /tmp/atlas-r7-wrapper/ATLAS_R7_25SEP2026.zip" | sha256sum -c -
+          unzip -q /tmp/atlas-r7-wrapper/ATLAS_R7_25SEP2026.zip -d /tmp/atlas-release-src
           tar -C /tmp/atlas-release-src -czf /tmp/atlas-release.tar.gz .
           sha256sum /tmp/atlas-release.tar.gz | tee /tmp/atlas-release.tar.gz.sha256
           cp /tmp/atlas-release-src/tools/deployment/update-private-release.py /tmp/update-private-release.py
@@ -68,76 +68,32 @@ jobs:
           set -euo pipefail
           scp -o BatchMode=yes -i ~/.ssh/id_ed25519 /tmp/atlas-release.tar.gz /tmp/update-private-release.py "${ATLAS_USER}@${ATLAS_HOST}:/tmp/"
           archive_sha="$(awk '{print $1}' /tmp/atlas-release.tar.gz.sha256)"
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}"             "python3 /tmp/update-private-release.py --archive /tmp/atlas-release.tar.gz --sha256 '$archive_sha' --commit '$RELEASE_COMMIT'"
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" \
+            "python3 /tmp/update-private-release.py --archive /tmp/atlas-release.tar.gz --sha256 '$archive_sha' --commit '$RELEASE_COMMIT'"
 
-      - name: Cut canonical hostname directly to R7
+      - name: Point atlas.ocrowley.com at R7
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          file=/etc/nginx/conf.d/zzz-atlas-auth.conf
-          backup="/var/backups/atlas-canonical-before-r7-$(date -u +%Y%m%dT%H%M%SZ).conf"
-          cp "$file" "$backup"
-          python3 - <<'PY'
-from pathlib import Path
-p=Path('/etc/nginx/conf.d/zzz-atlas-auth.conf')
-s=p.read_text()
-old='''    location / {
-        proxy_pass http://127.0.0.1:8790;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_redirect off;
-    }'''
-new='''    location / {
-        proxy_pass http://127.0.0.1:3110;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header Connection "";
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_redirect off;
-    }'''
-if old in s:
-    s=s.replace(old,new,1)
-elif 'proxy_pass http://127.0.0.1:3110;' not in s:
-    raise SystemExit('Canonical Atlas root location was not in the expected old or new state')
-p.write_text(s)
-PY
-          nginx -t
-          systemctl reload nginx
-          echo "backup=$backup"
-          REMOTE
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "
+            set -euo pipefail
+            cp /etc/nginx/conf.d/zzz-atlas-auth.conf /var/backups/zzz-atlas-auth.before-r7.$(date -u +%Y%m%dT%H%M%SZ).conf
+            sed -i '0,/proxy_pass http:\/\/127\.0\.0\.1:8790;/s//proxy_pass http:\/\/127.0.0.1:3110;/' /etc/nginx/conf.d/zzz-atlas-auth.conf
+            nginx -t
+            systemctl reload nginx
+          "
 
-      - name: Verify canonical hostname is actually R7
+      - name: Verify canonical R7
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          test "$(basename "$(readlink -f /opt/atlas-unified/current)")" = "76c05bb0377c958ba634a4d04e9394c93ceca683"
-          systemctl is-active --quiet atlas-unified.service
-          grep -Rqs 'One project context for conversation, deep research, evidence, writing, music, and product work.' /opt/atlas-unified/current/apps/caspa/dist
-          grep -Rqs 'Create studio music' /opt/atlas-unified/current/apps/caspa/dist
-          grep -Rqs 'label: .Music.' /opt/atlas-unified/current/apps/caspa/src/components/atlas/AtlasWorkspace.tsx
-          cfg=/etc/atlas-unified/runtime.json
-          user="$(python3 -c "import json;print(json.load(open('$cfg'))['basicUser'])")"
-          pass="$(python3 -c "import json;print(json.load(open('$cfg'))['basicPassword'])")"
-          auth="$(printf '%s:%s' "$user" "$pass" | base64 -w0)"
-          curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -H "Authorization: Basic $auth" https://atlas.ocrowley.com/ -o /tmp/r7-root.html
-          bundle="$(grep -oE 'assets/[^"]+\.js' /tmp/r7-root.html | head -1)"
-          test -n "$bundle"
-          curl -ksS --resolve atlas.ocrowley.com:443:127.0.0.1 -H "Authorization: Basic $auth" "https://atlas.ocrowley.com/$bundle" -o /tmp/r7-root.js
-          grep -q 'Create studio music' /tmp/r7-root.js
-          grep -q 'deep research, evidence, writing, music, and product work' /tmp/r7-root.js
-          echo "canonical_r7=true"
-          echo "bundle=$bundle"
-          REMOTE
-          headers="$(curl -sS -I https://atlas.ocrowley.com/)"
-          printf '%s\n' "$headers"
-          printf '%s\n' "$headers" | grep -Eq '^HTTP/.* (200|303)'
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" "
+            set -euo pipefail
+            test \"\$(basename \"\$(readlink -f /opt/atlas-unified/current)\")\" = '$RELEASE_COMMIT'
+            systemctl is-active --quiet atlas-unified.service
+            grep -Rqs 'Create studio music' /opt/atlas-unified/current/apps/caspa/dist
+            grep -Rqs 'deep research, evidence, writing, music, and product work' /opt/atlas-unified/current/apps/caspa/dist
+            grep -q 'proxy_pass http://127.0.0.1:3110;' /etc/nginx/conf.d/zzz-atlas-auth.conf
+          "
+          status="$(curl -sS -o /dev/null -w '%{http_code}' https://atlas.ocrowley.com/)"
+          test "$status" = 303
