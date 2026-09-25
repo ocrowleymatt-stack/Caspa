@@ -154,16 +154,8 @@ jobs:
           set -euo pipefail
           ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          user="$(python3 - <<'PY'
-import json
-print(json.load(open('/etc/atlas-unified/runtime.json'))['basicUser'])
-PY
-)"
-          pass="$(python3 - <<'PY'
-import json
-print(json.load(open('/etc/atlas-unified/runtime.json'))['basicPassword'])
-PY
-)"
+          user="$(python3 -c "import json; print(json.load(open('/etc/atlas-unified/runtime.json'))['basicUser'])")"
+          pass="$(python3 -c "import json; print(json.load(open('/etc/atlas-unified/runtime.json'))['basicPassword'])")"
           rm -f /tmp/atlas-cookie.jar /tmp/login.headers /tmp/logout.headers
           curl -sS -c /tmp/atlas-cookie.jar -D /tmp/login.headers -o /tmp/login.body \
             -X POST -H 'Origin: https://atlas.ocrowley.com' \
@@ -181,3 +173,5 @@ PY
 # forced direct cutover trigger
 
 # authenticated same-origin verification trigger
+
+# syntax repair trigger
