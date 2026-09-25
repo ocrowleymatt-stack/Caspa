@@ -1,0 +1,55 @@
+name: Verify live canonical Atlas root content
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-live-atlas-root-content.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_HOST: 116.202.24.63
+      ATLAS_USER: root
+    steps:
+      - name: Select SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="${PRIVATEKEY2:-${HETZNER_SSH_KEY:-}}"
+          test -n "$key"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$key" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H "$ATLAS_HOST" >> ~/.ssh/known_hosts
+      - name: Inspect active release
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "current=$(readlink -f /opt/atlas-unified/current)"
+          test "$(basename "$(readlink -f /opt/atlas-unified/current)")" = "eee2f064f231d5a941ddffec0fb207cbf2badf89"
+          grep -q "path === '/' || path === '/atlas'" /opt/atlas-unified/current/apps/caspa/src/App.tsx
+          grep -q "/caspa?projectId=" /opt/atlas-unified/current/apps/caspa/src/App.tsx
+          grep -Rqs "/caspa?projectId=" /opt/atlas-unified/current/apps/caspa/dist
+          grep -Rqs "Computer & apps" /opt/atlas-unified/current/apps/caspa/dist
+          grep -Rqs "Search thoroughly" /opt/atlas-unified/current/apps/caspa/dist
+          echo "root_route_source=true"
+          echo "root_route_bundle=true"
+          echo "r6_markers=true"
+          echo "--- public root headers ---"
+          curl -sS -D - -o /tmp/public-root https://atlas2.ocrowley.com/ | sed -n '1,20p'
+          echo "--- public atlas headers ---"
+          curl -sS -D - -o /tmp/public-atlas https://atlas2.ocrowley.com/atlas | sed -n '1,20p'
+          echo "root_bytes=$(wc -c </tmp/public-root)"
+          echo "atlas_bytes=$(wc -c </tmp/public-atlas)"
+          REMOTE
