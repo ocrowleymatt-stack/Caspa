@@ -148,4 +148,36 @@ jobs:
 
           echo 'hostname_cutover=verified'
 
+      - name: Verify authenticated same-origin POST on canonical hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 "${ATLAS_USER}@${ATLAS_HOST}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          user="$(python3 - <<'PY'
+import json
+print(json.load(open('/etc/atlas-unified/runtime.json'))['basicUser'])
+PY
+)"
+          pass="$(python3 - <<'PY'
+import json
+print(json.load(open('/etc/atlas-unified/runtime.json'))['basicPassword'])
+PY
+)"
+          rm -f /tmp/atlas-cookie.jar /tmp/login.headers /tmp/logout.headers
+          curl -sS -c /tmp/atlas-cookie.jar -D /tmp/login.headers -o /tmp/login.body \
+            -X POST -H 'Origin: https://atlas.ocrowley.com' \
+            --data-urlencode "username=$user" --data-urlencode "password=$pass" --data-urlencode 'next=/atlas' \
+            https://atlas.ocrowley.com/__atlas/login
+          grep -qi '^HTTP/.* 303' /tmp/login.headers
+          grep -qi '^location: /atlas' /tmp/login.headers
+          curl -sS -b /tmp/atlas-cookie.jar -D /tmp/logout.headers -o /tmp/logout.body \
+            -X POST -H 'Origin: https://atlas.ocrowley.com' \
+            https://atlas.ocrowley.com/__atlas/logout
+          grep -qi '^HTTP/.* 303' /tmp/logout.headers
+          echo 'same_origin_authenticated_post=verified'
+          REMOTE
+
 # forced direct cutover trigger
+
+# authenticated same-origin verification trigger
