@@ -1,0 +1,42 @@
+name: Book Chef - CASPA to Atlas Read-only Transport
+
+on:
+  push:
+    branches: [agent-matt/book-chef-readonly-transport-20261018]
+    paths: ['.github/workflows/book-chef-caspa-transport-check.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test-existing-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      ATLAS_HOST: '116.202.24.63'
+      PRIVATEKEY2: ${{ secrets.PRIVATEKEY2 }}
+      HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+      ATLAS_SSH_PRIVATE_KEY: ${{ secrets.ATLAS_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+    steps:
+      - name: Read-only SSH probe; no deployment or file access
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          ssh-keyscan -T 12 -H "$ATLAS_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts || { echo 'BLOCKED: SSH service unreachable'; exit 2; }
+          for name in PRIVATEKEY2 HETZNER_SSH_KEY ATLAS_SSH_PRIVATE_KEY SSH_PRIVATE_KEY DEPLOY_SSH_KEY SERVER_SSH_KEY; do
+            key="${!name:-}"
+            if [ -z "$key" ]; then continue; fi
+            printf '%s\n' "$key" > ~/.ssh/id_atlas_probe
+            if ssh -q -i ~/.ssh/id_atlas_probe -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=9 "root@$ATLAS_HOST" 'echo CASPA_ATLAS_ACCESS_OK' 2>/dev/null; then
+              echo "Existing CASPA credential works: $name"
+              exit 0
+            fi
+          done
+          echo 'BLOCKED: No working CASPA SSH credential in this runner'
+          exit 3
