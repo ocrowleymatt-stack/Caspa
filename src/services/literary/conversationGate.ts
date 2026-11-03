@@ -3,6 +3,8 @@ export type CaspaMode='spitball'|'plan';
 export type CaspaAction=
  |{kind:'chat';mode:CaspaMode;message:string}
  |{kind:'draft';scope:string;instruction:string}
+ |{kind:'story';instruction:string}
+ |{kind:'stitch';storyId:string;destination:string}
  |{kind:'approve';candidateId:string}
  |{kind:'reject';candidateId:string}
  |{kind:'mode';mode:CaspaMode}
@@ -16,6 +18,15 @@ export function parseCaspaCommand(message:string,mode:CaspaMode='spitball'):Casp
  const arg=rest.join(' ').trim();
  if(command==='/spitball'||command==='/plan') return {kind:'mode',mode:command==='/plan'?'plan':'spitball'};
  if(command==='/help') return {kind:'help'};
+ if(command==='/story'){
+   if(!arg) throw new Error('Specify a story brief');
+   return {kind:'story',instruction:arg};
+ }
+ if(command==='/stitch'){
+   const match=arg.match(/^([a-zA-Z0-9_-]{3,128})\\s+(?:into\\s+)?(.+)$/i);
+   if(!match) throw new Error('Usage: /stitch <story-id> into <book and placement>');
+   return {kind:'stitch',storyId:match[1],destination:match[2].trim()};
+ }
  if(command==='/draft'){
    if(!arg) throw new Error('Specify a drafting scope, e.g. /draft chapter 7 or /draft whole-book');
    return {kind:'draft',scope:arg,instruction:message.slice(first.length).trim()};
