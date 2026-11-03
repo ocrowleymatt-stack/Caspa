@@ -110,10 +110,10 @@ async function fallbackLocalResearch(
   return {
     ...note,
     topicQuery: topic,
-    verificationStatus: searchUnavailable ? 'unverified' : 'verified',
+    verificationStatus: 'unverified',
     verificationNotes: searchUnavailable
-      ? 'Live web search unavailable — generated from model knowledge only. Verify place names and facts before publishing.'
-      : '',
+      ? 'Live web search unavailable — generated from model knowledge only. Verify all claims and citations before publishing.'
+      : 'Research request failed — local AI synthesis has not been independently verified. Verify all claims and citations before publishing.',
     sources: note.sources?.length ? note.sources : ['AI synthesis'],
   };
 }
